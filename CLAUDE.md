@@ -35,6 +35,11 @@ Single test: `npx vitest run src/__tests__/sort-key.test.ts` (or `-t "nazwa test
 
 Mobile: always `npx expo install <pkg>` inside `apps/mobile`, then `npx expo-doctor`. Follow `apps/mobile/AGENTS.md` — check Expo SDK 58 docs, don't trust memory. Web: `apps/web/AGENTS.md` — read `node_modules/next/dist/docs/` before using Next APIs. EAS project is not linked yet (`npx eas-cli@latest init` adds `projectId`/`updates.url` to `app.json`; needed before `ota`).
 
+## Deployment
+
+- Web: Vercel project `task-planner` (Root Directory `apps/web`), production https://task-planner-omega-indol.vercel.app — auto-deploys from `main`; the team alias `task-planner-michalklinwedge.vercel.app` sits behind Vercel login (Deployment Protection). `/dev/*` pages return 404 in production.
+- Supabase cloud project ref `sakjrlpfbclcjlnpjcrt` (linked via `npm run supabase -- link`); apply migrations with `npm run supabase -- db push`, check with `npm run supabase -- migration list --linked`.
+
 ## Architecture rules
 
 - **UI reads and writes only the local database** (expo-sqlite on the phone, `@sqlite.org/sqlite-wasm` with `opfs-sahpool` in a web worker, one leader tab). Network is `packages/sync`'s job in the background — no separate „offline path” in UI code.
