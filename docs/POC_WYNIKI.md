@@ -1,5 +1,31 @@
 # Wyniki PoC
 
+## PoC-3 — Cykliczność i nawyki (18.11.2026)
+
+**Werdykt: GO, własny podzbiór RRULE** (bez rrule.js w produkcie). rrule.js zostaje tylko jako wyrocznia w testach (`devDependencies` `packages/core`).
+
+| Kryterium | Wynik | Jak sprawdzone |
+|---|---|---|
+| Przypadki z §7.2 (`fixtures/recurrence.json`) | ✅ 15/15 (wystąpienia, COUNT/UNTIL, ukończenie zaległego, „po ukończeniu” z opóźnieniem i przed terminem, 31. i 29 lutego) | Vitest |
+| Zgodność z rrule.js | ✅ 500 losowych reguł × 40 wystąpień — te same daty | Vitest |
+| Historie nawyków policzone ręcznie (`fixtures/habits.json`) | ✅ 5/5: passa, najdłuższa passa, regularność (dni wolne, weekend przy dniach roboczych, cel 3×/tydzień, cel ilościowy) | Vitest |
+| Opis po polsku „tam i z powrotem” przez szybkie dodawanie | ✅ 12 opisów i tekstów wraca do reguły o tych samych datach | Vitest |
+| Te same wyniki w Node, przeglądarce i Hermes | ✅ Node, ✅ przeglądarka (20/20, `/dev/recurrence`), ⚠️ Hermes: bundel się kompiluje, wykonanie na telefonie w MVP-3 | |
+| 1 000 wystąpień < 20 ms | ✅ **2,65 ms** | Vitest |
+
+**Co powstało:** `packages/core/src/recurrence.ts` (`parseRrule`, `formatRrule`, `occurrences`, `nextOccurrence`, `nextDue`, `describeRecurrence`, schemat `Recurrence`), `habits.ts` (`habitPeriods`, `habitStreak`, `habitRate`, `habitDays`, schemat `HabitSettings`), `fixtures/habits.json`, strona `apps/web/src/app/dev/recurrence`.
+
+**Dlaczego własny, a nie rrule.js:** wynik jest identyczny na obsługiwanym podzbiorze, a własny kod liczy na datach pływających bez obiektów `Date` w strefie (rrule.js trzeba „oszukiwać” UTC), nie ma zależności z 2023 r. i odrzuca reguły spoza podzbioru zamiast liczyć je inaczej niż Google Calendar.
+
+**Ustalenia (dopisać do §7.2 / §7.5 w v0.2):**
+- Podzbiór: FREQ=DAILY|WEEKLY|MONTHLY|YEARLY, INTERVAL, BYDAY (z pozycją tylko w MONTHLY/YEARLY), BYMONTHDAY (także ujemne), BYMONTH, BYSETPOS, COUNT, UNTIL (data), WKST=MO. Odrzucane: HOURLY i mniejsze, BYHOUR/BYWEEKNO/BYYEARDAY, YEARLY+BYDAY bez BYMONTH, COUNT razem z UNTIL.
+- Kotwica, która nie pasuje do reguły, nie jest wystąpieniem (jak rrule.js / dateutil, inaczej niż dosłowne RFC dla DTSTART). Szybkie dodawanie i tak ustawia kotwicę na pierwszym pasującym dniu.
+- „Po ukończeniu” co miesiąc z 31. → ostatni dzień krótszego miesiąca (kalendarzowo), a „według harmonogramu” 31. dnia pomija krótsze miesiące (RFC).
+- Nawyk z celem „N razy w tygodniu/miesiącu”: okres z dniami wolnymi, w którym zrobione + wolne ≥ N, nie przerywa passy i nie zalicza. Dzień z wartością poniżej celu ilościowego to „częściowo” (mapa cieplna), a w passie — niezaliczony.
+- Nowe formy szybkiego dodawania (korpus 99 przypadków, 100 %): „każdego 10. dnia miesiąca”, „15. i ostatniego dnia miesiąca”, „co 3 miesiące, 30. dnia”.
+
+**Niesprawdzone:** wykonanie w Hermes na telefonie — dodać ekran samosprawdzenia (te same przypadki co `/dev/recurrence`) przy pierwszym dev buildzie (PoC-4).
+
 ## PoC-2 — Parser szybkiego dodawania (18.11.2026)
 
 **Werdykt: GO.** Gramatyka z SPECYFIKACJA §4 w całości, bez zawężania.

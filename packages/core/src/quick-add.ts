@@ -138,7 +138,7 @@ type DateSpec = { type: 'date'; date: LocalDate } | { type: 'weekday'; day: numb
 type RecurrenceSpec =
   | { type: 'daily'; interval: number }
   | { type: 'weekly'; interval: number; days?: number[] | 'workdays' }
-  | { type: 'monthly'; interval: number; monthDay?: number; nth?: { n: number; day: number }; lastWorkday?: boolean }
+  | { type: 'monthly'; interval: number; monthDays?: number[]; nth?: { n: number; day: number }; lastWorkday?: boolean }
   | { type: 'yearly' }
   | { type: 'after'; unit: 'day' | 'week' | 'month' | 'year'; n: number };
 
@@ -424,9 +424,21 @@ const matchRecurrence: Matcher = (words, i) => {
 
   // „ostatniego dnia (roboczego) miesiąca”, „ostatni dzień miesiąca”
   if ((w === 'ostatniego' && at(1) === 'dnia') || (w === 'ostatni' && at(1) === 'dzien')) {
-    if (at(2) === 'miesiaca') return rec(3, { type: 'monthly', interval: 1, monthDay: -1 });
+    if (at(2) === 'miesiaca') return rec(3, { type: 'monthly', interval: 1, monthDays: [-1] });
     if (at(2) === 'roboczego' || at(2) === 'roboczy') {
       if (at(3) === 'miesiaca') return rec(4, { type: 'monthly', interval: 1, lastWorkday: true });
+    }
+  }
+  // „15. dnia miesiąca”, „każdego 15. dnia miesiąca”, „15. i ostatniego dnia miesiąca”
+  {
+    const k = w === 'kazdego' ? 1 : 0;
+    const day = /^(\d{1,2})\.$/.exec(at(k) ?? '');
+    if (day && Number(day[1]) >= 1 && Number(day[1]) <= 31) {
+      const n = Number(day[1]);
+      if (at(k + 1) === 'dnia' && at(k + 2) === 'miesiaca') return rec(k + 3, { type: 'monthly', interval: 1, monthDays: [n] });
+      if (at(k + 1) === 'i' && at(k + 2) === 'ostatniego' && at(k + 3) === 'dnia' && at(k + 4) === 'miesiaca') {
+        return rec(k + 5, { type: 'monthly', interval: 1, monthDays: [n, -1] });
+      }
     }
   }
   // „drugi wtorek miesiąca”, „ostatni piątek miesiąca”
@@ -467,7 +479,14 @@ const matchRecurrence: Matcher = (words, i) => {
   }
   if (unit === 'day') return rec(k + 1, { type: 'daily', interval: n });
   if (unit === 'week') return rec(k + 1, { type: 'weekly', interval: n });
-  if (unit === 'month') return rec(k + 1, { type: 'monthly', interval: n });
+  if (unit === 'month') {
+    // „co 3 miesiące, 30. dnia”
+    const day = /^(\d{1,2})\.$/.exec(at(k + 1) ?? '');
+    if (day && at(k + 2) === 'dnia' && Number(day[1]) >= 1 && Number(day[1]) <= 31) {
+      return rec(k + 3, { type: 'monthly', interval: n, monthDays: [Number(day[1])] });
+    }
+    return rec(k + 1, { type: 'monthly', interval: n });
+  }
   return rec(k + 1, { type: 'yearly' });
 };
 
@@ -519,7 +538,7 @@ function ruleFor(spec: Exclude<RecurrenceSpec, { type: 'after' }>, base: LocalDa
     case 'monthly':
       if (spec.lastWorkday) return `FREQ=MONTHLY${interval};BYDAY=${WORKDAYS};BYSETPOS=-1`;
       if (spec.nth) return `FREQ=MONTHLY${interval};BYDAY=${spec.nth.n}${RRULE_DAY[spec.nth.day]}`;
-      return `FREQ=MONTHLY${interval};BYMONTHDAY=${spec.monthDay ?? dayOfMonth(base)}`;
+      return `FREQ=MONTHLY${interval};BYMONTHDAY=${(spec.monthDays ?? [dayOfMonth(base)]).join(',')}`;
     case 'yearly':
       return `FREQ=YEARLY;BYMONTH=${Number(base.slice(5, 7))};BYMONTHDAY=${dayOfMonth(base)}`;
   }
@@ -545,8 +564,7 @@ function matchesRule(spec: Exclude<RecurrenceSpec, { type: 'after' }>, date: Loc
         if (weekday !== spec.nth.day) return false;
         return spec.nth.n > 0 ? Math.ceil(day / 7) === spec.nth.n : day + 7 > last;
       }
-      const target = spec.monthDay ?? dayOfMonth(base);
-      return target === -1 ? day === last : day === target;
+      return (spec.monthDays ?? [dayOfMonth(base)]).some((target) => (target === -1 ? day === last : day === target));
     }
     case 'yearly':
       return date.slice(5) === base.slice(5);

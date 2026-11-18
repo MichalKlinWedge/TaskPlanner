@@ -1,0 +1,47 @@
+{
+  "$comment": "Historie nawyków z wynikami policzonymi ręcznie (SPECYFIKACJA §7.5, kryterium PoC-3 i Etapu 8). Dziś = środa 18.11.2026. `history`: albo zakres `doneFrom`–`doneTo` (każde zaplanowane wystąpienie zrobione) z wyjątkami `missed`/`skipped`, albo jawne listy `done` (z wartością przy celu ilościowym) i `skipped`.",
+  "today": "2026-11-18",
+  "cases": [
+    {
+      "name": "codziennie: jeden dzień opuszczony, jeden wolny, dziś jeszcze nie",
+      "habit": { "recurrence": { "mode": "schedule", "rrule": "FREQ=DAILY", "anchor": "2026-08-20" } },
+      "history": { "doneFrom": "2026-08-20", "doneTo": "2026-11-17", "missed": ["2026-10-01"], "skipped": ["2026-11-10"] },
+      "expect": { "current": 46, "best": 46, "rate": { "from": "2026-09-19", "to": "2026-11-17", "done": 58, "possible": 59 } },
+      "$why": "passa 2.10–17.11 = 47 dni bez wolnego 10.11 = 46; wcześniej 20.08–30.09 = 42; 60 dni zakresu − 1 opuszczony − 1 wolny"
+    },
+    {
+      "name": "dni robocze: weekend nie przerywa, opuszczony piątek przerywa, dziś zrobione",
+      "habit": { "recurrence": { "mode": "schedule", "rrule": "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", "anchor": "2026-09-01" } },
+      "history": { "doneFrom": "2026-09-01", "doneTo": "2026-11-18", "missed": ["2026-11-06"], "skipped": [] },
+      "expect": { "current": 8, "best": 48, "rate": { "from": "2026-09-01", "to": "2026-11-18", "done": 56, "possible": 57 } },
+      "$why": "9–13.11 (5) + 16–18.11 (3); wrzesień 22 + październik 22 + 2–5.11 (4) dni robocze"
+    },
+    {
+      "name": "3 razy w tygodniu: tydzień z dniem wolnym zaliczony warunkowo, bieżący tydzień w toku",
+      "habit": { "recurrence": { "mode": "schedule", "rrule": "FREQ=DAILY", "anchor": "2026-10-05" }, "goal": { "period": "week", "times": 3 } },
+      "history": {
+        "done": ["2026-10-05", "2026-10-07", "2026-10-09", "2026-10-12", "2026-10-14", "2026-10-19", "2026-10-21", "2026-10-23", "2026-10-26", "2026-10-27", "2026-10-29", "2026-10-31", "2026-11-02", "2026-11-04", "2026-11-06", "2026-11-09", "2026-11-11", "2026-11-16"],
+        "skipped": ["2026-11-13"]
+      },
+      "expect": { "current": 3, "best": 3, "rate": { "from": "2026-10-05", "to": "2026-11-18", "done": 4, "possible": 5 } },
+      "$why": "tygodnie: 5.10 ✓, 12.10 ✗ (2), 19.10 ✓, 26.10 ✓, 2.11 ✓, 9.11 wolny (2 + 1 wolny), 16.11 w toku (1) → passa 3; zakres: 7 tygodni − 1 wolny − 1 w toku = 5, zaliczone 4"
+    },
+    {
+      "name": "cel ilościowy 8 szklanek: za mało = niezaliczone, dziś w toku",
+      "habit": { "recurrence": { "mode": "schedule", "rrule": "FREQ=DAILY", "anchor": "2026-11-10" }, "target": 8 },
+      "history": {
+        "done": [["2026-11-10", 8], ["2026-11-11", 9], ["2026-11-12", 5], ["2026-11-13", 8], ["2026-11-14", 8], ["2026-11-16", 8], ["2026-11-17", 10], ["2026-11-18", 3]],
+        "skipped": ["2026-11-15"]
+      },
+      "expect": { "current": 4, "best": 4, "rate": { "from": "2026-11-10", "to": "2026-11-17", "done": 6, "possible": 7 } },
+      "$why": "17, 16, (15 wolny), 14, 13 = 4; 12.11 tylko 5 → przerywa; dziś 3 z 8 — w toku"
+    },
+    {
+      "name": "codziennie: przedwczoraj opuszczony",
+      "habit": { "recurrence": { "mode": "schedule", "rrule": "FREQ=DAILY", "anchor": "2026-11-14" } },
+      "history": { "done": ["2026-11-14", "2026-11-15", "2026-11-17"], "skipped": [] },
+      "expect": { "current": 1, "best": 2, "rate": { "from": "2026-11-14", "to": "2026-11-18", "done": 3, "possible": 4 } },
+      "$why": "16.11 opuszczony; dziś w toku nie liczy się do możliwych"
+    }
+  ]
+}

@@ -58,6 +58,8 @@ Cel: przed budową produktu sprawdzić rzeczy, które mogą zmienić architektur
 - `core/habits.ts`: passy i statystyki na historiach z `fixtures/habits/`.
 - Uruchomienie tych samych testów w Node, w przeglądarce i w Hermes (ekran testowy w dev buildzie).
 
+**Stan (18.11.2026):** zrobione, werdykt **GO — własny podzbiór RRULE** (zgodny z rrule.js na 500 losowych regułach); 15/15 przypadków §7.2, 5/5 historii nawyków, 1 000 wystąpień w 2,65 ms; przeglądarka 20/20, Hermes — tylko kompilacja (wykonanie na telefonie w PoC-4). Szczegóły: `docs/POC_WYNIKI.md`.
+
 **Go:** wszystkie przypadki z §7.2 i z historii nawyków dają oczekiwane wyniki, identyczne na trzech środowiskach; 1 000 wystąpień na rok liczone < 20 ms. **No-go dla rrule.js:** własny podzbiór (FREQ, INTERVAL, BYDAY z pozycją, BYMONTHDAY, BYSETPOS, COUNT, UNTIL).
 
 ### PoC-4 — Android: przypomnienia, widżet, udostępnianie, kalendarz (≈ 2 dni)
