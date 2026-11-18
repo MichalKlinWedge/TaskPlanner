@@ -1,0 +1,86 @@
+{
+  "$comment": "Przypadki silnika cykliczności (SPECYFIKACJA §7.2, kryterium PoC-3). Daty pływające. `occurrences` = kolejne wystąpienia od `anchor` włącznie; `completions` = ukończenie wystąpienia w dniu `on` → oczekiwany następny termin `next`.",
+  "cases": [
+    {
+      "name": "co drugi wtorek",
+      "text": "co drugi wtorek",
+      "rule": { "mode": "schedule", "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=TU", "anchor": "2026-11-24" },
+      "occurrences": ["2026-11-24", "2026-12-08", "2026-12-22", "2027-01-05"]
+    },
+    {
+      "name": "drugi wtorek miesiąca",
+      "text": "drugi wtorek miesiąca",
+      "rule": { "mode": "schedule", "rrule": "FREQ=MONTHLY;BYDAY=2TU", "anchor": "2026-12-08" },
+      "occurrences": ["2026-12-08", "2027-01-12", "2027-02-09", "2027-03-09"]
+    },
+    {
+      "name": "ostatni dzień miesiąca",
+      "text": "ostatniego dnia miesiąca",
+      "rule": { "mode": "schedule", "rrule": "FREQ=MONTHLY;BYMONTHDAY=-1", "anchor": "2026-11-30" },
+      "occurrences": ["2026-11-30", "2026-12-31", "2027-01-31", "2027-02-28"]
+    },
+    {
+      "name": "ostatni dzień roboczy miesiąca",
+      "text": "ostatniego dnia roboczego miesiąca",
+      "rule": { "mode": "schedule", "rrule": "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1", "anchor": "2026-11-30" },
+      "occurrences": ["2026-11-30", "2026-12-31", "2027-01-29", "2027-02-26"]
+    },
+    {
+      "name": "15. i ostatni dzień miesiąca",
+      "text": "15. i ostatniego dnia miesiąca",
+      "rule": { "mode": "schedule", "rrule": "FREQ=MONTHLY;BYMONTHDAY=15,-1", "anchor": "2026-11-15" },
+      "occurrences": ["2026-11-15", "2026-11-30", "2026-12-15", "2026-12-31"]
+    },
+    {
+      "name": "31. dnia — krótsze miesiące pomijane (RFC 5545)",
+      "rule": { "mode": "schedule", "rrule": "FREQ=MONTHLY;BYMONTHDAY=31", "anchor": "2026-12-31" },
+      "occurrences": ["2026-12-31", "2027-01-31", "2027-03-31", "2027-05-31"]
+    },
+    {
+      "name": "co 3 miesiące od 30. — luty pominięty (RFC 5545)",
+      "rule": { "mode": "schedule", "rrule": "FREQ=MONTHLY;INTERVAL=3", "anchor": "2026-11-30" },
+      "occurrences": ["2026-11-30", "2027-05-30", "2027-08-30", "2027-11-30"]
+    },
+    {
+      "name": "29 lutego co roku",
+      "rule": { "mode": "schedule", "rrule": "FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29", "anchor": "2028-02-29" },
+      "occurrences": ["2028-02-29", "2032-02-29"]
+    },
+    {
+      "name": "dni robocze",
+      "text": "w dni robocze",
+      "rule": { "mode": "schedule", "rrule": "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", "anchor": "2026-11-20" },
+      "occurrences": ["2026-11-20", "2026-11-23", "2026-11-24", "2026-11-25"]
+    },
+    {
+      "name": "koniec po 3 wystąpieniach",
+      "rule": { "mode": "schedule", "rrule": "FREQ=DAILY;COUNT=3", "anchor": "2026-11-18" },
+      "occurrences": ["2026-11-18", "2026-11-19", "2026-11-20"]
+    },
+    {
+      "name": "koniec po dacie",
+      "rule": { "mode": "schedule", "rrule": "FREQ=WEEKLY;BYDAY=WE;UNTIL=20261202", "anchor": "2026-11-18" },
+      "occurrences": ["2026-11-18", "2026-11-25", "2026-12-02"]
+    },
+    {
+      "name": "ukończenie zaległego wystąpienia — następne po dziś, bez zalewu zaległych",
+      "rule": { "mode": "schedule", "rrule": "FREQ=WEEKLY;BYDAY=MO", "anchor": "2026-11-02" },
+      "completions": [{ "occurrence": "2026-11-02", "on": "2026-11-18", "next": "2026-11-23" }]
+    },
+    {
+      "name": "3 dni po ukończeniu — ukończone z opóźnieniem i przed terminem",
+      "text": "co 3 dni po ukończeniu",
+      "rule": { "mode": "after_completion", "every": { "unit": "day", "n": 3 } },
+      "completions": [
+        { "occurrence": "2026-11-18", "on": "2026-11-20", "next": "2026-11-23" },
+        { "occurrence": "2026-11-18", "on": "2026-11-16", "next": "2026-11-19" }
+      ]
+    },
+    {
+      "name": "miesiąc po ukończeniu — koniec miesiąca",
+      "rule": { "mode": "after_completion", "every": { "unit": "month", "n": 1 } },
+      "completions": [{ "occurrence": "2027-01-31", "on": "2027-01-31", "next": "2027-02-28" }],
+      "$comment": "tryb „po ukończeniu” liczy kalendarzowo: brak 31 lutego → ostatni dzień lutego"
+    }
+  ]
+}

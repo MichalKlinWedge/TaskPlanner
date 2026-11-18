@@ -1,0 +1,78 @@
+{"input":"Zapłacić rachunek za prąd jutro o 10:00 #dom !wysoki","expect":{"title":"Zapłacić rachunek za prąd","dueDate":"2026-11-19","dueTime":"10:00","target":{"kind":"workspace","name":"Dom"},"priority":2},"note":"przykład ze specyfikacji; „za prąd” to nie data"}
+{"input":"Kupić mleko","expect":{"title":"Kupić mleko"}}
+{"input":"Kupić mleko dziś","expect":{"title":"Kupić mleko","dueDate":"2026-11-18"}}
+{"input":"Kupić mleko dzisiaj","expect":{"title":"Kupić mleko","dueDate":"2026-11-18"}}
+{"input":"Oddać książkę pojutrze","expect":{"title":"Oddać książkę","dueDate":"2026-11-20"}}
+{"input":"Oddać książkę do biblioteki w piątek","expect":{"title":"Oddać książkę do biblioteki","dueDate":"2026-11-20"}}
+{"input":"Umówić fryzjera w poniedziałek","expect":{"title":"Umówić fryzjera","dueDate":"2026-11-23"}}
+{"input":"Umówić fryzjera pon","expect":{"title":"Umówić fryzjera","dueDate":"2026-11-23"}}
+{"input":"Raport we wtorek o 9","expect":{"title":"Raport","dueDate":"2026-11-24","dueTime":"09:00"}}
+{"input":"Wizyta w środę o 15","expect":{"title":"Wizyta","dueDate":"2026-11-18","dueTime":"15:00"},"note":"dziś jest środa, 15:00 jeszcze nie minęła → dziś"}
+{"input":"Wizyta w środę o 10","expect":{"title":"Wizyta","dueDate":"2026-11-25","dueTime":"10:00"},"note":"dziś jest środa, 10:00 minęła → za tydzień"}
+{"input":"Prezentacja w przyszły piątek","expect":{"title":"Prezentacja","dueDate":"2026-11-27"},"note":"„przyszły” = w następnym tygodniu kalendarzowym"}
+{"input":"Przegląd auta za 3 dni","expect":{"title":"Przegląd auta","dueDate":"2026-11-21"}}
+{"input":"Przegląd auta za tydzień","expect":{"title":"Przegląd auta","dueDate":"2026-11-25"}}
+{"input":"Przegląd auta za 2 tygodnie","expect":{"title":"Przegląd auta","dueDate":"2026-12-02"}}
+{"input":"Przegląd auta za miesiąc","expect":{"title":"Przegląd auta","dueDate":"2026-12-18"}}
+{"input":"Urodziny Ani 21.11","expect":{"title":"Urodziny Ani","dueDate":"2026-11-21"}}
+{"input":"Urodziny Ani 21.11.2027","expect":{"title":"Urodziny Ani","dueDate":"2027-11-21"}}
+{"input":"Urodziny Ani 21/11","expect":{"title":"Urodziny Ani","dueDate":"2026-11-21"}}
+{"input":"Urodziny Ani 21 listopada","expect":{"title":"Urodziny Ani","dueDate":"2026-11-21"}}
+{"input":"Rocznica 15 lis","expect":{"title":"Rocznica","dueDate":"2027-11-15"},"note":"data bez roku już minęła → przyszły rok"}
+{"input":"Ferie 5.01","expect":{"title":"Ferie","dueDate":"2027-01-05"}}
+{"input":"Podsumować wydatki koniec miesiąca","expect":{"title":"Podsumować wydatki","dueDate":"2026-11-30"}}
+{"input":"Posprzątać garaż koniec tygodnia","expect":{"title":"Posprzątać garaż","dueDate":"2026-11-22"},"note":"koniec tygodnia = niedziela"}
+{"input":"Wyjazd na działkę w weekend","expect":{"title":"Wyjazd na działkę","dueDate":"2026-11-21"},"note":"weekend = sobota"}
+{"input":"Zadzwonić o 15","expect":{"title":"Zadzwonić","dueDate":"2026-11-18","dueTime":"15:00"},"note":"sama godzina: dziś, jeśli jeszcze nie minęła"}
+{"input":"Zadzwonić o 9","expect":{"title":"Zadzwonić","dueDate":"2026-11-19","dueTime":"09:00"},"note":"sama godzina, która minęła → jutro"}
+{"input":"Spotkanie jutro o 10.30","expect":{"title":"Spotkanie","dueDate":"2026-11-19","dueTime":"10:30"}}
+{"input":"Spotkanie jutro 14:45","expect":{"title":"Spotkanie","dueDate":"2026-11-19","dueTime":"14:45"}}
+{"input":"Bieganie jutro o 7 rano","expect":{"title":"Bieganie","dueDate":"2026-11-19","dueTime":"07:00"}}
+{"input":"Film jutro o 8 wieczorem","expect":{"title":"Film","dueDate":"2026-11-19","dueTime":"20:00"}}
+{"input":"Lunch z Kasią jutro w południe","expect":{"title":"Lunch z Kasią","dueDate":"2026-11-19","dueTime":"12:00"}}
+{"input":"Warsztaty jutro 10-11:30","expect":{"title":"Warsztaty","dueDate":"2026-11-19","dueTime":"10:00","durationMin":90}}
+{"input":"Warsztaty jutro od 14 do 16","expect":{"title":"Warsztaty","dueDate":"2026-11-19","dueTime":"14:00","durationMin":120}}
+{"input":"Odpisać na maile ~30m","expect":{"title":"Odpisać na maile","durationMin":30}}
+{"input":"Odpisać na maile ~1h30","expect":{"title":"Odpisać na maile","durationMin":90}}
+{"input":"Odpisać na maile ~1,5h","expect":{"title":"Odpisać na maile","durationMin":90}}
+{"input":"Odpisać na maile przez 45 min","expect":{"title":"Odpisać na maile","durationMin":45}}
+{"input":"Nauka do egzaminu przez 2 godziny jutro","expect":{"title":"Nauka do egzaminu","dueDate":"2026-11-19","durationMin":120}}
+{"input":"Naprawić serwer !1","expect":{"title":"Naprawić serwer","priority":1}}
+{"input":"Naprawić serwer !krytyczny","expect":{"title":"Naprawić serwer","priority":1}}
+{"input":"Uporządkować biurko !średni","expect":{"title":"Uporządkować biurko","priority":3}}
+{"input":"Uporządkować biurko !sredni","expect":{"title":"Uporządkować biurko","priority":3},"note":"bez polskich znaków"}
+{"input":"Uporządkować biurko !niski","expect":{"title":"Uporządkować biurko","priority":4}}
+{"input":"Kupić płytki #remont-kuchni","expect":{"title":"Kupić płytki","target":{"kind":"list","name":"Remont kuchni"}}}
+{"input":"Kupić płytki #\"Remont kuchni\"","expect":{"title":"Kupić płytki","target":{"kind":"list","name":"Remont kuchni"}}}
+{"input":"Chleb #zakupy","expect":{"title":"Chleb","target":{"kind":"list","name":"Zakupy"}}}
+{"input":"Zgłosić urlop #praca","expect":{"title":"Zgłosić urlop","target":{"kind":"workspace","name":"Praca"}}}
+{"input":"Dokończyć import kontaktów #wdrozenie-crm !2","expect":{"title":"Dokończyć import kontaktów","target":{"kind":"list","name":"Wdrożenie CRM"},"priority":2},"note":"dopasowanie bez polskich znaków"}
+{"input":"Napisać do Ani #telefon","expect":{"title":"Napisać do Ani","tags":["telefon"]},"note":"brak listy o tej nazwie → tag"}
+{"input":"Oddzwonić do banku @telefon @szybkie","expect":{"title":"Oddzwonić do banku","tags":["telefon","szybkie"]}}
+{"input":"Odebrać paczkę #na_mieście jutro","expect":{"title":"Odebrać paczkę","dueDate":"2026-11-19","tags":["na_mieście"]}}
+{"input":"Trening codziennie o 7 rano ~45m","expect":{"title":"Trening","dueDate":"2026-11-18","dueTime":"07:00","durationMin":45,"recurrence":{"mode":"schedule","rrule":"FREQ=DAILY"}},"note":"pierwsze wystąpienie dziś mimo minionej godziny — seria zaczyna się od dziś"}
+{"input":"Stand-up w dni robocze o 9:30 #praca","expect":{"title":"Stand-up","dueDate":"2026-11-19","dueTime":"09:30","target":{"kind":"workspace","name":"Praca"},"recurrence":{"mode":"schedule","rrule":"FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"}},"note":"dzisiejsze 9:30 minęło → pierwsze wystąpienie jutro"}
+{"input":"Podlać kwiaty co tydzień","expect":{"title":"Podlać kwiaty","dueDate":"2026-11-18","recurrence":{"mode":"schedule","rrule":"FREQ=WEEKLY;BYDAY=WE"}}}
+{"input":"Wynieść szkło co drugi wtorek","expect":{"title":"Wynieść szkło","dueDate":"2026-11-24","recurrence":{"mode":"schedule","rrule":"FREQ=WEEKLY;INTERVAL=2;BYDAY=TU"}}}
+{"input":"Basen w każdy poniedziałek o 18","expect":{"title":"Basen","dueDate":"2026-11-23","dueTime":"18:00","recurrence":{"mode":"schedule","rrule":"FREQ=WEEKLY;BYDAY=MO"}}}
+{"input":"Zebranie rady drugi wtorek miesiąca","expect":{"title":"Zebranie rady","dueDate":"2026-12-08","recurrence":{"mode":"schedule","rrule":"FREQ=MONTHLY;BYDAY=2TU"}}}
+{"input":"Faktura ostatniego dnia miesiąca #praca !2","expect":{"title":"Faktura","dueDate":"2026-11-30","target":{"kind":"workspace","name":"Praca"},"priority":2,"recurrence":{"mode":"schedule","rrule":"FREQ=MONTHLY;BYMONTHDAY=-1"}}}
+{"input":"Czynsz co miesiąc 10.12","expect":{"title":"Czynsz","dueDate":"2026-12-10","recurrence":{"mode":"schedule","rrule":"FREQ=MONTHLY;BYMONTHDAY=10"}}}
+{"input":"Przegląd gaśnicy co roku 1 marca","expect":{"title":"Przegląd gaśnicy","dueDate":"2027-03-01","recurrence":{"mode":"schedule","rrule":"FREQ=YEARLY;BYMONTH=3;BYMONTHDAY=1"}}}
+{"input":"Zmienić wodę w akwarium co 3 dni po ukończeniu","expect":{"title":"Zmienić wodę w akwarium","dueDate":"2026-11-18","recurrence":{"mode":"after_completion","every":{"unit":"day","n":3}}}}
+{"input":"Umyć auto 2 tygodnie po wykonaniu","expect":{"title":"Umyć auto","dueDate":"2026-11-18","recurrence":{"mode":"after_completion","every":{"unit":"week","n":2}}}}
+{"input":"Zadzwonić do mamy w niedzielę o 18 przypomnij 30 min przed","expect":{"title":"Zadzwonić do mamy","dueDate":"2026-11-22","dueTime":"18:00","reminders":[{"kind":"relative","offsetMin":30}]}}
+{"input":"Lekarz jutro o 16 ^15m","expect":{"title":"Lekarz","dueDate":"2026-11-19","dueTime":"16:00","reminders":[{"kind":"relative","offsetMin":15}]}}
+{"input":"Wysłać PIT jutro ^9:00","expect":{"title":"Wysłać PIT","dueDate":"2026-11-19","reminders":[{"kind":"absolute","atDate":"2026-11-19","atTime":"09:00"}]}}
+{"input":"Kupić mleko \\jutro","expect":{"title":"Kupić mleko jutro"},"note":"literał"}
+{"input":"Kupić 2 jutrzenki","expect":{"title":"Kupić 2 jutrzenki"},"note":"pułapka: część słowa"}
+{"input":"Za mało miejsca na dysku — posprzątać","expect":{"title":"Za mało miejsca na dysku — posprzątać"},"note":"pułapka: „za” bez liczby i jednostki"}
+{"input":"Sprawdzić Mazda 6 przed sprzedażą","expect":{"title":"Sprawdzić Mazda 6 przed sprzedażą"},"note":"pułapka: liczba bez „o” to nie godzina"}
+{"input":"Przeczytać rozdział 10.30","expect":{"title":"Przeczytać rozdział 10.30"},"note":"pułapka: GG.MM bez „o” to nie godzina"}
+{"input":"Spotkanie o projekcie jutro","expect":{"title":"Spotkanie o projekcie","dueDate":"2026-11-19"},"note":"pułapka: „o” bez liczby"}
+{"input":"Zaplanować 3 dni urlopu","expect":{"title":"Zaplanować 3 dni urlopu"},"note":"pułapka: „3 dni” bez „za”"}
+{"input":"Kupić prezent za 100 zł","expect":{"title":"Kupić prezent za 100 zł"},"note":"pułapka: „za 100” bez jednostki czasu"}
+{"input":"Napisać e-mail do kontakt@firma.pl","expect":{"title":"Napisać e-mail do kontakt@firma.pl"},"note":"pułapka: @ w adresie e-mail to nie tag"}
+{"input":"Sprawdzić issue #123","expect":{"title":"Sprawdzić issue #123"},"note":"pułapka: # z samą liczbą to nie tag ani lista"}
+{"input":"Zakupy na weekend","expect":{"title":"Zakupy na weekend"},"note":"pułapka: „na weekend” to część tytułu (data tylko z „w weekend”)"}
+{"input":"Wrócić do tematu jutro jutro","expect":{"title":"Wrócić do tematu jutro","dueDate":"2026-11-19"},"note":"rozpoznany tylko ostatni fragment daty"}

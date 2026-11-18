@@ -1,0 +1,32 @@
+# Zależności i wyniki budowania
+node_modules/
+dist/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# Sekrety — nigdy do repozytorium
+.env
+.env*.local
+supabase/.env
+supabase/functions/.env
+
+# Supabase lokalnie
+supabase/.branches
+supabase/.temp
+
+# Ustawienia lokalne Claude Code
+.claude/settings.local.json
+
+# Wyniki Playwright
+test-results/
+playwright-report/
+
+# System
+.DS_Store
+Thumbs.db
+npm-debug.*
+
+# Wygenerowane dane deweloperskie
+tools/seed-dev/out/

@@ -1,0 +1,16 @@
+{
+  "$comment": "Kontekst dla fixtures/quick-add.jsonl (SPECYFIKACJA §4). Teraz = środa 18.11.2026, 12:00, Europe/Warsaw, tydzień od poniedziałku.",
+  "now": "2026-11-18T12:00",
+  "timeZone": "Europe/Warsaw",
+  "weekStart": "monday",
+  "currentWorkspace": "Dom",
+  "workspaces": ["Dom", "Praca"],
+  "lists": [
+    { "workspace": "Dom", "kind": "inbox", "name": "Inbox" },
+    { "workspace": "Dom", "kind": "project", "name": "Remont kuchni" },
+    { "workspace": "Dom", "kind": "list", "name": "Zakupy" },
+    { "workspace": "Praca", "kind": "inbox", "name": "Inbox" },
+    { "workspace": "Praca", "kind": "project", "name": "Wdrożenie CRM" }
+  ],
+  "tags": ["telefon", "szybkie", "na_mieście"]
+}

@@ -1,0 +1,551 @@
+# TaskPlanner — specyfikacja v0.1
+
+Źródła: wstępna specyfikacja (18.11.2026) oraz architektura i doświadczenia z ExpeditionPlan (`D:\AI\ExpeditionPlan`: `CLAUDE.md`, `SPECYFIKACJA.md` §2 i §6, `PLAN_ETAPOWY.md`).
+Plan realizacji: [PLAN_ETAPOWY.md](PLAN_ETAPOWY.md). Repozytorium: `github.com/MichalKlinWedge/TaskPlanner`.
+
+Status: projekt do zatwierdzenia. Decyzje otwarte są w §12 (z rekomendacją; brak uwag = rekomendacja przyjęta).
+
+---
+
+## 0. Wnioski z ExpeditionPlan
+
+### 0.1. Co przenosimy bez zmian
+- **Monorepo npm workspaces** (`apps/*`, `packages/*`, `tools/*`), Node ≥ 22, TypeScript. Pakiety konsumowane jako **źródła TS** (`main: src/index.ts`) z **jawnymi rozszerzeniami `.ts`** w importach względnych (wymóg Deno), `allowImportingTsExtensions`, Next transpiluje je przez `transpilePackages`.
+- **Logika domenowa w `packages/core`**: czysty TS, bez importów z Node/Expo/Next poza testami. Ten sam kod liczy widok „Dziś”, cykliczność i przypomnienia w przeglądarce, na telefonie offline i w Edge Functions.
+- **Zod jako jedyne źródło prawdy** dla formularzy, pól `jsonb` i API. Zawartość `jsonb` w camelCase, kolumny tabel w snake_case.
+- **Supabase** (Postgres + RLS + Realtime + Storage), migracje SQL, testy RLS w pgTAP, przypięta wersja CLI (`npx --yes supabase@2.122.0`), typy w `packages/db`.
+- **Wzorzec synchronizacji z PoC-4 ExpeditionPlan**: `row_version` nadawany w triggerze z licznika zakresu (blokada wiersza zakresu = kolejność zatwierdzania), pobieranie przyrostowe jednym RPC `pull_changes` (jedna migawka), outbox w SQLite, UUIDv7 z klienta, miękkie usunięcia (`deleted_at`), Realtime tylko jako sygnał do pobrania i dodatkowe pobranie po gotowości subskrypcji.
+- **Expo**: dev build (nie Expo Go), `eas.json` z profilami `development` / `preview` / `production`, aktualizacje OTA na kanale `preview`, `npx expo install` dla zależności, `AGENTS.md` w aplikacjach.
+- `scripts/sync-env.mjs` (główny `.env.local` → `apps/*/.env.local`), `.gitattributes` i `.editorconfig` z LF, etykiety i formatowanie w `packages/core` (`labels.ts`, `format.ts`, `sort-key.ts`).
+- Dokumentacja, napisy w UI i komentarze po polsku, identyfikatory po angielsku.
+
+### 0.2. Co zmieniamy i dlaczego
+| ExpeditionPlan | TaskPlanner | Powód |
+|---|---|---|
+| Plan edytuje web, telefon głównie czyta; zapisy telefonu tylko dopisywane | **Oba klienty edytują wszystkie dane, także offline** | zadania dodaje się i zmienia tam, gdzie się o nich myśli |
+| Konflikty: brak (dopisywanie) albo last-write-wins na wierszu | **Scalanie per pole (LWW z zegarem HLC)** + operacje tylko dopisywane tam, gdzie się da (ukończenia, czas pracy) | dwie edycje różnych pól tego samego zadania nie mogą się nadpisać (§6) |
+| Web online (Server Components + Server Actions) | **Web local-first**: lokalna baza SQLite (WASM, OPFS) i ten sam `packages/sync` co na telefonie | kanban, kalendarz i paleta poleceń muszą reagować natychmiast; spec wymaga pracy offline |
+| Zakres synchronizacji: wyjazd (`trips.sync_version`) | **Zakres: przestrzeń** (`sync_scopes`) + zakres osobisty (tagi, filtry, ustawienia) | przestrzeń jest jednostką izolacji i przyszłego współdzielenia |
+| AI w rdzeniu produktu | AI poza v1.0 (v1.x, przez `packages/ai` z EP) | spec nie wymaga AI; szybkie dodawanie działa regułami, offline |
+| Bez Edge Functions | **Edge Functions** do integracji (kalendarze, e-mail, Web Push) + `pg_cron` | zadania okresowe co minutę; Vercel Hobby ma cron tylko raz dziennie |
+
+---
+
+## 1. Cel, użytkownicy, zakres
+
+**Cel:** osobisty system zadań codziennych, w którym listy, kanban, kalendarz i oś czasu są widokami tych samych danych; działa w przeglądarce i na Androidzie, w pełni offline.
+
+**Użytkownik:** jedna osoba (właściciel) na kilku urządzeniach. Schemat od początku ma członków przestrzeni (`workspace_members`), więc współdzielenie przestrzeni da się dodać bez migracji danych (v1.x).
+
+**Role urządzeń** (oba mają pełną edycję):
+- **Web (laptop)** — planowanie: kanban, oś czasu, kalendarz z time-blockingiem, przegląd tygodnia, paleta poleceń i skróty klawiszowe.
+- **Android (telefon)** — przechwytywanie i wykonanie: szybkie dodawanie, „Dziś”, przypomnienia, tryb skupienia, nawyki, widżety, udostępnianie linków do aplikacji.
+
+### Zakres i priorytety (MoSCoW)
+| Funkcja ze specyfikacji wstępnej | Priorytet | Etap | Moduł |
+|---|---|---|---|
+| Przestrzenie, projekty, listy | MUST | MVP-1/2 | M2 |
+| Zadania i podzadania (do 4 poziomów) | MUST | MVP-2 | M3 |
+| Tagi i filtrowanie po kontekście | MUST | MVP-2 | M4 |
+| Opis z formatowaniem | MUST | MVP-2 | M5 |
+| Załączniki | SHOULD | Etap 10 | M5 |
+| Priorytety (4 stopnie) | MUST | MVP-2 | M6 |
+| Data, godzina, czas trwania | MUST | MVP-2 | M6 |
+| Cykliczność (zaawansowane reguły, po ukończeniu) | MUST | MVP-4 | M7 |
+| Przypomnienia względne i bezwzględne | MUST | MVP-3/4 | M8 |
+| Lista: Inbox / Dziś / Nadchodzące, grupowanie | MUST | MVP-2/3 | M9 |
+| Kanban z przeciąganiem | MUST | MVP-4 | M10 |
+| Kalendarz D/T/M i time-blocking | MUST | Etap 5 | M11 |
+| Oś czasu (Gantt) i zależności | SHOULD | Etap 6 | M12 |
+| Szybkie dodawanie z językiem naturalnym (PL) | MUST | MVP-2 | M13 |
+| Tryb skupienia + Pomodoro + licznik czasu | SHOULD | Etap 7 | M14 |
+| Nawyki (passy, statystyki) | SHOULD | Etap 8 | M15 |
+| Przegląd dnia / tygodnia | SHOULD | Etap 9 | M16 |
+| Wyszukiwarka i paleta poleceń | MUST | MVP-2 | M17 |
+| Kalendarze zewnętrzne — odczyt | MUST | Etap 5 | M18 |
+| Kalendarze zewnętrzne — zapis (dwukierunkowo) | SHOULD | Etap 12 | M18 |
+| E-mail → zadanie, link → zadanie | SHOULD | Etap 10 | M19 |
+| Offline (pełna funkcjonalność) | MUST | od MVP-1 | M20, §6 |
+| Widżety na telefonie | SHOULD | Etap 11 | M20 |
+| Widżety na pulpicie | COULD (PWA + skróty; natywny widżet poza v1.0, D11) | Etap 11 / v1.x | M20 |
+
+**Poza zakresem v1.0:** iOS, natywna aplikacja desktopowa, współpraca wielu osób, AI, własne statusy kanbanu, sekcje w projektach, przypomnienia według lokalizacji (wszystko w v1.x, PLAN_ETAPOWY.md).
+
+---
+
+## 2. Architektura
+
+```
+┌────────────────────────────┐      ┌────────────────────────────┐
+│ Web (Next.js, PWA)          │      │ Android (Expo)              │
+│ UI ← reaktywne zapytania    │      │ UI ← reaktywne zapytania    │
+│ SQLite WASM (OPFS, worker)  │      │ expo-sqlite                 │
+│ packages/sync: outbox, HLC  │      │ packages/sync: outbox, HLC  │
+│ Service Worker (powłoka)    │      │ powiadomienia lokalne, widżety│
+└─────────────┬──────────────┘      └─────────────┬──────────────┘
+              │  supabase-js: Auth, RPC push_changes / pull_changes,
+              │  Realtime (sygnał), Storage (załączniki)
+              └──────────────────┬───────────────┘
+                     ┌───────────▼────────────┐
+                     │ Supabase                │
+                     │ Postgres + RLS          │
+                     │ RPC: push_changes,      │
+                     │      pull_changes       │
+                     │ pg_cron → Edge Functions│
+                     └───────────┬────────────┘
+   Edge Functions (Deno, packages/core):
+     reminders-push   → Web Push (VAPID)
+     calendar-sync    ↔ Google Calendar API (watch + syncToken), ICS
+     inbound-email    ← Cloudflare Email Routing + Email Worker
+     link-preview     → pobranie tytułu strony (ochrona przed SSRF)
+   Web hostowany na Vercel; APK przez EAS, aktualizacje JS przez OTA.
+```
+
+Zasada: **UI czyta i pisze wyłącznie lokalną bazę**. Sieć to sprawa `packages/sync` w tle. Dzięki temu każdy widok działa tak samo online i offline, a UI nie ma osobnej ścieżki „bez sieci”.
+
+### Stos i decyzje
+| Obszar | Wybór | Dlaczego | Odrzucone |
+|---|---|---|---|
+| Mobile | **Expo SDK 58 + Expo Router + TS** (New Architecture), dev build, EAS, OTA | jak w ExpeditionPlan (sprawdzone kanały i OTA) | Flutter, Kotlin: brak współdzielenia kodu |
+| Web | **Next.js 16 + React 19 + Tailwind 4**, PWA (Service Worker) | jak w ExpeditionPlan | Vite SPA: tracimy wspólne ustawienia z EP; zysk mały |
+| Backend | **Supabase** (osobny projekt), Edge Functions + `pg_cron` + `pg_net` | RLS, Realtime, Storage, zadania okresowe bez własnego serwera | Firebase: NoSQL utrudnia zapytania i RLS |
+| Lokalna baza — telefon | `expo-sqlite` (FTS5) | jak w EP | WatermelonDB: inny paradygmat |
+| Lokalna baza — web | **`@sqlite.org/sqlite-wasm`** w Web Workerze, VFS `opfs-sahpool`, jedna karta-lider (Web Locks) + BroadcastChannel | ten sam SQL i FTS5 co na telefonie, jeden kod `packages/sync` | IndexedDB (Dexie): drugi model zapytań; PowerSync/ElectricSQL: zależność od usługi, EP wybrał wariant własny |
+| Reaktywność UI | `LocalDb.watch(tabele, zapytanie)` w `packages/sync` + cienkie hooki React w aplikacjach; Zustand dla stanu UI (zaznaczenie, panel, timer) | jedno źródło danych, unieważnianie po tabeli | TanStack Query: dubluje lokalną bazę |
+| Walidacja | **Zod 4** w `packages/core` | jak w EP | — |
+| Opis zadania | **Markdown (podzbiór GFM)** w kolumnie `text`; web: **TipTap 3** + `@tiptap/markdown`; telefon: edytor Markdown z paskiem narzędzi i podglądem (albo TenTap, PoC-5) | tekst łatwo scalać, szukać (FTS5) i tworzyć z maila | JSON ProseMirror: trudny do wyszukiwania i edycji na telefonie |
+| Daty | własne funkcje dat „pływających” w `packages/core` (`YYYY-MM-DD`, `HH:MM`), bez bibliotek stref | zadania osobiste są w czasie lokalnym (§5) | Temporal: brak w Hermes |
+| Cykliczność | **RRULE (RFC 5545)** + tryb „po ukończeniu”; `rrule` (rrule.js) na datach pływających albo własny podzbiór — rozstrzyga PoC-3 | standard, zgodny z Google Calendar | własny format reguł: brak zgodności z kalendarzami |
+| Kalendarz — web | **FullCalendar 6** (daygrid, timegrid, interaction — licencja MIT) | widok D/T/M, przeciąganie z zewnątrz (`Draggable`), zmiana długości | wersja Premium: niepotrzebna (zasoby, oś czasu) |
+| Oś czasu — web | **SVAR React Gantt** (MIT) albo własny komponent SVG — rozstrzyga PoC-5 | przesuwanie, rozciąganie krawędzi, strzałki zależności | DHTMLX/Bryntum: licencje płatne lub GPL |
+| Kanban i sortowanie — web | **dnd-kit** | sprawdzony, dostępny z klawiatury | react-beautiful-dnd: porzucony |
+| Paleta poleceń | **cmdk** | standard w React | — |
+| Kalendarz — telefon | `@howljs/calendar-kit` (dzień/tydzień z przeciąganiem) albo własna oś dnia na Reanimated + Gesture Handler — rozstrzyga PoC-4 (calendar-kit: ostatnie wydanie 10.2025, zgłoszone problemy z Reanimated 4.7, `docs/USLUGI.md`) | MIT | react-native-calendars: tylko miesiąc/agenda |
+| Kolejność ręczna | klucze ułamkowe (`sort_key` tekstowy, `core/sort-key.ts` z EP) | zmiana kolejności offline bez przenumerowania | liczby całkowite: konflikty |
+| Powiadomienia | telefon: `expo-notifications` (lokalne, offline); web: **Web Push (VAPID)** z Edge Function | przypomnienie bez sieci na telefonie | FCM dla telefonu: nie działa offline |
+| Widżety Android | `react-native-android-widget` (plugin Expo) — weryfikacja w PoC-4 | widżet w JSX, zadania w tle (headless JS) | natywny Kotlin: drugi język |
+| Udostępnianie do aplikacji | `expo-share-intent` (Android), Web Share Target (PWA), bookmarklet | link → zadanie | — |
+| Poczta przychodząca | **Cloudflare Email Routing + Email Worker** → Edge Function | darmowe, własna domena | Postmark/Mailgun inbound: płatne |
+| Testy | Vitest (pakiety, web), pgTAP (RLS, RPC), testy integracyjne `packages/sync` na lokalnym Supabase, Playwright (web), Maestro (Android) | jak w EP | — |
+| Hosting | Supabase, Vercel (web), EAS (APK + OTA), Cloudflare (poczta) | — | — |
+
+### Struktura repozytorium (monorepo, npm workspaces)
+```
+apps/web/            Next.js — aplikacja webowa (PWA)
+apps/mobile/         Expo — aplikacja Android, widżety
+packages/core/       czysty TS: schematy Zod, parser szybkiego dodawania, cykliczność,
+                     widoki (Dziś, Nadchodzące, grupowanie, filtry), zależności i oś czasu,
+                     time-blocking, nawyki, przypomnienia, Pomodoro, przegląd, HLC,
+                     etykiety i formatowanie PL
+packages/sync/       LocalDb (interfejs) + implementacje (expo-sqlite, sqlite-wasm, node do testów),
+                     schemat lokalny (SPECS), outbox, push/pull, scalanie per pole, watch()
+packages/db/         typy wygenerowane z Supabase
+supabase/
+  migrations/        tabele, RLS, triggery (row_version, field_clock), RPC push/pull
+  functions/         Edge Functions: reminders-push, calendar-sync, inbound-email, link-preview
+  tests/             pgTAP: RLS, push_changes, pull_changes
+workers/email/       Cloudflare Email Worker (przekazanie maila do inbound-email)
+tools/seed-dev/      dane deweloperskie (5 przestrzeni, 2 000 zadań)
+fixtures/            quick-add.jsonl (korpus parsera), recurrence.json, historie nawyków
+scripts/             sync-env.mjs
+docs/                USLUGI.md (zweryfikowane warunki usług), POC_WYNIKI.md
+```
+
+---
+
+## 3. Moduły funkcjonalne
+
+Oznaczenia: **[W]** web, **[A]** Android, **[W+A]** oba.
+
+### M1. Konto, urządzenia, ustawienia
+- Logowanie Google i link z maila (magic link) [W+A]; w aplikacji deep link. Jak w EP.
+- Przy pierwszym logowaniu: przestrzenie „Osobiste” i „Praca”, każda z listą Inbox.
+- Ustawienia w `profiles.settings` (Zod): strefa czasowa (domyślnie z urządzenia), pierwszy dzień tygodnia (poniedziałek), godziny pracy (do wolnych okien i przeglądu), domyślna godzina przypomnienia dla zadań bez godziny (9:00), domyślny czas trwania bloku (30 min), długości Pomodoro, kanał przypomnień per urządzenie (telefon / przeglądarka / oba), godziny przeglądu dnia.
+- Lista urządzeń (`devices`): nazwa, platforma, ostatnia synchronizacja, subskrypcja Web Push.
+
+### M2. Przestrzenie, projekty, listy
+- **Przestrzeń** (Praca, Dom, Studia, Hobby): nazwa, kolor, ikona, kolejność, archiwizacja. Przełącznik przestrzeni w nagłówku [W+A] z trybem „Wszystkie”. W trybie jednej przestrzeni widoki (Dziś, Nadchodzące, kalendarz, wyszukiwarka) pokazują tylko jej zadania — to jest „całkowite odizolowanie kontekstu”.
+- **Lista** wewnątrz przestrzeni, rodzaj (`kind`):
+  - `inbox` — jedna na przestrzeń, nieusuwalna; tu trafia szybkie dodawanie bez wskazania listy, e-mail i linki,
+  - `project` — ma daty `start_date`/`end_date`, status (aktywny / zakończony / wstrzymany), postęp (ukończone / wszystkie zadania), pasek na osi czasu,
+  - `list` — lista ciągła (Zakupy, Pomysły), bez dat i postępu.
+- Ustawienia widoku listy (`view_prefs`): domyślny widok (lista / kanban / kalendarz / oś czasu), grupowanie, sortowanie, pokazywanie ukończonych.
+- Przenoszenie listy między przestrzeniami przenosi jej zadania (jedna operacja, §6).
+
+### M3. Zadania i podzadania
+- Zadanie należy do jednej listy; podzadanie ma `parent_id`. **Maksymalnie 4 poziomy** (zadanie + 3 poziomy podzadań), pilnowane w `core` i w triggerze.
+- Podzadania mają własne terminy, priorytety, statusy, przypomnienia i tagi. Postęp rodzica = ukończone / wszystkie bezpośrednie podzadania.
+- Ukończenie rodzica z nieukończonymi podzadaniami → pytanie „Ukończyć też podzadania?” (domyślnie tak).
+- Status: `todo` (Do zrobienia), `in_progress` (W trakcie), `waiting` (Oczekuje), `done` (Gotowe), `cancelled` (Anulowane). Lista statusów jest stała w v1.0 (D6).
+- Operacje grupowe na zaznaczonych zadaniach [W] (Shift/Ctrl + klik, klawiatura) i [A] (długie przytrzymanie): przenieś, termin, priorytet, tag, ukończ, usuń.
+- Usunięcie = kosz (`deleted_at`), przywracanie przez 30 dni; potem trwałe usunięcie (§6).
+- Historia zmian zadania (z `activity_log`) [W].
+
+### M4. Tagi, filtry, inteligentne listy
+- Tagi są **wspólne dla wszystkich przestrzeni** (zakres osobisty): nazwa (unikalna bez rozróżniania wielkości liter i polskich znaków), kolor. Zadanie ma dowolną liczbę tagów (`task_tags`).
+- Filtrowanie: chipy w każdym widoku — tagi (wszystkie / dowolny), priorytet, lista, status, zakres dat, „bez terminu”, „z godziną”.
+- **Zapisane filtry** (`saved_filters`): nazwa, ikona, definicja (Zod: `FilterQuery`) — np. „Telefony na dziś” = tag `telefon` ∧ termin ≤ dziś. Widoczne w pasku bocznym jak listy, z licznikiem.
+- Tekstowy język filtrów (`@telefon & dziś & !1`) — v1.x.
+
+### M5. Opis i załączniki
+- Opis w Markdown: pogrubienie, kursywa, listy punktowane i numerowane, listy zadań (checkboxy), linki, cytaty, bloki kodu, nagłówki. Linki są klikalne w podglądzie na obu platformach.
+- Web: edytor WYSIWYG (TipTap), skróty Markdown w trakcie pisania. Telefon: edytor z paskiem narzędzi i przełącznikiem podgląd/edycja.
+- **Załączniki** (Etap 10): pliki do 25 MB w prywatnym buckecie `attachments` (`{user_id}/{task_id}/{uuid}-{nazwa}`), podgląd obrazów i PDF, załączniki z maila. Telefon: zdjęcie z aparatu / plik; wysyłka w kolejce offline (jak `journal-photos.ts` w EP), pobieranie na żądanie i pamięć podręczna.
+- Link jako załącznik: URL + tytuł + ikona strony (z `link-preview`).
+
+### M6. Priorytety, terminy, czas trwania
+- Priorytet 1–4: **1 Krytyczny** (czerwony), **2 Wysoki** (pomarańczowy), **3 Średni** (niebieski), **4 Niski** (szary, domyślny). Flaga w kolorze na liście, pasek koloru na kanbanie i w kalendarzu. Etykiety w `core/labels.ts` (`PRIORITY`).
+- Pola czasu (szczegóły w §5):
+  - `due_date` — dzień wykonania (albo koniec zadania wielodniowego),
+  - `due_time` — godzina rozpoczęcia (opcjonalna; bez niej zadanie jest „całodniowe”),
+  - `duration_min` — szacowany czas (do kalendarza i osi czasu; domyślnie z ustawień przy przeciąganiu),
+  - `start_date` — początek zadania wielodniowego (opcjonalny; oś czasu, widok „Dziś” w trakcie zakresu).
+- Zaległe = `due_date < dziś` i status otwarty; oznaczane na czerwono, na górze „Dziś”.
+
+### M7. Cykliczność (silnik w §7.2)
+- Dwa tryby:
+  - **według harmonogramu** — reguła RRULE, np. codziennie, w dni robocze, co drugi wtorek, drugi wtorek miesiąca, ostatni dzień miesiąca, ostatni dzień roboczy miesiąca, 15. i ostatni dzień miesiąca, co roku 1 marca, co 3 miesiące; z końcem po dacie albo po N wystąpieniach,
+  - **po ukończeniu** — następne wystąpienie N dni / tygodni / miesięcy po faktycznym ukończeniu poprzedniego (np. „3 dni po ukończeniu”).
+- Edytor reguły [W+A]: gotowe szablony + tryb zaawansowany + **opis po polsku na żywo** („co 2 tygodnie we wtorek, do 31.12.2026”) + podgląd 5 najbliższych dat.
+- Jedno zadanie w bazie = cała seria. Ukończenie zapisuje wpis w `task_completions` i przesuwa `due_date` na następne wystąpienie; podzadania wracają do „Do zrobienia”.
+- Akcje: „Ukończ”, „Pomiń to wystąpienie”, „Przesuń to wystąpienie” (zmienia tylko bieżący termin, reguła bez zmian), „Zakończ serię”.
+- Przyszłe wystąpienia widać w „Nadchodzące”, kalendarzu i na osi czasu jako wpisy wirtualne (tylko do odczytu, z ikoną powtarzania); klik otwiera serię.
+
+### M8. Przypomnienia i powiadomienia
+- Rodzaje: **względne** (N minut/godzin/dni przed `due_date`+`due_time`; dla zadania bez godziny — przed domyślną godziną z ustawień) i **bezwzględne** (konkretna data i godzina lokalna). Kilka przypomnień na zadanie. Przy zadaniach cyklicznych przypomnienia względne dotyczą każdego wystąpienia.
+- **Telefon**: powiadomienia lokalne planowane z lokalnej bazy w oknie 7 dni (limit 50 naraz), przeplanowanie po każdej zmianie, synchronizacji, starcie aplikacji i w zadaniu w tle (`expo-background-task`). Akcje w powiadomieniu: „Ukończ”, „Odłóż 10 min / 1 h / do jutra” — działają przy zamkniętej aplikacji (zapis do SQLite + outbox).
+- **Web**: Web Push z Edge Function `reminders-push` (co minutę z `pg_cron`), dla urządzeń, które w ustawieniach mają kanał „przeglądarka”. Gdy karta jest otwarta — dodatkowo powiadomienie w aplikacji.
+- Bez duplikatów: kanał przypomnień jest wybierany per urządzenie (M1); przypomnienie ukończonego zadania nie przychodzi (telefon przeplanowuje po synchronizacji, serwer sprawdza status w chwili wysyłki).
+- Powiadomienia systemowe aplikacji: przegląd dnia (M16), koniec Pomodoro (M14), nawyki (M15).
+
+### M9. Widok listy
+Widoki stałe w pasku bocznym [W+A]:
+- **Inbox** — zadania z list `inbox` (bieżącej przestrzeni lub wszystkich). Licznik w pasku bocznym i na widżecie.
+- **Dziś** — sekcje: Zaległe, Dziś (z godziną: według godziny; bez godziny: kolejność ręczna), Trwające (zakres `start_date`–`due_date` obejmuje dziś), Nawyki na dziś. Obok [W]: pasek „Plan dnia” z wydarzeniami kalendarza i blokami zadań.
+- **Nadchodzące** — kolejne 14 dni pogrupowane po dniu (z wirtualnymi wystąpieniami cyklicznych), przeciąganie między dniami zmienia `due_date`; dalej „Później” po tygodniach.
+- **Projekt / lista** — drzewo zadań z podzadaniami (zwijanie), postęp, sortowanie ręczne / priorytet / termin / data dodania.
+- **Tag, zapisany filtr** — wynik filtra.
+- Grupowanie w każdym widoku: brak / priorytet / projekt / data / tag / status. Pokazywanie ukończonych: ukryte / dzisiejsze / wszystkie.
+- Szybkie akcje: [A] przesunięcie w prawo = ukończ, w lewo = menu terminu (Dziś, Jutro, Weekend, Przyszły tydzień, Wybierz…); [W] klawisze (M17).
+
+### M10. Kanban
+- Tablica dla projektu, listy, przestrzeni lub dowolnego widoku/filtra. **Kryterium kolumn**: status (domyślnie), priorytet, dzień tygodnia (bieżący tydzień + „Bez terminu”), tag, lista.
+- Przeciągnięcie karty do kolumny zmienia odpowiadający atrybut (status / priorytet / `due_date` / tag / lista); kolejność w kolumnie = `sort_key`.
+- Karta: tytuł, priorytet (pasek koloru), termin, tagi, postęp podzadań, ikona cyklu i załącznika. Szybkie dodanie karty na dole kolumny (parser M13, z atrybutem kolumny).
+- Zwijanie kolumn, ukrywanie „Gotowe” starszych niż 7 dni. Limity WIP i torów (swimlanes) — v1.x.
+- [W] dnd-kit, obsługa klawiatury. [A] uproszczony: kolumny przewijane poziomo, przeniesienie przez długie przytrzymanie → menu „Przenieś do kolumny” (przeciąganie między kolumnami na telefonie — SHOULD, jeśli PoC-5 wykaże, że jest płynne).
+
+### M11. Kalendarz i time-blocking
+- **[W]** FullCalendar: dzień, tydzień, miesiąc. Wiersz „cały dzień” = zadania z datą bez godziny. Zadania z godziną = bloki o długości `duration_min`.
+- **Time-blocking**: panel boczny z zadaniami bez godziny (Inbox, Dziś, zaległe, dowolny filtr) → przeciągnięcie na godzinę ustawia `due_date`, `due_time` i `duration_min` (szacunek albo domyślne 30 min). Rozciąganie bloku zmienia czas trwania; przeciągnięcie z powrotem do panelu usuwa godzinę.
+- Wydarzenia z kalendarzy zewnętrznych (M18) obok zadań, innym stylem, tylko do odczytu (do czasu Etapu 12). **Nakładanie się** bloku z wydarzeniem albo innym blokiem → ostrzeżenie (obramowanie + ikona) i lista konfliktów w „Dziś”.
+- Wolne okna w godzinach pracy (`core/time-blocking.ts`) podświetlone w widoku dnia; „Zaplanuj automatycznie” — v1.x.
+- **[A]** dzień (oś godzin, przeciąganie bloków po długim przytrzymaniu), tydzień (agenda), miesiąc (kropki + lista dnia). Wydarzenia z kalendarza telefonu (`expo-calendar`) widoczne bez serwera.
+
+### M12. Oś czasu (Gantt) i zależności — [W]
+- Wiersze: projekty (rozwijane do zadań i podzadań). Pasek zadania: `start_date` → `due_date` (bez `start_date` — jeden dzień). Pasek projektu: daty projektu albo zakres jego zadań.
+- Przesuwanie paska (zmiana obu dat), **rozciąganie krawędzi** (zmiana `start_date` albo `due_date`), skala dzień / tydzień / miesiąc, linia „dziś”, przewijanie do dziś.
+- **Zależności** koniec→początek (`finish_to_start`) z opóźnieniem w dniach (`lag_days`): przeciągnięcie z końca paska A na pasek B. Strzałki między paskami.
+- **Naruszenie** (B zaczyna się przed końcem A + lag) → strzałka i pasek na czerwono, lista naruszeń. Przy przesuwaniu A wybór: „Przesuń zależne” (kaskadowo, zachowując odstępy) albo „Tylko to zadanie”.
+- Cykl w zależnościach jest blokowany przy tworzeniu (`core/dependencies.ts`) i w triggerze.
+- Ścieżka krytyczna — v1.x.
+
+### M13. Szybkie dodawanie (gramatyka w §4)
+- Wywołanie: [W] klawisz `Q` albo `Ctrl+Spacja` w dowolnym miejscu, przycisk „+”; [A] przycisk „+”, widżet, skrót aplikacji (long-press ikony), powiadomienie przeglądu.
+- Rozpoznane fragmenty są **podświetlane na żywo** i pokazywane jako chipy (data, godzina, czas trwania, lista/przestrzeń, tagi, priorytet, cykliczność, przypomnienie). Klik w chip cofa rozpoznanie (fragment wraca do tytułu).
+- Enter = dodaj i zamknij; `Ctrl+Enter` [W] = dodaj i pisz kolejne. Wklejenie wielu linii = wiele zadań (z pytaniem).
+- Bez wskazanej listy zadanie trafia do Inbox bieżącej przestrzeni; w widoku listy/projektu/kolumny kanbanu — tam, skąd wywołano.
+- Parser działa lokalnie (offline) w `core/quick-add.ts`; ten sam w temacie maila (M19).
+
+### M14. Tryb skupienia
+- Pełny ekran z jednym zadaniem: tytuł, opis, podzadania do odhaczania, timer. Wejście z menu zadania, palety poleceń albo klawisza `F` [W].
+- **Pomodoro**: praca 25 min, przerwa 5 min, długa przerwa 15 min co 4 cykle (konfigurowalne); albo stoper bez limitu. Dźwięk i powiadomienie na koniec etapu.
+- Każdy etap pracy zapisuje `time_entries` (początek, koniec, rodzaj). Zadanie pokazuje „spędzono 1 h 20 min / szac. 2 h”; statystyki tygodnia per przestrzeń/projekt.
+- Stan timera = znaczniki czasu, nie odliczanie w pamięci: zamknięcie karty/aplikacji nie gubi czasu. [A] trwałe powiadomienie z pozostałym czasem i przyciskami Pauza/Stop, ekran nie gaśnie (`expo-keep-awake`).
+- Jeden aktywny timer na użytkownika — widoczny na drugim urządzeniu po synchronizacji.
+
+### M15. Nawyki
+- Nawyk = zadanie o `kind = 'habit'` z regułą cykliczności (codziennie, w wybrane dni, N razy w tygodniu/miesiącu) i opcjonalnym celem ilościowym (np. 8 szklanek). Sekcja „Nawyki” [W+A] i blok w „Dziś”.
+- Odhaczenie dnia = wpis `task_completions` (z wartością dla celu ilościowego); można uzupełnić wstecz (ostatnie 7 dni) i oznaczyć dzień wolny (`skipped` — nie przerywa passy).
+- Statystyki: bieżąca i najdłuższa passa, regularność 7/30/90 dni, mapa cieplna roku, wykres tygodniowy. Liczone w `core/habits.ts` (§7.5).
+- Przypomnienie o nawyku (godzina) i odhaczanie z powiadomienia i widżetu.
+
+### M16. Przegląd dnia / tygodnia
+- **Przegląd dnia** (wieczorem albo rano, godzina w ustawieniach, powiadomienie): asystent pokazuje po kolei zaległe i dzisiejsze nieukończone zadania. Na każde: Ukończ / Dziś / Jutro / Wybierz datę / Kiedyś (bez terminu) / Usuń. [W] klawisze 1–6, [A] przesunięcia i przyciski. Na końcu: podsumowanie (ukończone dziś, przeniesione) i podgląd planu na jutro (z kalendarzem).
+- **Przegląd tygodnia** (dzień i godzina w ustawieniach): kroki — Inbox do zera, zaległe, projekty bez następnego kroku (brak otwartego zadania z terminem), zadania „Oczekuje” dłużej niż 7 dni, nadchodzący tydzień w kalendarzu, nawyki tygodnia.
+- Kolejka liczona w `core/review.ts`; sesje zapisywane w `review_sessions` (statystyki: ile przeniesionych, ile razy przeniesiono to samo zadanie — zadania przenoszone ≥ 3 razy są oznaczane do decyzji).
+
+### M17. Wyszukiwarka i paleta poleceń
+- **Paleta** `Ctrl+K` [W] (na [A]: ikona szukania z tymi samymi wynikami): zadania (tytuł, opis, tagi, nazwa listy), listy, przestrzenie, tagi, filtry, widoki i **akcje** („Przenieś do…”, „Ustaw priorytet…”, „Zaplanuj na jutro”, „Tryb skupienia”, „Nowy projekt”, „Przełącz przestrzeń”, „Przegląd dnia”, „Motyw ciemny”). Akcje działają na zaznaczonych zadaniach.
+- Wyszukiwanie lokalne: SQLite FTS5 (`unicode61 remove_diacritics 2` — „zolw” znajduje „żółw”), prefiksy, ranking (tytuł > tagi > opis), ostatnio używane na górze. Ten sam kod na webie i telefonie, działa offline.
+- **Skróty [W]**: `Q` szybkie dodawanie, `Ctrl+K` paleta, `/` szukaj, `G` potem `I`/`T`/`U`/`K`/`C`/`O` — Inbox/Dziś/Nadchodzące/Kanban/Kalendarz/Oś czasu, `J`/`K` następne/poprzednie zadanie, `E` ukończ, `1`–`4` priorytet, `T` dziś, `M` jutro, `D` wybór daty, `F` tryb skupienia, `Del` kosz, `?` lista skrótów. Lista skrótów w `core` (etykiety), obsługa w `apps/web`.
+
+### M18. Kalendarze zewnętrzne
+- **Odczyt** (Etap 5):
+  - **ICS** (adres subskrypcji z Google/Outlook) — pobierany przez `calendar-sync` co 15 min,
+  - **Google Calendar API** — OAuth (zakres tylko do odczytu na tym etapie), lista kalendarzy do wyboru, synchronizacja przyrostowa (`syncToken`), powiadomienia `watch` na webhook Edge Function, odnawianie kanałów codziennie,
+  - **kalendarz telefonu** (`expo-calendar`) — tylko na telefonie, bez serwera (obejmuje każde konto zsynchronizowane z Androidem, także firmowe).
+- Wydarzenia (`calendar_events`) w oknie −30…+180 dni, synchronizowane serwer → klient (tylko odczyt), widoczne w kalendarzu, w „Dziś” i w ostrzeżeniach o nakładaniu się.
+- **Dwukierunkowo** (Etap 12, Google): w koncie Google powstaje osobny kalendarz „TaskPlanner”. Zadania z godziną → wydarzenia (`extendedProperties.private.taskId`); zmiana godziny/długości/tytułu w Google → zmiana zadania (jako operacja z HLC serwera, §6); usunięcie wydarzenia → zadanie traci godzinę (nie jest usuwane). Pętle zmian wykluczone przez porównanie `etag` i znacznik źródła zmiany.
+- Microsoft 365 / Outlook przez Graph API — v1.x albo wcześniej, jeśli kalendarz firmowy jest w Microsoft 365 (D8).
+- Tokeny OAuth tylko na serwerze (Supabase Vault), nigdy w przeglądarce ani w APK.
+
+### M19. Przechwytywanie treści
+- **E-mail → Inbox** (Etap 10): adres `zadania+<token>@<domena>`; Cloudflare Email Routing → Email Worker (parsowanie MIME) → Edge Function `inbound-email` (sekret współdzielony). Zadanie: tytuł = temat bez „Fwd:/Re:/PD:/Odp:” (z parserem M13 — „Faktura za prąd jutro #dom !2” działa), opis = treść tekstowa (Markdown, przycięte stopki i cytaty), załączniki → Storage, `source = {kind:'email', from, messageId, receivedAt}`.
+  - Akceptowane tylko wiadomości z adresów z listy nadawców w ustawieniach + poprawny token; token można wygenerować na nowo. Odrzucone trafiają do dziennika `inbound_messages`.
+- **Link → zadanie**: [A] udostępnianie z dowolnej aplikacji (`expo-share-intent`) otwiera szybkie dodawanie z URL; [W] PWA Web Share Target (Chrome na Androidzie), bookmarklet i wklejenie samego URL w szybkie dodawanie. Tytuł strony z `link-preview` (gdy offline — URL jako tytuł, uzupełnienie po synchronizacji).
+- Zaznaczony tekst udostępniony do aplikacji → zadanie z tym tekstem w opisie.
+
+### M20. Offline, PWA, widżety
+- **Offline**: wszystkie funkcje poza: odświeżeniem kalendarzy zewnętrznych, przyjęciem maila (przychodzi po synchronizacji), podglądem linków, pobraniem niezbuforowanych załączników. Wskaźnik stanu: „Offline — N zmian czeka”.
+- **PWA**: manifest z ikonami i skrótami (Szybkie dodawanie, Dziś), Service Worker z powłoką aplikacji, `navigator.storage.persist()` (ochrona lokalnej bazy przed wyczyszczeniem), instalacja na pulpicie (Chrome/Edge).
+- **Widżety Android** (Etap 11): „Dziś” (lista do 10 zadań, odhaczanie bez otwierania aplikacji), „Szybkie dodawanie” (przycisk + mikrofon klawiatury), „Nawyki” (dzisiejsze nawyki do odhaczenia). Dane z lokalnej bazy; odświeżanie po zmianie danych i co 30 min. Skróty aplikacji (long-press ikony): Dodaj zadanie, Dziś, Tryb skupienia.
+- **Pulpit**: zainstalowana PWA + skróty. Natywny widżet pulpitu i globalny skrót klawiszowy — v1.x (Tauri, D11).
+
+---
+
+## 4. Szybkie dodawanie — gramatyka (`core/quick-add.ts`)
+
+`parseQuickAdd(text, ctx) → { title, fields, tokens[] }`; `ctx` = teraz, strefa, pierwszy dzień tygodnia, listy i przestrzenie (nazwy), tagi. `tokens` to zakresy znaków z rodzajem (do podświetlania i cofania rozpoznania). Wielkość liter i polskie znaki bez znaczenia („sroda” = „środa”). Rozpoznawane tylko całe słowa.
+
+| Rodzaj | Przykłady | Wynik |
+|---|---|---|
+| Data względna | `dziś`, `dzisiaj`, `jutro`, `pojutrze`, `za 3 dni`, `za tydzień`, `za 2 tygodnie`, `za miesiąc` | `due_date` |
+| Dzień tygodnia | `pon`, `w poniedziałek`, `we wtorek`, `w środę`, `w przyszły piątek`, `w następną sobotę`, `w weekend` (sobota) | najbliższy taki dzień (dziś, jeśli dziś i godzina jeszcze nie minęła) |
+| Data | `21.11`, `21.11.2026`, `21/11`, `21 lis`, `21 listopada`, `koniec tygodnia`, `koniec miesiąca` | `due_date` (bez roku: najbliższa przyszła) |
+| Godzina | `o 10`, `o 10:00`, `o 10.30`, `10:30`, `o 7 rano`, `o 8 wieczorem`, `w południe` | `due_time` (`o 8 wieczorem` = 20:00) |
+| Zakres godzin | `10-11:30`, `od 10 do 12` | `due_time` + `duration_min` |
+| Czas trwania | `~30m`, `~1h`, `~1h30`, `~1,5h`, `przez 45 min`, `przez 2 godziny` | `duration_min` |
+| Priorytet | `!1`–`!4`, `!krytyczny`, `!wysoki`, `!średni`, `!niski` | `priority` |
+| Lista / przestrzeń | `#dom`, `#remont-kuchni`, `#"Remont kuchni"` | gdy nazwa pasuje do listy/projektu (najpierw w bieżącej przestrzeni) albo przestrzeni (→ jej Inbox) |
+| Tag | `#telefon` (gdy brak listy/przestrzeni o tej nazwie), `@telefon` (zawsze tag) | `tags` (nowy tag tworzony po potwierdzeniu chipa) |
+| Cykliczność | `codziennie`, `w dni robocze`, `co tydzień`, `co 2 tygodnie`, `co drugi wtorek`, `w każdy poniedziałek`, `co miesiąc`, `drugi wtorek miesiąca`, `ostatniego dnia miesiąca`, `co roku`, `co 3 dni po ukończeniu`, `3 dni po wykonaniu` | `recurrence` (§7.2) |
+| Przypomnienie | `przypomnij 15 min przed`, `przypomnij o 9`, `^15m`, `^9:00` | `reminders` |
+| Literał | `\jutro` | słowo zostaje w tytule |
+
+Zasady:
+- `#nazwa` — dopasowanie dokładne, potem bez polskich znaków, potem prefiks jednoznaczny; remis = chip z wyborem.
+- Fragmenty muszą mieć pełną formę — `za prąd`, `za mało` nie są datą (po `za` musi być liczba lub jednostka), `2 jutrzenki` nie jest datą, `Mazda 6` nie jest godziną (godzina tylko po `o`/`od` albo w formacie `GG:MM`).
+- Po usunięciu rozpoznanych fragmentów tytuł jest przycinany (podwójne spacje, przyimki na końcu: „w”, „we”, „o”).
+- Przykład ze specyfikacji: `Zapłacić rachunek za prąd jutro o 10:00 #dom !wysoki` → tytuł „Zapłacić rachunek za prąd”, `due_date` = jutro, `due_time` = 10:00, przestrzeń/lista „Dom” (jej Inbox, jeśli „Dom” to przestrzeń), `priority` = 2.
+- Korpus testowy `fixtures/quick-add.jsonl` (≥ 150 przypadków, w tym pułapki) jest testem regresji (Vitest) — kryterium PoC-2.
+- Ten sam moduł opisuje reguły po polsku (`describeRecurrence`) — opis musi dać się z powrotem sparsować do tej samej reguły (test „tam i z powrotem”).
+
+---
+
+## 5. Model danych (Postgres)
+
+### Konwencje
+- `id uuid` — UUIDv7 generowany przez klienta (zapis offline, idempotentny).
+- Wspólne kolumny każdej synchronizowanej tabeli: `scope_id` (zakres synchronizacji), `created_at`, `updated_at` (serwer), `created_by`, `deleted_at` (miękkie usunięcie), `row_version bigint` (trigger), `field_clock jsonb` (HLC ostatniej zmiany każdego pola, §6). Dodawane pętlą w jednej migracji (jak `mvp1_access.sql` w EP); nowa tabela trafia do tablicy tabel synchronizowanych i do `synced_tables()`.
+- **Czas zadań = data i godzina pływające** (`date`, `time` — czas ścienny użytkownika), bo „o 10:00” znaczy 10:00 tam, gdzie akurat jestem. Opcjonalna `time_zone` przy zadaniu przypina je do strefy (np. telekonferencja z innym krajem). Zdarzenia rzeczywiste (ukończenie, czas pracy, wydarzenia z kalendarzy) to `timestamptz`.
+- Kolejność ręczna: `sort_key text` (klucze ułamkowe) w obrębie rodzica i listy.
+- `jsonb` walidowane schematami Zod z `packages/core/src/schemas` (camelCase).
+
+### Tabele — konto i struktura
+| Tabela | Najważniejsze kolumny | Uwagi |
+|---|---|---|
+| `profiles` | `user_id`, `display_name`, `settings jsonb` (`ProfileSettings`), `inbox_token`, `inbound_senders text[]` | zakres osobisty |
+| `devices` | `id`, `user_id`, `name`, `platform` (`web`/`android`), `reminder_channel`, `push_subscription jsonb`, `last_sync_at` | |
+| `sync_scopes` | `id`, `kind` (`workspace`/`personal`), `owner_id`, `sync_version bigint` | licznik zakresu; Realtime subskrybuje te wiersze |
+| `workspaces` | `id` (= `scope_id`), `name`, `color`, `icon`, `sort_key`, `archived_at` | jedna przestrzeń = jeden zakres |
+| `workspace_members` | `workspace_id`, `user_id`, `role` (`owner`; `editor`/`viewer` w v1.x) | podstawa RLS |
+| `lists` | `id`, `workspace_id`, `kind` (`inbox`/`project`/`list`), `name`, `color`, `icon`, `description_md`, `start_date`, `end_date`, `project_status`, `sort_key`, `view_prefs jsonb` | unikalny `inbox` na przestrzeń |
+
+### Tabele — zadania
+| Tabela | Najważniejsze kolumny | Uwagi |
+|---|---|---|
+| `tasks` | `id`, `workspace_id`, `list_id`, `parent_id`, `kind` (`task`/`habit`), `title`, `description_md`, `status`, `priority smallint 1–4`, `start_date`, `due_date`, `due_time`, `duration_min`, `time_zone`, `recurrence jsonb` (`Recurrence`), `habit jsonb` (`HabitGoal`), `completed_at`, `sort_key`, `source jsonb` (`TaskSource`: ręcznie / szybkie dodawanie / e-mail / link / kalendarz), `postpone_count` | trigger: głębokość ≤ 4, brak cyklu `parent_id`, `workspace_id` zgodny z listą i rodzicem |
+| `tags` | `id`, `name`, `color`, `sort_key` | zakres osobisty; unikalny `lower(unaccent(name))` |
+| `task_tags` | `id` (UUIDv5 z `task_id`+`tag_id`), `task_id`, `tag_id` | wiersz łączący z `deleted_at` — dodanie tagu na dwóch urządzeniach nie gubi żadnego |
+| `reminders` | `id`, `task_id`, `kind` (`relative`/`absolute`), `offset_min`, `at_date`, `at_time` | |
+| `task_dependencies` | `id`, `predecessor_id`, `successor_id`, `kind` (`finish_to_start`), `lag_days` | trigger: brak cyklu, ta sama przestrzeń |
+| `task_completions` | `id` (UUIDv5 z `task_id`+`occurrence_date`), `task_id`, `occurrence_date`, `kind` (`done`/`skipped`), `value numeric`, `completed_at timestamptz` | **tylko dopisywane**; ten sam id z dwóch urządzeń = jeden wpis |
+| `time_entries` | `id`, `task_id`, `kind` (`focus`/`break`/`manual`), `started_at`, `ended_at`, `pomodoro_index` | tylko dopisywane (zamknięcie wpisu = ustawienie `ended_at`) |
+| `attachments` | `id`, `task_id`, `kind` (`file`/`link`), `storage_path`, `name`, `mime`, `size_bytes`, `url`, `preview jsonb` | pliki w Storage, poza strumieniem synchronizacji |
+| `saved_filters` | `id`, `name`, `icon`, `query jsonb` (`FilterQuery`), `sort_key` | zakres osobisty |
+| `review_sessions` | `id`, `kind` (`daily`/`weekly`), `started_at`, `finished_at`, `stats jsonb` | |
+
+### Tabele — integracje (tylko serwer → klient)
+| Tabela | Najważniejsze kolumny | Uwagi |
+|---|---|---|
+| `calendar_accounts` | `id`, `user_id`, `provider` (`google`/`microsoft`/`ics`), `label`, `secret_id` (Vault), `sync_state jsonb`, `status` | tokeny i adres ICS w Vault; kolumny sekretów niewidoczne dla klientów |
+| `calendars` | `id`, `account_id`, `external_id`, `name`, `color`, `visible`, `is_task_target` | |
+| `calendar_events` | `id`, `calendar_id`, `external_id`, `title`, `start_at`, `end_at`, `all_day`, `location`, `etag`, `task_id` | okno −30…+180 dni; zakres osobisty |
+| `inbound_messages` | `id`, `user_id`, `received_at`, `from_addr`, `subject`, `status` (`created`/`rejected`), `task_id`, `reason` | dziennik, bez treści |
+| `activity_log` | `id`, `scope_id`, `table_name`, `row_id`, `changes jsonb`, `device_id`, `at` | historia zmian (M3), jak w EP |
+
+### Uprawnienia (RLS)
+- Dostęp do wiersza: `scope_id` należy do zakresu, w którym użytkownik jest członkiem (`workspace_members`) albo właścicielem zakresu osobistego. Jedna funkcja `has_scope_access(scope_id)` (SECURITY DEFINER, stabilna) w politykach wszystkich tabel.
+- Zapisy synchronizowanych tabel **tylko przez RPC `push_changes`** (bez bezpośrednich `insert/update` z klienta) — jedno miejsce walidacji i scalania. Odczyt przez `pull_changes`; bezpośredni `select` dozwolony (np. narzędzia), zgodny z RLS.
+- Integracje (`calendar_*`, `inbound_messages`) pisze tylko `service_role` w Edge Functions.
+- Storage: bucket `attachments` prywatny, polityka po pierwszym segmencie ścieżki (`user_id`) i dostępie do zadania.
+- Testy pgTAP: macierz (właściciel / obcy użytkownik / anonim) × (odczyt / `push_changes` / `pull_changes`) dla każdej tabeli + próby zapisu do cudzego `scope_id`.
+
+---
+
+## 6. Synchronizacja i offline (`packages/sync`)
+
+| Klasa danych | Kierunek | Strategia konfliktów |
+|---|---|---|
+| Struktura i zadania (`workspaces`, `lists`, `tasks`, `tags`, `task_tags`, `reminders`, `task_dependencies`, `attachments`, `saved_filters`, `profiles`, `devices`) | klient ↔ serwer | **LWW per pole** z HLC; miękkie usunięcia jako pole `deleted_at` (też LWW) |
+| Ukończenia cykli, wpisy czasu, sesje przeglądu (`task_completions`, `time_entries`, `review_sessions`) | klient ↔ serwer | tylko dopisywane, identyfikatory deterministyczne (UUIDv5) tam, gdzie dwa urządzenia mogą zapisać „to samo” |
+| Kalendarze zewnętrzne, dziennik maili | serwer → klient | migawka + przyrosty |
+| Pliki załączników | osobno (Storage) | plik niezmienny; usuwa się wiersz metadanych |
+
+### Zapis lokalny
+- `mutate(table, id, patch)` w jednej transakcji SQLite: zmiana wiersza lokalnego, `field_clock` zmienionych pól = nowy HLC urządzenia, wpis w `outbox` (`op_id`, tabela, `row_id`, zmienione pola z wartościami, HLC).
+- **HLC** (hybrid logical clock): `czas_ms` + licznik + `device_id`, zapisany jako tekst sortowalny. Każde urządzenie i serwer (operacje z integracji) ma własny `device_id`. Odebranie zmian podnosi zegar lokalny (`max`), więc nowsza edycja zawsze ma większy HLC niż to, co urządzenie już widziało.
+- Walidacja przed zapisem (Zod + reguły z `core`: głębokość podzadań, cykle, zgodność przestrzeni). Ta sama walidacja działa na serwerze.
+
+### Wysyłka (`push_changes`)
+- Outbox wysyłany w kolejności, paczkami do 200 operacji, jedno wywołanie RPC = jedna transakcja.
+- Serwer dla każdego pola: zapis tylko wtedy, gdy `hlc_operacji > field_clock[pole]` (albo pola jeszcze nie ma). Wstawienie, gdy wiersza nie ma. To daje **idempotencję bez tabeli przetworzonych operacji** (powtórka tej samej operacji niczego nie zmienia) i wynik niezależny od kolejności dotarcia operacji z różnych urządzeń.
+- Ochrona przed złym zegarem: HLC późniejszy niż czas serwera + 5 min jest obcinany do czasu serwera (urządzenie dostaje skorygowany zegar w odpowiedzi).
+- Operacja naruszająca reguły (np. podzadanie przeniesione w cykl na dwóch urządzeniach, piąty poziom) jest **odrzucana** z powodem; klient oznacza ją w outboxie jako odrzuconą, pobiera wersję serwera i pokazuje komunikat („Zmiana odrzucona: …”). Odrzucone operacje widoczne w ustawieniach synchronizacji.
+
+### Pobieranie (`pull_changes`)
+- Jak w EP: trigger podbija `sync_scopes.sync_version` (blokada wiersza zakresu do końca transakcji) i nadaje wierszowi `row_version`. Klient wysyła mapę `{scope_id: ostatnia_wersja}`, dostaje wiersze z `row_version` większym (z usuniętymi) w jednej migawce bazy.
+- Pierwsza synchronizacja: pełna migawka stronicowana po tabelach.
+- Kolejność cyklu: wyślij outbox → pobierz zmiany → przelicz zależne stany (`due_date` serii, powiadomienia, widżety, liczniki).
+- Online: Realtime na wierszach `sync_scopes` użytkownika = sygnał do pobrania; dodatkowe pobranie po gotowości subskrypcji (zimny start Realtime, wniosek z EP). Offline → online: natychmiastowy cykl. Telefon w tle: `expo-background-task` (co ok. 15 min, zależnie od systemu).
+- Usunięte wiersze (`deleted_at`) trwale usuwane po 90 dniach. Klient, którego ostatnia synchronizacja jest starsza niż ten horyzont, robi pełną migawkę.
+
+### Seria cykliczna po synchronizacji
+- Ukończenie wystąpienia na dwóch urządzeniach offline daje ten sam `task_completions.id` (UUIDv5 z `task_id` + `occurrence_date`) — jeden wpis.
+- `due_date` serii liczy funkcja deterministyczna `core/recurrence.ts` z reguły i ukończeń; urządzenie, które po pobraniu widzi niezgodność, zapisuje poprawną wartość (każde urządzenie liczy to samo, więc konflikt jest pozorny).
+
+### Web — lokalna baza w przeglądarce
+- `sqlite-wasm` w Web Workerze, VFS `opfs-sahpool` (nie wymaga nagłówków COOP/COEP). VFS daje dostęp wyłączny, więc **jedna karta jest liderem** (Web Locks API) i trzyma bazę oraz synchronizację; pozostałe karty wysyłają zapytania i zmiany przez BroadcastChannel. Zamknięcie lidera → kolejna karta przejmuje blokadę.
+- Brak OPFS (np. tryb prywatny) → tryb online: baza w pamięci, pełna migawka przy starcie, ostrzeżenie w UI.
+- `navigator.storage.persist()` przy pierwszym uruchomieniu; eksport kopii bazy w ustawieniach.
+
+### Telefon — dodatkowo
+- Powiadomienia (M8) i widżety (M20) czytają tę samą bazę; zmiany z akcji powiadomień i widżetów idą przez `mutate` (outbox).
+- Załączniki do wysłania w osobnej kolejce plików; wiersz `attachments` trafia do outboxu dopiero po udanym wysłaniu pliku.
+
+### Testy (kryterium PoC-1, potem `npm run test:sync`)
+Scenariusze na lokalnym Supabase z trzema klientami (2 × Node, 1 × przeglądarka w Playwright): różne pola offline → oba zachowane; to samo pole → wygrywa późniejszy HLC niezależnie od kolejności wysyłki; usunięcie kontra edycja; przeniesienie w cykl → odrzucenie i powrót; podwójne ukończenie wystąpienia → jeden wpis; 500 operacji offline; zgubiony sygnał Realtime; dwie karty przeglądarki; zegar urządzenia przesunięty o +1 dzień.
+
+---
+
+## 7. Silniki w `packages/core`
+
+### 7.1. Widoki
+- Funkcje czyste na tablicach wierszy (`selectToday`, `selectUpcoming`, `groupTasks`, `applyFilter`, `buildTree`); `packages/sync` dostarcza wiersze kandydatów zapytaniem z indeksem, `core` stosuje reguły (wirtualne wystąpienia, kolejność, grupowanie). Te same funkcje liczą liczniki w pasku bocznym, widżety i przegląd.
+- „Dziś” liczone według strefy urządzenia (dzień zmienia się o północy lokalnej; po północy widok odświeża się sam).
+
+### 7.2. Cykliczność (`recurrence.ts`)
+```ts
+Recurrence =
+  | { mode: 'schedule'; rrule: string; anchor: LocalDate; until?: LocalDate; count?: number }
+  | { mode: 'after_completion'; every: { unit: 'day' | 'week' | 'month' | 'year'; n: number } }
+```
+- `nextOccurrence(rule, after)`, `occurrencesBetween(rule, from, to, limit)`, `describeRecurrence(rule)` (PL), `parseRecurrence(text)` (z `quick-add.ts`).
+- Daty pływające — brak problemów ze zmianą czasu (DST); godzina wystąpienia = `due_time` serii.
+- Przypadki testowe (kryterium PoC-3): co drugi wtorek (`FREQ=WEEKLY;INTERVAL=2;BYDAY=TU`), drugi wtorek miesiąca (`FREQ=MONTHLY;BYDAY=2TU`), ostatni dzień miesiąca (`BYMONTHDAY=-1`), ostatni dzień roboczy (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`), 31. dzień (miesiące krótsze pomijane — zgodnie z RFC; opcja „ostatni dzień, jeśli brak” — v1.x), 29 lutego, `COUNT`/`UNTIL`, „3 dni po ukończeniu” ukończone z opóźnieniem i przed terminem, ukończenie zaległego wystąpienia (następne = pierwsze przyszłe, nie zaległe).
+- Ukończenie serii „według harmonogramu” po terminie: następny termin = najbliższe wystąpienie **po dziś** (bez zalewu zaległych wystąpień).
+
+### 7.3. Zależności i oś czasu (`dependencies.ts`)
+- `detectCycle(deps, newDep)`, `violations(tasks, deps)` (B.start < A.end + lag), `shiftSuccessors(tasks, deps, taskId, deltaDays)` (kaskadowo, zachowując odstępy; opcja dni roboczych z ustawień), `projectSpan(list, tasks)`.
+- Koniec zadania = `due_date` (+ `due_time` + `duration_min`, gdy jest godzina); początek = `start_date ?? due_date`.
+
+### 7.4. Time-blocking (`time-blocking.ts`)
+- `blocksForDay(tasks, events, date)`, `conflicts(blocks)` (nakładanie bloków i wydarzeń, z pominięciem wydarzeń „wolny”), `freeSlots(blocks, workHours, minMinutes)`.
+
+### 7.5. Nawyki (`habits.ts`)
+- Okres nawyku: dzień (reguła dzienna/w wybrane dni) albo tydzień/miesiąc (cel „N razy”). Passa = liczba kolejnych zaliczonych okresów, w których nawyk był zaplanowany; `skipped` nie przerywa i nie zalicza; bieżący niezakończony okres nie przerywa passy.
+- `streak(habit, completions, today)`, `bestStreak`, `completionRate(range)`, `heatmap(year)`, `weekSummary`.
+- Test na 90-dniowych historiach w `fixtures/habits/` (wartości policzone ręcznie).
+
+### 7.6. Przypomnienia (`reminders.ts`)
+- `reminderFireTimes(tasks, reminders, window, settings, zone)` → lista `{taskId, reminderId, occurrenceDate, fireAt (instant)}` — z czasu pływającego i bieżącej strefy urządzenia. Używają jej telefon (planowanie lokalne) i `reminders-push` (serwer, strefa z ustawień profilu).
+
+### 7.7. Pomodoro (`focus.ts`)
+- Maszyna stanów: `idle → focus → short_break/long_break → focus …`, stan = etap + `started_at` + pauzy; `remaining(state, now)`; przejście etapu zamyka i otwiera `time_entries`.
+
+### 7.8. Przegląd (`review.ts`)
+- `dailyReviewQueue(tasks, today)`, `weeklyReviewSteps(…)` (Inbox, zaległe, projekty bez następnego kroku, „Oczekuje” > 7 dni), `reviewStats`.
+
+### 7.9. Etykiety i formatowanie
+- `labels.ts`: `PRIORITY`, `TASK_STATUS`, `LIST_KIND`, `PROJECT_STATUS`, `REMINDER_KIND`, `WEEKDAY`; `format.ts` (z EP: `plural`, `pluralForm`, `formatMinutes`, `shortDate`) + `relativeDay` („dziś”, „jutro”, „pt 21 lis”, „za 3 dni”, „2 dni temu”). Aplikacje nie definiują własnych etykiet.
+
+---
+
+## 8. Bezpieczeństwo i prywatność
+- RLS na wszystkich tabelach, zapisy przez RPC z walidacją; testy pgTAP (§5).
+- Sekrety (klucze Supabase `service_role`, OAuth Google, VAPID, sekret Email Workera) tylko w sekretach Supabase / Vercel / Cloudflare i w `.env.local`, nigdy w repo, przeglądarce ani APK.
+- Tokeny kalendarzy w Supabase Vault; odłączenie konta usuwa tokeny i wydarzenia.
+- Adres e-mail do przechwytywania = sekret (token) + lista dozwolonych nadawców; możliwość wygenerowania nowego tokenu.
+- `link-preview`: tylko `http(s)`, blokada adresów prywatnych i lokalnych (SSRF), limit rozmiaru i czasu.
+- Lokalna baza na telefonie w katalogu aplikacji; w przeglądarce w OPFS danego pochodzenia. Wylogowanie czyści lokalną bazę (po wysłaniu outboxu albo z ostrzeżeniem o niewysłanych zmianach).
+- Kopia zapasowa: plan Free Supabase nie ma kopii — nocny `pg_dump` (GitHub Actions, prywatny artefakt) + eksport JSON w ustawieniach (§10).
+
+---
+
+## 9. Wymagania niefunkcjonalne
+| Obszar | Wymaganie |
+|---|---|
+| Wydajność | 10 000 zadań: „Dziś” i lista projektu < 100 ms z lokalnej bazy; parser < 5 ms; przeciąganie w kanbanie/kalendarzu 60 kl./s przy 2 000 zadań; zimny start telefonu do „Dziś” < 2 s |
+| Synchronizacja | zmiana widoczna na drugim urządzeniu online < 3 s; 500 operacji offline wysłane < 10 s |
+| Offline | wszystko poza wyjątkami z M20 |
+| Przypomnienia | telefon: ±1 min (z pozwoleniem na dokładne alarmy), web: ±1 min (cron co minutę) |
+| Dostępność | pełna obsługa klawiaturą na webie, etykiety ARIA, kontrast WCAG AA, tryb ciemny, skalowanie czcionki na Androidzie |
+| Język i format | UI po polsku, tydzień od poniedziałku, format dat `pt 21 lis`, 24 h |
+| Przeglądarki | Chrome i Edge (desktop i Android) — pełne wsparcie; Firefox — bez OPFS w trybie prywatnym (tryb online); Safari — najlepszy wysiłek |
+| Android | minimum Android 10 (API 29) — do potwierdzenia z wymaganiami Expo SDK 58 |
+| Testy | `npm run check` (typecheck + lint + Vitest) zielony przed każdym commitem; pgTAP i `test:sync` przed zmianą schematu; Playwright i Maestro przed wydaniem |
+
+---
+
+## 10. Usługi zewnętrzne i koszty
+Do zweryfikowania w Etapie 0 i zapisania z datą w `docs/USLUGI.md` (jak w EP — nie wprowadzamy usługi bez sprawdzonych warunków).
+
+| Usługa | Plan | Na co uważać |
+|---|---|---|
+| Supabase | Free (osobny projekt) | limit 2 aktywnych projektów **na konto** (we wszystkich organizacjach — sprawdzić projekty EP); wstrzymanie po 7 dniach niskiej aktywności (codzienne użycie temu zapobiega); brak kopii zapasowych → własny `pg_dump`; 500 MB bazy, 1 GB Storage; `pg_cron`/`pg_net` na Free — potwierdzić w PoC-6 |
+| Vercel | Hobby | tylko użytek niekomercyjny; Cron Jobs raz dziennie, Vercel Schedules (beta) co 15 min → zadania co minutę w `pg_cron` |
+| Expo EAS | Free | limit buildów w miesiącu; OTA wystarczy przy jednym użytkowniku |
+| Google Cloud (OAuth, Calendar API) | bezpłatny | zakres kalendarza jest „wrażliwy”: w stanie *Testing* tokeny odświeżania wygasają po 7 dniach → aplikacja w stanie *In production* bez weryfikacji (ekran ostrzeżenia, limit 100 użytkowników) — sprawdzić w PoC-6 |
+| Cloudflare Email Routing + Workers | Free | wymaga domeny z DNS w Cloudflare (D9) |
+| Web Push | bezpłatny | klucze VAPID; biblioteka działająca w Deno (PoC-6) |
+| Microsoft Graph (v1.x) | bezpłatny | rejestracja aplikacji w Entra ID; dla konta firmowego może być potrzebna zgoda administratora |
+
+Szacowany koszt v1.0: 0 zł miesięcznie (+ domena, jeśli trzeba kupić). Supabase Pro (25 USD/mies.) tylko wtedy, gdy limity Free okażą się za małe albo będą potrzebne kopie PITR.
+
+---
+
+## 11. Ryzyka
+| # | Ryzyko | Skutek | Zabezpieczenie |
+|---|---|---|---|
+| R1 | Błąd w scalaniu per pole albo w drzewie podzadań | utrata lub zdublowanie danych | PoC-1 jako pierwszy, scenariusze z §6 w `test:sync`, `activity_log` do przywracania |
+| R2 | sqlite-wasm/OPFS: wiele kart, wyczyszczenie danych przez przeglądarkę | web nie działa offline albo traci niewysłane zmiany | lider kart (Web Locks), `storage.persist()`, tryb online jako wyjście awaryjne, outbox wysyłany od razu po zapisie |
+| R3 | Android 14+: `SCHEDULE_EXACT_ALARM` domyślnie odmówione, `USE_EXACT_ALARM` tylko dla budzików/kalendarzy (polityka Play); Doze | spóźnione przypomnienia | PoC-4: pomiar z `delivery: 'bestEffort'` i `'alarmClock'` (expo-notifications SDK 58); prośba o pozwolenie z wyjaśnieniem; awaryjnie push z serwera (FCM), gdy telefon online |
+| R4 | Parser PL rozpoznaje fragment tytułu jako datę | zepsute tytuły | pełne formy fragmentów, chipy z cofaniem, korpus pułapek w testach |
+| R5 | rrule.js — błędy stref i wydajność | złe terminy serii | tylko daty pływające (UTC jako „bez strefy”), testy z §7.2; wyjście: własny podzbiór RRULE |
+| R6 | Google OAuth: wygasanie tokenów, weryfikacja zakresów | zerwana synchronizacja kalendarza | PoC-6; ICS i kalendarz telefonu jako odczyt bez OAuth |
+| R7 | Widżety i calendar-kit na Expo SDK 58 / New Architecture | brak widżetu / kalendarza na telefonie | PoC-4; wyjście: skróty aplikacji zamiast widżetu, własna oś dnia |
+| R8 | Biblioteka Gantta nie daje rozciągania/zależności tak, jak trzeba | Etap 6 dłuższy | PoC-5: porównanie z własnym SVG |
+| R9 | Zakres (20 modułów) dla jednej osoby | brak używalnej aplikacji przez długi czas | MVP-2 = pierwszy realny użytek na webie; reszta przyrostowo, każdy etap z kryterium odbioru |
+| R10 | Limity Supabase Free, wstrzymanie projektu | przerwa w synchronizacji | aplikacja działa offline; monitor w `docs/USLUGI.md`; Pro w razie potrzeby |
+| R11 | Podszyte maile do adresu przechwytywania | śmieci w Inbox | token w adresie + lista nadawców + dziennik odrzuceń |
+
+---
+
+## 12. Decyzje do potwierdzenia (z rekomendacją)
+| # | Decyzja | Rekomendacja |
+|---|---|---|
+| D1 | Platformy | **Android + web (PWA)**; iOS i desktop natywny w v1.x |
+| D2 | Web local-first czy online | **Local-first** (sqlite-wasm + wspólny `packages/sync`); wyjście awaryjne po PoC-1: web online z optymistycznymi zapisami |
+| D3 | Konflikty | **LWW per pole z HLC**, ukończenia i czas pracy tylko dopisywane |
+| D4 | Format opisu | **Markdown** (TipTap na webie) |
+| D5 | Składnia szybkiego dodawania | **`#` = lista/projekt/przestrzeń, w razie braku — tag; `@` = zawsze tag**; `!1–!4` priorytet; `~` czas trwania; `^` przypomnienie |
+| D6 | Statusy kanbanu | **Stałe 5 statusów** w v1.0; własne kolumny statusów w v1.x |
+| D7 | Zakres telefonu | **Pełna edycja + kalendarz dnia/tygodnia**; oś czasu (Gantt) tylko na webie; kanban na telefonie uproszczony |
+| D8 | Kalendarz firmowy (spotkania) | **Pytanie:** Google Workspace czy Microsoft 365? Rekomendacja: odczyt przez ICS i kalendarz telefonu od Etapu 5 (działa dla obu); zapis dwukierunkowy najpierw dla dostawcy, którego używasz na co dzień |
+| D9 | Domena dla adresu e-mail | **Pytanie:** która domena (musi mieć DNS w Cloudflare)? Bez domeny: przekazywanie z Gmaila filtrem do skrzynki obsługiwanej przez Cloudflare albo przesunięcie M19-e-mail do v1.x |
+| D10 | Projekt Supabase | **Osobny projekt** (Free), nie schemat w projekcie ExpeditionPlan |
+| D11 | Widżety pulpitu | **PWA + skróty** w v1.0; natywny widżet / zasobnik / globalny skrót przez Tauri w v1.x |
+| D12 | Integracje na serwerze | **Supabase Edge Functions + `pg_cron`** (nie trasy API Vercela) |
+| D13 | Import z obecnego narzędzia | **Pytanie:** z czego przenosisz zadania (Todoist, TickTick, Microsoft To Do, Google Tasks, nic)? Import CSV/JSON wybranego narzędzia jako narzędzie `tools/import` w Etapie 13 |
+| D14 | Język i nazwa | UI po polsku, nazwa aplikacji „TaskPlanner”, pakiety `@taskplanner/*` |

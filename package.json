@@ -1,0 +1,26 @@
+{
+  "name": "taskplanner",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tools/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "web": "node scripts/sync-env.mjs && npm run dev --workspace apps/web",
+    "web:local": "node scripts/sync-env.mjs --local && npm run dev --workspace apps/web",
+    "env:sync": "node scripts/sync-env.mjs",
+    "mobile": "node scripts/sync-env.mjs && npm run start --workspace apps/mobile",
+    "supabase": "npx --yes supabase@2.122.0",
+    "test:sync": "npm run test:integration --workspace packages/sync",
+    "test:db": "npx --yes supabase@2.122.0 test db",
+    "seed:dev": "npm run seed --workspace tools/seed-dev --"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
