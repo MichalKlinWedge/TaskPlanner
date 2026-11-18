@@ -36,19 +36,23 @@ const PAGE = `<!doctype html><html lang="pl"><meta charset="utf-8"><title>TaskPl
 <h1>Próba Web Push (PoC-6)</h1>
 <p>1. Włącz powiadomienia. 2. Zamknij tę kartę. 3. Wyślij próbę (<code>POST /send</code>).</p>
 <button id="on" style="font-size:1.1rem;padding:.5rem 1rem">Włącz powiadomienia</button>
-<pre id="log"></pre>
+<pre id="log" style="white-space:pre-wrap;word-break:break-word"></pre>
 <script>
 const log = (m) => (document.getElementById('log').textContent += m + '\\n');
 const key = '${env.VAPID_PUBLIC_KEY}';
 const bytes = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
-document.getElementById('on').onclick = async () => {
+window.onerror = (m) => log('Błąd: ' + m);
+document.getElementById('on').onclick = () => enable().catch((e) => log('Błąd: ' + (e && e.name) + ': ' + (e && e.message)));
+log('Zgoda na powiadomienia: ' + Notification.permission + ', service worker: ' + ('serviceWorker' in navigator) + ', PushManager: ' + ('PushManager' in window));
+async function enable() {
+  log('Rejestracja service workera…');
   const reg = await navigator.serviceWorker.register('/sw.js');
   await navigator.serviceWorker.ready;
   if ((await Notification.requestPermission()) !== 'granted') return log('Brak zgody na powiadomienia.');
   const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes(key) }));
   const r = await fetch('/subscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(sub) });
   log(r.ok ? 'Subskrypcja zapisana (' + new URL(sub.endpoint).host + '). Zamknij kartę.' : 'Błąd zapisu: ' + r.status);
-};
+}
 </script></body></html>`;
 
 const SW = `self.addEventListener('push', (event) => {
@@ -71,6 +75,7 @@ const body = (req: import('node:http').IncomingMessage) =>
 
 createServer(async (req, res) => {
   const url = new URL(req.url!, `http://localhost:${PORT}`);
+  console.log(`${new Date().toISOString()} ${req.method} ${url.pathname}`);
   try {
     if (req.method === 'GET' && url.pathname === '/') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });

@@ -60,7 +60,7 @@ Stan na **18.11.2026** (oficjalna dokumentacja i cenniki). Przed wprowadzeniem n
 | Biblioteka | `jsr:@negrel/webpush` 0.5.0 (VAPID, Deno/Workers); alternatywa `npm:web-push` | Ś | jsr.io/@negrel/webpush |
 | Supabase | brak oficjalnego przykładu (dokumentują tylko FCM/Expo); używane w publicznych repozytoriach | Ś | — |
 
-**Wniosek:** PoC-6: `jsr:@negrel/webpush` 0.5.0 działa w lokalnym Edge Runtime (podpis VAPID ES256 i treść aes128gcm sprawdzone w testach), `npm:web-push` niepotrzebny. Dostarczenie do prawdziwego Chrome (FCM) — do potwierdzenia.
+**Wniosek:** PoC-6: `jsr:@negrel/webpush` 0.5.0 działa w lokalnym Edge Runtime (podpis VAPID ES256 i treść aes128gcm sprawdzone w testach), `npm:web-push` niepotrzebny. Dostarczenie do prawdziwego Chrome (FCM) przy zamkniętej karcie potwierdzone 18.11.2026.
 
 ## Android — dokładne alarmy
 | Warunek | Wartość | Pewność | Źródło |

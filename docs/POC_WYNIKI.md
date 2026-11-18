@@ -2,7 +2,7 @@
 
 ## PoC-6 — Integracje serwerowe (18.11.2026)
 
-**Werdykt: GO lokalnie, pomiary na prawdziwych usługach czekają na konta** (`docs/POC6_KONFIGURACJA.md`).
+**Werdykt: GO lokalnie; Web Push potwierdzony w prawdziwym Chrome; Google i Cloudflare czekają na konta** (`docs/POC6_KONFIGURACJA.md`).
 Cała droga każdej integracji działa na lokalnym Supabase. Usługi zewnętrzne zastępują w testach fałszywe Google,
 serwer ICS i usługa push, zachowujące się jak w dokumentacji (stronicowanie, `syncToken`, 410, kanały, VAPID i aes128gcm).
 Nic nie wskazuje na No-go. Otwarte pozostają czasy po stronie Google i Cloudflare oraz plan Free.
@@ -12,7 +12,7 @@ Nic nie wskazuje na No-go. Otwarte pozostają czasy po stronie Google i Cloudfla
 | Zmiana w Google widoczna < 1 min (watch) | ✅ powiadomienie → `calendar_events` **63 ms** (fałszywe Google, ten sam protokół) | ⏳ webhook HTTPS w chmurze + konto Google |
 | … albo < 15 min (ICS) | ✅ `pg_cron` → `pg_net` → `cron/poll` → zapis **290 ms**, zadanie `*/15 * * * *`; niezmieniony plik → 304 | ⏳ tajny adres iCal z Google — Google sam odświeża plik z opóźnieniem, trzeba zmierzyć |
 | Mail → zadanie < 1 min | ✅ `inbound-email` **237–336 ms** (MIME + zadanie), kod Workera → funkcja → zadanie **43 ms** | ⏳ domena w Cloudflare (D9) |
-| Push dociera do zamkniętej karty | ✅ wpis w kolejce → dostarczenie przez `pg_cron` **37,7 s / 54,0 s** (≤ 60 s + wysyłka); podpis VAPID i treść sprawdzone kryptograficznie | ⏳ Chrome: `npm run push-page --workspace tools/edge-tests` |
+| Push dociera do zamkniętej karty | ✅ wpis w kolejce → dostarczenie przez `pg_cron` **37,7 s / 54,0 s** (≤ 60 s + wysyłka); podpis VAPID i treść sprawdzone kryptograficznie | ✅ **Chrome (FCM), karta zamknięta** (`openWindows: 0`): funkcja → service worker **205 ms**, wpis w kolejce → odbiór 14 s; przy otwartej karcie 156 ms / 39 s (`npm run push-page --workspace tools/edge-tests`) |
 | Token odświeżania *In production* > 7 dni | — | ⏳ w trakcie MVP (z planu) |
 | `pg_cron`, `pg_net` na planie Free | ✅ lokalnie (pg_cron 1.6.4, pg_net 0.20.4) | ⏳ projekt w chmurze |
 
@@ -48,12 +48,12 @@ dziennych (11 500 wystąpień, 95 KiB) w **110–150 ms** w Node, przy limicie C
 - `jsr:@negrel/webpush` 0.5.0 działa w Edge Runtime (wyjście awaryjne `npm:web-push` niepotrzebne). Klucze VAPID w formacie JWK z WebCrypto (`setup.ts`) importują się bez biblioteki.
 - `deno check` (Deno 2.9.6) odrzucił `@supabase/supabase-js` 2.119.1 opublikowany < 24 h wcześniej (domyślny minimalny wiek zależności), więc funkcje mają przypięte 2.118.0. `deno.lock` z Deno 2.9 nie jest zapisywany (`--no-lock`), bo runtime 2.1 może nie czytać nowszego formatu.
 - Uprawnienia kolumn (sekrety, `sync_state`) sprawiają, że `select('*')` z klienta kończy się błędem. Klient musi wymieniać kolumny — do pamiętania w Etapie 5.
+- Chrome: odmowa powiadomień zapisana dla `localhost` blokuje też rejestrację service workera (Chrome nie pobiera `sw.js`) — strona próbna pokazuje stan zgody i pełny błąd. Do pomocy w ustawieniach (MVP-4).
 - Docker Desktop na Windows: fałszywe usługi na `0.0.0.0:54590` są osiągalne z kontenera funkcji jako `host.docker.internal`, a z bazy funkcje widać jako `supabase_kong_taskplanner:8000`.
 
 **Niesprawdzone / czeka na użytkownika:**
 - Prawdziwe Google: ekran „unverified app” w stanie *In production*, opóźnienie powiadomień `watch` do funkcji w chmurze, `nextSyncToken` przy pierwszym zapytaniu z `timeMin`/`timeMax`, opóźnienie tajnego adresu iCal po zmianie w Google.
 - Cloudflare: czas Email Routing → Worker → funkcja, nagłówki `Authentication-Results` dodawane przez Cloudflare (od tego zależy reguła DMARC), limit CPU Workera na Free.
-- Chrome: powiadomienie przy zamkniętej karcie (FCM).
 - `pg_cron`/`pg_net` na planie Free i 2 aktywne projekty (D10).
 - Załączniki z maila (Etap 10), wybór kalendarzy w UI i ekran „Połączone kalendarze” (Etap 5), strefa z ustawień profilu zamiast `inbound_addresses.time_zone` (MVP-1).
 
