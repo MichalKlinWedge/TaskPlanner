@@ -8,9 +8,54 @@
     "userInterfaceStyle": "automatic",
     "android": {
       "package": "pl.taskplanner.app",
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.SCHEDULE_EXACT_ALARM"
+      ]
     },
-    "plugins": ["expo-router", "expo-sqlite"],
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "color": "#2563eb"
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "TaskPlanner pokazuje wydarzenia z kalendarza obok zadań."
+        }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "Today",
+              "label": "TaskPlanner — Dziś",
+              "description": "Zadania na dziś z odhaczaniem",
+              "minWidth": "250dp",
+              "minHeight": "180dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 3,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "androidIntentFilters": [
+            "text/*"
+          ],
+          "disableIOS": true
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

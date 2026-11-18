@@ -1,27 +1,55 @@
-import { TASK_STATUS } from '@taskplanner/core';
-import { StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Link, useFocusEffect, type Href } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Pressable, Text } from 'react-native';
+
+import { P, Screen, Section, usePalette } from '@/components/ui';
+import { serverConfig, sessionUser } from '@/lib/config';
+import { lastSyncError, localEngine } from '@/lib/sync';
+
+const ITEMS: { href: Href; title: string; hint: string }[] = [
+  { href: '/today', title: 'Dziś i widżet', hint: 'Lista „Dziś” z lokalnej bazy, dane przykładowe, dodanie widżetu' },
+  { href: '/reminders', title: 'Przypomnienia', hint: '50 przypomnień / 3 dni, dokładne alarmy, akcje, pomiar opóźnień' },
+  { href: '/share', title: 'Szybkie dodawanie', hint: 'Cel udostępniania z Chrome (Udostępnij → TaskPlanner)' },
+  { href: '/calendar', title: 'Kalendarz', hint: 'expo-calendar + @howljs/calendar-kit, przeciąganie bloku' },
+  { href: '/timeline', title: 'Oś dnia (własna)', hint: 'Wariant awaryjny: Reanimated + Gesture Handler' },
+  { href: '/selftest', title: 'Samosprawdzenie', hint: 'PoC-1/2/3 w Hermes: sync, cykliczność, nawyki, parser' },
+  { href: '/settings', title: 'Serwer i konto', hint: 'Adres Supabase, logowanie, synchronizacja' },
+];
 
 export default function Home() {
+  const p = usePalette();
+  const [status, setStatus] = useState('…');
+
+  useFocusEffect(
+    useCallback(() => {
+      const user = sessionUser();
+      localEngine()
+        .then(async (engine) => {
+          const pending = await engine.pendingCount();
+          const rejected = (await engine.rejectedOps()).length;
+          const server = serverConfig()?.url ?? 'brak adresu serwera';
+          setStatus(
+            `${user.online ? `Konto: ${user.email}` : 'Tryb offline (bez konta)'} · ${server}\nOutbox: ${pending} oczekujących, ${rejected} odrzuconych${lastSyncError ? `\nOstatni błąd: ${lastSyncError}` : ''}`,
+          );
+        })
+        .catch((error) => setStatus(`Błąd lokalnej bazy: ${String(error)}`));
+    }, []),
+  );
+
   return (
-    <SafeAreaView style={styles.screen}>
-      <Text style={styles.title}>TaskPlanner</Text>
-      <Text style={styles.hint}>Szkielet z Etapu 0 — ekrany powstają od MVP-3.</Text>
-      <View style={styles.row}>
-        {Object.entries(TASK_STATUS).map(([status, label]) => (
-          <Text key={status} style={styles.chip}>
-            {label}
-          </Text>
-        ))}
-      </View>
-    </SafeAreaView>
+    <Screen>
+      <Section>
+        <P muted>{status}</P>
+      </Section>
+      {ITEMS.map((item) => (
+        <Link key={String(item.href)} href={item.href} asChild>
+          <Pressable style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+            <Section title={item.title}>
+              <Text style={{ color: p.muted }}>{item.hint}</Text>
+            </Section>
+          </Pressable>
+        </Link>
+      ))}
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, padding: 24, gap: 12 },
-  title: { fontSize: 24, fontWeight: '600' },
-  hint: { opacity: 0.7 },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderWidth: 1, borderColor: '#d4d4d8', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4, fontSize: 12 },
-});

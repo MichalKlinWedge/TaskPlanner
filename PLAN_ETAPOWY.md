@@ -70,6 +70,8 @@ Cel: przed budową produktu sprawdzić rzeczy, które mogą zmienić architektur
 
 **Go:** ≥ 95 % przypomnień ±1 min z dokładnymi alarmami (≤ 10 min bez nich); akcje i widżet działają przy zamkniętej aplikacji i bez sieci; udostępnianie i kalendarz telefonu działają. **No-go:** widżet → skróty aplikacji; przypomnienia → dodatkowo push z serwera (FCM) jako zabezpieczenie; calendar-kit → własna oś dnia.
 
+**Stan (18.11.2026):** w toku — kod w `apps/mobile` gotowy (`expo-doctor` 20/20, bundel Hermes), scenariusze S1–S9 w `docs/POC4_TELEFON.md`; czeka na pomiary na telefonie (w tym 3 doby przypomnień). Build bez EAS: lokalnie i GitHub Actions (`docs/ANDROID_BUILD.md`). Szczegóły: `docs/POC_WYNIKI.md`.
+
 ### PoC-5 — Widoki webowe na lokalnych danych (≈ 2–3 dni)
 - Na danych z `seed-dev` (2 000 zadań) w lokalnej bazie z PoC-1:
   - FullCalendar: tydzień, przeciąganie zadań z panelu bocznego (`Draggable`), zmiana długości, wiersz „cały dzień”,
@@ -121,7 +123,7 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 - Szybkie dodawanie (ten sam parser, chipy), przycisk „+”, skróty aplikacji.
 - Gesty: przesunięcie = ukończ / menu terminu; długie przytrzymanie = zaznaczanie i operacje grupowe.
 - Przypomnienia lokalne M8 (względne i bezwzględne, okno 7 dni, akcje w powiadomieniu), prośba o pozwolenie na dokładne alarmy.
-- Synchronizacja w tle (`expo-background-task`), wskaźnik stanu, OTA na kanale `preview`.
+- Synchronizacja w tle (`expo-background-task`), wskaźnik stanu; aktualizacje = nowy APK z GitHub Actions (`.github/workflows/android.yml`), bez EAS Update (decyzja z PoC-4).
 
 **Kryterium odbioru:** cały dzień w trybie samolotowym: dodawanie, edycja, odhaczanie, przypomnienia (także „Odłóż” z powiadomienia przy zamkniętej aplikacji) działają; po włączeniu sieci wszystkie zmiany są na webie, a zmiany z webu na telefonie.
 

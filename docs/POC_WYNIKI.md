@@ -1,5 +1,39 @@
 # Wyniki PoC
 
+## PoC-4 — Android: przypomnienia, widżet, udostępnianie, kalendarz (18.11.2026)
+
+**Werdykt: w toku — kod gotowy, pomiary na telefonie przed nami.** Scenariusze: `docs/POC4_TELEFON.md` (S1–S9). Kryteria wymagające 3 dób (S3, S4) mają wynik dopiero po pełnym przebiegu.
+
+| Kryterium | Wynik | Jak sprawdzone |
+|---|---|---|
+| Biblioteki na SDK 58 / New Architecture | ✅ `expo-doctor` 20/20; bundel Hermes (`expo export --platform android`, 2 039 modułów) | lokalnie |
+| PoC-1 na telefonie: SQLite + silnik (outbox, odrzucenie, scalanie per pole, UUIDv5, 500 zapisów < 10 s) | ✅ scenariusz przechodzi na `node:sqlite`; ⏳ expo-sqlite na telefonie (S1) | `src/selftest/local-sync.ts` |
+| PoC-1/2/3 w Hermes (id, HLC, cykliczność 15 + 1 000 wystąpień < 20 ms, nawyki 5, korpus szybkiego dodawania 100 %) | ⏳ S1 | ekran „Samosprawdzenie” |
+| Przypomnienia ≥ 95 % ±1 min z dokładnymi alarmami / ≤ 10 min bez nich (50 na 72 h, noc w Doze) | ⏳ S3, S4 (+ szybki test Doze przez adb) | ekran „Przypomnienia”, raport |
+| „Ukończ” / „Jutro” / „Odłóż 10 min” przy zamkniętej aplikacji, bez sieci → SQLite + outbox | ⏳ S5 | dziennik akcji, outbox |
+| Widżet „Dziś” z odhaczaniem przy zamkniętej aplikacji, bez sieci | ⏳ S6 | dziennik widżetu |
+| Link z Chrome → szybkie dodawanie | ⏳ S7 | |
+| Kalendarz telefonu + calendar-kit (przeciąganie, zmiana długości) | ⏳ S8; wariant awaryjny — własna oś dnia (S9) | |
+
+**Co powstało (`apps/mobile`):**
+- Wejście `index.ts`: polyfille → rejestracja zadań w tle (`src/background/register.ts`: `TaskManager.defineTask` dla odpowiedzi na powiadomienia, `registerWidgetTaskHandler`) → `expo-router/entry`. Zadania w tle muszą być zarejestrowane przed routerem, bo Headless JS startuje bez ekranu.
+- `src/lib/sync.ts`: jeden `SyncEngine` (expo-sqlite, `autoSync: false`, ręczne `requestSync` po zapisie, gdy jest konto) — wspólny dla ekranów, widżetu i akcji z powiadomień. Bez konta zapis lokalny w zakresie `OFFLINE_USER_ID`.
+- `src/lib/tasks.ts`: operacje na zadaniach przez `mutate` (ukończenie cyklicznego = wiersz `task_completions` z UUIDv5 + `nextDue`, „jutro”, przesunięcie bloku), szybkie dodawanie z linkiem (`source.kind = 'link'`).
+- `src/lib/reminders.ts`: kanał HIGH, kategoria z 3 akcjami `opensAppToForeground: false`, seria N przypomnień z pomiarem (czas pokazania = `postTime` z `getPresentedNotificationsAsync`), raport; obsługa akcji idempotentna (ta sama odpowiedź może przyjść z zadania w tle i z listenera).
+- `src/widget/*`: widżet „Today” (`react-native-android-widget`, jasny/ciemny), klik → przełączenie zadania w lokalnej bazie i przerysowanie.
+- Ekrany: menu ze stanem outboxa, „Dziś i widżet”, „Przypomnienia”, „Szybkie dodawanie” (share intent), „Kalendarz” (calendar-kit + `expo-calendar`), „Oś dnia (własna)” (Gesture Handler 3), „Samosprawdzenie”, „Serwer i konto”.
+- Metro: korpus `fixtures/quick-add.jsonl` importowany jako moduł (`metro/jsonl-transformer.js`).
+
+**Ustalenia techniczne:**
+- expo-notifications: akcja inna niż domyślna przy aplikacji poza pierwszym planem uruchamia zadanie `registerTaskAsync` (Headless JS); przy żywym procesie przychodzi też listener — stąd obsługa idempotentna (`poc4.handled`).
+- Dokładne alarmy: bez `SCHEDULE_EXACT_ALARM` biblioteka używa `setAndAllowWhileIdle` (okno systemowe), z pozwoleniem — `setExactAndAllowWhileIdle`; typ wyzwalacza `alarmClock` → `setAlarmClock`. Na Androidzie 14+ pozwolenie domyślnie odebrane — użytkownik włącza je w „Alarmy i przypomnienia”.
+- Pliki widżetu muszą mieć `'use no memo'` (React Compiler psuje drzewo widżetu, które nie jest renderowane przez React Native).
+- calendar-kit: `hourFormat` jest propem `CalendarBody`, nie `CalendarContainer`.
+
+**Build i aktualizacje — decyzja: bez EAS.** Darmowy limit EAS Build (15 buildów Androida/mies.) wyczerpał się w trakcie PoC-4, więc APK budujemy sami: lokalnie przez USB (`npx expo run:android`) i w GitHub Actions (`.github/workflows/android.yml`: prebuild → `assembleRelease` → podpis kluczem z sekretów → artefakt, opcjonalnie Release). EAS Update (OTA) odpada: **na razie nowy APK zamiast OTA, ewentualnie później własny serwer zgodny z protokołem Expo Updates**. `expo-updates` zostaje w zależnościach (bez `updates.url` nic nie pobiera), skrypt `ota` usunięty. Instrukcja: `docs/ANDROID_BUILD.md`, limity Actions: `docs/USLUGI.md`.
+
+**Build na Windows:** CMake/ninja z katalogu worktree (`…\.claude\worktrees\…`) przekracza 260 znaków; `subst` psuje codegen (Node rozwiązuje prawdziwą ścieżkę). Ninja 1.10 z CMake 3.22.1 nie obsługuje długich ścieżek nawet w kopii `C:\tp` przy `LongPathsEnabled = 1` (ścieżki obiektów codegenu ~275 znaków). Działa CMake 3.31.6 z SDK (ninja 1.12.1): `cmake.dir` w `android/local.properties`. Na runnerze Linux problemu nie ma.
+
 ## PoC-3 — Cykliczność i nawyki (18.11.2026)
 
 **Werdykt: GO, własny podzbiór RRULE** (bez rrule.js w produkcie). rrule.js zostaje tylko jako wyrocznia w testach (`devDependencies` `packages/core`).

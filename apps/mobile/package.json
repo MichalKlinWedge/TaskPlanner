@@ -1,26 +1,33 @@
 {
   "name": "@taskplanner/mobile",
   "version": "0.1.0",
-  "main": "expo-router/entry",
+  "main": "index.ts",
   "dependencies": {
+    "@howljs/calendar-kit": "^2.5.6",
     "@supabase/supabase-js": "^2.119.1",
     "@taskplanner/core": "*",
     "@taskplanner/db": "*",
     "@taskplanner/sync": "*",
     "expo": "~58.0.22",
+    "expo-calendar": "~58.0.8",
     "expo-constants": "~58.0.14",
     "expo-crypto": "~58.0.8",
     "expo-dev-client": "~58.0.18",
+    "expo-haptics": "~58.0.8",
     "expo-linking": "~58.0.15",
+    "expo-notifications": "~58.1.9",
     "expo-router": "~58.0.29",
+    "expo-share-intent": "^9.0.0",
     "expo-splash-screen": "~58.0.12",
     "expo-sqlite": "~58.0.15",
     "expo-status-bar": "~58.0.4",
     "expo-system-ui": "~58.0.7",
+    "expo-task-manager": "~58.0.14",
     "expo-updates": "~58.0.20",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
+    "react-native-android-widget": "^0.26.0",
     "react-native-gesture-handler": "~3.3.0",
     "react-native-reanimated": "4.7.1",
     "react-native-safe-area-context": "~5.11.1",
@@ -37,10 +44,9 @@
   },
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
+    "android": "expo run:android",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit",
-    "ota": "npx eas-cli@latest update --branch preview --environment preview --platform android"
+    "typecheck": "tsc --noEmit"
   },
   "private": true
 }
