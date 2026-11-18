@@ -10,7 +10,8 @@ Stan na **18.11.2026** (oficjalna dokumentacja i cenniki). Przed wprowadzeniem n
 | Baza / Storage / MAU | 500 MB / 1 GB / 50 000 | W | supabase.com/pricing |
 | Edge Functions | 500 000 wywołań; limity funkcji: 150 s wall clock, 2 s CPU, 256 MB | W | supabase.com/docs/guides/functions/limits |
 | Kopie zapasowe | brak (bez PITR) → własny `pg_dump` / eksport | W | supabase.com/docs/guides/platform/backups |
-| `pg_cron`, `pg_net` na Free | oficjalnie bez ograniczeń planu, ale bez wprost potwierdzenia; **lokalnie działa** (pg_cron 1.6.4, pg_net 0.20.4, PoC-6) — w chmurze sprawdzić przy pierwszym wdrożeniu | Ś | — |
+| `pg_cron`, `pg_net` na Free | **działają** — projekt TaskPlanner (Free, eu-west-1): zadanie co minutę → `pg_net` → Edge Function, 18.11.2026 (PoC-6) | W | PoC-6 |
+| Uprawnienia nowych tabel (chmura) | nowe projekty nie nadają `anon`/`authenticated`/`service_role` do tabel z migracji — jawne `grant` w migracji (lokalnie nadawane automatycznie) | W | PoC-6 |
 | Edge Runtime lokalnie | 1.77.8 (zgodny z Deno 2.1.4); importy spoza `supabase/functions` (np. `packages/core`) działają, `npm:` i `jsr:` przez mapę importów | W | PoC-6 |
 | Realtime | 200 jednoczesnych połączeń, 2 mln wiadomości/mies., 100 wiad./s | W | supabase.com/docs/guides/realtime/limits |
 

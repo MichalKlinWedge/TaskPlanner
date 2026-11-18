@@ -2,7 +2,7 @@
 
 ## PoC-6 — Integracje serwerowe (18.11.2026)
 
-**Werdykt: GO lokalnie; Web Push potwierdzony w prawdziwym Chrome; Google i Cloudflare czekają na konta** (`docs/POC6_KONFIGURACJA.md`).
+**Werdykt: GO lokalnie; Web Push potwierdzony w prawdziwym Chrome; funkcje i `pg_cron` działają w chmurze (Free); Google i Cloudflare czekają na klucze** (`docs/POC6_KONFIGURACJA.md`).
 Cała droga każdej integracji działa na lokalnym Supabase. Usługi zewnętrzne zastępują w testach fałszywe Google,
 serwer ICS i usługa push, zachowujące się jak w dokumentacji (stronicowanie, `syncToken`, 410, kanały, VAPID i aes128gcm).
 Nic nie wskazuje na No-go. Otwarte pozostają czasy po stronie Google i Cloudflare oraz plan Free.
@@ -14,7 +14,7 @@ Nic nie wskazuje na No-go. Otwarte pozostają czasy po stronie Google i Cloudfla
 | Mail → zadanie < 1 min | ✅ `inbound-email` **237–336 ms** (MIME + zadanie), kod Workera → funkcja → zadanie **43 ms** | ⏳ domena w Cloudflare (D9) |
 | Push dociera do zamkniętej karty | ✅ wpis w kolejce → dostarczenie przez `pg_cron` **37,7 s / 54,0 s** (≤ 60 s + wysyłka); podpis VAPID i treść sprawdzone kryptograficznie | ✅ **Chrome (FCM), karta zamknięta** (`openWindows: 0`): funkcja → service worker **205 ms**, wpis w kolejce → odbiór 14 s; przy otwartej karcie 156 ms / 39 s (`npm run push-page --workspace tools/edge-tests`) |
 | Token odświeżania *In production* > 7 dni | — | ⏳ w trakcie MVP (z planu) |
-| `pg_cron`, `pg_net` na planie Free | ✅ lokalnie (pg_cron 1.6.4, pg_net 0.20.4) | ⏳ projekt w chmurze |
+| `pg_cron`, `pg_net` na planie Free | ✅ lokalnie (pg_cron 1.6.4, pg_net 0.20.4) | ✅ projekt „TaskPlanner” (eu-west-1): migracja z `create extension` przeszła, `taskplanner-reminders-push` co minutę → `pg_net` → funkcja odpowiada 200 (`{"items":0}`); `cron/poll`, `cron/renew`, `inbound-email` działają na bazie w chmurze |
 
 **Testy:** 24 jednostkowe (`tools/edge-tests`: ICS, strefy, e-mail, Google), 3 Workera (`tools/email-worker`),
 26 integracyjnych (`npm run test:integration --workspace tools/edge-tests`), 32 pgTAP (`supabase/tests/integrations.test.sql`),
@@ -32,6 +32,8 @@ dziennych (11 500 wystąpień, 95 KiB) w **110–150 ms** w Node, przy limicie C
 | Cloudflare Email Worker (przekazuje surową wiadomość) | `tools/email-worker` |
 | Sekrety lokalne, fałszywe usługi, testy, strona próbna push | `tools/edge-tests` |
 
+**Wdrożenie w chmurze (18.11.2026):** `db push` (migracje PoC-6), `secrets set --env-file supabase/functions/.env.cloud` (plik poza repozytorium: osobne `CRON_SECRET` i `INBOUND_SECRET`, klucze VAPID te same co lokalnie), `functions deploy` trzech funkcji (bundel 0,8–1,5 MB, `packages/core` spoza `supabase/` dołączony), Vault: `functions_url`, `cron_secret` (`db query --linked`, każda instrukcja osobno — API zapytań nie przyjmuje bloku `do $$`).
+
 **Ustalenia i odstępstwa (do v0.2):**
 - §5: tabele integracji mają `user_id` (= zakres osobisty) i `row_version`; każdy zapis podbija `sync_scopes.sync_version`, więc klient dostaje sygnał Realtime. W `pull_changes` dojdą w Etapie 5 jako tylko do odczytu. Wydarzenie całodniowe ma daty pływające `start_date`/`end_date` (koniec bez włączenia, jak w iCalendar), a `start_at`/`end_at` mają tylko wydarzenia z godziną. Usunięte wydarzenia dostają `deleted_at`, a `cron/renew` czyści wydarzenia starsze niż okno.
 - §5: `inbound_addresses` (token, nadawcy, lista docelowa, strefa) i `push_subscriptions` są tymczasowe — w MVP-1 przechodzą do `profiles` / `devices`. `push_queue` zastąpi w MVP-4 wyliczanie z `core/reminders.ts` z dziennikiem wysyłek per urządzenie.
@@ -44,9 +46,11 @@ dziennych (11 500 wystąpień, 95 KiB) w **110–150 ms** w Node, przy limicie C
 - `pg_cron` woła funkcje przez `pg_net` z adresem i sekretem z Vault (`functions_url`, `cron_secret`). Bez nich zadanie nic nie robi, więc migracja jest bezpieczna w każdym środowisku. Funkcje mają `verify_jwt = false` i same sprawdzają JWT użytkownika, `x-cron-secret`, sekret Workera albo token kanału Google.
 
 **Wnioski techniczne:**
-- Lokalny Edge Runtime (1.77.8, zgodny z Deno 2.1.4) widzi całe repozytorium, więc `../../../packages/core/src/*.ts` importuje się bez kopiowania. `zod` wymaga mapy importów (`supabase/functions/deno.json`, wspólna dla funkcji przez `import_map` w `config.toml`). Czy `functions deploy` zabiera pliki spoza `supabase/` — sprawdzić przy pierwszym wdrożeniu.
+- Lokalny Edge Runtime (1.77.8, zgodny z Deno 2.1.4) widzi całe repozytorium, więc `../../../packages/core/src/*.ts` importuje się bez kopiowania. `zod` wymaga mapy importów (`supabase/functions/deno.json`, wspólna dla funkcji przez `import_map` w `config.toml`). `functions deploy` dołącza je do bundla (sprawdzone w chmurze).
 - `jsr:@negrel/webpush` 0.5.0 działa w Edge Runtime (wyjście awaryjne `npm:web-push` niepotrzebne). Klucze VAPID w formacie JWK z WebCrypto (`setup.ts`) importują się bez biblioteki.
 - `deno check` (Deno 2.9.6) odrzucił `@supabase/supabase-js` 2.119.1 opublikowany < 24 h wcześniej (domyślny minimalny wiek zależności), więc funkcje mają przypięte 2.118.0. `deno.lock` z Deno 2.9 nie jest zapisywany (`--no-lock`), bo runtime 2.1 może nie czytać nowszego formatu.
+- **Nowy projekt w chmurze nie nadaje ról API do tabel z migracji** (lokalny stack nadaje, `auto_expose_new_tables`): funkcje dostały „permission denied for table calendar_accounts” mimo `service_role`. Poprawka: jawne granty w `20261118150000_poc6_grants.sql`. **Każda nowa tabela potrzebuje jawnego `grant` dla `service_role`** (i `authenticated`, jeśli klient ma czytać wprost) — dotyczy też MVP-1; warto ustawić `auto_expose_new_tables = false` lokalnie, żeby błąd wychodził w testach.
+- CLI 2.122: `import_map` w `[functions.*]` jest przestarzałe — `supabase/functions/deno.json` jest wykrywany sam (lokalnie i przy wdrożeniu).
 - Uprawnienia kolumn (sekrety, `sync_state`) sprawiają, że `select('*')` z klienta kończy się błędem. Klient musi wymieniać kolumny — do pamiętania w Etapie 5.
 - Chrome: odmowa powiadomień zapisana dla `localhost` blokuje też rejestrację service workera (Chrome nie pobiera `sw.js`) — strona próbna pokazuje stan zgody i pełny błąd. Do pomocy w ustawieniach (MVP-4).
 - Docker Desktop na Windows: fałszywe usługi na `0.0.0.0:54590` są osiągalne z kontenera funkcji jako `host.docker.internal`, a z bazy funkcje widać jako `supabase_kong_taskplanner:8000`.
@@ -54,7 +58,6 @@ dziennych (11 500 wystąpień, 95 KiB) w **110–150 ms** w Node, przy limicie C
 **Niesprawdzone / czeka na użytkownika:**
 - Prawdziwe Google: ekran „unverified app” w stanie *In production*, opóźnienie powiadomień `watch` do funkcji w chmurze, `nextSyncToken` przy pierwszym zapytaniu z `timeMin`/`timeMax`, opóźnienie tajnego adresu iCal po zmianie w Google.
 - Cloudflare: czas Email Routing → Worker → funkcja, nagłówki `Authentication-Results` dodawane przez Cloudflare (od tego zależy reguła DMARC), limit CPU Workera na Free.
-- `pg_cron`/`pg_net` na planie Free i 2 aktywne projekty (D10).
 - Załączniki z maila (Etap 10), wybór kalendarzy w UI i ekran „Połączone kalendarze” (Etap 5), strefa z ustawień profilu zamiast `inbound_addresses.time_zone` (MVP-1).
 
 ## PoC-3 — Cykliczność i nawyki (18.11.2026)
