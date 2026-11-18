@@ -7,6 +7,19 @@ import type { LocalDate, LocalTime } from './schemas/primitives.ts';
 const toDate = (date: LocalDate) => new Date(`${date}T12:00:00Z`);
 const fromDate = (d: Date): LocalDate => d.toISOString().slice(0, 10);
 
+/**
+ * Dzień lokalny chwili `instant` w strefie `timeZone` (domyślnie urządzenia): „Dziś” i dzień
+ * ukończenia (`completed_at timestamptz`) liczone według zegara ściennego (SPECYFIKACJA §7.1).
+ */
+export function localDateAt(instant: Date | string, timeZone?: string): LocalDate {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(instant));
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/** Pierwszy dzień tygodnia zawierającego `date`; `firstDay` jak w ISO (1 = poniedziałek, 7 = niedziela). */
+export const weekStart = (date: LocalDate, firstDay = 1): LocalDate => addDays(date, -((isoWeekday(date) - firstDay + 7) % 7));
+
 export function addDays(date: LocalDate, days: number): LocalDate {
   const d = toDate(date);
   d.setUTCDate(d.getUTCDate() + days);

@@ -435,6 +435,13 @@ Scenariusze na lokalnym Supabase z trzema klientami (2 × Node, 1 × przeglądar
 ### 7.1. Widoki
 - Funkcje czyste na tablicach wierszy (`selectToday`, `selectUpcoming`, `groupTasks`, `applyFilter`, `buildTree`); `packages/sync` dostarcza wiersze kandydatów zapytaniem z indeksem, `core` stosuje reguły (wirtualne wystąpienia, kolejność, grupowanie). Te same funkcje liczą liczniki w pasku bocznym, widżety i przegląd.
 - „Dziś” liczone według strefy urządzenia (dzień zmienia się o północy lokalnej; po północy widok odświeża się sam).
+- Zrobione w `core/views.ts` (18.11.2026): `selectToday`, `selectUpcoming`, `selectInbox`, `FilterQuery` + `applyFilter`/`matchesFilter`, `sortTasks`, `groupTasks`, `buildTree`/`flattenTree`/`progress`, `withCompleted`; wejście = `ViewTask` (camelCase, z `tagIds`). Ustalenia:
+  - w dniu najpierw zadania z godziną (według godziny), potem bez godziny (kolejność ręczna); zaległe od najstarszego terminu, potem priorytet,
+  - „Nadchodzące” zaczyna się od dziś (zaległe tylko w „Dziś”); wirtualne wystąpienia serii od dnia po późniejszej z dat: bieżący termin, dziś — zgodnie z `nextDue`; seria „po ukończeniu” nie ma wirtualnych wystąpień; nawyki są tylko w sekcji „Nawyki na dziś”,
+  - dzień ukończenia = data lokalna `completed_at` w strefie z ustawień (`localDateAt`),
+  - postęp rodzica nie liczy anulowanych podzadań; podzadanie bez rodzica na wejściu jest korzeniem,
+  - filtr zapisany ma daty względne (`{ offsetDays: 0 }` = dzień oglądania), więc „termin ≤ dziś” działa także jutro.
+- `occurrences` z `from` przeskakuje do okresu zawierającego `from` (bez `COUNT`): seria codzienna sprzed 6 lat — 14 dni w < 0,1 ms zamiast ~7 ms.
 
 ### 7.2. Cykliczność (`recurrence.ts`)
 ```ts

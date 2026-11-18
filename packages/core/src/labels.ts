@@ -29,3 +29,16 @@ export const PROJECT_STATUS: Record<ProjectStatus, string> = {
   on_hold: 'Wstrzymany',
   done: 'Zakończony',
 };
+
+/** Nazwy sekcji widoków (`views.ts`) i grup bez wartości. */
+export const VIEW_SECTION = {
+  overdue: 'Zaległe',
+  today: 'Dziś',
+  ongoing: 'Trwające',
+  habits: 'Nawyki na dziś',
+  done: 'Ukończone',
+  later: 'Później',
+  noDate: 'Bez terminu',
+  noTag: 'Bez tagu',
+  noList: 'Bez listy',
+} as const;

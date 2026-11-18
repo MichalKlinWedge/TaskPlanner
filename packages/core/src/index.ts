@@ -8,3 +8,4 @@ export * from './quick-add.ts';
 export * from './recurrence.ts';
 export * from './schemas/primitives.ts';
 export * from './sort-key.ts';
+export * from './views.ts';
