@@ -1,5 +1,27 @@
 # Wyniki PoC
 
+## PoC-5 — Widoki webowe na lokalnych danych (18.11.2026)
+
+**Werdykt: GO z warunkami.** Biblioteki: **FullCalendar 6.1.22** (MIT), **dnd-kit** (core 6.3, sortable 10), **SVAR React Gantt 2.8.3** (MIT, darmowa wersja wystarcza — własnego komponentu SVG nie budowałem), **TipTap 3.34 + @tiptap/markdown**. Strona prób: `/dev/views`. Dane: `npm run seed:dev -- --load` (5 746 operacji przez `push_changes` w 3,4 s, 0 odrzuceń) → 2 017 zadań w lokalnej bazie przeglądarki (OPFS).
+
+Pomiary w panelu przeglądarki aplikacji Claude (Chromium); w spoczynku panel daje średnio **20,1 ms na klatkę**, więc to jest punkt odniesienia, a nie 16,7 ms. W schowanym panelu `requestAnimationFrame` nie działa wcale — pomiary tylko przy widocznym panelu.
+
+| Kryterium | Kalendarz | Kanban | Oś czasu | Markdown |
+|---|---|---|---|---|
+| Działanie | ✅ tydzień/dzień/miesiąc, „cały dzień”, przeciąganie z panelu bocznego, zmiana długości; zapis do lokalnej bazy i na serwer sprawdzony | ✅ zmiana kolumny (status) i kolejności, klawiatura (KeyboardSensor) | ✅ przesuwanie, rozciąganie krawędzi (1 → 3 dni), zależności klikiem w uchwyty, czerwone naruszenie; zapis dat na serwer sprawdzony | ✅ |
+| Przeciąganie | ✅ **60 kl./s**, 0 zgubionych z 90 | ✅ w ruchu 16–17 ms; ⚠️ **start przeciągania 150–184 ms** (jedna klatka: dnd-kit mierzy ~400 kart), upuszczenie 61 ms | ✅ śr. 19,1 ms (jak spoczynek), pojedyncze klatki 33–50 ms | — |
+| Przełączenie widoku < 150 ms | ✅ 67–71 ms | ❌ 1 040 ms przy 1 800 kartach → ✅ **114–122 ms** przy 100 kartach na kolumnę („pokaż więcej”) | ⚠️ **165–190 ms** (pierwsze 533 ms z ładowaniem biblioteki) | ✅ 91 ms |
+| Zapis i odczyt bez strat | — | — | — | ✅ **96/100** bez zmian, **100/100** stabilne, 0 utraconej treści |
+
+**Warunki na MVP / Etap 6:**
+- **Kanban:** nie rysować wszystkich kart naraz — porcje (jak w PoC) albo wirtualizacja; tylko widoczne karty jako `useSortable`. Pierwsza klatka przeciągania do zmierzenia ponownie po tej zmianie.
+- **Kolejność kart przy kanbanie wielu list:** `sort_key` jest per lista/rodzic, więc na tablicy z kilku list klucze nie są uporządkowane między sobą (`keyBetween` rzuca wyjątek — w PoC obejście „za poprzednikiem”). Do decyzji w MVP-4: osobny klucz kolejności tablicy (`board_sort_key`) albo kanban zawsze w obrębie jednej listy.
+- **Oś czasu:** trzymać widok zamontowany po pierwszym otwarciu (albo przedładować kod), żeby zejść poniżej 150 ms; polskie napisy z `@svar-ui/gantt-locales`; **SVAR przyjmuje cykle zależności** (A→B i B→A) — blokada w `core/dependencies.ts`; zależności w PoC tylko w pamięci, tabela `task_dependencies` w Etapie 6.
+- **Markdown:** `descriptionMarkdown` (`apps/web/src/lib/editor.ts`) zapisuje goły adres URL goło — TipTap pisze `[url](url)`, a marki renderują się z zastępnikiem zamiast tekstu, więc poprawka jest na gotowym tekście. Pozostałe 4 różnice: dwie listy oddzielone pustą linią łączą się w jedną — w CommonMark to i tak jedna lista.
+- **Pierwsza synchronizacja w przeglądarce:** 2 017 zadań pobrane i pierwsze zapytanie gotowe po ~4,2 s — stronicowanie migawki i wskaźnik postępu w MVP-1.
+
+**Uwagi do testów E2E:** SVAR reaguje na zdarzenia `pointer*` (same `mouse*` nie ruszają paska), zależności tworzy kliknięcie w uchwyt końca, potem początku; dnd-kit — `pointer*` z odległością aktywacji 4 px; FullCalendar — `mouse*`.
+
 ## PoC-3 — Cykliczność i nawyki (18.11.2026)
 
 **Werdykt: GO, własny podzbiór RRULE** (bez rrule.js w produkcie). rrule.js zostaje tylko jako wyrocznia w testach (`devDependencies` `packages/core`).

@@ -77,6 +77,8 @@ Cel: przed budową produktu sprawdzić rzeczy, które mogą zmienić architektur
   - Gantt: SVAR React Gantt kontra własny SVG — przesuwanie, rozciąganie krawędzi, tworzenie zależności przeciągnięciem, czerwone naruszenia,
   - TipTap + `@tiptap/markdown`: 100 opisów (z fixtures) wczytanych i zapisanych bez zmian w Markdown.
 
+**Stan (18.11.2026):** zrobione, werdykt **GO z warunkami** — FullCalendar, dnd-kit, SVAR React Gantt (bez własnego SVG), TipTap + Markdown (96/100 bez zmian, 0 strat); kalendarz 60 kl./s; kanban wymaga porcji/wirtualizacji (1 040 ms → 114 ms) i ma długą pierwszą klatkę przeciągania; oś czasu 165–190 ms przy przełączaniu. Szczegóły i warunki: `docs/POC_WYNIKI.md`.
+
 **Go:** przeciąganie płynne (60 kl./s), przełączenie widoku < 150 ms, Markdown „tam i z powrotem” bez strat. Wybór biblioteki Gantta zapisany w `POC_WYNIKI.md`. **No-go:** własny komponent dla widoku, który nie spełnia kryterium.
 
 ### PoC-6 — Integracje serwerowe (≈ 1–2 dni)

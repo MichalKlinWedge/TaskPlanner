@@ -1,11 +1,11 @@
 "use client";
 
 import { inboxId, uuidv7 } from "@taskplanner/core";
-import { connectTabs, supabaseRemote, SyncEngine, type TabStore } from "@taskplanner/sync";
-import { openWasmDb } from "@taskplanner/sync/wasm";
+import type { TabStore } from "@taskplanner/sync";
 import type { Session } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { closeStore, storeFor, useStoreStatus } from "@/lib/local-store";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 interface TaskRow extends Record<string, string | number | null> {
@@ -14,47 +14,15 @@ interface TaskRow extends Record<string, string | number | null> {
   status: string;
 }
 
-let current: { userId: string; store: TabStore } | null = null;
-
-function tabsFor(userId: string, setStorage: (value: string) => void, setError: (value: string) => void): TabStore {
-  if (current?.userId === userId) return current.store;
-  closeTabs();
-  const supabase = supabaseBrowser();
-  const store = connectTabs({
-    createEngine: async () => {
-      const worker = new Worker(new URL("../lib/db.worker.ts", import.meta.url), { type: "module" });
-      const db = await openWasmDb(worker);
-      setStorage(db.persistent ? "OPFS (trwała)" : `pamięć (${db.reason ?? "brak OPFS"})`);
-      const engine = await SyncEngine.open({
-        db,
-        remote: supabaseRemote(supabase),
-        userId,
-        onError: (e) => setError(String(e)),
-        onRejected: (ops) => setError(`Odrzucone: ${ops.map((o) => o.code).join(", ")}`),
-      });
-      engine.start();
-      await engine.sync().catch((e) => setError(String(e)));
-      return engine;
-    },
-  });
-  current = { userId, store };
-  return store;
-}
-
-function closeTabs() {
-  current?.store.close();
-  current = null;
-}
-
 /** PoC-1: lokalna baza w przeglądarce, lider kart i synchronizacja — strona do ręcznych prób. */
 export function SyncLab() {
   const [session, setSession] = useState<Session | null>(null);
   const [leader, setLeader] = useState(false);
-  const [storage, setStorage] = useState<string>("—");
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [workspace, setWorkspace] = useState<string | null>(null);
   const [pending, setPending] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const { storage, error: storeError } = useStoreStatus();
 
   useEffect(() => {
     const supabase = supabaseBrowser();
@@ -66,7 +34,7 @@ export function SyncLab() {
   // Jedna koordynacja kart na zalogowanego użytkownika i stronę (podwójne efekty Strict Mode jej
   // nie zamykają); zamykana przy wylogowaniu, blokadę lidera zwalnia też zamknięcie karty.
   const userId = session?.user.id;
-  const store = useMemo<TabStore | null>(() => (userId ? tabsFor(userId, setStorage, setError) : null), [userId]);
+  const store = useMemo<TabStore | null>(() => (userId ? storeFor(userId) : null), [userId]);
 
   useEffect(() => (store ? store.onRole(setLeader) : undefined), [store]);
 
@@ -116,7 +84,7 @@ export function SyncLab() {
         <dt>Użytkownik</dt>
         <dd>{session.user.email}</dd>
       </dl>
-      {error && <p className="text-red-600">{error}</p>}
+      {(error ?? storeError) && <p className="text-red-600">{error ?? storeError}</p>}
       <form
         className="flex gap-2"
         onSubmit={(event) => {
@@ -147,7 +115,7 @@ export function SyncLab() {
         type="button"
         className="self-start text-xs underline"
         onClick={() => {
-          closeTabs();
+          closeStore();
           void supabaseBrowser().auth.signOut();
         }}
       >
@@ -157,7 +125,7 @@ export function SyncLab() {
   );
 }
 
-function Login() {
+export function Login() {
   const [error, setError] = useState<string | null>(null);
   return (
     <form
