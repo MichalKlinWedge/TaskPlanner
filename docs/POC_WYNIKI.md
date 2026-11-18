@@ -1,5 +1,32 @@
 # Wyniki PoC
 
+## PoC-2 — Parser szybkiego dodawania (18.11.2026)
+
+**Werdykt: GO.** Gramatyka z SPECYFIKACJA §4 w całości, bez zawężania.
+
+| Kryterium | Wynik |
+|---|---|
+| ≥ 95 % przypadków korpusu zgodnych w całości | ✅ **100 %** (96 przypadków `fixtures/quick-add.jsonl`) |
+| 0 przypadków, w których z tytułu znika słowo (pułapki) | ✅ 0 z 19 pułapek |
+| < 5 ms na wpis | ✅ **0,012 ms** (Node) |
+| Podświetlanie na żywo i cofanie rozpoznania | ✅ `/dev/quick-add`, sprawdzone w przeglądarce |
+
+**Co powstało:** `packages/core/src/quick-add.ts` (`parseQuickAdd`, `suppressToken`, `normalizeWord`), `dates.ts` (daty pływające: `addDays`, `addMonths`, `isoWeekday`, `lastDayOfMonth`), test korpusu `__tests__/quick-add.test.ts`, strona prób `apps/web/src/app/dev/quick-add`.
+
+**Ustalenia gramatyki (dopisać do §4 w v0.2):**
+- Seria z godziną zaczyna się od pierwszego wystąpienia, którego godzina jeszcze nie minęła („Trening codziennie o 7 rano” o 12:00 → jutro). Poprawiony przypadek korpusu, który przeczył przypadkowi „w dni robocze o 9:30”.
+- `o N` przed słowem w miejscowniku liczby mnogiej (`-ach`, `-ych`, `-ich`) to nie godzina („Ankieta o 15 pytaniach”).
+- Data `D.M` wymaga dwucyfrowego miesiąca albo roku: „5.01” i „2.3.2027” są datami, „wersja 2.3” nie.
+- Pełna nazwa dnia tylko z „w/we” albo „w przyszły/przyszłą”; bez przyimka rozpoznawane są tylko skróty (`pon`, `wt`, `śr`, `czw`, `pt`, `sob`, `nd`).
+- Dodane formy: „do końca tygodnia/miesiąca”, „na koniec …”, „ostatni piątek miesiąca” (`BYDAY=-1FR`), „co 3 miesiące” (`INTERVAL`), jednoznaczny prefiks nazwy listy (`#remont` → „Remont kuchni”).
+- „co miesiąc” bez daty → dzień miesiąca z dzisiejszej daty (`BYMONTHDAY=18`), „co tydzień” bez dnia → dzisiejszy dzień tygodnia.
+- Przyimek („w”, „we”, „o”, „na”) i myślnik na końcu albo początku tytułu są usuwane.
+
+**Uwagi:**
+- Korpus pisałem sam (przykłady + pułapki), więc 100 % mierzy zgodność z ustaloną gramatyką, a nie trafność na prawdziwych wpisach. Prawdziwy sprawdzian: zadania z obecnego narzędzia użytkownika (D13) dopisane do korpusu przed MVP-2.
+- Cofnięcie rozpoznania wstawia `\` w tekst pola (widać to w polu). W MVP-2 cofnięte zakresy trzymać w stanie komponentu, a nie w tekście.
+- Chip cyklu pokazuje surowe RRULE — opis po polsku (`describeRecurrence`) to PoC-3.
+
 ## PoC-1 — Synchronizacja local-first w obie strony (18.11.2026)
 
 **Werdykt: GO.** Decyzja D2 (web local-first) potwierdzona. Do sprawdzenia na telefonie po pierwszym dev buildzie (MVP-3): `expo-sqlite` w działaniu i synchronizacja w tle.

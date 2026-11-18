@@ -52,4 +52,4 @@ Mobile: always `npx expo install <pkg>` inside `apps/mobile`, then `npx expo-doc
 
 ## Status
 
-Etap 0 done. **PoC-1 (sync) done, GO** — results and deviations from §5 in `docs/POC_WYNIKI.md`; not yet verified on a real phone. Fixtures `fixtures/quick-add.jsonl` (+ `quick-add.context.json`, now = Wed 2026-11-18 12:00) and `fixtures/recurrence.json` are the acceptance corpora for PoC-2 and PoC-3. Next: PoC-2 (quick-add parser).
+Etap 0 done. **PoC-1 (sync) done, GO** — results and deviations from §5 in `docs/POC_WYNIKI.md`; not yet verified on a real phone. **PoC-2 (quick-add parser) done, GO** — `packages/core/src/quick-add.ts`; grammar clarifications in `docs/POC_WYNIKI.md`. `fixtures/quick-add.jsonl` (+ `quick-add.context.json`, now = Wed 2026-11-18 12:00) is a regression corpus: a parser change must keep it at 100 %; add a case for every new form or trap. `fixtures/recurrence.json` is the acceptance corpus for PoC-3 (next).

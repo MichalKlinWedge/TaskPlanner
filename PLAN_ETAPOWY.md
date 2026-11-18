@@ -49,6 +49,8 @@ Cel: przed budową produktu sprawdzić rzeczy, które mogą zmienić architektur
 - `core/quick-add.ts` według §4: daty, godziny, zakresy, czas trwania, priorytet, `#`/`@`, cykliczność, przypomnienia, literały, zakresy znaków (`tokens`).
 - Test na `fixtures/quick-add.jsonl`; prosty podgląd na webie (pole tekstowe + chipy), żeby ocenić podświetlanie na żywo.
 
+**Stan (18.11.2026):** zrobione, werdykt **GO** — 100 % z 96 przypadków, 0 błędów w pułapkach, 0,012 ms na wpis; podgląd `/dev/quick-add`. Szczegóły: `docs/POC_WYNIKI.md`.
+
 **Go:** ≥ 95 % przypadków zgodnych w całości, **0** przypadków, w których z tytułu zniknęło słowo, które do niego należy (zestaw pułapek), < 5 ms na wpis. **No-go:** zawężenie gramatyki (tylko formy z `!`, `#`, `@`, `^`, `~` + podstawowe daty) i rozszerzanie po MVP.
 
 ### PoC-3 — Cykliczność i nawyki (≈ 1–2 dni)
