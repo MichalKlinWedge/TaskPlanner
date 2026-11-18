@@ -388,6 +388,21 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Edge Functions PoC-6 (`supabase/functions`). Każda sprawdza wywołującego sama: JWT użytkownika
+# (`auth.getUser`), `x-cron-secret` (pg_cron), sekret Email Workera albo token kanału Google — webhooki
+# z Google i Cloudflare nie mają JWT Supabase. Wspólna mapa importów: `supabase/functions/deno.json`.
+[functions.calendar-sync]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+[functions.inbound-email]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
+[functions.reminders-push]
+verify_jwt = false
+import_map = "./functions/deno.json"
+
 [analytics]
 enabled = true
 port = 54527

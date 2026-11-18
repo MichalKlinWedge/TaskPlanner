@@ -85,6 +85,8 @@ Cel: przed budową produktu sprawdzić rzeczy, które mogą zmienić architektur
 - Cloudflare Email Routing + Email Worker → `inbound-email` → zadanie w Inbox (z tokenem i listą nadawców).
 - Web Push: biblioteka VAPID w Deno, wysyłka z `pg_cron` co minutę do przeglądarki.
 
+**Stan (18.11.2026):** zrobione lokalnie, werdykt **GO lokalnie** — `calendar-sync`, `inbound-email`, `reminders-push`, Email Worker; 26 testów integracyjnych na fałszywym Google/ICS/push, 32 pgTAP; watch → `calendar_events` 63 ms, ICS przez `pg_cron` 290 ms, mail → zadanie < 0,4 s, push z `pg_cron` ≤ 60 s. Pomiary na prawdziwym Google, Cloudflare i Chrome czekają na konta (`docs/POC6_KONFIGURACJA.md`). Szczegóły: `docs/POC_WYNIKI.md`.
+
 **Go:** zmiana wydarzenia w Google widoczna < 1 min (watch) albo < 15 min (ICS); mail → zadanie < 1 min; push dociera do zamkniętej karty (przeglądarka uruchomiona). **No-go:** Google tylko przez ICS (odczyt) do czasu decyzji; e-mail → v1.x.
 
 ### Bramka decyzyjna po PoC

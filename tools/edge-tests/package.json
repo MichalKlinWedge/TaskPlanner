@@ -1,0 +1,25 @@
+{
+  "name": "@taskplanner/edge-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "typecheck:deno": "cd ../../supabase/functions && npx --yes deno@2.9.6 check --no-lock --config deno.json calendar-sync/index.ts inbound-email/index.ts reminders-push/index.ts",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "setup": "node src/setup.ts",
+    "serve": "node src/setup.ts && cd ../.. && npx --yes supabase@2.122.0 functions serve --env-file supabase/functions/.env",
+    "serve:test": "node src/setup.ts && cd ../.. && npx --yes supabase@2.122.0 functions serve --env-file supabase/functions/.env.test",
+    "push-page": "node src/push-page.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "@taskplanner/core": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

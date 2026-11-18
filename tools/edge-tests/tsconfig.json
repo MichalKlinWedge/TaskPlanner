@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"]
+  },
+  "include": [
+    "src/**/*.ts",
+    "../../supabase/functions/_shared/calendar.ts",
+    "../../supabase/functions/_shared/calendar-sync.ts",
+    "../../supabase/functions/_shared/email.ts",
+    "../../supabase/functions/_shared/google.ts",
+    "../../supabase/functions/_shared/ics.ts",
+    "../../supabase/functions/_shared/time.ts"
+  ]
+}

@@ -10,7 +10,8 @@ Stan na **18.11.2026** (oficjalna dokumentacja i cenniki). Przed wprowadzeniem n
 | Baza / Storage / MAU | 500 MB / 1 GB / 50 000 | W | supabase.com/pricing |
 | Edge Functions | 500 000 wywołań; limity funkcji: 150 s wall clock, 2 s CPU, 256 MB | W | supabase.com/docs/guides/functions/limits |
 | Kopie zapasowe | brak (bez PITR) → własny `pg_dump` / eksport | W | supabase.com/docs/guides/platform/backups |
-| `pg_cron`, `pg_net` na Free | oficjalnie bez ograniczeń planu, ale bez wprost potwierdzenia → **sprawdzić w PoC-6** | Ś | — |
+| `pg_cron`, `pg_net` na Free | oficjalnie bez ograniczeń planu, ale bez wprost potwierdzenia; **lokalnie działa** (pg_cron 1.6.4, pg_net 0.20.4, PoC-6) — w chmurze sprawdzić przy pierwszym wdrożeniu | Ś | — |
+| Edge Runtime lokalnie | 1.77.8 (zgodny z Deno 2.1.4); importy spoza `supabase/functions` (np. `packages/core`) działają, `npm:` i `jsr:` przez mapę importów | W | PoC-6 |
 | Realtime | 200 jednoczesnych połączeń, 2 mln wiadomości/mies., 100 wiad./s | W | supabase.com/docs/guides/realtime/limits |
 
 **Wniosek:** sprawdzić, ile aktywnych projektów zajmuje ExpeditionPlan — przy 2 aktywnych TaskPlanner wymaga wstrzymania jednego albo planu Pro (D10).
@@ -59,7 +60,7 @@ Stan na **18.11.2026** (oficjalna dokumentacja i cenniki). Przed wprowadzeniem n
 | Biblioteka | `jsr:@negrel/webpush` 0.5.0 (VAPID, Deno/Workers); alternatywa `npm:web-push` | Ś | jsr.io/@negrel/webpush |
 | Supabase | brak oficjalnego przykładu (dokumentują tylko FCM/Expo); używane w publicznych repozytoriach | Ś | — |
 
-**Wniosek:** test w PoC-6, wyjście awaryjne — `npm:web-push`.
+**Wniosek:** PoC-6: `jsr:@negrel/webpush` 0.5.0 działa w lokalnym Edge Runtime (podpis VAPID ES256 i treść aes128gcm sprawdzone w testach), `npm:web-push` niepotrzebny. Dostarczenie do prawdziwego Chrome (FCM) — do potwierdzenia.
 
 ## Android — dokładne alarmy
 | Warunek | Wartość | Pewność | Źródło |
