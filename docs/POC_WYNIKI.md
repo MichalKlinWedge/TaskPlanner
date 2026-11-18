@@ -71,7 +71,7 @@ Pomiary w panelu przeglądarki aplikacji Claude (Chromium); w spoczynku panel da
 - Przyimek („w”, „we”, „o”, „na”) i myślnik na końcu albo początku tytułu są usuwane.
 
 **Uwagi:**
-- Korpus pisałem sam (przykłady + pułapki), więc 100 % mierzy zgodność z ustaloną gramatyką, a nie trafność na prawdziwych wpisach. Prawdziwy sprawdzian: zadania z obecnego narzędzia użytkownika (D13) dopisane do korpusu przed MVP-2.
+- Korpus pisałem sam (przykłady + pułapki), więc 100 % mierzy zgodność z ustaloną gramatyką, a nie trafność na prawdziwych wpisach. Prawdziwy sprawdzian: prawdziwe zadania wpisane przez użytkownika (D13: brak narzędzia do importu) dopisane do korpusu przed MVP-2.
 - Cofnięcie rozpoznania wstawia `\` w tekst pola (widać to w polu). W MVP-2 cofnięte zakresy trzymać w stanie komponentu, a nie w tekście.
 - Chip cyklu pokazuje surowe RRULE — opis po polsku (`describeRecurrence`) to PoC-3.
 

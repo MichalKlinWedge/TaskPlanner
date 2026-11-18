@@ -64,7 +64,8 @@ Status: projekt do zatwierdzenia. Decyzje otwarte są w §12 (z rekomendacją; b
 | Wyszukiwarka i paleta poleceń | MUST | MVP-2 | M17 |
 | Kalendarze zewnętrzne — odczyt | MUST | Etap 5 | M18 |
 | Kalendarze zewnętrzne — zapis (dwukierunkowo) | SHOULD | Etap 12 | M18 |
-| E-mail → zadanie, link → zadanie | SHOULD | Etap 10 | M19 |
+| Link → zadanie | SHOULD | Etap 10 | M19 |
+| E-mail → zadanie | COULD | v1.x (D9) | M19 |
 | Offline (pełna funkcjonalność) | MUST | od MVP-1 | M20, §6 |
 | Widżety na telefonie | SHOULD | Etap 11 | M20 |
 | Widżety na pulpicie | COULD (PWA + skróty; natywny widżet poza v1.0, D11) | Etap 11 / v1.x | M20 |
@@ -96,7 +97,7 @@ Status: projekt do zatwierdzenia. Decyzje otwarte są w §12 (z rekomendacją; b
    Edge Functions (Deno, packages/core):
      reminders-push   → Web Push (VAPID)
      calendar-sync    ↔ Google Calendar API (watch + syncToken), ICS
-     inbound-email    ← Cloudflare Email Routing + Email Worker
+     inbound-email    ← Cloudflare Email Routing + Email Worker (v1.x, D9)
      link-preview     → pobranie tytułu strony (ochrona przed SSRF)
    Web hostowany na Vercel; APK przez EAS, aktualizacje JS przez OTA.
 ```
@@ -125,7 +126,7 @@ Zasada: **UI czyta i pisze wyłącznie lokalną bazę**. Sieć to sprawa `packag
 | Powiadomienia | telefon: `expo-notifications` (lokalne, offline); web: **Web Push (VAPID)** z Edge Function | przypomnienie bez sieci na telefonie | FCM dla telefonu: nie działa offline |
 | Widżety Android | `react-native-android-widget` (plugin Expo) — weryfikacja w PoC-4 | widżet w JSX, zadania w tle (headless JS) | natywny Kotlin: drugi język |
 | Udostępnianie do aplikacji | `expo-share-intent` (Android), Web Share Target (PWA), bookmarklet | link → zadanie | — |
-| Poczta przychodząca | **Cloudflare Email Routing + Email Worker** → Edge Function | darmowe, własna domena | Postmark/Mailgun inbound: płatne |
+| Poczta przychodząca (v1.x, D9) | **Cloudflare Email Routing + Email Worker** → Edge Function | darmowe, własna domena | Postmark/Mailgun inbound: płatne |
 | Testy | Vitest (pakiety, web), pgTAP (RLS, RPC), testy integracyjne `packages/sync` na lokalnym Supabase, Playwright (web), Maestro (Android) | jak w EP | — |
 | Hosting | Supabase, Vercel (web), EAS (APK + OTA), Cloudflare (poczta) | — | — |
 
@@ -144,7 +145,7 @@ supabase/
   migrations/        tabele, RLS, triggery (row_version, field_clock), RPC push/pull
   functions/         Edge Functions: reminders-push, calendar-sync, inbound-email, link-preview
   tests/             pgTAP: RLS, push_changes, pull_changes
-workers/email/       Cloudflare Email Worker (przekazanie maila do inbound-email)
+workers/email/       Cloudflare Email Worker (przekazanie maila do inbound-email; v1.x)
 tools/seed-dev/      dane deweloperskie (5 przestrzeni, 2 000 zadań)
 fixtures/            quick-add.jsonl (korpus parsera), recurrence.json, historie nawyków
 scripts/             sync-env.mjs
@@ -291,7 +292,7 @@ Widoki stałe w pasku bocznym [W+A]:
 - Tokeny OAuth tylko na serwerze (Supabase Vault), nigdy w przeglądarce ani w APK.
 
 ### M19. Przechwytywanie treści
-- **E-mail → Inbox** (Etap 10): adres `zadania+<token>@<domena>`; Cloudflare Email Routing → Email Worker (parsowanie MIME) → Edge Function `inbound-email` (sekret współdzielony). Zadanie: tytuł = temat bez „Fwd:/Re:/PD:/Odp:” (z parserem M13 — „Faktura za prąd jutro #dom !2” działa), opis = treść tekstowa (Markdown, przycięte stopki i cytaty), załączniki → Storage, `source = {kind:'email', from, messageId, receivedAt}`.
+- **E-mail → Inbox** (v1.x, D9): adres `zadania+<token>@<domena>`; Cloudflare Email Routing → Email Worker (parsowanie MIME) → Edge Function `inbound-email` (sekret współdzielony). Zadanie: tytuł = temat bez „Fwd:/Re:/PD:/Odp:” (z parserem M13 — „Faktura za prąd jutro #dom !2” działa), opis = treść tekstowa (Markdown, przycięte stopki i cytaty), załączniki → Storage, `source = {kind:'email', from, messageId, receivedAt}`.
   - Akceptowane tylko wiadomości z adresów z listy nadawców w ustawieniach + poprawny token; token można wygenerować na nowo. Odrzucone trafiają do dziennika `inbound_messages`.
 - **Link → zadanie**: [A] udostępnianie z dowolnej aplikacji (`expo-share-intent`) otwiera szybkie dodawanie z URL; [W] PWA Web Share Target (Chrome na Androidzie), bookmarklet i wklejenie samego URL w szybkie dodawanie. Tytuł strony z `link-preview` (gdy offline — URL jako tytuł, uzupełnienie po synchronizacji).
 - Zaznaczony tekst udostępniony do aplikacji → zadanie z tym tekstem w opisie.
@@ -542,10 +543,10 @@ Szacowany koszt v1.0: 0 zł miesięcznie (+ domena, jeśli trzeba kupić). Supab
 | D5 | Składnia szybkiego dodawania | **`#` = lista/projekt/przestrzeń, w razie braku — tag; `@` = zawsze tag**; `!1–!4` priorytet; `~` czas trwania; `^` przypomnienie |
 | D6 | Statusy kanbanu | **Stałe 5 statusów** w v1.0; własne kolumny statusów w v1.x |
 | D7 | Zakres telefonu | **Pełna edycja + kalendarz dnia/tygodnia**; oś czasu (Gantt) tylko na webie; kanban na telefonie uproszczony |
-| D8 | Kalendarz firmowy (spotkania) | **Pytanie:** Google Workspace czy Microsoft 365? Rekomendacja: odczyt przez ICS i kalendarz telefonu od Etapu 5 (działa dla obu); zapis dwukierunkowy najpierw dla dostawcy, którego używasz na co dzień |
-| D9 | Domena dla adresu e-mail | **Pytanie:** która domena (musi mieć DNS w Cloudflare)? Bez domeny: przekazywanie z Gmaila filtrem do skrzynki obsługiwanej przez Cloudflare albo przesunięcie M19-e-mail do v1.x |
-| D10 | Projekt Supabase | **Osobny projekt** (Free), nie schemat w projekcie ExpeditionPlan |
+| D8 | Kalendarz firmowy (spotkania) | **Google** (decyzja 2026-11-18): dwukierunkowa synchronizacja z Google Calendar; ICS i kalendarz telefonu jako odczyt dla pozostałych; Microsoft 365 dopiero w v1.x |
+| D9 | Domena dla adresu e-mail | **E-mail → Inbox przesunięte do v1.x** (decyzja 2026-11-18) — wymaga domeny z DNS w Cloudflare; do tego czasu przechwytywanie przez udostępnianie z telefonu i Web Share Target (M19) |
+| D10 | Projekt Supabase | **Osobny projekt na osobnym koncie** Supabase (Free, decyzja 2026-11-18) — limit 2 aktywnych projektów konta ExpeditionPlan nie dotyczy TaskPlanner |
 | D11 | Widżety pulpitu | **PWA + skróty** w v1.0; natywny widżet / zasobnik / globalny skrót przez Tauri w v1.x |
 | D12 | Integracje na serwerze | **Supabase Edge Functions + `pg_cron`** (nie trasy API Vercela) |
-| D13 | Import z obecnego narzędzia | **Pytanie:** z czego przenosisz zadania (Todoist, TickTick, Microsoft To Do, Google Tasks, nic)? Import CSV/JSON wybranego narzędzia jako narzędzie `tools/import` w Etapie 13 |
+| D13 | Import z obecnego narzędzia | **Brak** (decyzja 2026-11-18): start od zera, bez `tools/import`; zostaje eksport/import JSON własnych danych (Etap 13). Korpus parsera uzupełnią przykładowe zadania wpisane przez użytkownika |
 | D14 | Język i nazwa | UI po polsku, nazwa aplikacji „TaskPlanner”, pakiety `@taskplanner/*` |

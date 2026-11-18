@@ -12,17 +12,17 @@ Pierwszy realny użytek (zadania codzienne na webie): po **MVP-2**. Na telefonie
 
 ## Etap 0 — Przygotowanie (≈ 1–2 dni)
 
-- Potwierdzenie decyzji D1–D14 ze specyfikacji (brak uwag = rekomendacje), odpowiedzi na pytania D8, D9, D13.
+- Potwierdzenie decyzji D1–D14 ze specyfikacji (brak uwag = rekomendacje), odpowiedzi na pytania D8, D9, D13 (18.11.2026: D8 Google, D9 e-mail w v1.x, D10 osobne konto Supabase, D13 brak importu).
 - Repozytorium: `git init` w `D:\AI\PRIV\PRACA\Tasks`, remote `github.com/MichalKlinWedge/TaskPlanner`, `.gitattributes` i `.editorconfig` z EP (LF), `.gitignore`, `CLAUDE.md` (polecenia, zasady architektury z §0 i §2).
 - Szkielet monorepo skopiowany z EP bez kodu domeny: główny `package.json` (workspaces, skrypty `check`/`typecheck`/`lint`/`test`/`web`/`web:local`/`mobile`/`supabase`/`test:db`/`test:sync`/`seed:dev`), `tsconfig.base.json`, `scripts/sync-env.mjs`.
   - `apps/web`: Next.js 16, React 19, Tailwind 4, ESLint, `AGENTS.md`.
   - `apps/mobile`: Expo SDK 58, Expo Router, dev build, `eas.json` (`development` / `preview` / `production`), skrypt `ota`, `AGENTS.md`.
   - `packages/core`, `packages/sync`, `packages/db` (puste, z Vitest), `sort-key.ts` i `format.ts` przeniesione z EP.
   - `supabase/` (`config.toml`, przypięte CLI 2.122.0), `supabase/functions/` (pusta funkcja testowa).
-- Konta i klucze: nowy projekt Supabase, Vercel, projekt EAS, projekt Google Cloud (OAuth: logowanie, później Calendar), Cloudflare (domena — D9). Sekrety tylko w `.env.local` i sekretach usług.
+- Konta i klucze: nowy projekt Supabase, Vercel, projekt EAS, projekt Google Cloud (OAuth: logowanie, później Calendar), Cloudflare dopiero w v1.x (D9). Sekrety tylko w `.env.local` i sekretach usług.
 - `docs/USLUGI.md`: warunki i limity z §10 sprawdzone z datą.
 - Dane testowe:
-  - `fixtures/quick-add.jsonl` — ≥ 150 wpisów z oczekiwanym wynikiem, **spisanych z prawdziwych zadań użytkownika** (najlepiej eksport z obecnego narzędzia, D13) + pułapki,
+  - `fixtures/quick-add.jsonl` — ≥ 150 wpisów z oczekiwanym wynikiem, **spisanych z prawdziwych zadań użytkownika** (D13: brak narzędzia do eksportu — zadania wpisane przez użytkownika) + pułapki,
   - `fixtures/recurrence.json` — przypadki z §7.2 z oczekiwanymi datami,
   - `tools/seed-dev` — generator: 5 przestrzeni, 40 list/projektów, 2 000 zadań, 15 nawyków z historią 90 dni.
 
@@ -84,10 +84,10 @@ Cel: przed budową produktu sprawdzić rzeczy, które mogą zmienić architektur
 ### PoC-6 — Integracje serwerowe (≈ 1–2 dni)
 - Google OAuth z zakresem Calendar: stan aplikacji *In production* bez weryfikacji — czy token odświeżania żyje > 7 dni (sprawdzane w trakcie MVP); `events.list` z `syncToken`; kanał `watch` → Edge Function; zapis do `calendar_events`.
 - ICS: pobranie i parsowanie (Edge Function, `pg_cron` co 15 min).
-- Cloudflare Email Routing + Email Worker → `inbound-email` → zadanie w Inbox (z tokenem i listą nadawców).
+- ~~Cloudflare Email Routing + Email Worker → `inbound-email`~~ — przesunięte do v1.x (D9).
 - Web Push: biblioteka VAPID w Deno, wysyłka z `pg_cron` co minutę do przeglądarki.
 
-**Go:** zmiana wydarzenia w Google widoczna < 1 min (watch) albo < 15 min (ICS); mail → zadanie < 1 min; push dociera do zamkniętej karty (przeglądarka uruchomiona). **No-go:** Google tylko przez ICS (odczyt) do czasu decyzji; e-mail → v1.x.
+**Go:** zmiana wydarzenia w Google widoczna < 1 min (watch) albo < 15 min (ICS); push dociera do zamkniętej karty (przeglądarka uruchomiona). **No-go:** Google tylko przez ICS (odczyt) do czasu decyzji.
 
 ### Bramka decyzyjna po PoC
 Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, biblioteka Gantta, rrule.js), specyfikacja v0.2 z poprawkami.
@@ -172,10 +172,9 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 
 ### Etap 10 — Przechwytywanie i załączniki (≈ 4–5 dni)
 - Załączniki M5: Storage, kolejka plików offline, podgląd obrazów i PDF, aparat na telefonie.
-- E-mail → Inbox (Cloudflare Email Worker + `inbound-email`, parser w temacie, załączniki, token i nadawcy w ustawieniach, dziennik).
 - Link → zadanie: `expo-share-intent`, Web Share Target, bookmarklet, `link-preview` (z ochroną SSRF), wklejenie URL.
 
-**Kryterium odbioru:** mail przesłany z telefonu i z komputera staje się zadaniem z załącznikiem w Inbox < 1 min; link udostępniony z Chrome na Androidzie daje zadanie z tytułem strony (offline — po synchronizacji); obcy nadawca jest odrzucany.
+**Kryterium odbioru:** zdjęcie z aparatu dodane offline staje się załącznikiem zadania po synchronizacji; link udostępniony z Chrome na Androidzie daje zadanie z tytułem strony (offline — po synchronizacji).
 
 ### Etap 11 — Widżety i PWA (≈ 3–4 dni)
 - Widżety Android: „Dziś”, „Szybkie dodawanie”, „Nawyki”; odświeżanie po zmianach i co 30 min.
@@ -191,7 +190,7 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 ### Etap 13 — Stabilizacja i wydanie (≈ 4–6 dni)
 - Testy E2E: Playwright (szybkie dodawanie, kanban, kalendarz, oś czasu, paleta, offline), Maestro (Dziś, szybkie dodawanie, przypomnienie, widżet).
 - Wydajność na 10 000 zadań (§9), poprawki indeksów lokalnych i zapytań.
-- Kopie zapasowe: nocny `pg_dump` (GitHub Actions), eksport/import JSON w ustawieniach; import z obecnego narzędzia (D13) w `tools/import`.
+- Kopie zapasowe: nocny `pg_dump` (GitHub Actions), eksport/import JSON w ustawieniach (bez importu z innych narzędzi — D13).
 - Raportowanie błędów (do decyzji: Sentry albo własny dziennik w Supabase), APK `production`, dokumentacja w `CLAUDE.md` i `README.md`.
 
 **Kryterium odbioru:** dwa tygodnie codziennego używania na obu urządzeniach bez utraty danych; `npm run check`, `test:db`, `test:sync` i E2E zielone; odtworzenie bazy z kopii sprawdzone.
@@ -199,7 +198,8 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 ---
 
 ## v1.x — Później (COULD)
-- Microsoft 365 / Outlook (Graph API) dwukierunkowo (wcześniej, jeśli D8 = Microsoft).
+- Microsoft 365 / Outlook (Graph API) dwukierunkowo (D8 = Google, więc nie wcześniej).
+- E-mail → Inbox (M19: Cloudflare Email Routing + Email Worker + `inbound-email`, parser w temacie, załączniki, token i nadawcy, dziennik) — wymaga domeny z DNS w Cloudflare (D9).
 - Współdzielenie przestrzeni z innymi osobami (role `editor`/`viewer`, schemat już jest), przypisywanie zadań, komentarze.
 - AI przez `packages/ai` z EP: rozbijanie zadania na podzadania, AI jako uzupełnienie parsera, podsumowanie tygodnia, automatyczne ułożenie dnia w wolnych oknach.
 - Własne statusy i kolumny kanbanu, sekcje w projektach, limity WIP, tory (swimlanes).
