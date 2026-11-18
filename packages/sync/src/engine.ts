@@ -1,0 +1,284 @@
+/**
+ * Silnik synchronizacji local-first (SPECYFIKACJA §6). UI czyta i pisze tylko lokalną bazę;
+ * `mutate` zapisuje wiersz i wpis outboxu w jednej transakcji, `sync` wysyła outbox
+ * (`push_changes`) i pobiera przyrosty (`pull_changes`), Realtime jest tylko sygnałem do pobrania.
+ */
+import { HlcClock, uuidv7, type Hlc } from '@taskplanner/core';
+
+import type { LocalDb, SqlRow } from './local-db.ts';
+import { encodeRow, encodeValue, mergeClocks, mergeRemote, parseClock, type RemoteRow } from './merge.ts';
+import type { PullResult, PushResult, RejectedOp, Remote } from './remote.ts';
+import { localColumns, localSchema, SYNCED_TABLES, TABLES, writableFields, type SyncedTable } from './specs.ts';
+
+export interface SyncEngineOptions {
+  db: LocalDb;
+  remote: Remote;
+  /** Zalogowany użytkownik = jego zakres osobisty. */
+  userId: string;
+  /** Identyfikator urządzenia (węzeł HLC); bez niego — zapisany w bazie albo nowy. */
+  deviceId?: string;
+  now?: () => number;
+  onRejected?: (rejected: RejectedOp[]) => void;
+  onError?: (error: unknown) => void;
+  /** Wysyłka zaraz po zapisie (domyślnie tak; testy sterują ręcznie). */
+  autoSync?: boolean;
+}
+
+type Listener = () => void;
+
+const PUSH_BATCH = 200;
+
+export class SyncEngine {
+  readonly db: LocalDb;
+  readonly userId: string;
+  private readonly remote: Remote;
+  private readonly now: () => number;
+  private clock!: HlcClock;
+  private since: Record<string, number> = {};
+  private listeners = new Map<string, Set<Listener>>();
+  private running: Promise<void> | null = null;
+  private again = false;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private unsubscribe: (() => void) | null = null;
+  private readonly options: SyncEngineOptions;
+
+  private constructor(options: SyncEngineOptions) {
+    this.options = options;
+    this.db = options.db;
+    this.remote = options.remote;
+    this.userId = options.userId;
+    this.now = options.now ?? (() => Date.now());
+  }
+
+  static async open(options: SyncEngineOptions): Promise<SyncEngine> {
+    const engine = new SyncEngine(options);
+    await engine.init();
+    return engine;
+  }
+
+  get deviceId(): string {
+    return this.clock.node;
+  }
+
+  private async init() {
+    for (const statement of localSchema()) await this.db.run(statement);
+    const meta = Object.fromEntries((await this.db.all<{ key: string; value: string }>('select key, value from _meta')).map((r) => [r.key, r.value]));
+    const deviceId = this.options.deviceId ?? meta.device_id ?? uuidv7(this.now()).replace(/-/g, '').slice(-12);
+    if (meta.device_id !== deviceId) await this.setMeta(this.db, 'device_id', deviceId);
+    this.clock = new HlcClock(deviceId, this.now, meta.clock);
+    this.since = meta.since ? JSON.parse(meta.since) : {};
+  }
+
+  private setMeta(db: LocalDb, key: string, value: string) {
+    return db.run('insert into _meta (key, value) values (?, ?) on conflict (key) do update set value = excluded.value', [key, value]);
+  }
+
+  // ── Odczyt i powiadomienia ─────────────────────────────────────────────────────────────────
+
+  /** Zmiana danych w podanych tabelach (po zatwierdzeniu transakcji). */
+  watch(tables: readonly string[], listener: Listener): () => void {
+    for (const table of tables) {
+      if (!this.listeners.has(table)) this.listeners.set(table, new Set());
+      this.listeners.get(table)!.add(listener);
+    }
+    return () => tables.forEach((table) => this.listeners.get(table)?.delete(listener));
+  }
+
+  private notify(tables: Iterable<string>) {
+    const called = new Set<Listener>();
+    for (const table of tables) {
+      for (const listener of this.listeners.get(table) ?? []) {
+        if (!called.has(listener)) {
+          called.add(listener);
+          listener();
+        }
+      }
+    }
+  }
+
+  async get(table: SyncedTable, id: string): Promise<SqlRow | undefined> {
+    return (await this.db.all(`select * from ${table} where id = ?`, [id]))[0];
+  }
+
+  async pendingCount(): Promise<number> {
+    return Number((await this.db.all<{ n: number }>("select count(*) as n from _outbox where status = 'pending'"))[0]?.n ?? 0);
+  }
+
+  async rejectedOps(): Promise<SqlRow[]> {
+    return this.db.all("select * from _outbox where status = 'rejected' order by seq");
+  }
+
+  // ── Zapis lokalny ──────────────────────────────────────────────────────────────────────────
+
+  /** Wstaw albo zmień wiersz: tylko podane pola, z nowym HLC; wpis do outboxu w tej samej transakcji. */
+  async mutate(table: SyncedTable, id: string, patch: Record<string, unknown>): Promise<Hlc> {
+    const allowed = writableFields(table);
+    const fields = Object.keys(patch);
+    const unknown = fields.filter((f) => !allowed.includes(f));
+    if (unknown.length) throw new Error(`Pola spoza ${table}: ${unknown.join(', ')}`);
+    const hlc = await this.db.transaction(async (tx) => {
+      const stamp = this.clock.tick();
+      const current = (await tx.all(`select * from ${table} where id = ?`, [id]))[0];
+      const row: SqlRow = current ? { ...current } : Object.fromEntries(localColumns(table).map((c) => [c, null]));
+      row.id = id;
+      for (const field of fields) row[field] = encodeValue(table, field, patch[field]);
+      const clock = parseClock(current?.field_clock);
+      for (const field of fields) clock[field] = stamp;
+      row.field_clock = JSON.stringify(clock);
+      await this.deriveScope(tx, table, row);
+      await this.upsert(tx, table, row);
+      await tx.run('insert into _outbox (op_id, tbl, row_id, data, hlc) values (?, ?, ?, ?, ?)', [
+        uuidv7(this.now()),
+        table,
+        id,
+        JSON.stringify(patch),
+        stamp,
+      ]);
+      await this.setMeta(tx, 'clock', this.clock.last);
+      return stamp;
+    });
+    this.notify([table]);
+    if (this.options.autoSync !== false) this.requestSync();
+    return hlc;
+  }
+
+  /** Miękkie usunięcie (`deleted_at`). */
+  remove(table: SyncedTable, id: string): Promise<Hlc> {
+    return this.mutate(table, id, { deleted_at: new Date(this.now()).toISOString() });
+  }
+
+  /** Zakres wiersza liczony lokalnie jak w triggerach bazy (UI filtruje po przestrzeni przed synchronizacją). */
+  private async deriveScope(tx: LocalDb, table: SyncedTable, row: SqlRow) {
+    const rule = TABLES[table].scope;
+    if (rule === 'self') row.scope_id = row.id ?? null;
+    else if (table === 'tags') row.scope_id = row.scope_id ?? this.userId;
+    else if (table === 'tasks') {
+      if (row.parent_id) {
+        const parent = (await tx.all('select list_id from tasks where id = ?', [row.parent_id]))[0];
+        if (parent?.list_id) row.list_id = parent.list_id;
+      }
+      const list = (await tx.all('select scope_id from lists where id = ?', [row.list_id ?? null]))[0];
+      if (list?.scope_id) row.scope_id = list.scope_id;
+    } else if (rule === 'derived') {
+      const task = (await tx.all('select scope_id from tasks where id = ?', [row.task_id ?? null]))[0];
+      if (task?.scope_id) row.scope_id = task.scope_id;
+    }
+  }
+
+  private async upsert(tx: LocalDb, table: SyncedTable, row: SqlRow) {
+    const columns = localColumns(table);
+    await tx.run(
+      `insert into ${table} (${columns.join(', ')}) values (${columns.map(() => '?').join(', ')})
+       on conflict (id) do update set ${columns.filter((c) => c !== 'id').map((c) => `${c} = excluded.${c}`).join(', ')}`,
+      columns.map((c) => row[c] ?? null),
+    );
+  }
+
+  // ── Synchronizacja ─────────────────────────────────────────────────────────────────────────
+
+  /** Wysłanie outboxu i pobranie zmian; wywołania w trakcie trwającej synchronizacji łączą się w jedną następną. */
+  sync(): Promise<void> {
+    if (this.running) {
+      this.again = true;
+      return this.running;
+    }
+    this.running = (async () => {
+      try {
+        do {
+          this.again = false;
+          await this.push();
+          await this.pull();
+        } while (this.again);
+      } finally {
+        this.running = null;
+      }
+    })();
+    return this.running;
+  }
+
+  /** Synchronizacja „wkrótce” (łączy serię zapisów w jedną wysyłkę). */
+  requestSync(delayMs = 30) {
+    if (this.timer) return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.sync().catch((error) => this.options.onError?.(error));
+    }, delayMs);
+  }
+
+  /** Nasłuch Realtime: każdy sygnał i gotowość subskrypcji = pobranie przyrostowe. */
+  start() {
+    if (this.unsubscribe || !this.remote.subscribe) return;
+    this.unsubscribe = this.remote.subscribe(
+      () => this.requestSync(),
+      () => this.requestSync(0),
+    );
+  }
+
+  stop() {
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+  }
+
+  async push(): Promise<void> {
+    for (;;) {
+      const ops = await this.db.all<{ seq: number; op_id: string; tbl: string; row_id: string; data: string; hlc: string } & SqlRow>(
+        "select seq, op_id, tbl, row_id, data, hlc from _outbox where status = 'pending' order by seq limit ?",
+        [PUSH_BATCH],
+      );
+      if (!ops.length) return;
+      const result: PushResult = await this.remote.push(
+        ops.map((o) => ({ op: o.op_id, table: o.tbl as SyncedTable, id: o.row_id, set: JSON.parse(o.data), hlc: o.hlc })),
+      );
+      const rejected = new Map(result.rejected.map((r) => [r.op, r]));
+      const touched = new Set<string>();
+      await this.db.transaction(async (tx) => {
+        for (const op of ops) {
+          const reason = rejected.get(op.op_id);
+          if (reason) await tx.run("update _outbox set status = 'rejected', error = ? where seq = ?", [`${reason.code}: ${reason.message}`, op.seq]);
+          else await tx.run('delete from _outbox where seq = ?', [op.seq]);
+        }
+        // Wersja serwera nadpisuje lokalną (odrzucona albo obcięta zmiana nie może zostać „nowsza”).
+        for (const { table, id, row } of result.rows) {
+          touched.add(table);
+          if (row) await this.upsert(tx, table, encodeRow(table, row));
+          else await tx.run(`delete from ${table} where id = ?`, [id]);
+        }
+        this.clock.receive(result.serverHlc);
+        await this.setMeta(tx, 'clock', this.clock.last);
+      });
+      if (touched.size) this.notify(touched);
+      if (result.rejected.length) this.options.onRejected?.(result.rejected);
+    }
+  }
+
+  async pull(): Promise<void> {
+    const result: PullResult = await this.remote.pull(this.since);
+    const touched = new Set<string>();
+    await this.db.transaction(async (tx) => {
+      for (const table of SYNCED_TABLES) {
+        for (const remote of (result.tables[table] ?? []) as RemoteRow[]) {
+          const local = (await tx.all(`select * from ${table} where id = ?`, [remote.id as string]))[0];
+          const { row, localWon } = mergeRemote(table, local, remote);
+          if (localWon) await this.deriveScope(tx, table, row);
+          await this.upsert(tx, table, row);
+          touched.add(table);
+        }
+      }
+      // Zakres, do którego użytkownik stracił dostęp: jego wiersze znikają z urządzenia.
+      for (const scope of Object.keys(this.since)) {
+        if (!result.scopes[scope]) {
+          for (const table of SYNCED_TABLES) await tx.run(`delete from ${table} where scope_id = ?`, [scope]);
+        }
+      }
+      this.since = Object.fromEntries(Object.entries(result.scopes).map(([id, info]) => [id, info.version]));
+      await this.setMeta(tx, 'since', JSON.stringify(this.since));
+      this.clock.receive(result.serverHlc);
+      await this.setMeta(tx, 'clock', this.clock.last);
+    });
+    if (touched.size) this.notify(touched);
+  }
+}
+
+export { mergeClocks };

@@ -41,6 +41,8 @@ Cel: przed budową produktu sprawdzić rzeczy, które mogą zmienić architektur
 - Implementacje `LocalDb`: Node (testy), `expo-sqlite` (telefon), `sqlite-wasm` + `opfs-sahpool` w workerze z liderem kart (web).
 - Scenariusze z §6 „Testy” na lokalnym Supabase: 2 klienty Node + przeglądarka (Playwright), 1 telefon ręcznie w trybie samolotowym.
 
+**Stan (18.11.2026):** zrobione, werdykt **GO** — 31 testów pgTAP, 11 scenariuszy `test:sync` (500 operacji w 405 ms, Realtime 469 ms), dwie karty sprawdzone ręcznie, bundel Hermes się buduje; telefon w działaniu do sprawdzenia w MVP-3. Szczegóły i odstępstwa: `docs/POC_WYNIKI.md`.
+
 **Go:** wszystkie scenariusze przechodzą; dwie karty przeglądarki działają na jednej bazie; zmiana z telefonu po włączeniu sieci na webie < 5 s. **No-go:** web online (zapisy optymistyczne przez ten sam `push_changes`, bez lokalnej bazy), telefon bez zmian; albo ocena PowerSync jako gotowego silnika.
 
 ### PoC-2 — Parser szybkiego dodawania (≈ 2 dni)

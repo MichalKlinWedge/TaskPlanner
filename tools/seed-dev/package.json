@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "seed": "node src/seed.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev-user": "node src/dev-user.ts"
   },
   "dependencies": {
-    "@taskplanner/core": "*"
+    "@taskplanner/core": "*",
+    "@supabase/supabase-js": "^2.118.0"
   },
   "devDependencies": {
     "@types/node": "^24",

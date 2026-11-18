@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // SQLite WASM kopiowany z node_modules (scripts/copy-sqlite-wasm.mjs).
+    "public/sqlite-wasm/**",
   ]),
 ]);
 

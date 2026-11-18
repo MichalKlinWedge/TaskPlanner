@@ -2,7 +2,16 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ]
   },
-  "include": ["src/**/*.ts", "*.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "*.config.ts"
+  ]
 }

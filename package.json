@@ -18,7 +18,8 @@
     "supabase": "npx --yes supabase@2.122.0",
     "test:sync": "npm run test:integration --workspace packages/sync",
     "test:db": "npx --yes supabase@2.122.0 test db",
-    "seed:dev": "npm run seed --workspace tools/seed-dev --"
+    "seed:dev": "npm run seed --workspace tools/seed-dev --",
+    "dev:user": "npm run dev-user --workspace tools/seed-dev"
   },
   "engines": {
     "node": ">=22"

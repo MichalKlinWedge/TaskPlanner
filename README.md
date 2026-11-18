@@ -13,7 +13,7 @@ npm install
 cp .env.example .env.local     # uzupełnij klucze Supabase
 npm run check                  # typy, lint, testy
 npm run web                    # http://localhost:3000
-npm run supabase -- start      # lokalny Supabase (Docker), porty 544xx
+npm run supabase -- start      # lokalny Supabase (Docker), porty 545xx
 ```
 
 Aplikacja Android wymaga dev buildu (`npx eas-cli@latest build --platform android --profile development` w `apps/mobile`), potem `npm run mobile`.

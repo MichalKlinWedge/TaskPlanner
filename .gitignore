@@ -30,3 +30,6 @@ npm-debug.*
 
 # Wygenerowane dane deweloperskie
 tools/seed-dev/out/
+
+# SQLite WASM kopiowany przed next dev/build (scripts/copy-sqlite-wasm.mjs)
+apps/web/public/sqlite-wasm/
