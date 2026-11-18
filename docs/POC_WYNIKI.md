@@ -2,15 +2,15 @@
 
 ## PoC-6 — Integracje serwerowe (18.11.2026)
 
-**Werdykt: GO lokalnie; Web Push potwierdzony w prawdziwym Chrome; funkcje i `pg_cron` działają w chmurze (Free); Google i Cloudflare czekają na klucze** (`docs/POC6_KONFIGURACJA.md`).
+**Werdykt: GO dla Google Calendar (watch 3,9 s na prawdziwym Google w chmurze) i Web Push (zamknięta karta Chrome); `pg_cron`/`pg_net` działają na Free. E-mail: GO lokalnie, prawdziwa droga przez Cloudflare czeka na domenę (D9); ICS: opóźnienie po stronie Google do zmierzenia na własnym kalendarzu** (`docs/POC6_KONFIGURACJA.md`).
 Cała droga każdej integracji działa na lokalnym Supabase. Usługi zewnętrzne zastępują w testach fałszywe Google,
 serwer ICS i usługa push, zachowujące się jak w dokumentacji (stronicowanie, `syncToken`, 410, kanały, VAPID i aes128gcm).
 Nic nie wskazuje na No-go. Otwarte pozostają czasy po stronie Google i Cloudflare oraz plan Free.
 
 | Kryterium Go (PLAN_ETAPOWY PoC-6) | Lokalnie | Prawdziwe usługi |
 |---|---|---|
-| Zmiana w Google widoczna < 1 min (watch) | ✅ powiadomienie → `calendar_events` **63 ms** (fałszywe Google, ten sam protokół) | ⏳ webhook HTTPS w chmurze + konto Google |
-| … albo < 15 min (ICS) | ✅ `pg_cron` → `pg_net` → `cron/poll` → zapis **290 ms**, zadanie `*/15 * * * *`; niezmieniony plik → 304 | ⏳ tajny adres iCal z Google — Google sam odświeża plik z opóźnieniem, trzeba zmierzyć |
+| Zmiana w Google widoczna < 1 min (watch) | ✅ powiadomienie → `calendar_events` **63 ms** (fałszywe Google, ten sam protokół) | ✅ **3,9 s** od `updated` wydarzenia w Google do zapisu w `calendar_events` w chmurze (zmiana tytułu, webhook — poza minutą crona); OAuth *In production* bez weryfikacji, kanał TTL 7 dni |
+| … albo < 15 min (ICS) | ✅ `pg_cron` → `pg_net` → `cron/poll` → zapis **290 ms**, zadanie `*/15 * * * *`; niezmieniony plik → 304 | ✅ prawdziwy plik Google („Święta w Polsce”): dodanie 604 ms, 18 wydarzeń; ⏳ opóźnienie zmiany we własnym kalendarzu (tajny adres iCal) |
 | Mail → zadanie < 1 min | ✅ `inbound-email` **237–336 ms** (MIME + zadanie), kod Workera → funkcja → zadanie **43 ms** | ⏳ domena w Cloudflare (D9) |
 | Push dociera do zamkniętej karty | ✅ wpis w kolejce → dostarczenie przez `pg_cron` **37,7 s / 54,0 s** (≤ 60 s + wysyłka); podpis VAPID i treść sprawdzone kryptograficznie | ✅ **Chrome (FCM), karta zamknięta** (`openWindows: 0`): funkcja → service worker **205 ms**, wpis w kolejce → odbiór 14 s; przy otwartej karcie 156 ms / 39 s (`npm run push-page --workspace tools/edge-tests`) |
 | Token odświeżania *In production* > 7 dni | — | ⏳ w trakcie MVP (z planu) |
@@ -32,6 +32,8 @@ dziennych (11 500 wystąpień, 95 KiB) w **110–150 ms** w Node, przy limicie C
 | Cloudflare Email Worker (przekazuje surową wiadomość) | `tools/email-worker` |
 | Sekrety lokalne, fałszywe usługi, testy, strona próbna push | `tools/edge-tests` |
 
+**Prawdziwe Google (18.11.2026):** osobny projekt Google Cloud „TaskPlanner” w stanie *In production* (ekran „unverified app”, „Advanced → Go to TaskPlanner”). Lokalnie: OAuth → Vault → `calendarList` → pełna synchronizacja z `timeMin`/`timeMax` zwraca `nextSyncToken` → nowe wydarzenie przez przyrost (`full: false`, 1 wiersz, 513 ms dla dwóch kalendarzy). W chmurze: kanał `watch` dla kalendarza głównego, zmiana tytułu w Google → `calendar_events` w 3,9 s. Narzędzie: `npm run real --workspace tools/edge-tests -- <ics|poll|sync|google-start|status|watch> [--cloud]`.
+
 **Wdrożenie w chmurze (18.11.2026):** `db push` (migracje PoC-6), `secrets set --env-file supabase/functions/.env.cloud` (plik poza repozytorium: osobne `CRON_SECRET` i `INBOUND_SECRET`, klucze VAPID te same co lokalnie), `functions deploy` trzech funkcji (bundel 0,8–1,5 MB, `packages/core` spoza `supabase/` dołączony), Vault: `functions_url`, `cron_secret` (`db query --linked`, każda instrukcja osobno — API zapytań nie przyjmuje bloku `do $$`).
 
 **Ustalenia i odstępstwa (do v0.2):**
@@ -44,6 +46,12 @@ dziennych (11 500 wystąpień, 95 KiB) w **110–150 ms** w Node, przy limicie C
 - ICS: DTSTART jest zawsze pierwszym wystąpieniem (RFC 5545, inaczej niż kotwica w `core`). `UNTIL` z godziną daje datę w strefie wydarzenia, a `WKST` jest pomijany przy `INTERVAL=1`. Reguła spoza podzbioru `core` daje tylko pierwsze wystąpienie i ostrzeżenie. Obsługiwane są strefy Windows z Outlooka i ETag / `If-None-Match`. Ten sam plik jest przeliczany najwyżej raz na dobę, bo okno się przesuwa.
 - Push: `topic` = id wpisu (powtórka zastępuje powiadomienie w usłudze push), `urgency: high`, TTL 10 min. Ukończone albo usunięte zadanie jest sprawdzane w chwili wysyłki. Same błędy przejściowe → ponowienie w następnej minucie (najwyżej 5 prób).
 - `pg_cron` woła funkcje przez `pg_net` z adresem i sekretem z Vault (`functions_url`, `cron_secret`). Bez nich zadanie nic nie robi, więc migracja jest bezpieczna w każdym środowisku. Funkcje mają `verify_jwt = false` i same sprawdzają JWT użytkownika, `x-cron-secret`, sekret Workera albo token kanału Google.
+
+**Wnioski z prawdziwych usług:**
+- Klient OAuth musi być w **osobnym projekcie Google Cloud** — ekran zgody (nazwa, stan *Testing*/*In production*) jest wspólny dla projektu; klient z projektu ExpeditionPlan pokazywał „ExpeditionPlan” i `403 access_denied` (stan *Testing*). Po utworzeniu projektu trzeba jawnie kliknąć **Audience → Publish app**. Adres powrotu dokładnie jak w `redirect_uri` (`http://127.0.0.1:54521/…` lokalnie, bez ukośnika na końcu).
+- Kalendarze świąt Google (`…#holiday@group.v.calendar.google.com`) **nie obsługują `watch`** (400 „Push notifications are not supported by this resource”) — teraz zapisywane jako `noWatch` i odświeżane tylko przez cron; wcześniej błąd przerywał połączenie konta.
+- Publiczny ICS świąt Google zmienia **UID wydarzeń przy każdym pobraniu** → każda pełna synchronizacja usuwa i wstawia wszystkie wiersze (`deleted_at`). Kalendarze użytkownika mają stałe UID; jeśli to przeszkadza, klucz zapasowy (tytuł + początek) dla plików z niestabilnymi UID (Etap 5).
+- Połączenie konta Google domyślnie włącza wszystkie kalendarze zaznaczone w Google Calendar (także święta) — w Etapie 5 wybór w „Połączone kalendarze”.
 
 **Wnioski techniczne:**
 - Lokalny Edge Runtime (1.77.8, zgodny z Deno 2.1.4) widzi całe repozytorium, więc `../../../packages/core/src/*.ts` importuje się bez kopiowania. `zod` wymaga mapy importów (`supabase/functions/deno.json`, wspólna dla funkcji przez `import_map` w `config.toml`). `functions deploy` dołącza je do bundla (sprawdzone w chmurze).

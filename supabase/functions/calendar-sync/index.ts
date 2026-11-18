@@ -211,7 +211,7 @@ async function cronRenew(req: Request): Promise<Response> {
     const horizon = Date.now() + 2 * 86_400_000;
     const { data: cals } = await db.from('calendars').select('*, calendar_accounts!inner(provider, status)').eq('visible', true)
       .eq('calendar_accounts.provider', 'google').eq('calendar_accounts.status', 'active');
-    const due = ((cals ?? []) as CalendarRow[]).filter((cal) => (cal.sync_state.channel?.expiration ?? 0) <= horizon);
+    const due = ((cals ?? []) as CalendarRow[]).filter((cal) => !cal.sync_state.noWatch && (cal.sync_state.channel?.expiration ?? 0) <= horizon);
     // Konfiguracja Google potrzebna dopiero, gdy jest co odnawiać (projekt bez kont Google też ma ten cron).
     const cfg = due.length ? googleConfig() : null;
     for (const cal of due) {

@@ -37,7 +37,8 @@ export interface CalendarRow {
   external_id: string;
   name: string;
   visible: boolean;
-  sync_state: { syncToken?: string; channel?: Channel; etag?: string; lastModified?: string; hash?: string };
+  /** `noWatch`: Google nie wysyła powiadomień dla tego kalendarza (np. święta) — tylko cron. */
+  sync_state: { syncToken?: string; channel?: Channel; noWatch?: boolean; etag?: string; lastModified?: string; hash?: string };
   last_synced_at: string | null;
 }
 
@@ -271,7 +272,15 @@ export async function syncAccount(db: SupabaseClient, account: AccountRow, opts:
         }
         if (opts.staleMs && cal.last_synced_at && Date.now() - Date.parse(cal.last_synced_at) < opts.staleMs) continue;
         results.push(await syncGoogleCalendar(db, cfg, cal, token));
-        if (opts.webhookUrl && !cal.sync_state.channel) await watchCalendar(db, cfg, cal, token, opts.webhookUrl);
+        if (opts.webhookUrl && !cal.sync_state.channel && !cal.sync_state.noWatch) {
+          try {
+            await watchCalendar(db, cfg, cal, token, opts.webhookUrl);
+          } catch (error) {
+            // „Push notifications are not supported by this resource” (kalendarze świąt, część subskrypcji).
+            if (!(error instanceof GoogleError && error.status === 400)) throw error;
+            await saveCalendarState(db, cal, { ...cal.sync_state, noWatch: true });
+          }
+        }
       }
     }
     await markAccount(db, account.id, { status: 'active', last_error: null, last_synced_at: new Date().toISOString() });
