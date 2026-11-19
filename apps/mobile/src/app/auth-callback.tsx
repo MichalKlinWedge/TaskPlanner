@@ -2,7 +2,7 @@
  * Powrót z logowania: `taskplanner://auth-callback?code=…` (link z maila albo Google). Expo Router
  * otwiera ten ekran z parametrami zapytania; kod wymienia `completeAuth` (raz, choćby powrót
  * przyszedł też przez `openAuthSessionAsync`). Dalej ekran startowy, a bramka w `_layout`
- * pokazuje onboarding, jeśli profil go jeszcze nie ma.
+ * pokazuje onboarding, jeśli profil go jeszcze nie ma — dopiero po zamknięciu tego ekranu.
  */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -10,10 +10,14 @@ import { ActivityIndicator } from 'react-native';
 
 import { Button, P, Screen, Section } from '@/components/ui';
 import { completeAuth } from '@/lib/auth';
+import { holdOnboardingGate } from '@/lib/profile';
 
 export default function AuthCallback() {
   const params = useLocalSearchParams<{ code?: string; error?: string; error_code?: string; error_description?: string }>();
   const [error, setError] = useState<string | null>(null);
+
+  // Kreator onboardingu nie przykrywa tego ekranu (bramka wraca po jego zamknięciu).
+  useEffect(() => holdOnboardingGate(), []);
 
   const { code, error: failure, error_code: failureCode, error_description: description } = params;
 
