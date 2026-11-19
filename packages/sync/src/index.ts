@@ -2,6 +2,7 @@
  * Synchronizacja local-first (SPECYFIKACJA §6). Adaptery lokalnej bazy są w osobnych wejściach:
  * `@taskplanner/sync/node` (testy, narzędzia), `@taskplanner/sync/expo`, `@taskplanner/sync/wasm`.
  */
+export { applyBackupPlan, exportBackup, planBackupImport, type BackupMutate, type BackupQuery } from './backup.ts';
 export { SyncEngine, type PullProgress, type SyncEngineOptions } from './engine.ts';
 export { createLocalDb, type LocalDb, type SqlDriver, type SqlRow, type SqlValue } from './local-db.ts';
 export { decodeRow, encodeRow, mergeClocks, mergeRemote, parseClock, type FieldClock, type RemoteRow } from './merge.ts';
