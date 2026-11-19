@@ -29,6 +29,34 @@ export async function loadProfile(engine: SyncEngine, userId = engine.userId): P
   };
 }
 
+// ── Wstrzymanie bramki onboardingu ─────────────────────────────────────────────────────────
+// Ekran powrotu z logowania (`auth-callback`) wstrzymuje bramkę, póki jest zamontowany: kreator
+// nie może przykryć komunikatu o błędzie ani przejścia po udanym logowaniu. Flaga w module,
+// a nie segment trasy z `useSegments`, bo bramka decyduje asynchronicznie (po odczycie profilu),
+// a segment w efekcie bywa jeszcze stary, gdy deep link właśnie otwiera ekran.
+
+let gateHolds = 0;
+const gateListeners = new Set<() => void>();
+
+/** Wstrzymuje bramkę; zwrócona funkcja zwalnia (raz) i, gdy nic jej już nie trzyma, budzi bramkę. */
+export function holdOnboardingGate(): () => void {
+  gateHolds++;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    gateHolds--;
+    if (!gateHolds) gateListeners.forEach((l) => l());
+  };
+}
+
+export const onboardingGateHeld = () => gateHolds > 0;
+
+export function onOnboardingGateRelease(listener: () => void): () => void {
+  gateListeners.add(listener);
+  return () => gateListeners.delete(listener);
+}
+
 /** Strefa urządzenia (Hermes ma `Intl`); bez niej ustawienie zostaje puste = strefa urządzenia. */
 export function deviceTimeZone(): string | undefined {
   try {

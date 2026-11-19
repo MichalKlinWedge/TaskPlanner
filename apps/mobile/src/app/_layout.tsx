@@ -5,7 +5,7 @@ import { useEffect, useRef } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { sessionUser } from '@/lib/config';
-import { loadProfile } from '@/lib/profile';
+import { loadProfile, onboardingGateHeld, onOnboardingGateRelease } from '@/lib/profile';
 import { handleResponse, setupNotifications } from '@/lib/reminders';
 import { localEngine, onSessionChange, startOnlineSync } from '@/lib/sync';
 import { refreshTodayWidget } from '@/widget/refresh';
@@ -22,7 +22,8 @@ function ShareRedirect() {
 /**
  * Bramka onboardingu: zalogowany użytkownik, którego profil (z serwera albo lokalny) nie ma
  * `settings.onboarded`, trafia na kreator. Profil przychodzi z pierwszą synchronizacją, więc
- * sprawdzenie powtarza się po każdej zmianie tabeli `profiles` i po zmianie konta.
+ * sprawdzenie powtarza się po każdej zmianie tabeli `profiles`, po zmianie konta i po zwolnieniu
+ * bramki przez ekran powrotu z logowania (`holdOnboardingGate`).
  */
 function OnboardingGate() {
   const segments = useSegments();
@@ -40,8 +41,9 @@ function OnboardingGate() {
       if (!user.online) return;
       const engine = await localEngine();
       const profile = await loadProfile(engine, user.id);
+      if (!alive || !profile || profile.onboarded || onboardingGateHeld()) return;
       // Kilka zmian `profiles` tuż po sobie (strony pierwszej synchronizacji) = jedno przejście.
-      if (alive && profile && !profile.onboarded && current.current !== 'onboarding' && current.current !== 'auth-callback' && Date.now() - pushedAt > 2000) {
+      if (current.current !== 'onboarding' && current.current !== 'auth-callback' && Date.now() - pushedAt > 2000) {
         pushedAt = Date.now();
         router.push('/onboarding');
       }
@@ -58,10 +60,12 @@ function OnboardingGate() {
     };
     attach();
     const offSession = onSessionChange(attach);
+    const offRelease = onOnboardingGateRelease(() => void check());
     return () => {
       alive = false;
       unwatch?.();
       offSession();
+      offRelease();
     };
   }, []);
   return null;
