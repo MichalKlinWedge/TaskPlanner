@@ -6,6 +6,7 @@
  */
 import { applyFilter, BOARD_BY, bulkTaskOps, isEmptyFilter, isOpen, plural, selectInbox, selectToday, type BoardBy, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { useAppData, useToday, type List } from "@/lib/app-data";
@@ -24,6 +25,10 @@ import { TaskPanel } from "./task-panel";
 import { TaskActionsProvider, useTaskActions } from "./task-item";
 import { Select, Splash } from "./ui";
 import { InboxView, ListView, TodayView, TrashView, UpcomingView } from "./views";
+
+// Oś czasu (SVAR Gantt) — osobny kawałek kodu, dociągany w wolnej chwili po starcie i przy pierwszym otwarciu.
+const loadTimeline = () => import("./timeline");
+const TimelineScreen = dynamic(() => loadTimeline().then((m) => m.TimelineScreen), { ssr: false, loading: () => <Splash text="Wczytywanie osi czasu…" /> });
 
 const WORKSPACE_KEY = "tp-workspace";
 const ALL = "all";
@@ -177,13 +182,21 @@ export function Shell({
     });
   }, [hash]);
 
+  // Oś czasu zostaje zamontowana po pierwszym otwarciu — powrót do niej bez ponownego rysowania.
+  const [timelineOpened, setTimelineOpened] = useState(false);
+  if (route.view === "timeline" && !timelineOpened) setTimelineOpened(true);
+  useEffect(() => {
+    const idle = window.requestIdleCallback ?? ((fn: () => void) => window.setTimeout(fn, 2000));
+    idle(() => void loadTimeline());
+  }, []);
+
   if (!data.loaded) return <Splash text="Wczytywanie zadań…" />;
 
   const list = route.view === "list" ? data.lists.find((l) => l.id === route.id) : undefined;
   const tag = route.view === "tag" ? data.tags.find((t) => t.id === route.id) : undefined;
   const savedFilter = route.view === "filter" ? data.savedFilters.find((f) => f.id === route.id) : undefined;
   const filterable = ["inbox", "today", "upcoming", "list", "board"].includes(route.view);
-  const wide = route.view === "board" || route.view === "calendar" || list?.prefs.view === "kanban";
+  const wide = route.view === "board" || route.view === "calendar" || route.view === "timeline" || list?.prefs.view === "kanban";
   // Widoki dostają zadania po filtrze doraźnym; liczniki paska bocznego liczą się z pełnych danych.
   const viewData = filterable && !isEmptyFilter(adhoc) ? { ...data, tasks: applyFilter(data.tasks, adhoc, today) } : data;
   const toolbar = filterable ? (
@@ -221,7 +234,7 @@ export function Shell({
         <h1 className="sr-only">Kalendarz</h1>
         <CalendarScreen data={data} ctx={ctx} settings={settings} />
       </>
-    ) : route.view === "manage" ? (
+    ) : route.view === "timeline" ? null : route.view === "manage" ? (
       manage
     ) : route.view === "settings" ? (
       settingsView
@@ -239,7 +252,16 @@ export function Shell({
       <p className="py-6 text-sm text-[var(--muted)]">Ta lista nie istnieje albo jest zarchiwizowana.</p>
     );
 
-  const content = body;
+  const content = (
+    <>
+      {body}
+      {timelineOpened ? (
+        <div hidden={route.view !== "timeline"}>
+          <TimelineScreen data={data} ctx={ctx} active={route.view === "timeline"} />
+        </div>
+      ) : null}
+    </>
+  );
 
   const workspaces = workspaceId ? data.workspaces.filter((w) => w.id === workspaceId) : data.workspaces;
   // Okno szybkiego dodawania dodaje tam, skąd je wywołano (lista / „Dziś” z dzisiejszym terminem).
@@ -301,6 +323,7 @@ export function Shell({
               <NavItem route={{ view: "upcoming" }} current={route} navigate={navigate} icon="📅" label="Nadchodzące" />
               <NavItem route={{ view: "board" }} current={route} navigate={navigate} icon="▦" label="Tablica" />
               <NavItem route={{ view: "calendar" }} current={route} navigate={navigate} icon="🗓" label="Kalendarz" />
+              <NavItem route={{ view: "timeline" }} current={route} navigate={navigate} icon="📊" label="Oś czasu" />
             </nav>
             {workspaces.map((w) => (
               <WorkspaceLists key={w.id} name={w.name} color={w.color} lists={data.lists.filter((l) => l.workspaceId === w.id && l.kind !== "inbox")} counts={counts.perList} route={route} navigate={navigate} />
@@ -468,7 +491,7 @@ function WorkspaceLists({
 
 // ── Klawiatura i polecenia ───────────────────────────────────────────────────────────────────
 
-const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" } };
+const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" } };
 
 /** Akcja na zaznaczonych z dymkiem „Cofnij”. */
 function useBulk(selected: readonly string[]) {
@@ -652,6 +675,7 @@ function PaletteHost({
       "view.upcoming": () => then(() => navigate({ view: "upcoming" })),
       "view.kanban": () => then(() => navigate({ view: "board" })),
       "view.calendar": () => then(() => navigate({ view: "calendar" })),
+      "view.timeline": () => then(() => navigate({ view: "timeline" })),
       "task.quick_add": () => then(openQuick),
       "task.complete": () => then(() => bulk({ kind: "complete" }, "Ukończono")),
       "task.today": () => then(() => bulk({ kind: "today" }, "Na dziś")),

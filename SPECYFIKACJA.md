@@ -490,6 +490,7 @@ Recurrence =
 - Koniec zadania = `due_date` (+ `due_time` + `duration_min`, gdy jest godzina); początek = `start_date ?? due_date`.
 - SVAR Gantt przyjmuje cykle zależności — zapis zależności z osi zawsze przez `detectCycle` (PoC-5).
 - Zrobione (18.11.2026): `taskSpan`, `detectCycle` (zwraca ścieżkę cyklu), `violations`, `shiftSuccessors` (`cascade: false` = „Tylko to zadanie”, `workdays` = dni robocze), `projectSpan`; w `dates.ts` `daysBetween`, `addWorkdays`. Granulacja dni: przy `lag_days` = 0 następnik może zacząć się w dniu końca poprzednika.
+- Oś czasu (`timeline.ts`, 19.11.2026): `timelineModel(projects, tasks, deps)` → wiersze (projekt → zadania → podzadania w kolejności ręcznej, pasek, postęp, `violated`), zależności z paskami po obu stronach, naruszenia, licznik bez terminu; `timelineChangeOps` (przesunięcie / rozciągnięcie paska, `cascade` = „Przesuń zależne”), `shiftProjectOps` (pasek projektu), `addDependencyOps` (cykl, duplikat, inna przestrzeń → błąd, `dependencyErrorText`), `removeDependencyOps`, `clampLag`, `taskLinks` (panel zadania). `shiftSuccessors` przyjmuje też listę zadań.
 
 ### 7.4. Time-blocking (`time-blocking.ts`)
 - `blocksForDay(tasks, events, date)`, `conflicts(blocks)` (nakładanie bloków i wydarzeń, z pominięciem wydarzeń „wolny”), `freeSlots(blocks, workHours, minMinutes)`.

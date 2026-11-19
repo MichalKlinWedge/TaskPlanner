@@ -34,9 +34,8 @@ export const useTaskActions = (): TaskActions => {
   return actions;
 };
 
-const apply = async (store: TabStore, ops: readonly TaskOp[]) => {
-  for (const op of ops) await store.mutate(op.table, op.id, op.patch);
-};
+/** Operacje w jednej transakcji — jedno odświeżenie widoków (np. 16 zmian przy przesunięciu projektu). */
+const apply = (store: TabStore, ops: readonly TaskOp[]) => store.mutateMany(ops);
 
 /** Akcje zadań i dymek „Cofnij” na dole ekranu. `tasks` — do pytania o otwarte podzadania. */
 export function TaskActionsProvider({ store, timeZone, tasks, children }: { store: TabStore; timeZone?: string; tasks: readonly ViewTask[]; children: ReactNode }) {

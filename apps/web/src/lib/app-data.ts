@@ -26,6 +26,9 @@ export interface List {
   color: string | null;
   sortKey: string;
   prefs: ViewPrefs;
+  /** Daty projektu (oś czasu); inne listy — `null`. */
+  startDate: LocalDate | null;
+  endDate: LocalDate | null;
 }
 
 export interface Tag {
@@ -88,7 +91,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
   const workspaces = useLocalQuery<Row>(store, "select id, name, color, sort_key from workspaces where deleted_at is null and archived_at is null", [], ["workspaces"]);
   const lists = useLocalQuery<Row>(
     store,
-    "select id, scope_id, kind, name, color, sort_key, view_prefs from lists where deleted_at is null and archived_at is null",
+    "select id, scope_id, kind, name, color, sort_key, view_prefs, start_date, end_date from lists where deleted_at is null and archived_at is null",
     [],
     ["lists"],
   );
@@ -123,6 +126,8 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
           color: r.color as string | null,
           sortKey: String(r.sort_key),
           prefs: prefs.success ? prefs.data : {},
+          startDate: (r.start_date as LocalDate | null) ?? null,
+          endDate: (r.end_date as LocalDate | null) ?? null,
         };
       })
       .sort(byKey);

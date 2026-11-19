@@ -30,6 +30,7 @@ export const AVAILABLE_COMMANDS = new Set([
   "view.upcoming",
   "view.kanban",
   "view.calendar",
+  "view.timeline",
   "task.quick_add",
   "task.complete",
   "task.priority",

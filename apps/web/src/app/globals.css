@@ -98,3 +98,24 @@ body {
   background-color: var(--surface);
   background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--muted) 14%, transparent) 6px 12px);
 }
+
+/* Oś czasu (`components/app/timeline.tsx`, SVAR Gantt). */
+.tp-timeline .wx-gantt {
+  font-family: inherit;
+}
+/* Postęp wynika z ukończonych zadań — bez uchwytu do przeciągania. */
+.tp-timeline .wx-progress-marker {
+  display: none;
+}
+.tp-timeline .tp-gantt-violated {
+  background: var(--danger);
+  color: #fff;
+}
+/* Dziś: kolumna z czerwoną linią po lewej (dzień) albo lekko podświetlony tydzień / miesiąc. */
+.tp-timeline .tp-gantt-today {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  box-shadow: inset 2px 0 0 var(--danger);
+}
+.tp-timeline .tp-gantt-today-period {
+  background: color-mix(in srgb, var(--danger) 7%, transparent);
+}

@@ -15,6 +15,8 @@ export interface TabStore {
   readonly isLeader: boolean;
   query<Row extends SqlRow = SqlRow>(sql: string, params?: readonly SqlValue[]): Promise<Row[]>;
   mutate(table: SyncedTable, id: string, patch: Record<string, unknown>): Promise<void>;
+  /** Kilka zmian w jednej transakcji, z jednym odświeżeniem widoków (`SyncEngine.mutateMany`). */
+  mutateMany(ops: readonly { table: SyncedTable; id: string; patch: Record<string, unknown> }[]): Promise<void>;
   sync(): Promise<void>;
   pendingCount(): Promise<number>;
   /** Zmiana danych w tabelach (w tej albo innej karcie). */
@@ -27,6 +29,7 @@ export interface TabStore {
 type Operation =
   | { op: 'query'; sql: string; params: SqlValue[] }
   | { op: 'mutate'; table: SyncedTable; id: string; patch: Record<string, unknown> }
+  | { op: 'mutateMany'; ops: { table: SyncedTable; id: string; patch: Record<string, unknown> }[] }
   | { op: 'sync' }
   | { op: 'pending' };
 
@@ -68,6 +71,9 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
         return current.db.all(body.sql, body.params);
       case 'mutate':
         await current.mutate(body.table, body.id, body.patch);
+        return null;
+      case 'mutateMany':
+        await current.mutateMany(body.ops);
         return null;
       case 'sync':
         return current.sync();
@@ -143,6 +149,9 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
     query: (sql, params = []) => request({ op: 'query', sql, params: [...params] }) as Promise<never>,
     mutate: async (table, id, patch) => {
       await request({ op: 'mutate', table, id, patch });
+    },
+    mutateMany: async (ops) => {
+      await request({ op: 'mutateMany', ops: [...ops] });
     },
     sync: async () => {
       await request({ op: 'sync' });

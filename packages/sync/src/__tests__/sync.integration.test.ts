@@ -255,3 +255,46 @@ describe('MVP-1: pełny model i stronicowanie', () => {
     expect(keys.map((r) => r.k)).toEqual(['n']);
   });
 });
+
+describe('Etap 6: zapis wsadowy i zależności', () => {
+  it('kilka zmian w jednej transakcji, błędne pole — nic nie zapisane; cykl zależności z dwóch urządzeń odrzucony (TP002)', async () => {
+    const [a, b] = [uuidv7(), uuidv7()];
+    const ab = uuidv7();
+    await phone.engine.mutateMany([
+      { table: 'tasks', id: a, patch: { list_id: L, title: 'Pomiary', due_date: '2026-11-23' } },
+      { table: 'tasks', id: b, patch: { list_id: L, title: 'Projekt', due_date: '2026-11-24' } },
+      { table: 'task_dependencies', id: ab, patch: { predecessor_id: a, successor_id: b, kind: 'finish_to_start', lag_days: 1 } },
+    ]);
+    expect(await phone.engine.pendingCount()).toBe(3);
+    expect((await phone.engine.get('task_dependencies', ab))?.scope_id).toBe(W);
+    await expect(
+      phone.engine.mutateMany([
+        { table: 'tasks', id: a, patch: { title: 'Zmienione' } },
+        { table: 'tasks', id: b, patch: { nope: 1 } },
+      ]),
+    ).rejects.toThrow(/Pola spoza tasks: nope/);
+    expect((await row(phone, 'tasks', a))?.title).toBe('Pomiary');
+    expect(await phone.engine.pendingCount()).toBe(3);
+    await phone.engine.sync();
+    expect(phone.rejected).toEqual([]);
+    await web.engine.sync();
+    expect((await web.engine.get('task_dependencies', ab))?.lag_days).toBe(1);
+
+    // Web (offline) nie wie o zależności dodanej w międzyczasie na telefonie → cykl wykrywa dopiero serwer.
+    const bc = uuidv7();
+    const c = uuidv7();
+    web.net.online = false;
+    await phone.engine.mutateMany([
+      { table: 'tasks', id: c, patch: { list_id: L, title: 'Zamówienie', due_date: '2026-11-25' } },
+      { table: 'task_dependencies', id: bc, patch: { predecessor_id: b, successor_id: c } },
+    ]);
+    await phone.engine.sync();
+    const ca = uuidv7();
+    await web.engine.mutate('tasks', c, { title: 'Zamówienie (web)' });
+    await web.engine.mutate('task_dependencies', ca, { predecessor_id: c, successor_id: a });
+    web.net.online = true;
+    await web.engine.sync();
+    expect(web.rejected.map((r) => r.code)).toEqual(['TP002']);
+    expect(await web.engine.get('task_dependencies', ca)).toBeUndefined();
+  });
+});

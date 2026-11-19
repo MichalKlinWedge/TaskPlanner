@@ -140,34 +140,45 @@ export class SyncEngine {
 
   /** Wstaw albo zmień wiersz: tylko podane pola, z nowym HLC; wpis do outboxu w tej samej transakcji. */
   async mutate(table: SyncedTable, id: string, patch: Record<string, unknown>): Promise<Hlc> {
-    const allowed = writableFields(table);
-    const fields = Object.keys(patch);
-    const unknown = fields.filter((f) => !allowed.includes(f));
-    if (unknown.length) throw new Error(`Pola spoza ${table}: ${unknown.join(', ')}`);
-    const hlc = await this.db.transaction(async (tx) => {
-      const stamp = this.clock.tick();
-      const current = (await tx.all(`select * from ${table} where id = ?`, [id]))[0];
-      const row: SqlRow = current ? { ...current } : Object.fromEntries(localColumns(table).map((c) => [c, null]));
-      row.id = id;
-      for (const field of fields) row[field] = encodeValue(table, field, patch[field]);
-      const clock = parseClock(current?.field_clock);
-      for (const field of fields) clock[field] = stamp;
-      row.field_clock = JSON.stringify(clock);
-      await this.deriveScope(tx, table, row);
-      await this.upsert(tx, table, row);
-      await tx.run('insert into _outbox (op_id, tbl, row_id, data, hlc) values (?, ?, ?, ?, ?)', [
-        uuidv7(this.now()),
-        table,
-        id,
-        JSON.stringify(patch),
-        stamp,
-      ]);
+    const [hlc] = await this.mutateMany([{ table, id, patch }]);
+    return hlc!;
+  }
+
+  /**
+   * Kilka zmian w jednej transakcji (przesunięcie projektu na osi, operacje grupowe): jedno
+   * powiadomienie widoków i jedna synchronizacja zamiast osobnych dla każdej zmiany. Pola spoza
+   * tabeli — błąd przed zapisem czegokolwiek.
+   */
+  async mutateMany(ops: readonly { table: SyncedTable; id: string; patch: Record<string, unknown> }[]): Promise<Hlc[]> {
+    if (!ops.length) return [];
+    for (const { table, patch } of ops) {
+      const allowed = writableFields(table);
+      const unknown = Object.keys(patch).filter((f) => !allowed.includes(f));
+      if (unknown.length) throw new Error(`Pola spoza ${table}: ${unknown.join(', ')}`);
+    }
+    const stamps = await this.db.transaction(async (tx) => {
+      const out: Hlc[] = [];
+      for (const { table, id, patch } of ops) {
+        const fields = Object.keys(patch);
+        const stamp = this.clock.tick();
+        const current = (await tx.all(`select * from ${table} where id = ?`, [id]))[0];
+        const row: SqlRow = current ? { ...current } : Object.fromEntries(localColumns(table).map((c) => [c, null]));
+        row.id = id;
+        for (const field of fields) row[field] = encodeValue(table, field, patch[field]);
+        const clock = parseClock(current?.field_clock);
+        for (const field of fields) clock[field] = stamp;
+        row.field_clock = JSON.stringify(clock);
+        await this.deriveScope(tx, table, row);
+        await this.upsert(tx, table, row);
+        await tx.run('insert into _outbox (op_id, tbl, row_id, data, hlc) values (?, ?, ?, ?, ?)', [uuidv7(this.now()), table, id, JSON.stringify(patch), stamp]);
+        out.push(stamp);
+      }
       await this.setMeta(tx, 'clock', this.clock.last);
-      return stamp;
+      return out;
     });
-    this.notify([table]);
+    this.notify([...new Set(ops.map((o) => o.table))]);
     if (this.options.autoSync !== false) this.requestSync();
-    return hlc;
+    return stamps;
   }
 
   /** Miękkie usunięcie (`deleted_at`). */
