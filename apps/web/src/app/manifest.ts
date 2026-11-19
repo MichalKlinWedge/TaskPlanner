@@ -11,6 +11,12 @@ export default function manifest(): MetadataRoute.Manifest {
     display: "standalone",
     background_color: "#FAFAFA",
     theme_color: "#4F46E5",
+    // Udostępnianie z innych aplikacji (Android, zainstalowana PWA) → szybkie dodawanie z linkiem (Etap 10).
+    share_target: {
+      action: "/",
+      method: "GET",
+      params: { title: "share_title", text: "share_text", url: "share_url" },
+    },
     // Skróty z ikony zainstalowanej aplikacji (M20).
     shortcuts: [
       { name: "Szybkie dodawanie", short_name: "Dodaj", url: "/?quick=1", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },

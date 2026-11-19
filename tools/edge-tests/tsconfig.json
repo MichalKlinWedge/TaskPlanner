@@ -14,6 +14,7 @@
     "../../supabase/functions/_shared/ics.ts",
     "../../supabase/functions/_shared/task-calendar.ts",
     "../../supabase/functions/_shared/task-events.ts",
+    "../../supabase/functions/_shared/link-preview.ts",
     "../../supabase/functions/_shared/time.ts"
   ]
 }

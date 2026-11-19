@@ -51,6 +51,7 @@ import { useLocalQuery } from "@/lib/local-store";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 import { useAppEnv } from "./app-env";
+import { AttachmentsField } from "./attachments";
 import { TaskTimeField } from "./focus";
 import { QuickAdd } from "./quick-add";
 import { RecurrenceEditor } from "./recurrence-editor";
@@ -234,6 +235,8 @@ export function TaskPanel({ taskId }: { taskId: string }) {
           <p className="text-xs text-[var(--muted)]">Najwyżej 4 poziomy zadań — tu nie można dodać kolejnego.</p>
         )}
       </Block>
+
+      <AttachmentsField key={`att:${task.id}`} task={task} />
 
       <TaskTimeField task={task} />
 

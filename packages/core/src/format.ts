@@ -135,3 +135,10 @@ export function reminderOffset(minutes: number): string {
   if (minutes % 1440 === 0) return `${plural(minutes / 1440, ['dzień', 'dni', 'dni'])} przed`;
   return `${formatMinutes(minutes)} przed`;
 }
+
+/** Rozmiar pliku: „830 B”, „12 kB”, „3,4 MB” (Etap 10, załączniki). */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} kB`;
+  return `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} MB`;
+}
