@@ -30,7 +30,7 @@ export async function loadProfile(engine: SyncEngine, userId = engine.userId): P
 }
 
 // ── Wstrzymanie bramki onboardingu ─────────────────────────────────────────────────────────
-// Ekran powrotu z logowania (`auth-callback`) wstrzymuje bramkę, póki jest zamontowany: kreator
+// Ekran powrotu z logowania (`auth-callback`) wstrzymuje bramkę, póki jest na wierzchu: kreator
 // nie może przykryć komunikatu o błędzie ani przejścia po udanym logowaniu. Flaga w module,
 // a nie segment trasy z `useSegments`, bo bramka decyduje asynchronicznie (po odczycie profilu),
 // a segment w efekcie bywa jeszcze stary, gdy deep link właśnie otwiera ekran.

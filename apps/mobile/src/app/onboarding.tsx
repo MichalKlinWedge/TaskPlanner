@@ -11,8 +11,9 @@ import {
   type DefaultWorkspace,
   type IsoWeekday,
 } from '@taskplanner/core';
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { BackHandler } from 'react-native';
 
 import { Button, Chip, ColorDot, Field, P, Row, Screen, Section } from '@/components/ui';
 import { useLocalQuery } from '@/lib/local-query';
@@ -22,6 +23,15 @@ const DAYS = [1, 2, 3, 4, 5, 6, 7] as const satisfies readonly IsoWeekday[];
 const DURATIONS = [15, 30, 45, 60, 90, 120];
 
 export default function Onboarding() {
+  // Systemowe „wstecz” nie zamyka kreatora: bramka w `_layout` pokazuje go ponownie dopiero po
+  // zmianie profilu, więc użytkownik zostawałby bez ustawień i przestrzeni. Przycisku w nagłówku
+  // i gestu też nie ma (`headerBackVisible`, `gestureEnabled` w `_layout`).
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+      return () => sub.remove();
+    }, []),
+  );
   const profile = useLocalQuery(['profiles'], (engine) => loadProfile(engine));
   if (profile === undefined) return <Screen>{null}</Screen>;
   return <Form profile={profile} />;
