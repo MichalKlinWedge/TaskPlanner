@@ -4,7 +4,7 @@
  * Podstawa z ExpeditionPlan (`packages/core/src/format.ts`).
  */
 import { daysBetween, isoWeekday } from './dates.ts';
-import { MONTH_SHORT, WEEKDAY } from './labels.ts';
+import { AUTH_ERROR, MONTH_SHORT, WEEKDAY } from './labels.ts';
 import type { IsoWeekday, LocalDate } from './schemas/primitives.ts';
 
 /** Forma rzeczownika po liczbie: 1, 2–4 (22, 103…), 5+ (także 12–14 i 0). */
@@ -69,4 +69,19 @@ export function relativeDay(date: LocalDate, today: LocalDate, style: 'date' | '
   const count = (n: number, forms: readonly [string, string, string]) => (n === 1 ? forms[0] : plural(n, forms));
   const amount = abs < 14 ? count(abs, DAYS) : abs < 60 ? count(Math.floor(abs / 7), WEEKS) : abs < 365 ? count(Math.floor(abs / 30), MONTHS) : count(Math.floor(abs / 365), YEARS);
   return diff > 0 ? `za ${amount}` : `${amount} temu`;
+}
+
+/** Błąd logowania (Supabase `AuthError`, parametry adresu powrotu albo sam tekst) jako komunikat po polsku. */
+export function authErrorMessage(error: { code?: string | null; message?: string | null; status?: number; name?: string } | string | null | undefined): string {
+  const e = typeof error === 'string' ? { message: error } : (error ?? {});
+  const message = e.message ?? '';
+  if (e.code && AUTH_ERROR[e.code]) return AUTH_ERROR[e.code]!;
+  // Starsze serwery i błędy bez kodu: po treści (jak na webie w `login-screen.tsx`).
+  if (e.name === 'AuthRetryableFetchError' || /network request failed|failed to fetch|fetch failed/i.test(message)) return AUTH_ERROR.network!;
+  if (/provider is not enabled|unsupported provider/i.test(message)) return AUTH_ERROR.provider_disabled!;
+  if (/invalid or has expired|token has expired/i.test(message)) return AUTH_ERROR.otp_expired!;
+  if (/code verifier/i.test(message)) return AUTH_ERROR.pkce_code_verifier_not_found!;
+  if (/rate limit|too many/i.test(message)) return AUTH_ERROR.over_request_rate_limit!;
+  if (/unable to validate email|invalid.*email/i.test(message)) return AUTH_ERROR.email_address_invalid!;
+  return message || 'Nie udało się zalogować.';
 }
