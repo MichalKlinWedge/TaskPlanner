@@ -1,5 +1,74 @@
 # Wyniki PoC
 
+## PoC-6 — Integracje serwerowe (18.11.2026)
+
+**Werdykt: GO dla Google Calendar (watch 3,9 s na prawdziwym Google w chmurze) i Web Push (zamknięta karta Chrome); `pg_cron`/`pg_net` działają na Free. ICS: GO (plik Google odświeża się ~25 s po zmianie). E-mail: GO lokalnie; prawdziwa droga przez Cloudflare razem z M19 w v1.x (D9)** (`docs/POC6_KONFIGURACJA.md`).
+Cała droga każdej integracji działa na lokalnym Supabase. Usługi zewnętrzne zastępują w testach fałszywe Google,
+serwer ICS i usługa push, zachowujące się jak w dokumentacji (stronicowanie, `syncToken`, 410, kanały, VAPID i aes128gcm).
+Nic nie wskazuje na No-go. Google, ICS, Web Push i `pg_cron` na Free sprawdzone też na prawdziwych usługach (niżej).
+
+| Kryterium Go (PLAN_ETAPOWY PoC-6) | Lokalnie | Prawdziwe usługi |
+|---|---|---|
+| Zmiana w Google widoczna < 1 min (watch) | ✅ powiadomienie → `calendar_events` **63 ms** (fałszywe Google, ten sam protokół) | ✅ **3,9 s** od `updated` wydarzenia w Google do zapisu w `calendar_events` w chmurze (zmiana tytułu, webhook — poza minutą crona); OAuth *In production* bez weryfikacji, kanał TTL 7 dni |
+| … albo < 15 min (ICS) | ✅ `pg_cron` → `pg_net` → `cron/poll` → zapis **290 ms**, zadanie `*/10 * * * *` (było `*/15`); niezmieniony plik → 304 | ✅ tajny adres iCal własnego kalendarza: zmiana w Google → widoczna w pliku po **~25 s** (±30 s, 1 próba), `cron/poll` → `calendar_events` **1,2 s**. Razem przy cronie co 10 min (`20261118170000_poc6_ics_10min.sql`): najwyżej ~10,5 min, średnio ~5,5 min (przy 15 min najgorzej ~15,5 min) |
+| Mail → zadanie < 1 min | ✅ `inbound-email` **237–336 ms** (MIME + zadanie), kod Workera → funkcja → zadanie **43 ms** | ⏳ v1.x razem z M19 (D9): domena w Cloudflare |
+| Push dociera do zamkniętej karty | ✅ wpis w kolejce → dostarczenie przez `pg_cron` **37,7 s / 54,0 s** (≤ 60 s + wysyłka); podpis VAPID i treść sprawdzone kryptograficznie | ✅ **Chrome (FCM), karta zamknięta** (`openWindows: 0`): funkcja → service worker **205 ms**, wpis w kolejce → odbiór 14 s; przy otwartej karcie 156 ms / 39 s (`npm run push-page --workspace tools/edge-tests`) |
+| Token odświeżania *In production* > 7 dni | — | ⏳ w trakcie MVP (z planu) |
+| `pg_cron`, `pg_net` na planie Free | ✅ lokalnie (pg_cron 1.6.4, pg_net 0.20.4) | ✅ projekt „TaskPlanner” (eu-west-1): migracja z `create extension` przeszła, `taskplanner-reminders-push` co minutę → `pg_net` → funkcja odpowiada 200 (`{"items":0}`); `cron/poll`, `cron/renew`, `inbound-email` działają na bazie w chmurze |
+
+**Testy:** 24 jednostkowe (`tools/edge-tests`: ICS, strefy, e-mail, Google), 3 Workera (`tools/email-worker`),
+26 integracyjnych (`npm run test:integration --workspace tools/edge-tests`), 32 pgTAP (`supabase/tests/integrations.test.sql`),
+`deno check` funkcji (`npm run typecheck:deno --workspace tools/edge-tests`). Rozwinięcie ICS: 1 000 wydarzeń i 50 serii
+dziennych (11 500 wystąpień, 95 KiB) w **110–150 ms** w Node, przy limicie CPU funkcji 2 s.
+
+**Co powstało:**
+| Element | Miejsce |
+|---|---|
+| Tabele `calendar_accounts`, `calendars`, `calendar_events`, `oauth_states`, `inbound_addresses`, `inbound_messages`, `push_subscriptions`, `push_queue`; RLS i uprawnienia kolumn; Vault; `create_integration_task`; `claim_push_queue`; `pg_cron` → `call_edge_function` | `supabase/migrations/20261118140000_poc6_integrations.sql` |
+| `calendar-sync`: OAuth Google (start, callback), webhook `watch`, ICS (dodanie), odświeżenie i odłączenie konta, `cron/poll` (co 10 min), `cron/renew` (codziennie) | `supabase/functions/calendar-sync` |
+| `inbound-email`: sekret Workera, token z adresu, lista nadawców, DMARC, jedno zadanie na Message-ID, parser szybkiego dodawania w temacie | `supabase/functions/inbound-email` |
+| `reminders-push`: `jsr:@negrel/webpush`, kolejka bez podwójnej wysyłki, 404/410 → usunięcie subskrypcji, ponowienia | `supabase/functions/reminders-push` |
+| Czysta logika (też w Node): parser ICS + rozwinięcie przez `core/recurrence.ts`, strefy przez `Intl`, klient Google, mail → zadanie | `supabase/functions/_shared` |
+| Cloudflare Email Worker (przekazuje surową wiadomość) | `tools/email-worker` |
+| Sekrety lokalne, fałszywe usługi, testy, strona próbna push | `tools/edge-tests` |
+
+**Prawdziwe Google (18.11.2026):** osobny projekt Google Cloud „TaskPlanner” w stanie *In production* (ekran „unverified app”, „Advanced → Go to TaskPlanner”). Lokalnie: OAuth → Vault → `calendarList` → pełna synchronizacja z `timeMin`/`timeMax` zwraca `nextSyncToken` → nowe wydarzenie przez przyrost (`full: false`, 1 wiersz, 513 ms dla dwóch kalendarzy). W chmurze: kanał `watch` dla kalendarza głównego, zmiana tytułu w Google → `calendar_events` w 3,9 s. Narzędzie: `npm run real --workspace tools/edge-tests -- <ics|poll|sync|google-start|status|watch> [--cloud]`.
+
+**Prawdziwy ICS (19.11.2026):** `npm run real --workspace tools/edge-tests -- ics-watch <tytuł>` pobiera tajny adres co 30 s i po pojawieniu się zmiany wywołuje `cron/poll`. Google pokazał zmianę tytułu w pliku po ~25 s.
+
+**Wdrożenie w chmurze (18.11.2026):** `db push` (migracje PoC-6), `secrets set --env-file supabase/functions/.env.cloud` (plik poza repozytorium: osobne `CRON_SECRET` i `INBOUND_SECRET`, klucze VAPID te same co lokalnie), `functions deploy` trzech funkcji (bundel 0,8–1,5 MB, `packages/core` spoza `supabase/` dołączony), Vault: `functions_url`, `cron_secret` (`db query --linked`, każda instrukcja osobno — API zapytań nie przyjmuje bloku `do $$`).
+
+**Ustalenia i odstępstwa (do v0.2):**
+- §5: tabele integracji mają `user_id` (= zakres osobisty) i `row_version`; każdy zapis podbija `sync_scopes.sync_version`, więc klient dostaje sygnał Realtime. W `pull_changes` dojdą w Etapie 5 jako tylko do odczytu. Wydarzenie całodniowe ma daty pływające `start_date`/`end_date` (koniec bez włączenia, jak w iCalendar), a `start_at`/`end_at` mają tylko wydarzenia z godziną. Usunięte wydarzenia dostają `deleted_at`, a `cron/renew` czyści wydarzenia starsze niż okno.
+- §5: `inbound_addresses` (token, nadawcy, lista docelowa, strefa) i `push_subscriptions` są tymczasowe — w MVP-1 przechodzą do `profiles` / `devices`. `push_queue` zastąpi w MVP-4 wyliczanie z `core/reminders.ts` z dziennikiem wysyłek per urządzenie.
+- Zadanie z integracji dostaje HLC serwera w `field_clock` każdego pola (`create_integration_task`). Klient scala je jak zmianę z innego urządzenia, a tagi zadania mają id z `taskTagId`.
+- M19: Worker **nie parsuje** MIME (wniosek z `docs/USLUGI.md` o CPU na Free), tylko przekazuje surową wiadomość. Parsuje `inbound-email` (`postal-mime` 4.2.1). Worker leży w `tools/email-worker`, a nie w `workers/email` z §3. Odrzucenie (zły token, obcy nadawca, `dmarc=fail`) nie odbija maila do nadawcy, tylko trafia do dziennika (bez treści). Pusta lista nadawców odrzuca wszystko.
+- Mail: najpierw wpis w dzienniku (unikalny Message-ID), potem zadanie. Trzy równoległe dostarczenia tego samego maila dają jedno zadanie. Temat bez „Fwd:/Re:/PD:/Odp:/[EXT]”, a w treści zostaje przekazana wiadomość. Cytat odpowiedzi, stopka `-- ` i „Wysłane z…” są odcinane.
+- Google: zakres `calendar.readonly` + `openid email`, `access_type=offline`, `prompt=consent` (inaczej ponowne połączenie nie daje tokenu odświeżania). Callback sprawdza, czy użytkownik nie odznaczył kalendarza na ekranie zgody. Jednorazowy `state` ważny 15 min. Pierwsza synchronizacja to `singleEvents=true` z `timeMin`/`timeMax`, potem przyrost z `syncToken`, a 410 wymusza pełną synchronizację z usunięciem brakujących. Sekret w Vault to JSON z tokenem odświeżania i bieżącym tokenem dostępu (odświeżanym, gdy zostaje < 1 min). Kanał `watch` ma TTL 7 dni, a `cron/renew` wymienia go 2 dni przed końcem (nowy przed zatrzymaniem starego). Webhook bez HTTPS (lokalnie) — bez kanałów.
+- ICS: DTSTART jest zawsze pierwszym wystąpieniem (RFC 5545, inaczej niż kotwica w `core`). `UNTIL` z godziną daje datę w strefie wydarzenia, a `WKST` jest pomijany przy `INTERVAL=1`. Reguła spoza podzbioru `core` daje tylko pierwsze wystąpienie i ostrzeżenie. Obsługiwane są strefy Windows z Outlooka i ETag / `If-None-Match`. Ten sam plik jest przeliczany najwyżej raz na dobę, bo okno się przesuwa.
+- Push: `topic` = id wpisu (powtórka zastępuje powiadomienie w usłudze push), `urgency: high`, TTL 10 min. Ukończone albo usunięte zadanie jest sprawdzane w chwili wysyłki. Same błędy przejściowe → ponowienie w następnej minucie (najwyżej 5 prób).
+- `pg_cron` woła funkcje przez `pg_net` z adresem i sekretem z Vault (`functions_url`, `cron_secret`). Bez nich zadanie nic nie robi, więc migracja jest bezpieczna w każdym środowisku. Funkcje mają `verify_jwt = false` i same sprawdzają JWT użytkownika, `x-cron-secret`, sekret Workera albo token kanału Google.
+
+**Wnioski z prawdziwych usług:**
+- Klient OAuth musi być w **osobnym projekcie Google Cloud** — ekran zgody (nazwa, stan *Testing*/*In production*) jest wspólny dla projektu; klient z projektu ExpeditionPlan pokazywał „ExpeditionPlan” i `403 access_denied` (stan *Testing*). Po utworzeniu projektu trzeba jawnie kliknąć **Audience → Publish app**. Adres powrotu dokładnie jak w `redirect_uri` (`http://127.0.0.1:54521/…` lokalnie, bez ukośnika na końcu).
+- Kalendarze świąt Google (`…#holiday@group.v.calendar.google.com`) **nie obsługują `watch`** (400 „Push notifications are not supported by this resource”) — teraz zapisywane jako `noWatch` i odświeżane tylko przez cron; wcześniej błąd przerywał połączenie konta.
+- Publiczny ICS świąt Google zmienia **UID wydarzeń przy każdym pobraniu** → każda pełna synchronizacja usuwa i wstawia wszystkie wiersze (`deleted_at`). Kalendarze użytkownika mają stałe UID; jeśli to przeszkadza, klucz zapasowy (tytuł + początek) dla plików z niestabilnymi UID (Etap 5).
+- Połączenie konta Google domyślnie włącza wszystkie kalendarze zaznaczone w Google Calendar (także święta) — w Etapie 5 wybór w „Połączone kalendarze”.
+
+**Wnioski techniczne:**
+- Lokalny Edge Runtime (1.77.8, zgodny z Deno 2.1.4) widzi całe repozytorium, więc `../../../packages/core/src/*.ts` importuje się bez kopiowania. `zod` wymaga mapy importów (`supabase/functions/deno.json`, wspólna dla funkcji przez `import_map` w `config.toml`). `functions deploy` dołącza je do bundla (sprawdzone w chmurze).
+- `jsr:@negrel/webpush` 0.5.0 działa w Edge Runtime (wyjście awaryjne `npm:web-push` niepotrzebne). Klucze VAPID w formacie JWK z WebCrypto (`setup.ts`) importują się bez biblioteki.
+- `deno check` (Deno 2.9.6) odrzucił `@supabase/supabase-js` 2.119.1 opublikowany < 24 h wcześniej (domyślny minimalny wiek zależności), więc funkcje mają przypięte 2.118.0. `deno.lock` z Deno 2.9 nie jest zapisywany (`--no-lock`), bo runtime 2.1 może nie czytać nowszego formatu.
+- **Nowy projekt w chmurze nie nadaje ról API do tabel z migracji** (lokalny stack nadaje, `auto_expose_new_tables`): funkcje dostały „permission denied for table calendar_accounts” mimo `service_role`. Poprawka: jawne granty w `20261118150000_poc6_grants.sql`. **To samo dotyczyło tabel PoC-1**: w chmurze `authenticated` nie miał `select` do `sync_scopes` i tabel zadań, więc sygnał Realtime nie doszedłby do klientów (`push_changes`/`pull_changes` działały jako SECURITY DEFINER) — poprawione w `20261118160000_poc1_grants.sql` (`select` dla `authenticated`, pełne dla `service_role`, zapis klienta dalej tylko przez `push_changes`). Lokalnie bez zmian (granty były), `test:db` i `test:sync` zielone; test Realtime w `test:sync` raz na 4 przebiegi nie zdążył (do obserwacji). **Każda nowa tabela potrzebuje jawnego `grant` dla `service_role`** (i `authenticated`, jeśli klient ma czytać wprost) — dotyczy też MVP-1; warto ustawić `auto_expose_new_tables = false` lokalnie, żeby błąd wychodził w testach.
+- CLI 2.122: `import_map` w `[functions.*]` jest przestarzałe — `supabase/functions/deno.json` jest wykrywany sam (lokalnie i przy wdrożeniu).
+- Uprawnienia kolumn (sekrety, `sync_state`) sprawiają, że `select('*')` z klienta kończy się błędem. Klient musi wymieniać kolumny — do pamiętania w Etapie 5.
+- Chrome: odmowa powiadomień zapisana dla `localhost` blokuje też rejestrację service workera (Chrome nie pobiera `sw.js`) — strona próbna pokazuje stan zgody i pełny błąd. Do pomocy w ustawieniach (MVP-4).
+- Docker Desktop na Windows: fałszywe usługi na `0.0.0.0:54590` są osiągalne z kontenera funkcji jako `host.docker.internal`, a z bazy funkcje widać jako `supabase_kong_taskplanner:8000`.
+
+**Niesprawdzone:**
+- Token odświeżania Google w stanie *In production* > 7 dni (w trakcie MVP).
+- Cloudflare (v1.x, D9): czas Email Routing → Worker → funkcja, nagłówki `Authentication-Results` dodawane przez Cloudflare (od tego zależy reguła DMARC), limit CPU Workera na Free.
+- Załączniki z maila (Etap 10), wybór kalendarzy w UI i ekran „Połączone kalendarze” (Etap 5), strefa z ustawień profilu zamiast `inbound_addresses.time_zone` (MVP-1).
 ## PoC-5 — Widoki webowe na lokalnych danych (18.11.2026)
 
 **Werdykt: GO z warunkami.** Biblioteki: **FullCalendar 6.1.22** (MIT), **dnd-kit** (core 6.3, sortable 10), **SVAR React Gantt 2.8.3** (MIT, darmowa wersja wystarcza — własnego komponentu SVG nie budowałem), **TipTap 3.34 + @tiptap/markdown**. Strona prób: `/dev/views`. Dane: `npm run seed:dev -- --load` (5 746 operacji przez `push_changes` w 3,4 s, 0 odrzuceń) → 2 017 zadań w lokalnej bazie przeglądarki (OPFS).
