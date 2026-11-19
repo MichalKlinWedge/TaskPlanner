@@ -21,7 +21,7 @@ Po instalacji: ekran główny → wszystkie uprawnienia nadawane na ekranach PoC
 
 Przygotowanie: na komputerze `npm run supabase -- start`, `npm run dev:user`. Dostęp telefonu do lokalnego Supabase: najprościej przez USB — `adb reverse tcp:54521 tcp:54521` i adres `http://127.0.0.1:54521`; albo Wi-Fi — `http://<IP komputera>:54521` (zapora Windows przepuszcza port w sieci prywatnej). Lokalny Supabase to `http` bez TLS: dev build na to pozwala (RN dodaje `usesCleartextTraffic` tylko w wariancie debug), build release — nie (Android 9+), więc S2 robić na dev buildzie.
 
-1. „Serwer i konto”: adres jak wyżej, klucz = `PUBLISHABLE_KEY` z `npm run supabase -- status`, e-mail `dev@taskplanner.test`, hasło z `.env.local` (`DEV_USER_PASSWORD`) → „Zaloguj”.
+1. „Konto i serwer”: adres jak wyżej, klucz = `PUBLISHABLE_KEY` z `npm run supabase -- status`, e-mail `dev@taskplanner.test` → „Wyślij link logowania” → link albo kod z maila w Mailpit (http://127.0.0.1:54524). Od MVP-1 nie ma logowania hasłem — szczegóły w `docs/MVP1_TELEFON.md` (M1, M2).
 2. „Samosprawdzenie” → „Uruchom”: grupa *PoC-1: Supabase* — push + pull, wiersz na serwerze (zakres wyliczony), sygnał Realtime < 3 s, zmiana z drugiego węzła pobrana.
 3. Dwa urządzenia: web `npm run web:local` → `/dev/sync` (to samo konto). Na telefonie tryb samolotowy → „Dziś” → „Dodaj przykładowe zadania” → wyłączyć tryb samolotowy, stoper: zadania na webie < 5 s (kryterium MVP-1). Edycja na webie → widać na telefonie po powrocie na ekran „Dziś” (Realtime < 3 s).
 

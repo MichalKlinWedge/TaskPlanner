@@ -71,7 +71,8 @@
           ],
           "disableIOS": true
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

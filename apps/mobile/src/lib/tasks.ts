@@ -5,6 +5,7 @@
 import {
   addDays,
   completionId,
+  defaultWorkspaceId,
   keyBetween,
   nextDue,
   parseQuickAdd,
@@ -42,7 +43,8 @@ async function listByName(name: string): Promise<string> {
   const row = (await engine.db.all<{ id: string }>('select id from lists where name = ? and deleted_at is null order by id limit 1', [name]))[0];
   if (row) return row.id;
   const id = uuidv7();
-  await mutate('lists', id, { scope_id: engine.userId, kind: 'list', name, sort_key: 'n' });
+  // Lista musi należeć do przestrzeni (serwer odrzuca zakres osobisty, TP004) — „Osobiste” z onboardingu.
+  await mutate('lists', id, { scope_id: defaultWorkspaceId(engine.userId, 'personal'), kind: 'list', name, sort_key: 'n' });
   return id;
 }
 
