@@ -279,6 +279,7 @@ Widoki stałe w pasku bocznym [W+A]:
 ### M17. Wyszukiwarka i paleta poleceń
 - **Paleta** `Ctrl+K` [W] (na [A]: ikona szukania z tymi samymi wynikami): zadania (tytuł, opis, tagi, nazwa listy), listy, przestrzenie, tagi, filtry, widoki i **akcje** („Przenieś do…”, „Ustaw priorytet…”, „Zaplanuj na jutro”, „Tryb skupienia”, „Nowy projekt”, „Przełącz przestrzeń”, „Przegląd dnia”, „Motyw ciemny”). Akcje działają na zaznaczonych zadaniach.
 - Wyszukiwanie lokalne: SQLite FTS5 (`unicode61 remove_diacritics 2` — „zolw” znajduje „żółw”), prefiksy, ranking (tytuł > tagi > opis), ostatnio używane na górze. Ten sam kod na webie i telefonie, działa offline.
+  - Zrobione (19.11.2026) w `core/search.ts` bez FTS5: indeks w pamięci (`buildSearchIndex`, `search`) — normalizacja bez ogonków i „ł”, każde słowo zapytania pasuje do początku słowa (środek słowa od 3 znaków, słabiej), wagi tytuł 10 > tagi 6 > słowa kluczowe akcji 5 > lista 4 > opis 2, zamknięte niżej, premia za ostatnie użycie, podświetlenia w tytule; 5 000 pozycji < 15 ms. FTS5 tylko, jeśli zabraknie wydajności (zawężenie kandydatów). Polecenia palety i skróty: `core/commands.ts` (`COMMANDS`, `LIST_SHORTCUTS`, `commandSearchItems`).
 - **Skróty [W]**: `Q` szybkie dodawanie, `Ctrl+K` paleta, `/` szukaj, `G` potem `I`/`T`/`U`/`K`/`C`/`O` — Inbox/Dziś/Nadchodzące/Kanban/Kalendarz/Oś czasu, `J`/`K` następne/poprzednie zadanie, `E` ukończ, `1`–`4` priorytet, `T` dziś, `M` jutro, `D` wybór daty, `F` tryb skupienia, `Del` kosz, `?` lista skrótów. Lista skrótów w `core` (etykiety), obsługa w `apps/web`.
 
 ### M18. Kalendarze zewnętrzne
@@ -342,6 +343,7 @@ Zasady:
 - **Czas zadań = data i godzina pływające** (`date`, `time` — czas ścienny użytkownika), bo „o 10:00” znaczy 10:00 tam, gdzie akurat jestem. Opcjonalna `time_zone` przy zadaniu przypina je do strefy (np. telekonferencja z innym krajem). Zdarzenia rzeczywiste (ukończenie, czas pracy, wydarzenia z kalendarzy) to `timestamptz`.
 - Kolejność ręczna: `sort_key text` (klucze ułamkowe) w obrębie rodzica i listy.
 - `jsonb` walidowane schematami Zod z `packages/core/src/schemas` (camelCase).
+- Schematy wierszy i `jsonb` (19.11.2026): `packages/core/src/schemas/model.ts` — `MODEL` (wiersz po nazwie tabeli, kolumny snake_case z ograniczeniami migracji i regułami między polami), `ProfileSettings` (`parse({})` = domyślne), `ViewPrefs`, `TaskSource`, `AttachmentPreview`, `PushSubscriptionJson`. Test w `packages/sync` pilnuje, że wiersze tabel synchronizowanych mają dokładnie kolumny `TABLES` + `id`. `devices.reminder_channel` = `enabled`/`disabled` (czy urządzenie dostaje przypomnienia).
 
 ### Tabele — konto i struktura
 | Tabela | Najważniejsze kolumny | Uwagi |
@@ -480,6 +482,7 @@ Recurrence =
 
 ### 7.9. Etykiety i formatowanie
 - `labels.ts`: `PRIORITY`, `TASK_STATUS`, `LIST_KIND`, `PROJECT_STATUS`, `REMINDER_KIND`, `WEEKDAY`; `format.ts` (z EP: `plural`, `pluralForm`, `formatMinutes`, `shortDate`) + `relativeDay` („dziś”, „jutro”, „pt 21 lis”, „za 3 dni”, „2 dni temu”). Aplikacje nie definiują własnych etykiet.
+- Zrobione (19.11.2026): `REMINDER_KIND`, `WEEKDAY`, `MONTH_SHORT`, `VIEW_SECTION`; `relativeDay(date, today, 'date' | 'distance')`.
 
 ---
 

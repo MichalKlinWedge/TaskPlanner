@@ -27,3 +27,10 @@ export type ListKind = z.infer<typeof ListKind>;
 
 export const ProjectStatus = z.enum(['active', 'on_hold', 'done']);
 export type ProjectStatus = z.infer<typeof ProjectStatus>;
+
+export const ReminderKind = z.enum(['relative', 'absolute']);
+export type ReminderKind = z.infer<typeof ReminderKind>;
+
+/** Dzień tygodnia ISO: 1 = poniedziałek … 7 = niedziela. */
+export const IsoWeekday = z.number().int().min(1).max(7);
+export type IsoWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;

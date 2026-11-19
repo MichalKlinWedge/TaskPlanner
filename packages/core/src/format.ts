@@ -3,6 +3,9 @@
  * się w UTC z południa, bo to daty pływające (bez strefy), a nie chwile w czasie.
  * Podstawa z ExpeditionPlan (`packages/core/src/format.ts`).
  */
+import { daysBetween, isoWeekday } from './dates.ts';
+import { MONTH_SHORT, WEEKDAY } from './labels.ts';
+import type { IsoWeekday, LocalDate } from './schemas/primitives.ts';
 
 /** Forma rzeczownika po liczbie: 1, 2–4 (22, 103…), 5+ (także 12–14 i 0). */
 export function pluralForm(count: number, [one, few, many]: readonly [string, string, string]): string {
@@ -42,3 +45,28 @@ export const dayMonth = (date: string): string => localDate(date, { day: 'numeri
 
 /** „5 gru”. */
 export const shortDate = (date: string): string => localDate(date, { day: 'numeric', month: 'short' });
+
+const DAYS = ['dzień', 'dni', 'dni'] as const;
+const WEEKS = ['tydzień', 'tygodnie', 'tygodni'] as const;
+const MONTHS = ['miesiąc', 'miesiące', 'miesięcy'] as const;
+const YEARS = ['rok', 'lata', 'lat'] as const;
+
+/**
+ * Dzień względem dziś: „dziś”, „jutro”, „wczoraj”, a dalej `date` → „pt 21 lis” (z rokiem, gdy inny
+ * niż bieżący) albo `distance` → „za 3 dni”, „2 tygodnie temu”, „za 2 miesiące”.
+ */
+export function relativeDay(date: LocalDate, today: LocalDate, style: 'date' | 'distance' = 'date'): string {
+  const diff = daysBetween(today, date);
+  if (diff === 0) return 'dziś';
+  if (diff === 1) return 'jutro';
+  if (diff === -1) return 'wczoraj';
+  if (style === 'date') {
+    const year = date.slice(0, 4) === today.slice(0, 4) ? '' : ` ${date.slice(0, 4)}`;
+    return `${WEEKDAY[isoWeekday(date) as IsoWeekday].short} ${Number(date.slice(8, 10))} ${MONTH_SHORT[Number(date.slice(5, 7)) - 1]}${year}`;
+  }
+  const abs = Math.abs(diff);
+  // „za rok”, nie „za 1 rok”.
+  const count = (n: number, forms: readonly [string, string, string]) => (n === 1 ? forms[0] : plural(n, forms));
+  const amount = abs < 14 ? count(abs, DAYS) : abs < 60 ? count(Math.floor(abs / 7), WEEKS) : abs < 365 ? count(Math.floor(abs / 30), MONTHS) : count(Math.floor(abs / 365), YEARS);
+  return diff > 0 ? `za ${amount}` : `${amount} temu`;
+}

@@ -54,7 +54,8 @@ export interface ViewContext {
 }
 
 /** Pokazywanie ukończonych (M9): ukryte / ukończone dziś / wszystkie. */
-export type CompletedMode = 'hidden' | 'today' | 'all';
+export const CompletedMode = z.enum(['hidden', 'today', 'all']);
+export type CompletedMode = z.infer<typeof CompletedMode>;
 
 export const isOpen = (task: Pick<ViewTask, 'status'>): boolean => task.status !== 'done' && task.status !== 'cancelled';
 
@@ -78,7 +79,8 @@ const nullsLast = <T extends string>(a: T | null, b: T | null) => (a === b ? 0 :
 /** Kolejność w obrębie dnia (M9): najpierw z godziną według godziny, potem bez godziny według kolejności ręcznej. */
 export const byDayOrder = (a: ViewTask, b: ViewTask): number => nullsLast(a.dueTime, b.dueTime) || byManual(a, b);
 
-export type SortBy = 'manual' | 'priority' | 'due' | 'created';
+export const SortBy = z.enum(['manual', 'priority', 'due', 'created']);
+export type SortBy = z.infer<typeof SortBy>;
 
 const COMPARE: Record<SortBy, (a: ViewTask, b: ViewTask) => number> = {
   manual: byManual,
@@ -252,7 +254,8 @@ export const applyFilter = (tasks: readonly ViewTask[], query: FilterQuery, toda
 
 // ── Grupowanie ───────────────────────────────────────────────────────────────────────────────
 
-export type GroupBy = 'none' | 'priority' | 'list' | 'date' | 'tag' | 'status';
+export const GroupBy = z.enum(['none', 'priority', 'list', 'date', 'tag', 'status']);
+export type GroupBy = z.infer<typeof GroupBy>;
 
 export interface TaskGroup {
   /** Wartość grupy (priorytet, id listy/tagu, data, status) albo `none` dla braku wartości. */
