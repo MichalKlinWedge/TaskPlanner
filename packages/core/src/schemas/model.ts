@@ -100,13 +100,17 @@ export type ProfileSettings = z.infer<typeof ProfileSettings>;
 
 // ── Wiersze: konto i struktura ───────────────────────────────────────────────────────────────
 
+/** Profil: id = id użytkownika = jego zakres osobisty. */
 export const ProfileRow = z.object({
+  id: Id,
   display_name: z.string().trim().max(100).nullable(),
   settings: ProfileSettings,
 });
 
 export const DeviceRow = z.object({
   id: Id,
+  /** Zakres osobisty. */
+  scope_id: Id,
   name: name(100),
   platform: z.enum(['web', 'android']),
   /** Czy to urządzenie dostaje przypomnienia (M1: telefon / przeglądarka / oba). */
@@ -164,6 +168,8 @@ export const TaskRow = z
     habit: HabitSettings.nullable(),
     completed_at: Instant.nullable(),
     sort_key: SortKey,
+    /** Kolejność na tablicy kanbanu z kilku list (D15); brak = kolejność automatyczna. */
+    board_sort_key: SortKey.nullable(),
     source: TaskSource.nullable(),
     postpone_count: z.number().int().min(0),
   })
@@ -257,6 +263,8 @@ export const SavedFilterRow = z.object({
 
 export const ReviewSessionRow = z.object({
   id: Id,
+  /** Zakres osobisty. */
+  scope_id: Id,
   kind: z.enum(['daily', 'weekly']),
   started_at: Instant,
   finished_at: Instant.nullable(),
@@ -277,6 +285,7 @@ export const MODEL = {
   attachments: AttachmentRow,
   saved_filters: SavedFilterRow,
   review_sessions: ReviewSessionRow,
+  profiles: ProfileRow,
   devices: DeviceRow,
 } as const;
 export type ModelTable = keyof typeof MODEL;

@@ -35,7 +35,7 @@ export function supabaseClient(): SupabaseClient {
 /** Klient Supabase powstaje dopiero przy pierwszej synchronizacji — zapis w tle go nie potrzebuje. */
 const lazyRemote: Remote = {
   push: (ops) => supabaseRemote(supabaseClient()).push(ops),
-  pull: (since) => supabaseRemote(supabaseClient()).pull(since),
+  pull: (since, limit) => supabaseRemote(supabaseClient()).pull(since, limit),
   subscribe: (onChange, onReady) => supabaseRemote(supabaseClient()).subscribe!(onChange, onReady),
 };
 

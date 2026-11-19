@@ -26,6 +26,7 @@ const task = {
   habit: null,
   completed_at: null,
   sort_key: '0010',
+  board_sort_key: null,
   source: { kind: 'quick_add', text: 'Zadzwonić do hydraulika jutro 9:30 ~15m !2' },
   postpone_count: 0,
 } as const;

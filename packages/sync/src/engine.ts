@@ -22,11 +22,16 @@ export interface SyncEngineOptions {
   onError?: (error: unknown) => void;
   /** Wysyłka zaraz po zapisie (domyślnie tak; testy sterują ręcznie). */
   autoSync?: boolean;
+  /** Wierszy na stronę `pull_changes` (domyślnie 1 000). */
+  pullPageSize?: number;
+  /** Postęp pobierania (wskaźnik pierwszej synchronizacji). */
+  onPullProgress?: (progress: { page: number; done: boolean }) => void;
 }
 
 type Listener = () => void;
 
 const PUSH_BATCH = 200;
+const PULL_PAGE = 1000;
 
 export class SyncEngine {
   readonly db: LocalDb;
@@ -62,6 +67,14 @@ export class SyncEngine {
 
   private async init() {
     for (const statement of localSchema()) await this.db.run(statement);
+    // Baza z wcześniejszej wersji: brakujące kolumny dochodzą jako puste (wartości przyjdą z serwera
+    // przy następnej zmianie wiersza; puste = domyślne, jak w bazie).
+    for (const table of SYNCED_TABLES) {
+      const existing = new Set((await this.db.all<{ name: string }>('select name from pragma_table_info(?)', [table])).map((c) => c.name));
+      for (const column of localColumns(table)) {
+        if (!existing.has(column)) await this.db.run(`alter table ${table} add column ${column}`);
+      }
+    }
     const meta = Object.fromEntries((await this.db.all<{ key: string; value: string }>('select key, value from _meta')).map((r) => [r.key, r.value]));
     const deviceId = this.options.deviceId ?? meta.device_id ?? uuidv7(this.now()).replace(/-/g, '').slice(-12);
     if (meta.device_id !== deviceId) await this.setMeta(this.db, 'device_id', deviceId);
@@ -150,8 +163,10 @@ export class SyncEngine {
   /** Zakres wiersza liczony lokalnie jak w triggerach bazy (UI filtruje po przestrzeni przed synchronizacją). */
   private async deriveScope(tx: LocalDb, table: SyncedTable, row: SqlRow) {
     const rule = TABLES[table].scope;
+    const taskScope = async (taskId: unknown) =>
+      (await tx.all('select scope_id from tasks where id = ?', [(taskId as string | null | undefined) ?? null]))[0]?.scope_id;
     if (rule === 'self') row.scope_id = row.id ?? null;
-    else if (table === 'tags') row.scope_id = row.scope_id ?? this.userId;
+    else if (rule === 'personal') row.scope_id = row.scope_id ?? this.userId;
     else if (table === 'tasks') {
       if (row.parent_id) {
         const parent = (await tx.all('select list_id from tasks where id = ?', [row.parent_id]))[0];
@@ -159,9 +174,12 @@ export class SyncEngine {
       }
       const list = (await tx.all('select scope_id from lists where id = ?', [row.list_id ?? null]))[0];
       if (list?.scope_id) row.scope_id = list.scope_id;
+    } else if (table === 'task_dependencies') {
+      row.scope_id = (await taskScope(row.predecessor_id)) ?? row.scope_id ?? null;
+    } else if (table === 'time_entries') {
+      row.scope_id = row.task_id ? ((await taskScope(row.task_id)) ?? row.scope_id ?? null) : this.userId;
     } else if (rule === 'derived') {
-      const task = (await tx.all('select scope_id from tasks where id = ?', [row.task_id ?? null]))[0];
-      if (task?.scope_id) row.scope_id = task.scope_id;
+      row.scope_id = (await taskScope(row.task_id)) ?? row.scope_id ?? null;
     }
   }
 
@@ -253,8 +271,17 @@ export class SyncEngine {
     }
   }
 
+  /** Pobranie wszystkich zmian stronami (`pull_changes` z limitem; pierwsza pełna migawka też w porcjach). */
   async pull(): Promise<void> {
-    const result: PullResult = await this.remote.pull(this.since);
+    for (let page = 0; ; page++) {
+      const more = await this.pullPage();
+      this.options.onPullProgress?.({ page: page + 1, done: !more });
+      if (!more) return;
+    }
+  }
+
+  private async pullPage(): Promise<boolean> {
+    const result: PullResult = await this.remote.pull(this.since, this.options.pullPageSize ?? PULL_PAGE);
     const touched = new Set<string>();
     await this.db.transaction(async (tx) => {
       for (const table of SYNCED_TABLES) {
@@ -278,6 +305,7 @@ export class SyncEngine {
       await this.setMeta(tx, 'clock', this.clock.last);
     });
     if (touched.size) this.notify(touched);
+    return result.more === true;
   }
 }
 
