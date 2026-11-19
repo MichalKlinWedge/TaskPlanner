@@ -151,6 +151,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"client_errors": {
+                  Row: {
+                    "app_version": string | null,"context": NonNullable<Json>,"count": number,"day": string,"fingerprint": string,"first_at": string,"id": number,"kind": string,"last_at": string,"message": string,"platform": string,"received_at": string,"stack": string | null,"url": string | null,"user_agent": string | null,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "app_version"?: string | null,"context"?: NonNullable<Json>,"count"?: number,"day": string,"fingerprint": string,"first_at": string,"id"?: never,"kind": string,"last_at": string,"message": string,"platform": string,"received_at"?: string,"stack"?: string | null,"url"?: string | null,"user_agent"?: string | null,"user_id": string
+                  }
+                  Update: {
+                    "app_version"?: string | null,"context"?: NonNullable<Json>,"count"?: number,"day"?: string,"fingerprint"?: string,"first_at"?: string,"id"?: never,"kind"?: string,"last_at"?: string,"message"?: string,"platform"?: string,"received_at"?: string,"stack"?: string | null,"url"?: string | null,"user_agent"?: string | null,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"devices": {
                   Row: {
                     "created_at": string,"created_by": string | null,"deleted_at": string | null,"field_clock": NonNullable<Json>,"id": string,"last_sync_at": string | null,"name": string,"platform": string,"push_subscription": Json | null,"reminder_channel": string,"row_version": number,"scope_id": string,"updated_at": string
@@ -626,6 +640,12 @@ isOneToOne: false
 "call_edge_function":
 { Args: { "p_body"?: Json,"p_path": string }; Returns: number
                            },
+"can_read_attachment":
+{ Args: { "p_name": string }; Returns: boolean
+                           },
+"can_upload_attachment":
+{ Args: { "p_name": string }; Returns: boolean
+                           },
 "can_write_scope":
 { Args: { "p_scope": string }; Returns: boolean
                            },
@@ -672,6 +692,9 @@ isOneToOne: false
                            },
 "random_token":
 { Args: Record<PropertyKey, never>; Returns: string
+                           },
+"report_client_errors":
+{ Args: { "p_items": Json }; Returns: number
                            },
 "rotate_inbound_token":
 { Args: Record<PropertyKey, never>; Returns: string

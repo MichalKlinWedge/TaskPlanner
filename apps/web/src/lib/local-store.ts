@@ -8,6 +8,7 @@ import { connectTabs, supabaseRemote, SyncEngine, type SqlRow, type SqlValue, ty
 import { openWasmDb } from "@taskplanner/sync/wasm";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { reportError } from "./error-log";
 import { supabaseBrowser } from "./supabase-browser";
 
 export interface StoreStatus {
@@ -47,8 +48,15 @@ export function storeFor(userId: string): TabStore {
         db,
         remote: supabaseRemote(supabase),
         userId,
-        onError: (e) => update({ error: String(e) }),
-        onRejected: (ops) => update({ error: `Odrzucone: ${ops.map((o) => o.code).join(", ")}` }),
+        onError: (e) => {
+          update({ error: String(e) });
+          reportError("sync", e);
+        },
+        onRejected: (ops) => {
+          update({ error: `Odrzucone: ${ops.map((o) => o.code).join(", ")}` });
+          // Odrzucenie przez serwer to błąd reguł po stronie klienta — każdy kod osobno (bez danych zadań).
+          for (const op of ops) reportError("rejected", { code: op.code, message: op.message });
+        },
         onPullProgress: ({ page, done }) => update({ pullPage: done ? null : page }),
         onSyncState: (state) =>
           update(

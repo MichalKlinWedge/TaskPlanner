@@ -398,6 +398,7 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 | `oauth_states` | jednorazowy `state` OAuth (15 min) | PoC-6 |
 | `inbound_addresses` | token i nadawcy adresu e-mail | **tymczasowa z PoC-6** — przechodzi do `profiles` w v1.x razem z e-mailem (D9; decyzja 2026-11-19) |
 | `reminder_deliveries` | `id` (identity), `user_id`, `device_id`, `fire_key` (`<id przypomnienia>:<dzień wystąpienia>`), `task_id`, `fire_at`, `status` (`claimed`/`sent`/`failed`/`skipped`), `attempts`, `sent_at`, `error`; unikalne (`device_id`, `fire_key`) | dziennik wysyłek Web Push (MVP-4): `reminders-push` co minutę liczy należne przypomnienia z `core/reminders.ts` i zajmuje każdą wysyłkę wierszem (`claim_reminder_deliveries`) — bez duplikatów; subskrypcja przeglądarki w `devices.push_subscription`. Zastąpił tymczasowe `push_subscriptions` i `push_queue` z PoC-6 |
+| `client_errors` | `id` (identity), `user_id`, `fingerprint`, `day`, `kind` (`error`/`unhandled`/`render`/`sync`/`rejected`), `platform`, `app_version`, `message`, `stack`, `url`, `user_agent`, `context`, `count`, `first_at`, `last_at`, `received_at`; unikalne (`user_id`, `fingerprint`, `day`) | Dziennik błędów aplikacji (D20, Etap 13), niesynchronizowany: klient pisze tylko przez `report_client_errors`, czyta własne wiersze |
 | `activity_log` | `id` (identity), `scope_id`, `table_name`, `row_id`, `changes jsonb`, `device_id` (węzeł HLC zmiany), `actor_id`, `at` | historia zmian zadań (M3) z triggera; tylko odczyt, poza strumieniem synchronizacji (MVP-1) |
 
 Ustalenia z PoC-6: tabele integracji mają `user_id` (= zakres osobisty) i `row_version`; każdy zapis podbija `sync_scopes.sync_version` (sygnał Realtime), a w `pull_changes` dochodzą w Etapie 5 jako tylko do odczytu. Wydarzenie całodniowe ma daty pływające `start_date`/`end_date` (koniec bez włączenia, jak w iCalendar); `start_at`/`end_at` tylko dla wydarzeń z godziną. Zadanie z integracji dostaje HLC serwera w `field_clock` każdego pola (`create_integration_task`).
@@ -612,6 +613,7 @@ Stan po bramce decyzyjnej (19.11.2026): wszystkie zatwierdzone.
 | D18 | Biblioteka osi czasu | **SVAR React Gantt** (decyzja 2026-11-19, PoC-5); własny SVG niepotrzebny |
 | D19 | Silnik cykliczności | **Własny podzbiór RRULE** (decyzja 2026-11-19, PoC-3); rrule.js tylko w testach |
 | D14 | Język i nazwa | UI po polsku, nazwa aplikacji „TaskPlanner”, pakiety `@taskplanner/*` (decyzja 2026-11-19) |
+| D20 | Raportowanie błędów | **Własny dziennik w Supabase** (decyzja 2026-11-19, Etap 13), bez Sentry: tabela `client_errors` (wiersz na użytkownika, odcisk i dzień, licznik), zapis tylko przez `report_client_errors` (limity), retencja 90 dni (`pg_cron`), podgląd w Ustawieniach; błędy Edge Functions — w logach Supabase |
 
 ---
 
