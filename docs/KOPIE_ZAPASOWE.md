@@ -101,7 +101,7 @@ node scripts/backup.mjs verify
 
 Zrzut z lokalnego `supabase_db_taskplanner` (tylko odczyt) → osobny tymczasowy stos `taskplanner-restore` (porty 546xx, tylko baza i Auth, migracje z tego checkoutu) → `restore` → porównanie sum kontrolnych → zatrzymanie stosu (`--no-backup`; `--keep` zostawia go do obejrzenia). Ten sam kod co nocny zrzut, tylko narzędzia z kontenera.
 
-**Wynik 19.11.2026:** 29 tabel, 25 262 wiersze (m.in. 9 465 zadań, 224 konta) — liczby i sumy kontrolne po odtworzeniu zgodne ze zrzutem. Szyfrowanie i odszyfrowanie (`gpg` jak w workflow) sprawdzone w Git Bash. Workflow w GitHubie jeszcze nie uruchomiony (czeka na sekrety).
+**Wynik 19.11.2026:** 29 tabel, 25 262 wiersze (m.in. 9 465 zadań, 224 konta) — liczby i sumy kontrolne po odtworzeniu zgodne ze zrzutem. Szyfrowanie i odszyfrowanie (`gpg` jak w workflow) sprawdzone w Git Bash. Pierwszy przebieg w GitHubie (19.11.2026, ręcznie): zrzut chmury 30 tabel, 1 816 wierszy, artefakt 104 KB; odszyfrowany w Git Bash i odtworzony na tymczasowym stosie `taskplanner-restore` (migracje z `main`) — liczby i sumy kontrolne wszystkich tabel zgodne ze zrzutem. Typowe błędy konfiguracji: `BACKUP_PASSPHRASE` < 20 znaków (sprawdza pierwszy krok), adres nierozpoznany jako URI (`psql` łączy się wtedy z gniazdem lokalnym runnera), użytkownik bez `.sakjrlpfbclcjlnpjcrt` albo złe hasło (`password authentication failed`).
 
 ## 3. Eksport i import JSON (Ustawienia → „Kopia zapasowa”)
 
