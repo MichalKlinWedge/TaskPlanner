@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -109,6 +110,11 @@ export function LoginScreen() {
         )}
         {error ? <Notice tone="error">{error}</Notice> : null}
       </Card>
+      <p className="text-center text-xs opacity-60">
+        <Link href="/prywatnosc" className="underline">
+          Polityka prywatności
+        </Link>
+      </p>
     </main>
   );
 }
