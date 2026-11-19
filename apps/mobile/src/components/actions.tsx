@@ -10,6 +10,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppData } from '@/lib/app-data';
+import { applyOps } from '@/lib/headless';
 import { mutate } from '@/lib/sync';
 
 import { usePalette } from './ui';
@@ -41,9 +42,7 @@ export function useTaskActions(): TaskActions {
   return actions;
 }
 
-export const applyOps = async (ops: readonly TaskOp[]) => {
-  for (const op of ops) await mutate(op.table, op.id, op.patch);
-};
+export { applyOps };
 
 /** Pytanie z dwoma odpowiedziami jako Promise. */
 export const confirm = (title: string, message: string, ok = 'Tak', cancel = 'Nie'): Promise<boolean> =>

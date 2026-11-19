@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 
+import { BackgroundStatus } from '@/components/background-status';
 import { SyncIndicator } from '@/components/sync-indicator';
 import { Button, Field, P, Row, Screen, Section } from '@/components/ui';
 import { sendMagicLink, signInWithGoogle, signOut, verifyEmailCode } from '@/lib/auth';
@@ -135,6 +136,8 @@ export default function Settings() {
         )}
         {info ? <P tone={info.startsWith('Błąd') ? 'bad' : 'ok'}>{info}</P> : null}
       </Section>
+
+      <BackgroundStatus />
 
       <Section title="Serwer Supabase">
         <P muted>

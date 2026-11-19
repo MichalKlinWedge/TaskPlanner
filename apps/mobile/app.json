@@ -73,7 +73,8 @@
         }
       ],
       "expo-web-browser",
-      "expo-background-task"
+      "expo-background-task",
+      "./plugins/app-shortcuts"
     ],
     "experiments": {
       "typedRoutes": true,

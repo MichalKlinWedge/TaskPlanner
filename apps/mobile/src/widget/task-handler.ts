@@ -1,11 +1,11 @@
 /**
  * Obsługa widżetu (zadanie bez ekranu `RNWidgetBackgroundTask`): dodanie, odświeżenie, zmiana
- * rozmiaru i kliknięcie w zadanie → odhaczenie w lokalnej bazie (+ outbox) i nowy widok.
+ * rozmiaru i kliknięcie w zadanie → odhaczenie w lokalnej bazie (+ outbox, reguły core) i nowy widok.
  */
 import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
 
 import { readJson, writeJson } from '../lib/config';
-import { toggleTask } from '../lib/tasks';
+import { toggleTaskById } from '../lib/headless';
 import { renderTodayWidget } from './refresh';
 import { TODAY_WIDGET, TOGGLE_ACTION } from './today-widget';
 
@@ -25,7 +25,7 @@ export async function widgetTaskHandler({ widgetInfo, widgetAction, clickAction,
   const entry: WidgetLog = { at: start, action: widgetAction === 'WIDGET_CLICK' ? `CLICK ${clickAction}` : widgetAction, ok: true, ms: 0 };
   try {
     if (widgetAction === 'WIDGET_CLICK' && clickAction === TOGGLE_ACTION && typeof clickActionData?.id === 'string') {
-      await toggleTask(clickActionData.id);
+      await toggleTaskById(clickActionData.id);
     }
   } catch (error) {
     entry.ok = false;

@@ -41,6 +41,7 @@ import { Button, usePalette } from '@/components/ui';
 import { listLabel, useView, type AppData } from '@/lib/app-data';
 import { useLocalQuery } from '@/lib/local-query';
 import { rememberRecent } from '@/lib/recent';
+import { permissionState, requestNotificationPermission } from '@/lib/reminders';
 
 const STATUSES = Object.keys(TASK_STATUS) as TaskStatus[];
 const DURATIONS = [5, 10, 15, 30, 45, 60, 90, 120, 180, 240];
@@ -367,7 +368,11 @@ function RemindersField({ task, today }: { task: ViewTask; today: LocalDate }) {
         ),
       [task.id],
     ) ?? [];
-  const add = (patch: Record<string, unknown>) => void run([{ table: 'reminders', id: uuidv7(), patch: { task_id: task.id, offset_min: null, at_date: null, at_time: null, ...patch } }]);
+  const add = async (patch: Record<string, unknown>) => {
+    await run([{ table: 'reminders', id: uuidv7(), patch: { task_id: task.id, offset_min: null, at_date: null, at_time: null, ...patch } }]);
+    // Pierwsze przypomnienie: prośba o powiadomienia (Android 13+); dokładne alarmy — w ustawieniach.
+    if (!(await permissionState()).notifications) await requestNotificationPermission();
+  };
   const addMenu = async () => {
     const choice = await pickOption<string>('Przypomnienie', [
       ...(task.dueDate ? REMINDER_PRESETS.map((m) => ({ label: reminderOffset(m), value: `rel:${m}` })) : []),
@@ -378,7 +383,7 @@ function RemindersField({ task, today }: { task: ViewTask; today: LocalDate }) {
     const date = await pickDate({ title: 'Dzień przypomnienia', value: task.dueDate ?? today, today });
     if (!date) return;
     const time = await pickTime({ title: 'Godzina przypomnienia', value: task.dueTime ?? '09:00' });
-    if (time) add({ kind: 'absolute', at_date: date, at_time: time });
+    if (time) await add({ kind: 'absolute', at_date: date, at_time: time });
   };
   return (
     <Block title="Przypomnienia" right={<Pill label="+ Dodaj" color={p.accent} onPress={() => void addMenu()} />}>

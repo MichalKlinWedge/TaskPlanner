@@ -2,17 +2,24 @@ import * as Notifications from 'expo-notifications';
 import { router, Stack, useSegments } from 'expo-router';
 import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
 import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { TaskActionsProvider } from '@/components/actions';
 import { PickerHost } from '@/components/pickers';
 import { usePalette } from '@/components/ui';
 
+import { useAppData } from '@/lib/app-data';
+import { registerBackgroundSync } from '@/lib/background-sync';
 import { sessionUser } from '@/lib/config';
 import { loadProfile, onboardingGateHeld, onOnboardingGateRelease } from '@/lib/profile';
 import { handleResponse, setupNotifications } from '@/lib/reminders';
+import { scheduleReminders } from '@/lib/scheduler';
 import { localEngine, onSessionChange, startOnlineSync } from '@/lib/sync';
 import { refreshTodayWidget } from '@/widget/refresh';
+
+/** Głęboki link (skrót aplikacji, powiadomienie) do ekranu nad zakładkami — pod spodem zawsze zakładki. */
+export const unstable_settings = { anchor: '(tabs)' };
 
 /** Udostępnienie z innej aplikacji (Chrome → „Udostępnij”) → ekran szybkiego dodawania. */
 function ShareRedirect() {
@@ -75,9 +82,36 @@ function OnboardingGate() {
   return null;
 }
 
+/**
+ * Po zmianie danych (zapis na ekranie, synchronizacja) i po powrocie aplikacji na wierzch:
+ * przeplanowanie przypomnień M8 i odświeżenie widżetu — seria zmian = jedno przeliczenie.
+ */
+function BackgroundWork() {
+  const data = useAppData();
+  useEffect(() => {
+    if (!data.loaded) return;
+    const timer = setTimeout(() => {
+      void scheduleReminders();
+      void refreshTodayWidget().catch(() => undefined);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [data]);
+  useEffect(() => {
+    // Uprawnienia mogły się zmienić w ustawieniach systemu.
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void scheduleReminders();
+    });
+    return () => sub.remove();
+  }, []);
+  return null;
+}
+
 function useAppStart() {
   useEffect(() => {
-    setupNotifications().catch((error) => console.warn('powiadomienia', error));
+    setupNotifications()
+      .then(() => scheduleReminders())
+      .catch((error) => console.warn('powiadomienia', error));
+    registerBackgroundSync().catch((error) => console.warn('synchronizacja w tle', error));
     startOnlineSync().catch((error) => console.warn('synchronizacja', error));
     refreshTodayWidget().catch(() => undefined);
     // Akcja z powiadomienia, gdy aplikacja jest na wierzchu (w tle obsługuje ją zadanie z index.ts).
@@ -97,6 +131,7 @@ export default function RootLayout() {
         <TaskActionsProvider>
           <ShareRedirect />
           <OnboardingGate />
+          <BackgroundWork />
           <Stack screenOptions={{ headerStyle: { backgroundColor: p.card }, headerTintColor: p.fg, contentStyle: { backgroundColor: p.bg } }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'TaskPlanner' }} />
             <Stack.Screen name="task/[id]" options={{ title: 'Zadanie' }} />
