@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 // Przy imporcie: `beforeinstallprompt` przychodzi zaraz po wczytaniu strony (przycisk w Ustawieniach).
 import "@/lib/install";
+import { installErrorLog, setErrorUser } from "@/lib/error-log";
 import { startOfflineSupport } from "@/lib/service-worker";
 import { storedUser, supabaseBrowser } from "@/lib/supabase-browser";
 
@@ -24,6 +25,7 @@ export function AppRoot() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
 
   useEffect(() => {
+    installErrorLog();
     startOfflineSupport();
     const supabase = supabaseBrowser();
     void supabase.auth.getSession().then(({ data, error }) => {
@@ -43,6 +45,9 @@ export function AppRoot() {
     });
     return () => data.subscription.unsubscribe();
   }, []);
+
+  // Dziennik błędów wysyła tylko z kontem (RLS) — kolejka sprzed logowania idzie po nim.
+  useEffect(() => setErrorUser(user?.id ?? null), [user?.id]);
 
   if (user === undefined) return <Splash text="Wczytywanie…" />;
   if (!user) return <LoginScreen />;

@@ -3,6 +3,7 @@ export * from './backup.ts';
 export * from './commands.ts';
 export * from './dates.ts';
 export * from './dependencies.ts';
+export * from './errors.ts';
 export * from './focus.ts';
 export * from './format.ts';
 export * from './habits.ts';

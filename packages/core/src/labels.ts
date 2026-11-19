@@ -216,3 +216,12 @@ export const BACKUP_TABLE: Record<BackupTable, string> = {
   saved_filters: 'Zapisane filtry',
   review_sessions: 'Przeglądy',
 };
+
+/** Rodzaje wpisów dziennika błędów (Ustawienia → „Błędy aplikacji”, `core/errors.ts`). */
+export const ERROR_KIND: Record<'error' | 'unhandled' | 'render' | 'sync' | 'rejected', string> = {
+  error: 'Błąd',
+  unhandled: 'Nieobsłużony błąd',
+  render: 'Błąd widoku',
+  sync: 'Synchronizacja',
+  rejected: 'Odrzucona zmiana',
+};
