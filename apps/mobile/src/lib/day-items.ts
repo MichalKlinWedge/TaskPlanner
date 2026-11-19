@@ -27,9 +27,10 @@ export interface DeviceEvents {
 }
 
 export async function deviceEvents(from: Date, to: Date): Promise<DeviceEvents> {
-  const start = Date.now();
   const { granted } = await Calendar.requestCalendarPermissions();
   if (!granted) return { granted, calendars: 0, items: [], ms: 0 };
+  // Pomiar bez czasu okna z prośbą o zgodę.
+  const start = Date.now();
   try {
     const calendars = await Calendar.getCalendars(Calendar.EntityTypes.EVENT);
     const events = calendars.length ? await Calendar.listEvents(calendars, from, to) : [];

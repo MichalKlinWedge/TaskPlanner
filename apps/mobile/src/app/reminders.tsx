@@ -1,3 +1,4 @@
+import { formatMinutes } from '@taskplanner/core';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, AppState, Share } from 'react-native';
@@ -97,7 +98,7 @@ export default function Reminders() {
           return (
             <Section key={b.id} title={`Seria ${b.id} · ${b.delivery} · dokładne: ${b.exactAllowed ? 'tak' : 'nie'}`}>
               <P muted>
-                {b.count} w {b.hours} h od {formatClock(b.createdAt)}
+                {b.count} w {formatMinutes(Math.round(b.hours * 60))} od {formatClock(b.createdAt)}
               </P>
               <P tone={s.delivered < s.due ? 'bad' : undefined}>
                 Pokazane {s.delivered}/{s.due} należnych · ±1 min: {s.within1} ({pct} %) · ≤10 min: {s.within10}

@@ -26,7 +26,7 @@ interface Shared {
 }
 
 /** Formularz z udostępnionej treści; nowy udostępniony link = nowy formularz (`key`). */
-function QuickAddForm({ shared, onSaved }: { shared: Shared | null; onSaved: () => void }) {
+function QuickAddForm({ shared, onSaved }: { shared: Shared | null; onSaved: (message: string) => void }) {
   const p = usePalette();
   const [text, setText] = useState(() => {
     if (!shared) return '';
@@ -34,7 +34,6 @@ function QuickAddForm({ shared, onSaved }: { shared: Shared | null; onSaved: () 
   });
   const [link, setLink] = useState({ url: shared?.url ?? null, title: shared?.title ?? null });
   const [preview, setPreview] = useState<QuickAddResult | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
   const [receivedAt] = useState(() => (shared ? Date.now() : null));
 
   useEffect(() => {
@@ -47,10 +46,10 @@ function QuickAddForm({ shared, onSaved }: { shared: Shared | null; onSaved: () 
 
   const save = async () => {
     const { listName, result } = await createFromQuickAdd(text, link);
-    setSaved(`Dodano „${result.title || link.title || link.url}” do listy ${listName}${receivedAt ? ` (${Date.now() - receivedAt} ms od odebrania)` : ''}.`);
+    const message = `Dodano „${result.title || link.title || link.url}” do listy ${listName}${receivedAt ? ` (${Date.now() - receivedAt} ms od odebrania)` : ''}.`;
     setText('');
     setLink({ url: null, title: null });
-    onSaved();
+    onSaved(message);
     await refreshTodayWidget().catch(() => undefined);
   };
 
@@ -83,18 +82,24 @@ function QuickAddForm({ shared, onSaved }: { shared: Shared | null; onSaved: () 
         <Button title="Dodaj zadanie" disabled={!text.trim() && !link.url} onPress={() => void save()} />
         <Button kind="secondary" title="Dziś" onPress={() => router.push('/today')} />
       </Row>
-      {saved ? <P tone="ok">{saved}</P> : null}
     </>
   );
 }
 
 export default function ShareScreen() {
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
+  // Komunikat poza formularzem: reset udostępnienia zmienia `key` i montuje formularz od nowa.
+  const [saved, setSaved] = useState<string | null>(null);
   // Chrome wysyła sam URL (czasem tytuł strony w `meta.title`).
   const shared: Shared | null = hasShareIntent ? { url: shareIntent.webUrl ?? null, title: shareIntent.meta?.title ?? null, text: shareIntent.text ?? '' } : null;
   return (
     <Screen>
-      <QuickAddForm key={shared ? `${shared.url}|${shared.text}` : 'pusty'} shared={shared} onSaved={() => resetShareIntent()} />
+      <QuickAddForm key={shared ? `${shared.url}|${shared.text}` : 'pusty'} shared={shared} onSaved={(message) => {
+          setSaved(message);
+          resetShareIntent();
+        }}
+      />
+      {saved ? <P tone="ok">{saved}</P> : null}
     </Screen>
   );
 }

@@ -2,18 +2,18 @@
 
 ## PoC-4 — Android: przypomnienia, widżet, udostępnianie, kalendarz (18.11.2026)
 
-**Werdykt: w toku — kod gotowy, pomiary na telefonie przed nami.** Scenariusze: `docs/POC4_TELEFON.md` (S1–S9). Kryteria wymagające 3 dób (S3, S4) mają wynik dopiero po pełnym przebiegu.
+**Werdykt: w toku — kod gotowy, pierwsze pomiary na telefonie (19.11.2026, Galaxy S22 Ultra, Android 16, One UI; dev build z Metro przez USB).** Scenariusze: `docs/POC4_TELEFON.md` (S1–S9). Kryteria wymagające 3 dób (S3, S4) mają wynik dopiero po pełnym przebiegu.
 
 | Kryterium | Wynik | Jak sprawdzone |
 |---|---|---|
 | Biblioteki na SDK 58 / New Architecture | ✅ `expo-doctor` 20/20; bundel Hermes (`expo export --platform android`, 2 039 modułów) | lokalnie |
-| PoC-1 na telefonie: SQLite + silnik (outbox, odrzucenie, scalanie per pole, UUIDv5, 500 zapisów < 10 s) | ✅ scenariusz przechodzi na `node:sqlite`; ⏳ expo-sqlite na telefonie (S1) | `src/selftest/local-sync.ts` |
-| PoC-1/2/3 w Hermes (id, HLC, cykliczność 15 + 1 000 wystąpień < 20 ms, nawyki 5, korpus szybkiego dodawania 100 %) | ⏳ S1 | ekran „Samosprawdzenie” |
-| Przypomnienia ≥ 95 % ±1 min z dokładnymi alarmami / ≤ 10 min bez nich (50 na 72 h, noc w Doze) | ⏳ S3, S4 (+ szybki test Doze przez adb) | ekran „Przypomnienia”, raport |
-| „Ukończ” / „Jutro” / „Odłóż 10 min” przy zamkniętej aplikacji, bez sieci → SQLite + outbox | ⏳ S5 | dziennik akcji, outbox |
-| Widżet „Dziś” z odhaczaniem przy zamkniętej aplikacji, bez sieci | ⏳ S6 | dziennik widżetu |
-| Link z Chrome → szybkie dodawanie | ⏳ S7 | |
-| Kalendarz telefonu + calendar-kit (przeciąganie, zmiana długości) | ⏳ S8; wariant awaryjny — własna oś dnia (S9) | |
+| PoC-1 na telefonie: SQLite + silnik (outbox, odrzucenie, scalanie per pole, UUIDv5, 500 zapisów < 10 s) | ✅ `node:sqlite` i ✅ expo-sqlite na telefonie: 9/9; 500 zapisów offline **9,8 s** (19,5 ms/zapis, dev build — na granicy, powtórzyć w release), wysłanie 500 op. 0,94 s | `src/selftest/local-sync.ts`, S1 |
+| PoC-1/2/3 w Hermes (id, HLC, cykliczność 15 + 1 000 wystąpień < 20 ms, nawyki 5, korpus szybkiego dodawania 100 %) | ✅ **45/45** (Hermes 260318099.0.5): id/HLC 6/6, cykliczność 15/15 + 1 000 wystąpień **7,7 ms**, nawyki 5/5, korpus 99/99, pułapki 0/17, **0,10 ms/wpis**; Intl po polsku, polyfille | ekran „Samosprawdzenie” (S1) |
+| Przypomnienia ≥ 95 % ±1 min z dokładnymi alarmami / ≤ 10 min bez nich (50 na 72 h, noc w Doze) | ⏳ S3, S4 (3 doby). Szybki test bez dokładnych alarmów (3 w 6 min, ekran wygaszony): opóźnienia **+90 s, +180 s, +60 s** (2. i 3. zgrupowane w jednym wybudzeniu), ±1 min 1/3. `dumpsys alarm`: `setAndAllowWhileIdle` dostaje okno ≈ 75 % czasu do terminu (+2 min → okno 1 min 30 s, +10 min → 7 min 30 s). Doze przez adb na One UI nie do wymuszenia (`force-idle` zostaje w INACTIVE) — tylko noc | ekran „Przypomnienia”, `dumpsys alarm` / `notification` |
+| „Ukończ” / „Jutro” / „Odłóż 10 min” przy zamkniętej aplikacji, bez sieci → SQLite + outbox | ✅ dev build, aplikacja usunięta z ostatnich (brak procesu), tryb samolotowy: „Ukończ” → `done`, „Jutro” → termin +1 dzień, „Odłóż 10 min” → nowy alarm; 3/3 `[background-task] OK`, powiadomienie znika, aplikacja się nie otwiera, outbox +8. Czas od stuknięcia do zapisu 7–15 s (start procesu + bundel z Metro) — ⏳ zmierzyć w release | dziennik akcji, baza z telefonu |
+| Widżet „Dziś” z odhaczaniem przy zamkniętej aplikacji, bez sieci | ✅ dev build, aplikacja zatrzymana (`am force-stop`), tryb samolotowy: klik → `WIDGET_CLICK` → Headless JS → zapis + przerysowanie ≈ 2 s (obsługa w JS 274 ms); cykliczny „Trening” → `task_completions` (UUIDv5) i termin na jutro; outbox rośnie. Pierwszy klik tuż po `force-stop` zgubiony (launcher przebudowywał widżet) — ⏳ powtórzyć w release po usunięciu z ostatnich, restart telefonu | dziennik widżetu, baza z telefonu (`run-as`) |
+| Link z Chrome → szybkie dodawanie | ✅ intencja `SEND text/plain` (jak z Chrome) przy zamkniętej aplikacji → „Szybkie dodawanie” z linkiem; „jutro o 20 !2” → termin, godzina, priorytet, `source.kind = link`. Tytuł strony nie dochodzi: `expo-share-intent` czyta `EXTRA_TITLE`, a nie `EXTRA_SUBJECT`. ⏳ prawdziwy Chrome | `adb shell am start -a android.intent.action.SEND` |
+| Kalendarz telefonu + calendar-kit (przeciąganie, zmiana długości) | ⚠️ wydarzenia z 18 kalendarzy widoczne obok zadań, 81 wydarzeń z 8 dni (pierwszy pomiar 16,2 s obejmował okno zgody — poprawione). calendar-kit: przytrzymanie zaznacza blok (uchwyty), przeciągnięcie syntetycznym gestem przewija widok zamiast przesuwać blok. Własna oś (S9): przytrzymanie i przesunięcie → „Zapisano 09:45” w 46 ms. ⏳ płynność palcem, release | `adb shell input motionevent` |
 
 **Co powstało (`apps/mobile`):**
 - Wejście `index.ts`: polyfille → rejestracja zadań w tle (`src/background/register.ts`: `TaskManager.defineTask` dla odpowiedzi na powiadomienia, `registerWidgetTaskHandler`) → `expo-router/entry`. Zadania w tle muszą być zarejestrowane przed routerem, bo Headless JS startuje bez ekranu.

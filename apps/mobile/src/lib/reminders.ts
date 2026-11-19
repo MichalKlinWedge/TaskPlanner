@@ -272,7 +272,10 @@ export async function handleResponse(response: Notifications.NotificationRespons
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at, channelId: CHANNEL_ID },
       });
     }
-    if (notificationId) await Notifications.dismissNotificationAsync(notificationId).catch(() => undefined);
+    if (notificationId)
+      await Notifications.dismissNotificationAsync(notificationId).catch((e: unknown) => {
+        entry.error = `dismiss: ${e instanceof Error ? e.message : String(e)}`;
+      });
     writeJson(K.handled, [...handled.slice(-499), key]);
     await refreshTodayWidget().catch(() => undefined);
   } catch (error) {
