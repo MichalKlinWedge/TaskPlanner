@@ -25,20 +25,16 @@ Przygotowanie: na komputerze `npm run supabase -- start`, `npm run dev:user`. Do
 2. „Samosprawdzenie” → „Uruchom”: grupa *PoC-1: Supabase* — push + pull, wiersz na serwerze (zakres wyliczony), sygnał Realtime < 3 s, zmiana z drugiego węzła pobrana.
 3. Dwa urządzenia: web `npm run web:local` → `/dev/sync` (to samo konto). Na telefonie tryb samolotowy → „Dziś” → „Dodaj przykładowe zadania” → wyłączyć tryb samolotowy, stoper: zadania na webie < 5 s (kryterium MVP-1). Edycja na webie → widać na telefonie po powrocie na ekran „Dziś” (Realtime < 3 s).
 
-## S3. Przypomnienia bez dokładnych alarmów (3 doby)
+## S3. Przypomnienia bez dokładnych alarmów — rozstrzygnięte bez 3 dób
 
-1. „Przypomnienia” → „Poproś o powiadomienia”. Dokładne alarmy: **nie** (domyślnie na Androidzie 14+; jeśli „tak” — wyłączyć w ustawieniach „Alarmy i przypomnienia”).
-2. „Zaplanuj (bestEffort)” z 50 / 72 h.
-3. Normalne używanie telefonu; **co najmniej jedna noc bez ładowarki, ekran wygaszony** (Doze). Powiadomień serii nie usuwać; raz dziennie wejść na „Przypomnienia” (zbiera czas pokazania i czyści zasobnik — Android trzyma ok. 50 powiadomień naraz).
-4. Po 72 h: „Udostępnij raport”. Kryterium: ≥ 95 % pokazanych ≤ 10 min po czasie.
-
-Szybkie sprawdzenie Doze przez USB (zamiast nocy, jako uzupełnienie): `adb shell dumpsys battery unplug`, „Szybki test: 3 w 4 min”, ekran wygaszony, `adb shell dumpsys deviceidle force-idle`; po 6 min `adb shell dumpsys deviceidle unforce` i `adb shell dumpsys battery reset`, zebrać wyniki.
+Od 19.11.2026 aplikacja deklaruje `USE_EXACT_ALARM` (APK poza Google Play — pozwolenie przyznane przy instalacji, nie da się go wyłączyć), więc wariantu „bez dokładnych alarmów” nie da się już zmierzyć na tym APK. Wynik wzięty z szybkiego testu i `dumpsys alarm` (`docs/POC_WYNIKI.md`): `setAndAllowWhileIdle` dostaje okno ≈ 75 % czasu do terminu → kryterium ≤ 10 min nie do spełnienia dla przypomnień ustawionych z wyprzedzeniem.
 
 ## S4. Przypomnienia z dokładnymi alarmami (3 doby)
 
-1. „Ustawienia dokładnych alarmów” → włączyć dla TaskPlanner → wrócić (stan „tak”).
-2. „Zaplanuj (bestEffort)” 50 / 72 h (z pozwoleniem = `setExactAndAllowWhileIdle`). Opcjonalnie równolegle krótsza seria „alarmClock” (`setAlarmClock` — ikona budzika na pasku stanu; sprawdzić, czy nie przeszkadza).
-3. Jak w S3. Kryterium: ≥ 95 % ±1 min.
+1. „Przypomnienia” → „Poproś o powiadomienia”; „Dokładne alarmy”: **tak** (z `USE_EXACT_ALARM`, bez wchodzenia w ustawienia). Sprawdzenie: `adb shell dumpsys alarm` → alarmy `pl.taskplanner.app` bez okna (`window=0`).
+2. „Zaplanuj (bestEffort)” 50 / 72 h (= `setExactAndAllowWhileIdle`). Opcjonalnie równolegle krótsza seria „alarmClock” (`setAlarmClock` — ikona budzika na pasku stanu; sprawdzić, czy nie przeszkadza).
+3. Normalne używanie telefonu; **co najmniej jedna noc bez ładowarki, ekran wygaszony** (Doze — na One UI nie da się go wymusić przez adb). Powiadomień serii nie usuwać; raz dziennie wejść na „Przypomnienia” (zbiera czas pokazania i czyści zasobnik — Android trzyma ok. 50 powiadomień naraz).
+4. Po 72 h: „Udostępnij raport”. Kryterium: ≥ 95 % ±1 min.
 
 ## S5. Akcje „Ukończ” / „Odłóż” przy zamkniętej aplikacji, bez sieci
 
