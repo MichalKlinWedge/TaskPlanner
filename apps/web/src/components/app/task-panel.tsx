@@ -9,25 +9,28 @@ import {
   canAddSubtask,
   datesPatch,
   deleteTaskOps,
+  descendants,
+  endSeriesOps,
   describeRecurrence,
   formatMinutes,
+  isOpen,
   LIST_KIND,
   moveTaskOps,
-  parseQuickAdd,
   PRIORITY,
   REMINDER_PRESETS,
   reminderOffset,
   relativeDay,
   shortDate,
+  skipOccurrenceOps,
   TASK_FIELD,
   TASK_STATUS,
   taskTagId,
   taskTagOps,
-  localDateTimeAt,
   uuidv7,
   type LocalDate,
   type LocalTime,
   type Priority,
+  type Recurrence,
   type TaskStatus,
   type ViewTask,
 } from "@taskplanner/core";
@@ -40,6 +43,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 
 import { useAppEnv } from "./app-env";
 import { QuickAdd } from "./quick-add";
+import { RecurrenceEditor } from "./recurrence-editor";
 import { TaskItem, useTaskActions } from "./task-item";
 import { Button, IconButton, Input, Select } from "./ui";
 
@@ -272,45 +276,54 @@ function TitleField({ value, onSave }: { value: string; onSave: (title: string) 
 }
 
 function RecurrenceField({ task, onSave, timeZone, today }: { task: ViewTask; onSave: (patch: Record<string, unknown>) => void; timeZone?: string; today: LocalDate }) {
+  const { data } = useAppEnv();
+  const { run } = useTaskActions();
   const [editing, setEditing] = useState(false);
-  const [text, setText] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    // Ta sama gramatyka co szybkie dodawanie: „co tydzień”, „w dni robocze”, „co 3 dni po ukończeniu”.
-    const parsed = parseQuickAdd(`x ${text}`, { now: localDateTimeAt(new Date(), timeZone), workspaces: [], lists: [], tags: [] });
-    const rec = parsed.fields.recurrence;
-    if (!rec) return setError("Nie rozpoznano — np. „co tydzień”, „w dni robocze”, „co miesiąc 15.”, „co 3 dni po ukończeniu”.");
-    // Seria liczy się od terminu zadania (kotwica), a nie od dziś — „co 2 tygodnie” od 28.12 to 11.01.
-    const due = task.dueDate ?? parsed.fields.dueDate ?? today;
-    onSave({ recurrence: rec.mode === "schedule" ? { ...rec, anchor: due } : rec, due_date: due });
+  const anchor = task.dueDate ?? today;
+  const save = (recurrence: Recurrence) => {
+    // Seria liczy się od terminu zadania; termin przechodzi na pierwsze pasujące wystąpienie.
+    const due = recurrence.mode === "schedule" ? recurrence.anchor : anchor;
+    onSave({ recurrence, ...datesPatch(task, { due_date: due }) });
     setEditing(false);
-    setText("");
-    setError(null);
+  };
+  const series = task.recurrence && task.kind === "task" && isOpen(task);
+  const skip = () => {
+    const now = new Date();
+    const result = skipOccurrenceOps(task, { now, timeZone, subtasks: descendants(data.tasks, task.id) });
+    void run(result.ops, { text: result.nextDue ? `Pominięto — następny termin: ${relativeDay(result.nextDue, today)}` : "Pominięto ostatnie wystąpienie — seria zakończona", undo: result.undo });
+  };
+  const end = () => {
+    if (!window.confirm(`Zakończyć serię „${task.title}”? Kolejne wystąpienia nie powstaną.`)) return;
+    const result = endSeriesOps(task, new Date());
+    void run(result.ops, { text: `Zakończono serię „${task.title}”`, undo: result.undo });
   };
   return (
     <Block title="Powtarzanie">
       {editing ? (
-        <form onSubmit={submit} className="flex flex-col gap-1">
-          <div className="flex gap-2">
-            <Input autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="np. co tydzień w poniedziałek" aria-label="Reguła powtarzania" className="flex-1" />
-            <Button type="submit">Ustaw</Button>
-            <Button kind="ghost" onClick={() => setEditing(false)}>
-              Anuluj
-            </Button>
-          </div>
-          {error ? <p className="text-xs text-[var(--danger)]">{error}</p> : null}
-        </form>
+        <RecurrenceEditor value={task.recurrence} anchor={anchor} today={today} timeZone={timeZone} onSave={save} onCancel={() => setEditing(false)} />
       ) : (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span>{task.recurrence ? `↻ ${describeRecurrence(task.recurrence)}` : <span className="text-[var(--muted)]">Nie powtarza się</span>}</span>
-          <Button kind="ghost" onClick={() => setEditing(true)}>
-            {task.recurrence ? "Zmień" : "Ustaw"}
-          </Button>
-          {task.recurrence ? (
-            <Button kind="ghost" onClick={() => onSave({ recurrence: null })}>
-              Usuń
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span>{task.recurrence ? `↻ ${describeRecurrence(task.recurrence)}` : <span className="text-[var(--muted)]">Nie powtarza się</span>}</span>
+            <Button kind="ghost" onClick={() => setEditing(true)}>
+              {task.recurrence ? "Zmień" : "Ustaw"}
             </Button>
+            {task.recurrence ? (
+              <Button kind="ghost" onClick={() => onSave({ recurrence: null })} title="Zadanie zostaje, przestaje się powtarzać">
+                Usuń
+              </Button>
+            ) : null}
+          </div>
+          {series ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <Button kind="ghost" onClick={skip}>
+                Pomiń to wystąpienie
+              </Button>
+              <Button kind="ghost" onClick={end}>
+                Zakończ serię
+              </Button>
+              <span className="text-xs text-[var(--muted)]">Zmiana terminu wyżej przesuwa tylko to wystąpienie.</span>
+            </div>
           ) : null}
         </div>
       )}

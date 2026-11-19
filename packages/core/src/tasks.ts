@@ -103,22 +103,61 @@ export interface CompleteResult {
 
 type CompletableTask = Pick<ViewTask, 'id' | 'kind' | 'status' | 'startDate' | 'dueDate' | 'recurrence' | 'completedAt' | 'postponeCount'>;
 
+/** Podzadanie serii — przy następnym wystąpieniu wraca do „Do zrobienia” (M7). */
+export type SeriesSubtask = Pick<ViewTask, 'id' | 'status' | 'completedAt'>;
+
+export interface CompleteOptions {
+  now: Date | string;
+  timeZone?: string;
+  /** Podzadania serii (`descendants`): zamknięte wracają do „Do zrobienia”, gdy seria idzie dalej. */
+  subtasks?: readonly SeriesSubtask[];
+}
+
 /**
  * Ukończenie zadania w chwili `now`. Zwykłe zadanie → `done`. Seria → wpis w `task_completions`
  * (id deterministyczne: dwa urządzenia ukończą to samo wystąpienie jednym wierszem) i termin
  * przesunięty na `nextDue` razem z początkiem zakresu; licznik przesunięć się zeruje, bo to nowe
- * wystąpienie. Koniec serii (`COUNT`/`UNTIL`) zamyka zadanie. Nawyk → tylko wpis na dziś.
+ * wystąpienie, a podzadania wracają do „Do zrobienia”. Koniec serii (`COUNT`/`UNTIL`) zamyka
+ * zadanie. Nawyk → tylko wpis na dziś.
  */
-export function completeTaskOps(task: CompletableTask, { now, timeZone }: { now: Date | string; timeZone?: string }): CompleteResult {
+export function completeTaskOps(task: CompletableTask, options: CompleteOptions): CompleteResult {
+  return advanceSeries(task, options, 'done');
+}
+
+/**
+ * „Pomiń to wystąpienie” (M7): wpis `skipped` w `task_completions` i termin na następne
+ * wystąpienie — jak ukończenie, ale bez zaliczenia. Ostatnie wystąpienie zamyka serię jako
+ * anulowaną. Zadanie bez cyklu nie ma czego pomijać (pusty wynik).
+ */
+export function skipOccurrenceOps(task: CompletableTask, options: CompleteOptions): CompleteResult {
+  if (!task.recurrence || task.kind !== 'task') return { ops: [], undo: [], nextDue: null };
+  return advanceSeries(task, options, 'skipped');
+}
+
+/**
+ * „Zakończ serię” (M7): seria zamyka się jako anulowana bez zaliczenia bieżącego wystąpienia;
+ * reguła zostaje w wierszu (historia, ponowne otwarcie). Samo „przestań powtarzać” to
+ * `recurrence: null` w panelu zadania.
+ */
+export function endSeriesOps(task: CompletableTask, now: Date | string): CompleteResult {
+  if (!task.recurrence) return { ops: [], undo: [], nextDue: null };
+  return {
+    ops: [{ table: 'tasks', id: task.id, patch: { status: 'cancelled', completed_at: new Date(now).toISOString() } }],
+    undo: [{ table: 'tasks', id: task.id, patch: { status: task.status, completed_at: task.completedAt } }],
+    nextDue: null,
+  };
+}
+
+function advanceSeries(task: CompletableTask, { now, timeZone, subtasks = [] }: CompleteOptions, kind: 'done' | 'skipped'): CompleteResult {
   const at = new Date(now).toISOString();
   const today = localDateAt(at, timeZone);
   const completion = (date: LocalDate): TaskOp => ({
     table: 'task_completions',
     id: completionId(task.id, date),
-    patch: { task_id: task.id, occurrence_date: date, kind: 'done', value: null, completed_at: at, deleted_at: null },
+    patch: { task_id: task.id, occurrence_date: date, kind, value: null, completed_at: at, deleted_at: null },
   });
   const removed = (op: TaskOp): TaskOp => ({ table: op.table, id: op.id, patch: { deleted_at: at } });
-  const close: TaskOp = { table: 'tasks', id: task.id, patch: { status: 'done', completed_at: at } };
+  const close: TaskOp = { table: 'tasks', id: task.id, patch: { status: kind === 'done' ? 'done' : 'cancelled', completed_at: at } };
   const before: TaskOp = { table: 'tasks', id: task.id, patch: { status: task.status, completed_at: task.completedAt } };
 
   if (task.kind === 'habit') {
@@ -132,9 +171,18 @@ export function completeTaskOps(task: CompletableTask, { now, timeZone }: { now:
   const next = nextDue(task.recurrence, { occurrence, completedOn: today });
   if (!next) return { ops: [done, close], undo: [removed(done), before], nextDue: null };
   const shift = daysBetween(occurrence, next);
+  const reset = subtasks.filter((s) => s.status !== 'todo');
   return {
-    ops: [done, { table: 'tasks', id: task.id, patch: { due_date: next, start_date: task.startDate ? addDays(task.startDate, shift) : null, postpone_count: 0 } }],
-    undo: [removed(done), { table: 'tasks', id: task.id, patch: { due_date: task.dueDate, start_date: task.startDate, postpone_count: task.postponeCount } }],
+    ops: [
+      done,
+      { table: 'tasks', id: task.id, patch: { due_date: next, start_date: task.startDate ? addDays(task.startDate, shift) : null, postpone_count: 0 } },
+      ...reset.map((s): TaskOp => ({ table: 'tasks', id: s.id, patch: { status: 'todo', completed_at: null } })),
+    ],
+    undo: [
+      removed(done),
+      { table: 'tasks', id: task.id, patch: { due_date: task.dueDate, start_date: task.startDate, postpone_count: task.postponeCount } },
+      ...reset.map((s): TaskOp => ({ table: 'tasks', id: s.id, patch: { status: s.status, completed_at: s.completedAt } })),
+    ],
     nextDue: next,
   };
 }
