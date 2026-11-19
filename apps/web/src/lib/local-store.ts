@@ -13,7 +13,15 @@ import { supabaseBrowser } from "./supabase-browser";
 export interface StoreStatus {
   storage: string;
   error: string | null;
+  /** Trwa synchronizacja w tej karcie (tylko lider). */
+  syncing: boolean;
+  /** Strona trwającego pobierania (pierwsza synchronizacja przychodzi w porcjach). */
+  pullPage: number | null;
+  /** Koniec ostatniej udanej synchronizacji (ms). */
+  lastSyncAt: number | null;
 }
+
+const EMPTY_STATUS: StoreStatus = { storage: "—", error: null, syncing: false, pullPage: null, lastSyncAt: null };
 
 let current: { userId: string; store: TabStore; status: StoreStatus; listeners: Set<() => void> } | null = null;
 
@@ -21,16 +29,19 @@ export function storeFor(userId: string): TabStore {
   if (current?.userId === userId) return current.store;
   closeStore();
   const supabase = supabaseBrowser();
-  const status: StoreStatus = { storage: "—", error: null };
+  const status: StoreStatus = { ...EMPTY_STATUS };
   const listeners = new Set<() => void>();
   const update = (patch: Partial<StoreStatus>) => {
     Object.assign(status, patch);
     listeners.forEach((listener) => listener());
   };
+  // Osobna baza i kanał kart dla każdego użytkownika: logowanie innym kontem nie miesza danych.
+  const name = `tp-${userId}`;
   const store = connectTabs({
+    name,
     createEngine: async () => {
       const worker = new Worker(new URL("./db.worker.ts", import.meta.url), { type: "module" });
-      const db = await openWasmDb(worker);
+      const db = await openWasmDb(worker, name);
       update({ storage: db.persistent ? "OPFS (trwała)" : `pamięć (${db.reason ?? "brak OPFS"})` });
       const engine = await SyncEngine.open({
         db,
@@ -38,9 +49,18 @@ export function storeFor(userId: string): TabStore {
         userId,
         onError: (e) => update({ error: String(e) }),
         onRejected: (ops) => update({ error: `Odrzucone: ${ops.map((o) => o.code).join(", ")}` }),
+        onPullProgress: ({ page, done }) => update({ pullPage: done ? null : page }),
+        onSyncState: (state) =>
+          update(
+            state.syncing
+              ? { syncing: true }
+              : state.ok
+                ? { syncing: false, error: null, lastSyncAt: state.at, pullPage: null }
+                : { syncing: false, error: String(state.error), pullPage: null },
+          ),
       });
       engine.start();
-      await engine.sync().catch((e) => update({ error: String(e) }));
+      await engine.sync().catch(() => undefined);
       return engine;
     },
   });
@@ -62,7 +82,7 @@ export function useStoreStatus(): StoreStatus {
     current.listeners.add(listener);
     return () => void current?.listeners.delete(listener);
   }, []);
-  return current?.status ?? { storage: "—", error: null };
+  return current?.status ?? EMPTY_STATUS;
 }
 
 /**
