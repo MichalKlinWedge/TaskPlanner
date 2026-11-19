@@ -70,7 +70,7 @@ Cel: przed budową produktu sprawdzić rzeczy, które mogą zmienić architektur
 
 **Go:** ≥ 95 % przypomnień ±1 min z dokładnymi alarmami (≤ 10 min bez nich); akcje i widżet działają przy zamkniętej aplikacji i bez sieci; udostępnianie i kalendarz telefonu działają. **No-go:** widżet → skróty aplikacji; przypomnienia → dodatkowo push z serwera (FCM) jako zabezpieczenie; calendar-kit → własna oś dnia.
 
-**Stan (19.11.2026):** w toku — na telefonie (Galaxy S22 Ultra, Android 16) zaliczone: samosprawdzenie 45/45, akcje z powiadomień i widżet przy zamkniętej aplikacji bez sieci, udostępnianie, kalendarz telefonu, własna oś dnia; bez dokładnych alarmów NO-GO → `USE_EXACT_ALARM`. Czeka na: 3 doby przypomnień z dokładnymi alarmami (S4, do 22.11), Chrome, płynność przeciągania palcem (calendar-kit vs własna oś). Build bez EAS: lokalnie i GitHub Actions (`docs/ANDROID_BUILD.md`). Szczegóły: `docs/POC_WYNIKI.md`.
+**Stan (19.11.2026):** zrobione, werdykt **GO** — na telefonie (Galaxy S22 Ultra, Android 16): samosprawdzenie 45/45 (PoC-1/2/3 w Hermes), akcje z powiadomień i widżet przy zamkniętej aplikacji bez sieci, udostępnianie, kalendarz telefonu; przypomnienia tylko z dokładnymi alarmami (`USE_EXACT_ALARM`; bez nich NO-GO). Bez 3-dobowego pomiaru Doze (decyzja użytkownika). Do MVP-3: Chrome (tytuł strony), płynność przeciągania palcem — domyślnie własna oś dnia. Build bez EAS: lokalnie i GitHub Actions (`docs/ANDROID_BUILD.md`). Szczegóły: `docs/POC_WYNIKI.md`.
 
 ### PoC-5 — Widoki webowe na lokalnych danych (≈ 2–3 dni)
 - Na danych z `seed-dev` (2 000 zadań) w lokalnej bazie z PoC-1:

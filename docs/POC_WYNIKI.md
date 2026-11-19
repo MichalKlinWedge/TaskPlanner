@@ -2,7 +2,9 @@
 
 ## PoC-4 — Android: przypomnienia, widżet, udostępnianie, kalendarz (18.11.2026)
 
-**Werdykt: w toku — kod gotowy, pierwsze pomiary na telefonie (19.11.2026, Galaxy S22 Ultra, Android 16, One UI; dev build z Metro przez USB).** Scenariusze: `docs/POC4_TELEFON.md` (S1–S9). Kryteria wymagające 3 dób (S3, S4) mają wynik dopiero po pełnym przebiegu.
+**Werdykt (19.11.2026): GO** — wszystkie biblioteki zostają (`expo-notifications`, `react-native-android-widget`, `expo-share-intent`, `expo-calendar`), przypomnienia **tylko z dokładnymi alarmami** (`USE_EXACT_ALARM`). Telefon: Galaxy S22 Ultra, Android 16, One UI; dev build z Metro i release. Scenariusze: `docs/POC4_TELEFON.md` (S1–S9).
+
+**Bez 3-dobowego pomiaru (decyzja użytkownika: „nie mam czasu na takie długie testy, jedzmy dalej”).** Dokładność przypomnień oparta na tym, że system przyjął wszystkie 50 alarmów jako dokładne (`window=0`, `setExactAndAllowWhileIdle`) — nie na zmierzonym ≥ 95 % ±1 min w Doze. Seria S4 (do 22.11 08:39) zostaje na telefonie; jej raport, jeśli powstanie, dopisać tutaj. Do sprawdzenia przy okazji w MVP-3: tytuł strony z prawdziwego Chrome (S7) i płynność przeciągania palcem (S8 vs S9 — wybór widoku dnia odłożony do MVP-3; domyślnie własna oś, bo calendar-kit nie przesunął bloku gestem).
 
 | Kryterium | Wynik | Jak sprawdzone |
 |---|---|---|
