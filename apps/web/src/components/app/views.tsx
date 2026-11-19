@@ -42,6 +42,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import type { AppData, List } from "@/lib/app-data";
 import { useLocalQuery } from "@/lib/local-store";
 
+import { DayDnd, DayDrop, DraggableTaskItem, SortableTaskItem, SortableTaskList } from "./dnd";
 import { QuickAdd } from "./quick-add";
 import { TaskItem, useTaskActions } from "./task-item";
 import { Button, Select } from "./ui";
@@ -67,9 +68,9 @@ function Header({ title, subtitle, children }: { title: string; subtitle?: strin
   );
 }
 
-function Section({ title, count, tone, children }: { title: string; count?: number; tone?: "danger"; children: ReactNode }) {
+function Section({ title, count, tone, highlight, children }: { title: string; count?: number; tone?: "danger"; highlight?: boolean; children: ReactNode }) {
   return (
-    <section className="mt-4">
+    <section className={`mt-4 rounded-md transition-colors ${highlight ? "bg-indigo-50 ring-2 ring-[var(--accent)] dark:bg-indigo-950/40" : ""}`}>
       <h2 className={`flex items-baseline gap-2 border-b border-[var(--line)] pb-1 text-sm font-semibold ${tone === "danger" ? "text-[var(--danger)]" : ""}`}>
         {title}
         {count !== undefined ? <span className="text-xs font-normal text-[var(--muted)]">{count}</span> : null}
@@ -171,14 +172,24 @@ export function UpcomingView({ data, ctx, targetInbox, toolbar }: ViewProps) {
     <>
       <Header title="Nadchodzące" subtitle="14 dni, dalej tygodniami" />
       {toolbar}
-      {view.days.map(({ date, items }) => (
-        <Section key={date} title={`${capitalized(relativeDay(date, ctx.today))}${date === ctx.today || date === addDays(ctx.today, 1) ? ` · ${dayLabel(date)}` : ""}`} count={items.length || undefined}>
-          {items.map((item) => (
-            <TaskItem key={`${item.task.id}:${item.date}`} task={item.task} today={ctx.today} showDate={false} listName={names.get(item.task.listId)} virtualDate={item.virtual ? item.date : undefined} />
-          ))}
-          {targetInbox ? <AddInline date={date} listId={targetInbox.id} /> : null}
-        </Section>
-      ))}
+      <DayDnd>
+        {view.days.map(({ date, items }) => (
+          <DayDrop key={date} date={date}>
+            {(over) => (
+              <Section title={`${capitalized(relativeDay(date, ctx.today))}${date === ctx.today || date === addDays(ctx.today, 1) ? ` · ${dayLabel(date)}` : ""}`} count={items.length || undefined} highlight={over}>
+                {items.map((item) =>
+                  item.virtual ? (
+                    <TaskItem key={`${item.task.id}:${item.date}`} task={item.task} today={ctx.today} showDate={false} listName={names.get(item.task.listId)} virtualDate={item.date} />
+                  ) : (
+                    <DraggableTaskItem key={`${item.task.id}:${item.date}`} dragKey={`${item.task.id}:${item.date}`} task={item.task} today={ctx.today} showDate={false} listName={names.get(item.task.listId)} />
+                  ),
+                )}
+                {targetInbox ? <AddInline date={date} listId={targetInbox.id} /> : null}
+              </Section>
+            )}
+          </DayDrop>
+        ))}
+      </DayDnd>
       {view.later.length ? (
         <>
           <h2 className="mt-6 text-sm font-semibold">{VIEW_SECTION.later}</h2>
@@ -272,9 +283,9 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
       <QuickAdd listId={list.id} placeholder={`Dodaj do „${list.name}”`} />
       {!tasks.length ? <Empty>Brak zadań.</Empty> : null}
       {rows ? (
-        <ul className="divide-y divide-[var(--line)]">
+        <SortableTaskList ids={rows.map((n) => n.task.id)}>
           {rows.map((node) => (
-            <TaskItem
+            <SortableTaskItem
               key={node.task.id}
               task={node.task}
               today={ctx.today}
@@ -284,7 +295,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
               onCollapse={() => toggle(node.task.id)}
             />
           ))}
-        </ul>
+        </SortableTaskList>
       ) : (
         groups?.map((group) =>
           group.label ? (

@@ -437,3 +437,65 @@ export function bulkTaskOps(
   }
   return { ops, undo };
 }
+
+// ── Przeciąganie w liście (kolejność ręczna, drzewo podzadań) ────────────────────────────────
+
+/** Wysokość poddrzewa: 1 = zadanie bez podzadań. */
+function subtreeHeight(tasks: readonly TreeTask[], id: string): number {
+  const children = tasks.filter((t) => t.parentId === id);
+  return 1 + Math.max(0, ...children.map((c) => subtreeHeight(tasks, c.id)));
+}
+
+/**
+ * Upuszczenie zadania przed / za innym w widoku listy: zadanie staje się rodzeństwem celu (ten sam
+ * rodzic) z kluczem kolejności między sąsiadami. `null` = upuszczenia nie da się wykonać — w samo
+ * siebie lub własne podzadanie (cykl) albo za głęboko (> 4 poziomy). Brak zmiany → pusta lista.
+ */
+export function dropTaskOps(
+  tasks: readonly (TreeTask & Pick<ViewTask, 'listId' | 'sortKey'>)[],
+  draggedId: string,
+  targetId: string,
+  place: 'before' | 'after',
+): TaskOp[] | null {
+  const dragged = tasks.find((t) => t.id === draggedId);
+  const target = tasks.find((t) => t.id === targetId);
+  if (!dragged || !target || draggedId === targetId) return dragged && target ? [] : null;
+  if (descendants(tasks, draggedId).some((d) => d.id === targetId)) return null;
+  const parentId = target.parentId;
+  const depth = parentId ? taskDepth(tasks, parentId) : 0;
+  if (depth + subtreeHeight(tasks, draggedId) > MAX_TASK_DEPTH) return null;
+
+  const byKey = (a: { sortKey: string; id: string }, b: { sortKey: string; id: string }) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : a.id < b.id ? -1 : 1);
+  const siblings = tasks
+    .filter((t) => t.id !== draggedId && t.parentId === parentId && (parentId !== null || t.listId === target.listId))
+    .sort(byKey);
+  const at = siblings.findIndex((t) => t.id === targetId) + (place === 'after' ? 1 : 0);
+  const before = siblings[at - 1]?.sortKey;
+  const after = siblings[at]?.sortKey;
+
+  const patch: Record<string, unknown> = {};
+  if (dragged.parentId !== parentId) patch.parent_id = parentId;
+  if (dragged.listId !== target.listId) patch.list_id = target.listId;
+  const current = tasks
+    .filter((t) => t.parentId === parentId && (parentId !== null || t.listId === target.listId))
+    .sort(byKey)
+    .map((t) => t.id);
+  const next = [...siblings.slice(0, at).map((t) => t.id), draggedId, ...siblings.slice(at).map((t) => t.id)];
+  const unchanged = !Object.keys(patch).length && current.join() === next.join();
+  if (unchanged) return [];
+
+  let ops: TaskOp[];
+  try {
+    ops = [{ table: 'tasks', id: draggedId, patch: { ...patch, sort_key: keyBetween(before, after) } }];
+  } catch {
+    // Równe klucze sąsiadów — nowa numeracja rodzeństwa z przeciąganym w nowym miejscu.
+    const order = [...siblings.slice(0, at), dragged, ...siblings.slice(at)];
+    let prev: string | undefined;
+    ops = order.map((t) => {
+      prev = keyBetween(prev);
+      return { table: 'tasks', id: t.id, patch: t.id === draggedId ? { ...patch, sort_key: prev } : { sort_key: prev } };
+    });
+  }
+  if (patch.list_id) ops.push(...descendants(tasks, draggedId).map((d): TaskOp => ({ table: 'tasks', id: d.id, patch: { list_id: target.listId } })));
+  return ops;
+}

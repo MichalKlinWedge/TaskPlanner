@@ -6,7 +6,7 @@
  */
 import { completeTaskOps, describeRecurrence, isOpen, localDateAt, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { useAppEnv } from "./app-env";
 
@@ -142,9 +142,11 @@ export interface TaskItemProps {
   virtualDate?: LocalDate;
   /** Nawyk odhaczony dziś. */
   habitDone?: boolean;
+  /** Przeciąganie (`dnd.tsx`): element, styl przesunięcia i atrybuty uchwytu. */
+  dnd?: { ref: (el: HTMLElement | null) => void; style: CSSProperties; handle: Record<string, unknown>; dragging: boolean };
 }
 
-export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone }: TaskItemProps) {
+export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd }: TaskItemProps) {
   const { toggle } = useTaskActions();
   const { openTask, selectedIds, select } = useAppEnv();
   const selected = selectedIds.has(task.id);
@@ -155,12 +157,24 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
 
   return (
     <li
-      className={`group flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""} ${selected ? "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]" : ""}`}
-      style={{ paddingLeft: depth * 20 }}
+      ref={dnd?.ref}
+      className={`group relative flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""} ${selected ? "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]" : "bg-[var(--background)]"} ${dnd?.dragging ? "z-10 opacity-80 shadow-lg" : ""}`}
+      style={{ ...dnd?.style, paddingLeft: depth * 20 }}
       data-task-id={task.id}
       data-virtual={virtualDate ? "" : undefined}
       data-selected={selected || undefined}
     >
+      {dnd ? (
+        <button
+          type="button"
+          aria-label={`Przeciągnij „${task.title}”`}
+          title="Przeciągnij"
+          {...dnd.handle}
+          className="absolute top-2 -left-5 cursor-grab touch-none px-1 text-xs leading-none text-[var(--muted)] opacity-0 group-hover:opacity-100 focus:opacity-100"
+        >
+          ⋮⋮
+        </button>
+      ) : null}
       {collapsed === undefined ? (
         <span className="w-4 shrink-0" />
       ) : (

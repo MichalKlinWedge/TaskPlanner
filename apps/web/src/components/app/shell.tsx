@@ -461,13 +461,19 @@ function Keyboard({
       }
       pendingG.current = 0;
 
-      const move = (delta: number) => {
+      // Shift — rozszerzenie zaznaczenia od pierwszego zaznaczonego (zakres w kolejności na ekranie).
+      const move = (delta: number, extend: boolean) => {
         const ids = visibleTaskIds();
         if (!ids.length) return;
         const last = selected.at(-1);
         const at = last ? ids.indexOf(last) : -1;
         const next = ids[at === -1 ? (delta > 0 ? 0 : ids.length - 1) : Math.max(0, Math.min(ids.length - 1, at + delta))]!;
-        setSelected([next]);
+        const anchor = extend && selected.length ? ids.indexOf(selected[0]!) : -1;
+        if (anchor >= 0) {
+          const end = ids.indexOf(next);
+          const range = anchor <= end ? ids.slice(anchor, end + 1) : ids.slice(end, anchor + 1).reverse();
+          setSelected(range);
+        } else setSelected([next]);
         if (openTaskId) openTask(next);
         document.querySelector(`main [data-task-id="${next}"]`)?.scrollIntoView({ block: "nearest" });
       };
@@ -477,8 +483,8 @@ function Keyboard({
         q: openQuick,
         "/": () => openPalette("search"),
         "?": openShortcuts,
-        j: () => move(1),
-        k: () => move(-1),
+        j: () => move(1, event.shiftKey),
+        k: () => move(-1, event.shiftKey),
         Enter: () => openTask(selected.at(-1)!),
         Escape: () => (openTaskId ? openTask(null) : setSelected([])),
         e: () => bulk({ kind: "complete" }, "Ukończono"),

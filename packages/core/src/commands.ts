@@ -47,6 +47,7 @@ export const COMMANDS: readonly Command[] = [
 export const LIST_SHORTCUTS: readonly { keys: readonly string[]; label: string }[] = [
   { keys: ['J'], label: 'Następne zadanie' },
   { keys: ['K'], label: 'Poprzednie zadanie' },
+  { keys: ['Shift+J', 'Shift+K'], label: 'Rozszerz zaznaczenie w dół / w górę' },
 ];
 
 /** Polecenia jako pozycje wyszukiwarki; bez zaznaczenia — bez poleceń na zadaniach. */

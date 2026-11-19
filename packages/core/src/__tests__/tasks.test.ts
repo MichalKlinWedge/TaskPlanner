@@ -12,6 +12,7 @@ import {
   datesPatch,
   deleteTaskOps,
   descendants,
+  dropTaskOps,
   moveTaskOps,
   openDescendants,
   quickAddTaskOps,
@@ -289,5 +290,38 @@ describe('bulkTaskOps', () => {
     const { ops, undo } = bulkTaskOps([a, c], all, { kind: 'complete' }, ctx);
     expect(ops.map((o) => o.id)).toEqual(['a']);
     expect(undo).toEqual([{ table: 'tasks', id: 'a', patch: { status: 'todo', completed_at: null } }]);
+  });
+});
+
+describe('dropTaskOps', () => {
+  // a(k1) → [a1(k1), a2(k2)], b(k2), c(k3) → c1 → c2 → c3 (4 poziomy)
+  const t = (id: string, parentId: string | null, sortKey: string) => ({ id, parentId, listId: 'L', sortKey });
+  const tasks = [t('a', null, 'k1'), t('a1', 'a', 'k1'), t('a2', 'a', 'k2'), t('b', null, 'k2'), t('c', null, 'k3'), t('c1', 'c', 'k1'), t('c2', 'c1', 'k1'), t('c3', 'c2', 'k1')];
+
+  it('kolejność wśród rodzeństwa', () => {
+    const ops = dropTaskOps(tasks, 'c', 'a', 'before')!;
+    expect(ops).toHaveLength(1);
+    expect((ops[0]!.patch.sort_key as string) < 'k1').toBe(true);
+    const mid = dropTaskOps(tasks, 'a', 'b', 'after')!;
+    expect(mid[0]!.patch.sort_key as string).toSatisfy((k: string) => k > 'k2' && k < 'k3');
+  });
+
+  it('bez zmiany miejsca — nic', () => {
+    expect(dropTaskOps(tasks, 'b', 'a', 'after')).toEqual([]);
+    expect(dropTaskOps(tasks, 'b', 'c', 'before')).toEqual([]);
+  });
+
+  it('zmiana rodzica: zadanie główne obok podzadania', () => {
+    const ops = dropTaskOps(tasks, 'b', 'a2', 'after')!;
+    expect(ops[0]!.patch).toMatchObject({ parent_id: 'a' });
+    expect((ops[0]!.patch.sort_key as string) > 'k2').toBe(true);
+  });
+
+  it('cykl i za głęboko — odrzucone', () => {
+    expect(dropTaskOps(tasks, 'c', 'c2', 'after')).toBeNull();
+    // a (2 poziomy) obok c3 (poziom 4) → 3 + 2 > 4
+    expect(dropTaskOps(tasks, 'a', 'c3', 'after')).toBeNull();
+    // b (1 poziom) obok c3 → dokładnie 4 poziomy — dozwolone.
+    expect(dropTaskOps(tasks, 'b', 'c3', 'after')![0]!.patch).toMatchObject({ parent_id: 'c2' });
   });
 });
