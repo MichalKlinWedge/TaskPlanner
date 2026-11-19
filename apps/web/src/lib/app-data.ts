@@ -5,7 +5,7 @@
  * (z tagami) i dzisiejsze wykonania nawyków. Zapytania odświeżają się po każdej zmianie tabel
  * (także z innej karty i z synchronizacji); reguły widoków liczy `@taskplanner/core`.
  */
-import { FilterQuery, localDateAt, ProfileSettings, toViewTask, ViewPrefs, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ViewTask } from "@taskplanner/core";
+import { FilterQuery, localDateAt, ProfileSettings, toHabitCompletion, toViewTask, ViewPrefs, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ViewTask } from "@taskplanner/core";
 import type { SqlRow, TabStore } from "@taskplanner/sync";
 import { useEffect, useMemo, useState } from "react";
 
@@ -56,6 +56,8 @@ export interface AppData {
   tasks: ViewTask[];
   /** Id nawyków odhaczonych dziś. */
   habitsDoneToday: Set<string>;
+  /** Wpisy nawyków (`task_completions`): id nawyku → wpisy (statystyki, pasek dni, „Dziś”). */
+  habitCompletions: Map<string, HabitCompletion[]>;
   loaded: boolean;
 }
 
@@ -110,9 +112,11 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
   );
   const habits = useLocalQuery<Row>(
     store,
-    "select task_id from task_completions where occurrence_date = ? and kind = 'done' and deleted_at is null",
-    [today],
-    ["task_completions"],
+    `select c.task_id, c.occurrence_date, c.kind, c.value from task_completions c
+       where c.deleted_at is null and c.task_id in (select id from tasks where kind = 'habit' and deleted_at is null)
+       order by c.occurrence_date`,
+    [],
+    ["task_completions", "tasks"],
   );
 
   return useMemo(() => {
@@ -150,8 +154,13 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
       tasks: tasks.rows
         .map((r) => toViewTask(r as unknown as LocalTaskRow, typeof r.tag_ids === "string" && r.tag_ids ? r.tag_ids.split(",") : []))
         .filter((t) => listIds.has(t.listId)),
-      habitsDoneToday: new Set(habits.rows.map((r) => String(r.task_id))),
+      habitsDoneToday: new Set(habits.rows.filter((r) => r.occurrence_date === today && r.kind === "done").map((r) => String(r.task_id))),
+      habitCompletions: habits.rows.reduce((map, r) => {
+        const id = String(r.task_id);
+        map.set(id, [...(map.get(id) ?? []), toHabitCompletion({ occurrence_date: r.occurrence_date, kind: r.kind, value: r.value })]);
+        return map;
+      }, new Map<string, HabitCompletion[]>()),
       loaded: workspaces.ms !== null && lists.ms !== null && tasks.ms !== null,
     };
-  }, [workspaces, lists, tags, filters, tasks, habits]);
+  }, [workspaces, lists, tags, filters, tasks, habits, today]);
 }

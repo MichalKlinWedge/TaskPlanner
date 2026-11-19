@@ -3,8 +3,11 @@
  * należne w oknie `[now − lookback, now + lead)` tak samo jak telefon (`core/reminders.ts`), w strefie
  * i z domyślną godziną z ustawień profilu, i rozdziela je na urządzenia użytkownika, które mają włączone
  * przypomnienia i subskrypcję push. Przypomnienie dostaje autor wiersza `reminders` (`created_by`).
+ * Nawyk (Etap 8) przypomina o swojej porze w dni reguły, z pominięciem dni już zaliczonych / wolnych
+ * (`completions`); powiadomienie ma wtedy akcję „Zrobione” (`payload.habit`, `payload.date` — Service Worker).
  * Bez Deno — testowane w Node (`tools/edge-tests`).
  */
+import { HabitSettings, toHabitCompletion, type HabitCompletion } from '../../../packages/core/src/habits.ts';
 import { reminderBody, reminderFireTimes, toReminderRule, type ReminderTask } from '../../../packages/core/src/reminders.ts';
 import { Recurrence } from '../../../packages/core/src/recurrence.ts';
 import { ProfileSettings, PushSubscriptionJson } from '../../../packages/core/src/schemas/model.ts';
@@ -38,9 +41,18 @@ export interface ReminderRow {
     due_date: string | null;
     due_time: string | null;
     recurrence: unknown;
+    habit?: unknown;
     time_zone: string | null;
     deleted_at: string | null;
   } | null;
+}
+
+/** Wiersz `task_completions` nawyku (ostatnie dni). */
+export interface CompletionRow {
+  task_id: string;
+  occurrence_date: string;
+  kind: string;
+  value: number | null;
 }
 
 export interface ProfileRow {
@@ -55,7 +67,7 @@ export interface PlannedPush {
   taskId: string;
   fireAt: string;
   subscription: PushSubscriptionJson;
-  payload: { key: string; title: string; body: string; url: string; taskId: string };
+  payload: { key: string; title: string; body: string; url: string; taskId: string; habit?: true; date?: string };
 }
 
 /** Urządzenia, które dostają Web Push: przeglądarka z włączonymi przypomnieniami i ważną subskrypcją. */
@@ -71,7 +83,7 @@ export function pushDevices(devices: readonly DeviceRow[], { allowHttp = false }
 }
 
 export function planPushes(
-  { devices, reminders, profiles }: { devices: readonly DeviceRow[]; reminders: readonly ReminderRow[]; profiles: readonly ProfileRow[] },
+  { devices, reminders, profiles, completions = [] }: { devices: readonly DeviceRow[]; reminders: readonly ReminderRow[]; profiles: readonly ProfileRow[]; completions?: readonly CompletionRow[] },
   { now, allowHttp = false }: { now: Date | string; allowHttp?: boolean },
 ): PlannedPush[] {
   const at = new Date(now).getTime();
@@ -79,6 +91,8 @@ export function planPushes(
   const byUser = new Map<string, typeof targets>();
   for (const d of targets) byUser.set(d.scope_id, [...(byUser.get(d.scope_id) ?? []), d]);
   const settings = new Map(profiles.map((p) => [p.id, ProfileSettings.parse(p.settings ?? {})]));
+  const habitCompletions = new Map<string, HabitCompletion[]>();
+  for (const c of completions) habitCompletions.set(c.task_id, [...(habitCompletions.get(c.task_id) ?? []), toHabitCompletion(c)]);
 
   const plan: PlannedPush[] = [];
   for (const [userId, userDevices] of byUser) {
@@ -89,6 +103,7 @@ export function planPushes(
     for (const r of rows) {
       const t = r.tasks!;
       const rec = t.recurrence ? Recurrence.safeParse(t.recurrence) : null;
+      const habit = t.kind === 'habit' && t.habit ? HabitSettings.safeParse(t.habit) : null;
       tasks.set(t.id, {
         id: t.id,
         kind: t.kind as ReminderTask['kind'],
@@ -98,6 +113,7 @@ export function planPushes(
         dueTime: t.due_time ? (t.due_time.slice(0, 5) as ReminderTask['dueTime']) : null,
         recurrence: rec?.success ? rec.data : null,
         timeZone: t.time_zone,
+        habit: habit?.success ? habit.data : null,
       });
     }
     const fires = reminderFireTimes([...tasks.values()], rows.map(toReminderRule), {
@@ -105,6 +121,7 @@ export function planPushes(
       to: new Date(at + LEAD_MS),
       timeZone: s.timeZone,
       defaultTime: s.defaultReminderTime,
+      habitCompletions,
     });
     for (const fire of fires) {
       const task = tasks.get(fire.taskId)!;
@@ -117,7 +134,7 @@ export function planPushes(
           taskId: fire.taskId,
           fireAt: fire.fireAt,
           subscription: device.subscription,
-          payload: { key: fire.key, ...text, url: `/?task=${fire.taskId}`, taskId: fire.taskId },
+          payload: { key: fire.key, ...text, url: `/?task=${fire.taskId}`, taskId: fire.taskId, ...(task.kind === 'habit' && fire.occurrenceDate ? { habit: true as const, date: fire.occurrenceDate } : {}) },
         });
       }
     }

@@ -8,9 +8,12 @@
  *   Seria według harmonogramu: każde wystąpienie od bieżącego terminu; „po ukończeniu” — tylko bieżące.
  * - Bezwzględne: konkretny dzień i godzina lokalna, raz (bez powtarzania z serią).
  * - Zamknięte zadania nie przypominają (serwer sprawdza też status w chwili wysyłki).
+ * - Nawyk (Etap 8): względne przypomnienie w każdy dzień reguły przed porą nawyku (`habit.time`) albo
+ *   domyślną godziną; z `habitCompletions` pomija dni już zaliczone, wolne i okresy z osiągniętym celem.
  */
 import { addDays, localDateAt, zonedInstant } from './dates.ts';
 import { relativeDay } from './format.ts';
+import { habitNeedsReminder, type HabitCompletion, type HabitSettings } from './habits.ts';
 import { occurrences, type Recurrence } from './recurrence.ts';
 import type { LocalDate, LocalTime, ReminderKind } from './schemas/primitives.ts';
 import type { ViewTask } from './views.ts';
@@ -19,6 +22,8 @@ import type { ViewTask } from './views.ts';
 export type ReminderTask = Pick<ViewTask, 'id' | 'kind' | 'status' | 'title' | 'dueDate' | 'dueTime'> & {
   recurrence: Recurrence | null;
   timeZone?: string | null;
+  /** Ustawienia nawyku (`tasks.habit`) — pora i cel. */
+  habit?: HabitSettings | null;
 };
 
 /** Wiersz `reminders` (camelCase). */
@@ -55,6 +60,8 @@ export interface ReminderWindow {
   defaultTime: LocalTime;
   /** Najwięcej wyników (telefon: 50 zaplanowanych naraz). */
   limit?: number;
+  /** Wpisy nawyków (id zadania → wpisy) — bez nich nawyk przypomina w każdy dzień reguły. */
+  habitCompletions?: ReadonlyMap<string, readonly HabitCompletion[]>;
 }
 
 export const REMINDER_WINDOW_DAYS = 7;
@@ -92,6 +99,20 @@ export function reminderFireTimes(tasks: readonly ReminderTask[], rules: readonl
     if (!task || isClosed(task)) continue;
     const zone = task.timeZone ?? window.timeZone;
 
+    if (task.kind === 'habit') {
+      if (rule.kind !== 'relative' || rule.offsetMin === null || task.recurrence?.mode !== 'schedule') continue;
+      const habit = { ...(task.habit ?? {}), recurrence: task.recurrence };
+      const done = window.habitCompletions?.get(task.id);
+      const since = localDateAt(new Date(from - 86_400_000), zone);
+      const until = localDateAt(new Date(to + rule.offsetMin * 60_000 + 86_400_000), zone);
+      for (const date of occurrences(task.recurrence, { from: since, to: until, limit: 400 })) {
+        if (done && !habitNeedsReminder(habit, done, date)) continue;
+        const dueAt = zonedInstant(date, task.habit?.time ?? window.defaultTime, zone).getTime();
+        push({ key: `${rule.id}:${date}`, taskId: task.id, reminderId: rule.id, occurrenceDate: date, fireAt: dueAt - rule.offsetMin * 60_000, dueAt });
+      }
+      continue;
+    }
+
     if (rule.kind === 'absolute') {
       if (!rule.atDate || !rule.atTime) continue;
       const dueAt = task.dueDate ? zonedInstant(task.dueDate, task.dueTime ?? window.defaultTime, zone).getTime() : null;
@@ -128,8 +149,17 @@ export const toReminderRule = (row: { id: string; task_id: string; kind: string;
  * Treść powiadomienia: tytuł zadania i kiedy jest termin („Termin: dziś 10:00”, „za 30 min”,
  * „Termin minął 15 min temu” przy odłożonym powiadomieniu).
  */
-export function reminderBody(task: Pick<ReminderTask, 'title' | 'dueTime'>, fire: Pick<ReminderFire, 'occurrenceDate' | 'dueAt'>, now: Date | string, timeZone?: string): { title: string; body: string } {
+export function reminderBody(
+  task: Pick<ReminderTask, 'title' | 'dueTime'> & Partial<Pick<ReminderTask, 'kind' | 'habit'>>,
+  fire: Pick<ReminderFire, 'occurrenceDate' | 'dueAt'>,
+  now: Date | string,
+  timeZone?: string,
+): { title: string; body: string } {
   const at = new Date(now).getTime();
+  if (task.kind === 'habit') {
+    const target = task.habit?.target;
+    return { title: task.title, body: target === undefined ? 'Nawyk na dziś — odhacz, gdy zrobisz' : `Nawyk na dziś · cel ${target}${task.habit?.unit ? ` ${task.habit.unit}` : ''}` };
+  }
   if (!fire.occurrenceDate || !fire.dueAt) return { title: task.title, body: 'Przypomnienie' };
   const due = new Date(fire.dueAt).getTime();
   const minutes = Math.round((due - at) / 60_000);

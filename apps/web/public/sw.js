@@ -15,6 +15,10 @@
  * Web Push (M8): przypomnienie z `reminders-push` → powiadomienie systemowe (także przy zamkniętej
  * karcie); otwarta karta dostaje też wiadomość `reminder` (dymek w aplikacji). Klik w powiadomienie
  * otwiera zadanie w istniejącej karcie (`open-task`) albo w nowej (`/?task=<id>`).
+ *
+ * Nawyk (Etap 8): powiadomienie ma akcję „Zrobione”. SW nie ma dostępu do lokalnej bazy (SQLite w
+ * workerze karty-lidera), więc przekazuje odhaczenie otwartej karcie (`habit-done`) albo otwiera nową
+ * (`/?habitDone=<id>&date=<dzień>`) — zapis robi aplikacja (`habitEntryOps`).
  */
 const VERSION = 'v1';
 const SHELL = `tp-shell-${VERSION}`;
@@ -113,7 +117,8 @@ self.addEventListener('push', (event) => {
         body: data.body || '',
         tag: data.key,
         icon: '/icons/icon-192.png',
-        data: { url: data.url || '/', taskId: data.taskId },
+        data: { url: data.url || '/', taskId: data.taskId, habit: Boolean(data.habit), date: data.date },
+        actions: data.habit ? [{ action: 'habit-done', title: 'Zrobione' }] : [],
       });
       for (const client of await self.clients.matchAll({ type: 'window', includeUncontrolled: true })) {
         client.postMessage({ type: 'reminder', title: data.title, body: data.body, taskId: data.taskId });
@@ -124,11 +129,15 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const { url = '/', taskId } = event.notification.data || {};
+  const { url = '/', taskId, habit, date } = event.notification.data || {};
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       const open = windows.find((w) => new URL(w.url).origin === self.location.origin);
+      if (event.action === 'habit-done' && habit && taskId && date) {
+        if (open) return open.postMessage({ type: 'habit-done', taskId, date });
+        return void (await self.clients.openWindow(`/?habitDone=${encodeURIComponent(taskId)}&date=${encodeURIComponent(date)}#/today`));
+      }
       if (open) {
         await open.focus();
         if (taskId) open.postMessage({ type: 'open-task', taskId });

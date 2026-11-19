@@ -4,7 +4,7 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, BOARD_BY, bulkTaskOps, isEmptyFilter, isOpen, plural, selectInbox, selectToday, type BoardBy, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
+import { applyFilter, BOARD_BY, bulkTaskOps, habitsForDay, isEmptyFilter, isOpen, plural, selectInbox, selectToday, type BoardBy, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -22,6 +22,7 @@ import { FilterBar } from "./filter-bar";
 import { FocusIndicator, FocusProvider, FocusScreen } from "./focus";
 import { DailyReview, ReviewNudge, WeeklyReview } from "./review";
 import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-views";
+import { HabitDetail, HabitNotificationActions, HabitsView } from "./habits";
 import { QuickAddDialog } from "./quick-add";
 import { TaskPanel } from "./task-panel";
 import { TaskActionsProvider, useTaskActions } from "./task-item";
@@ -148,8 +149,9 @@ export function Shell({
       if (!ctx.workspaceId || t.workspaceId === ctx.workspaceId) for (const id of t.tagIds) perTag.set(id, (perTag.get(id) ?? 0) + 1);
     }
     const perFilter = new Map(data.savedFilters.map((f) => [f.id, filterCount(data.tasks, f.query, ctx)]));
-    return { inbox: selectInbox(data.tasks, inboxIds, ctx).length, today: view.overdue.length + view.today.length, overdue: view.overdue.length, perList, perTag, perFilter };
-  }, [data.tasks, data.lists, data.savedFilters, ctx]);
+    const habits = habitsForDay(data.tasks, data.habitCompletions, ctx.today, ctx.today, ctx.workspaceId).filter((h) => !h.settled).length;
+    return { inbox: selectInbox(data.tasks, inboxIds, ctx).length, today: view.overdue.length + view.today.length, overdue: view.overdue.length, habits, perList, perTag, perFilter };
+  }, [data.tasks, data.lists, data.savedFilters, data.habitCompletions, ctx]);
 
   // Kryterium kolumn tablicy `#/board` — per przeglądarka (tablica listy ma je w `view_prefs`).
   const [boardBy, setBoardByState] = useState<BoardBy>(() => {
@@ -240,6 +242,10 @@ export function Shell({
         <h1 className="sr-only">Kalendarz</h1>
         <CalendarScreen data={data} ctx={ctx} settings={settings} />
       </>
+    ) : route.view === "habits" ? (
+      <HabitsView data={data} ctx={ctx} targetInbox={targetInbox} navigate={navigate} />
+    ) : route.view === "habit" ? (
+      <HabitDetail key={route.id} id={route.id} data={data} ctx={ctx} navigate={navigate} />
     ) : route.view === "timeline" ? null : route.view === "focus" ? (
       <FocusScreen key={route.id ?? ""} taskId={route.id ?? null} ctx={ctx} onExit={() => navigate(lastRoute)} navigate={navigate} />
     ) : route.view === "review" ? (
@@ -286,6 +292,7 @@ export function Shell({
       <TaskActionsProvider store={store} timeZone={settings.timeZone} tasks={data.tasks}>
         <FocusProvider store={store} userId={userId} settings={settings}>
         <ReminderToasts />
+        <HabitNotificationActions />
         <Keyboard
           blocked={quickOpen || palette !== null || shortcutsOpen || route.view === "focus" || route.view === "review"}
           selected={selected}
@@ -343,6 +350,7 @@ export function Shell({
               <NavItem route={{ view: "board" }} current={route} navigate={navigate} icon="▦" label="Tablica" />
               <NavItem route={{ view: "calendar" }} current={route} navigate={navigate} icon="🗓" label="Kalendarz" />
               <NavItem route={{ view: "timeline" }} current={route} navigate={navigate} icon="📊" label="Oś czasu" />
+              <NavItem route={{ view: "habits" }} current={route} navigate={navigate} icon="🌱" label="Nawyki" count={counts.habits || undefined} />
             </nav>
             {workspaces.map((w) => (
               <WorkspaceLists key={w.id} name={w.name} color={w.color} lists={data.lists.filter((l) => l.workspaceId === w.id && l.kind !== "inbox")} counts={counts.perList} route={route} navigate={navigate} />
@@ -516,7 +524,7 @@ function WorkspaceLists({
 /** Tryb skupienia z zadaniem (zaznaczonym albo otwartym) albo bez. */
 const focusRoute = (taskId: string | null | undefined): Route => (taskId ? { view: "focus", id: taskId } : { view: "focus" });
 
-const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" } };
+const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" }, h: { view: "habits" } };
 
 /** Akcja na zaznaczonych z dymkiem „Cofnij”. */
 function useBulk(selected: readonly string[]) {
@@ -702,6 +710,7 @@ function PaletteHost({
       "view.kanban": () => then(() => navigate({ view: "board" })),
       "view.calendar": () => then(() => navigate({ view: "calendar" })),
       "view.timeline": () => then(() => navigate({ view: "timeline" })),
+      "view.habits": () => then(() => navigate({ view: "habits" })),
       "focus.start": () => then(() => navigate(focusRoute(selected.at(-1) ?? null))),
       "review.daily": () => then(() => navigate({ view: "review", id: "daily" })),
       "review.weekly": () => then(() => navigate({ view: "review", id: "weekly" })),

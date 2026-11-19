@@ -202,6 +202,14 @@ export function TaskPanel({ taskId }: { taskId: string }) {
         </Field>
       </div>
 
+      {task.kind === "habit" ? (
+        <Block title="Nawyk">
+          <a href={`#/habit/${task.id}`} className="text-sm text-[var(--accent)] hover:underline">
+            Statystyki, harmonogram i cel →
+          </a>
+        </Block>
+      ) : null}
+
       <RecurrenceField key={`rec:${task.id}`} task={task} onSave={(patch) => void update(patch)} timeZone={timeZone} today={today} />
 
       <TagsField task={task} userId={userId} />

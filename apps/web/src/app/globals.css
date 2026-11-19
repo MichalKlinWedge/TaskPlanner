@@ -119,3 +119,8 @@ body {
 .tp-timeline .tp-gantt-today-period {
   background: color-mix(in srgb, var(--danger) 7%, transparent);
 }
+/* Dzień wolny nawyku (`habits.tsx`): kreskowanie zamiast koloru — czytelne też w odcieniach szarości. */
+.habit-skipped {
+  background-color: var(--hover);
+  background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--muted) 40%, transparent) 3px 5px);
+}

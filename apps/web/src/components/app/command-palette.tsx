@@ -31,6 +31,7 @@ export const AVAILABLE_COMMANDS = new Set([
   "view.kanban",
   "view.calendar",
   "view.timeline",
+  "view.habits",
   "focus.start",
   "review.daily",
   "review.weekly",
