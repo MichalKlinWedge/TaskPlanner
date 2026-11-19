@@ -39,12 +39,14 @@ export interface ScopeInfo {
 export interface PullResult {
   scopes: Record<string, ScopeInfo>;
   tables: Partial<Record<SyncedTable, RemoteRow[]>>;
+  /** Jest dalszy ciąg: `scopes[id].version` to wtedy kursor, od którego pytać dalej. */
+  more?: boolean;
   serverHlc: Hlc;
 }
 
 export interface Remote {
   push(ops: PushOp[]): Promise<PushResult>;
-  pull(since: Record<string, number>): Promise<PullResult>;
+  pull(since: Record<string, number>, limit?: number): Promise<PullResult>;
   /** Sygnał „coś się zmieniło” (`onChange`) i gotowość subskrypcji (`onReady` — wtedy też trzeba pobrać). */
   subscribe?(onChange: () => void, onReady: () => void): () => void;
 }
@@ -56,8 +58,8 @@ export function supabaseRemote(client: SupabaseClient, channelName = 'sync'): Re
       if (error) throw new Error(`push_changes: ${error.message}`);
       return data as PushResult;
     },
-    async pull(since) {
-      const { data, error } = await client.rpc('pull_changes', { p_since: since });
+    async pull(since, limit) {
+      const { data, error } = await client.rpc('pull_changes', limit ? { p_since: since, p_limit: limit } : { p_since: since });
       if (error) throw new Error(`pull_changes: ${error.message}`);
       return data as PullResult;
     },

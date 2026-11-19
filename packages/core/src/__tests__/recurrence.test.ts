@@ -139,7 +139,7 @@ describe('porównanie z rrule.js (losowe reguły z podzbioru)', () => {
       if (JSON.stringify(fast) !== JSON.stringify(full)) mismatches.push(`${rrule} @ ${anchor} od ${from}\n  przeskok: ${fast.slice(0, 4).join(' ')}\n  pełne:    ${full.slice(0, 4).join(' ')}`);
     }
     expect(mismatches.slice(0, 5).join('\n')).toBe('');
-  });
+  }, 30_000); // 500 × pełne liczenie do 10 000 wystąpień: test poprawności, nie wydajności (~7 s).
 
   it('wydajność: 14 dni serii codziennej sprzed 6 lat < 1 ms', () => {
     const start = performance.now();

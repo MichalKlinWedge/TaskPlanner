@@ -16,8 +16,8 @@ const workspace = () => uuidv7();
 let W: string;
 let L: string;
 
-const open = async (u: TestUser, name: string) => {
-  const device = await createDevice(u, name);
+const open = async (u: TestUser, name: string, options?: Parameters<typeof createDevice>[2]) => {
+  const device = await createDevice(u, name, options);
   devices.push(device);
   return device;
 };
@@ -214,5 +214,44 @@ describe('PoC-1: synchronizacja w obie strony', () => {
     expect(stranger.rejected.map((r) => r.code)).toEqual(['TP003']);
     expect((await serverTask(phone, id))?.title).toBe('Prywatne');
     expect(await row(stranger, 'tasks', id)).toBeUndefined();
+  });
+});
+
+describe('MVP-1: pełny model i stronicowanie', () => {
+  it('przypomnienie, zależność i wpis czasu z telefonu na webie; zakres wyliczony lokalnie przed wysłaniem', async () => {
+    const a = await sharedTask('Kupić płytki');
+    const b = await sharedTask('Położyć płytki');
+    const reminder = uuidv7();
+    const dependency = uuidv7();
+    const entry = uuidv7();
+    phone.net.online = false;
+    await phone.engine.mutate('reminders', reminder, { task_id: a, kind: 'relative', offset_min: 30 });
+    await phone.engine.mutate('task_dependencies', dependency, { predecessor_id: a, successor_id: b });
+    await phone.engine.mutate('time_entries', entry, { kind: 'manual', started_at: new Date().toISOString() });
+    expect((await phone.engine.get('reminders', reminder))?.scope_id).toBe(W);
+    expect((await phone.engine.get('task_dependencies', dependency))?.scope_id).toBe(W);
+    expect((await phone.engine.get('time_entries', entry))?.scope_id).toBe(user.id);
+    phone.net.online = true;
+    await phone.engine.sync();
+    expect(phone.rejected).toEqual([]);
+    await web.engine.sync();
+    expect((await web.engine.get('reminders', reminder))?.offset_min).toBe(30);
+    expect((await web.engine.get('task_dependencies', dependency))?.successor_id).toBe(b);
+    expect((await web.engine.get('time_entries', entry))?.scope_id).toBe(user.id);
+    expect((await web.engine.get('profiles', user.id))?.scope_id).toBe(user.id);
+  });
+
+  it('pierwsza synchronizacja nowego urządzenia stronami daje te same wiersze', async () => {
+    for (let i = 0; i < 25; i++) await phone.engine.mutate('tasks', uuidv7(), { list_id: L, title: `Zadanie ${i}`, board_sort_key: 'n' });
+    await phone.engine.sync();
+    const pages: number[] = [];
+    const laptop = await open(user, 'laptop', { pullPageSize: 7, onPullProgress: (p) => pages.push(p.page) });
+    await laptop.engine.sync();
+    expect(pages.length).toBeGreaterThanOrEqual(4);
+    const count = async (d: Device) => (await d.engine.db.all<{ n: number }>('select count(*) as n from tasks where list_id = ?', [L]))[0]?.n;
+    expect(await count(laptop)).toBe(25);
+    expect(await count(laptop)).toBe(await count(phone));
+    const keys = await laptop.engine.db.all<{ k: string }>('select distinct board_sort_key as k from tasks where list_id = ?', [L]);
+    expect(keys.map((r) => r.k)).toEqual(['n']);
   });
 });

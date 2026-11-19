@@ -5,20 +5,26 @@
  */
 import type { Tables } from '@taskplanner/db';
 
-export const SYNCED_TABLES = ['workspaces', 'lists', 'tasks', 'tags', 'task_tags', 'task_completions'] as const;
+/** Kolejność = `synced_tables()` w bazie (rodzice przed dziećmi). */
+export const SYNCED_TABLES = [
+  'workspaces', 'lists', 'tasks', 'tags', 'task_tags', 'task_completions', 'profiles', 'devices',
+  'reminders', 'task_dependencies', 'time_entries', 'attachments', 'saved_filters', 'review_sessions',
+] as const;
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
 
 export const SYSTEM_COLUMNS = ['id', 'scope_id', 'created_at', 'updated_at', 'created_by', 'deleted_at', 'row_version', 'field_clock'] as const;
 type SystemColumn = (typeof SYSTEM_COLUMNS)[number];
 
 /**
- * `self` — zakres = id wiersza (przestrzeń), `writable` — `scope_id` ustawia klient (lista → przestrzeń,
- * tag → zakres osobisty), `derived` — zakres wylicza się z rodzica (zadanie z listy, tag zadania z zadania).
+ * `self` — zakres = id wiersza (przestrzeń, profil), `writable` — `scope_id` ustawia klient (lista →
+ * przestrzeń), `personal` — zakres osobisty (klient może podać, domyślnie zalogowany użytkownik),
+ * `derived` — zakres wylicza się z rodzica (zadanie z listy, wiersze zadania z zadania, zależność
+ * z poprzednika, wpis czasu z zadania albo zakres osobisty).
  */
-export type ScopeRule = 'self' | 'writable' | 'derived';
+export type ScopeRule = 'self' | 'writable' | 'personal' | 'derived';
 
 export interface TableSpec<T extends SyncedTable = SyncedTable> {
-  /** Kolumny danych (bez systemowych), które klient może zapisać; `scope_id` tylko przy `writable`. */
+  /** Kolumny danych (bez systemowych), które klient może zapisać; `scope_id` tylko przy `writable` i `personal`. */
   columns: readonly (keyof Tables<T> & string)[];
   /** Kolumny `jsonb` — lokalnie tekst JSON. */
   json: readonly (keyof Tables<T> & string)[];
@@ -37,14 +43,14 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     scope: 'self',
   },
   lists: {
-    columns: columns<'lists'>()(['scope_id', 'kind', 'name', 'color', 'icon', 'description_md', 'start_date', 'end_date', 'project_status', 'sort_key', 'view_prefs']),
+    columns: columns<'lists'>()(['scope_id', 'kind', 'name', 'color', 'icon', 'description_md', 'start_date', 'end_date', 'project_status', 'sort_key', 'view_prefs', 'archived_at']),
     json: ['view_prefs'],
     scope: 'writable',
   },
   tasks: {
     columns: columns<'tasks'>()([
       'list_id', 'parent_id', 'kind', 'title', 'description_md', 'status', 'priority', 'start_date', 'due_date', 'due_time',
-      'duration_min', 'time_zone', 'recurrence', 'habit', 'completed_at', 'sort_key', 'source', 'postpone_count',
+      'duration_min', 'time_zone', 'recurrence', 'habit', 'completed_at', 'sort_key', 'board_sort_key', 'source', 'postpone_count',
     ]),
     json: ['recurrence', 'habit', 'source'],
     scope: 'derived',
@@ -52,7 +58,7 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
   tags: {
     columns: columns<'tags'>()(['scope_id', 'name', 'color', 'sort_key']),
     json: [],
-    scope: 'writable',
+    scope: 'personal',
   },
   task_tags: {
     columns: columns<'task_tags'>()(['task_id', 'tag_id']),
@@ -63,6 +69,46 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     columns: columns<'task_completions'>()(['task_id', 'occurrence_date', 'kind', 'value', 'completed_at']),
     json: [],
     scope: 'derived',
+  },
+  profiles: {
+    columns: columns<'profiles'>()(['display_name', 'settings']),
+    json: ['settings'],
+    scope: 'self',
+  },
+  devices: {
+    columns: columns<'devices'>()(['scope_id', 'name', 'platform', 'reminder_channel', 'push_subscription', 'last_sync_at']),
+    json: ['push_subscription'],
+    scope: 'personal',
+  },
+  reminders: {
+    columns: columns<'reminders'>()(['task_id', 'kind', 'offset_min', 'at_date', 'at_time']),
+    json: [],
+    scope: 'derived',
+  },
+  task_dependencies: {
+    columns: columns<'task_dependencies'>()(['predecessor_id', 'successor_id', 'kind', 'lag_days']),
+    json: [],
+    scope: 'derived',
+  },
+  time_entries: {
+    columns: columns<'time_entries'>()(['task_id', 'kind', 'started_at', 'ended_at', 'pomodoro_index']),
+    json: [],
+    scope: 'derived',
+  },
+  attachments: {
+    columns: columns<'attachments'>()(['task_id', 'kind', 'storage_path', 'name', 'mime', 'size_bytes', 'url', 'preview']),
+    json: ['preview'],
+    scope: 'derived',
+  },
+  saved_filters: {
+    columns: columns<'saved_filters'>()(['scope_id', 'name', 'icon', 'query', 'sort_key']),
+    json: ['query'],
+    scope: 'personal',
+  },
+  review_sessions: {
+    columns: columns<'review_sessions'>()(['scope_id', 'kind', 'started_at', 'finished_at', 'stats']),
+    json: ['stats'],
+    scope: 'personal',
   },
 };
 
@@ -88,6 +134,11 @@ export function localSchema(): string[] {
     statements.push(`create index if not exists ${table}_scope on ${table} (scope_id)`);
   }
   statements.push('create index if not exists tasks_list on tasks (list_id, parent_id)');
+  for (const table of ['reminders', 'attachments', 'time_entries'] as const) {
+    statements.push(`create index if not exists ${table}_task on ${table} (task_id)`);
+  }
+  statements.push('create index if not exists task_dependencies_predecessor on task_dependencies (predecessor_id)');
+  statements.push('create index if not exists task_dependencies_successor on task_dependencies (successor_id)');
   statements.push(
     "create table if not exists _outbox (seq integer primary key autoincrement, op_id text not null unique, tbl text not null, row_id text not null, data text not null, hlc text not null, status text not null default 'pending', error text)",
   );

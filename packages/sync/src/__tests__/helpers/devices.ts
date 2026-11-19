@@ -40,7 +40,7 @@ export async function createUser(label: string): Promise<TestUser> {
   return { id: data.user.id, email, password };
 }
 
-export async function createDevice(user: TestUser, name: string): Promise<Device> {
+export async function createDevice(user: TestUser, name: string, options: { pullPageSize?: number; onPullProgress?: (p: { page: number; done: boolean }) => void } = {}): Promise<Device> {
   const { url, anonKey } = config();
   const client = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const { error } = await client.auth.signInWithPassword({ email: user.email, password: user.password });
@@ -53,9 +53,9 @@ export async function createDevice(user: TestUser, name: string): Promise<Device
   const offline = () => Promise.reject(new Error(`${name}: brak sieci`));
   const remote: Remote = {
     push: (ops) => (net.online ? base.push(ops) : offline()),
-    pull: (since) => {
+    pull: (since, limit) => {
       stats.pulls++;
-      return net.online ? base.pull(since) : offline();
+      return net.online ? base.pull(since, limit) : offline();
     },
     subscribe: base.subscribe!,
   };
@@ -68,6 +68,7 @@ export async function createDevice(user: TestUser, name: string): Promise<Device
     now: () => Date.now() + clock.offset,
     autoSync: false,
     onRejected: (ops) => rejected.push(...ops),
+    ...options,
   });
   return {
     name,

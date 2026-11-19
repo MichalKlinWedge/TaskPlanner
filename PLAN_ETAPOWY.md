@@ -109,7 +109,9 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 - Logowanie Google + magic link na webie i w aplikacji (deep link); onboarding: przestrzenie „Osobiste” i „Praca” z Inbox, ustawienia (strefa, tydzień, godziny pracy, domyślne godziny i czasy).
 - Prosty ekran przestrzeni i list (tworzenie, zmiana nazwy, kolor, kolejność, archiwizacja) [W+A].
 - `seed:dev` ładuje dane z `tools/seed-dev` do lokalnej bazy.
-- Z bramki po PoC: `tasks.board_sort_key` (D15) w schemacie; stronicowana pierwsza migawka `pull_changes` ze wskaźnikiem postępu (PoC-5: 2 017 zadań = ~4,2 s); tymczasowe tabele PoC-6 (`inbound_addresses`, `push_subscriptions`) przeniesione do `profiles` / `devices`, strefa z ustawień profilu; jawne granty w każdej migracji (PoC-6: projekt w chmurze ich nie nadaje).
+- Z bramki po PoC: `tasks.board_sort_key` (D15) w schemacie; stronicowana pierwsza migawka `pull_changes` ze wskaźnikiem postępu (PoC-5: 2 017 zadań = ~4,2 s); jawne granty w każdej migracji (PoC-6: projekt w chmurze ich nie nadaje).
+
+**Stan (19.11.2026):** w toku na gałęzi `mvp-1`. Zrobione: migracja `20261119100000_mvp1_model.sql` (wszystkie tabele §5 poza integracjami, `board_sort_key`, `lists.archived_at`, `activity_log`, profil z kontem, stronicowane `pull_changes`), 26 testów pgTAP (`supabase/tests/model.test.sql`) i 2 integracyjne, `TABLES`/`MODEL` dla nowych tabel, onboarding w `core/onboarding.ts` (deterministyczne id przestrzeni), web: logowanie (Google, magic link), onboarding, ustawienia, przestrzenie i listy, wskaźnik synchronizacji, osobna lokalna baza na użytkownika. W chmurze (19.11.2026): migracja `mvp1_model` (`db push`), logowanie Google na webie sprawdzone (dostawca, adresy powrotu: produkcja, `localhost:3000`, `taskplanner://`). Telefon: logowanie, onboarding, przestrzenie i listy scalone; scenariusze M1–M8 w `docs/MVP1_TELEFON.md` (M1 przeszedł). Zostało: M2–M8 na telefonie (w tym kryterium odbioru), PR `mvp-1` → `main`. Tymczasowe tabele PoC-6 zostają do etapów, które ich używają (decyzja 19.11.2026): `push_subscriptions` → `devices.push_subscription` w MVP-4, `inbound_addresses` → `profiles` w v1.x (D9).
 
 **Kryterium odbioru:** zadanie dodane na telefonie w trybie samolotowym pojawia się na webie < 5 s po włączeniu sieci; równoległe edycje offline różnych pól tego samego zadania zachowują obie zmiany; drugi użytkownik nie widzi niczego (test pgTAP i ręcznie). `npm run test:db` i `npm run test:sync` zielone.
 
@@ -137,7 +139,7 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 
 ### MVP-4 — Cykliczność, przypomnienia w przeglądarce, kanban (≈ 4–6 dni)
 - Edytor reguł M7 [W+A]: szablony, tryb zaawansowany, opis po polsku na żywo, podgląd 5 dat. Ukończ / pomiń / przesuń wystąpienie / zakończ serię; reset podzadań; wirtualne wystąpienia w „Nadchodzące”.
-- Przypomnienia Web Push (`reminders-push` + `pg_cron`), kanał przypomnień per urządzenie, brak duplikatów.
+- Przypomnienia Web Push (`reminders-push` + `pg_cron`), kanał przypomnień per urządzenie, brak duplikatów. Tymczasowe `push_subscriptions` i `push_queue` z PoC-6 → `devices.push_subscription` i wyliczanie z `core/reminders.ts` z dziennikiem wysyłek per urządzenie.
 - Kanban M10 na webie (kryteria kolumn: status, priorytet, dzień tygodnia, tag, lista; przeciąganie zmienia atrybut) i uproszczony na telefonie. Warunki z PoC-5: tylko widoczne karty jako `useSortable` (porcje albo wirtualizacja), kolejność na tablicy z kilku list przez `board_sort_key` (D15), ponowny pomiar pierwszej klatki przeciągania.
 
 **Kryterium odbioru:** każdy przykład z §7.2 działa od wpisania w szybkim dodawaniu do ukończenia na drugim urządzeniu; przypomnienie przychodzi tylko na wybrane urządzenie (±1 min); projekt przeprowadzony przez kanban od „Do zrobienia” do „Gotowe”.
@@ -207,7 +209,7 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 
 ## v1.x — Później (COULD)
 - Microsoft 365 / Outlook (Graph API) dwukierunkowo (D8 = Google, więc nie wcześniej).
-- E-mail → Inbox (M19: Cloudflare Email Routing + Email Worker + `inbound-email`, parser w temacie, załączniki, token i nadawcy, dziennik) — wymaga domeny z DNS w Cloudflare (D9).
+- E-mail → Inbox (M19: Cloudflare Email Routing + Email Worker + `inbound-email`, parser w temacie, załączniki, token i nadawcy, dziennik) — wymaga domeny z DNS w Cloudflare (D9). Tymczasowe `inbound_addresses` z PoC-6 → `profiles.inbox_token` / `inbound_senders`, strefa z ustawień profilu.
 - Współdzielenie przestrzeni z innymi osobami (role `editor`/`viewer`, schemat już jest), przypisywanie zadań, komentarze.
 - AI przez `packages/ai` z EP: rozbijanie zadania na podzadania, AI jako uzupełnienie parsera, podsumowanie tygodnia, automatyczne ułożenie dnia w wolnych oknach.
 - Własne statusy i kolumny kanbanu, sekcje w projektach, limity WIP, tory (swimlanes).

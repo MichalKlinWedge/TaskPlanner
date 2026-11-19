@@ -82,7 +82,7 @@ dziennych (11 500 wystąpień, 95 KiB) w **110–150 ms** w Node, przy limicie C
 
 **Ustalenia i odstępstwa (do v0.2):**
 - §5: tabele integracji mają `user_id` (= zakres osobisty) i `row_version`; każdy zapis podbija `sync_scopes.sync_version`, więc klient dostaje sygnał Realtime. W `pull_changes` dojdą w Etapie 5 jako tylko do odczytu. Wydarzenie całodniowe ma daty pływające `start_date`/`end_date` (koniec bez włączenia, jak w iCalendar), a `start_at`/`end_at` mają tylko wydarzenia z godziną. Usunięte wydarzenia dostają `deleted_at`, a `cron/renew` czyści wydarzenia starsze niż okno.
-- §5: `inbound_addresses` (token, nadawcy, lista docelowa, strefa) i `push_subscriptions` są tymczasowe — w MVP-1 przechodzą do `profiles` / `devices`. `push_queue` zastąpi w MVP-4 wyliczanie z `core/reminders.ts` z dziennikiem wysyłek per urządzenie.
+- §5: `inbound_addresses` (token, nadawcy, lista docelowa, strefa) i `push_subscriptions` są tymczasowe — `push_subscriptions` przechodzi do `devices` w MVP-4, `inbound_addresses` do `profiles` w v1.x (D9; decyzja 19.11.2026, pierwotnie MVP-1). `push_queue` zastąpi w MVP-4 wyliczanie z `core/reminders.ts` z dziennikiem wysyłek per urządzenie.
 - Zadanie z integracji dostaje HLC serwera w `field_clock` każdego pola (`create_integration_task`). Klient scala je jak zmianę z innego urządzenia, a tagi zadania mają id z `taskTagId`.
 - M19: Worker **nie parsuje** MIME (wniosek z `docs/USLUGI.md` o CPU na Free), tylko przekazuje surową wiadomość. Parsuje `inbound-email` (`postal-mime` 4.2.1). Worker leży w `tools/email-worker`, a nie w `workers/email` z §3. Odrzucenie (zły token, obcy nadawca, `dmarc=fail`) nie odbija maila do nadawcy, tylko trafia do dziennika (bez treści). Pusta lista nadawców odrzuca wszystko.
 - Mail: najpierw wpis w dzienniku (unikalny Message-ID), potem zadanie. Trzy równoległe dostarczenia tego samego maila dają jedno zadanie. Temat bez „Fwd:/Re:/PD:/Odp:/[EXT]”, a w treści zostaje przekazana wiadomość. Cytat odpowiedzi, stopka `-- ` i „Wysłane z…” są odcinane.
@@ -110,7 +110,7 @@ dziennych (11 500 wystąpień, 95 KiB) w **110–150 ms** w Node, przy limicie C
 **Niesprawdzone:**
 - Token odświeżania Google w stanie *In production* > 7 dni (w trakcie MVP).
 - Cloudflare (v1.x, D9): czas Email Routing → Worker → funkcja, nagłówki `Authentication-Results` dodawane przez Cloudflare (od tego zależy reguła DMARC), limit CPU Workera na Free.
-- Załączniki z maila (Etap 10), wybór kalendarzy w UI i ekran „Połączone kalendarze” (Etap 5), strefa z ustawień profilu zamiast `inbound_addresses.time_zone` (MVP-1).
+- Załączniki z maila (Etap 10), wybór kalendarzy w UI i ekran „Połączone kalendarze” (Etap 5), strefa z ustawień profilu zamiast `inbound_addresses.time_zone` (v1.x, razem z D9).
 
 ## PoC-5 — Widoki webowe na lokalnych danych (18.11.2026)
 

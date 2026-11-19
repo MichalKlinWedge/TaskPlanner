@@ -365,12 +365,12 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 ### Tabele — konto i struktura
 | Tabela | Najważniejsze kolumny | Uwagi |
 |---|---|---|
-| `profiles` | `user_id`, `display_name`, `settings jsonb` (`ProfileSettings`), `inbox_token`, `inbound_senders text[]` | zakres osobisty |
+| `profiles` | `id` (= id użytkownika), `display_name`, `settings jsonb` (`ProfileSettings`, z flagą `onboarded`); `inbox_token`, `inbound_senders text[]` dojdą razem z e-mailem (v1.x, D9) | zakres osobisty; powstaje triggerem razem z kontem (MVP-1) |
 | `devices` | `id`, `user_id`, `name`, `platform` (`web`/`android`), `reminder_channel`, `push_subscription jsonb`, `last_sync_at` | |
 | `sync_scopes` | `id`, `kind` (`workspace`/`personal`), `owner_id`, `sync_version bigint` | licznik zakresu; Realtime subskrybuje te wiersze |
 | `workspaces` | `id` (= `scope_id`), `name`, `color`, `icon`, `sort_key`, `archived_at` | jedna przestrzeń = jeden zakres |
 | `scope_members` | `scope_id`, `user_id`, `role` (`owner`; `editor`/`viewer` w v1.x) | podstawa RLS; także zakres osobisty |
-| `lists` | `id`, `scope_id` (= przestrzeń), `kind` (`inbox`/`project`/`list`), `name`, `color`, `icon`, `description_md`, `start_date`, `end_date`, `project_status`, `sort_key`, `view_prefs jsonb` | unikalny `inbox` na przestrzeń |
+| `lists` | `id`, `scope_id` (= przestrzeń), `kind` (`inbox`/`project`/`list`), `name`, `color`, `icon`, `description_md`, `start_date`, `end_date`, `project_status`, `sort_key`, `view_prefs jsonb`, `archived_at` | unikalny `inbox` na przestrzeń; zarchiwizowana lista znika z paska, zadania zostają (MVP-1) |
 
 ### Tabele — zadania
 | Tabela | Najważniejsze kolumny | Uwagi |
@@ -394,9 +394,9 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 | `calendar_events` | `id`, `calendar_id`, `external_id`, `title`, `start_at`, `end_at`, `all_day`, `location`, `etag`, `task_id` | okno −30…+180 dni; zakres osobisty |
 | `inbound_messages` | `id`, `user_id`, `received_at`, `from_addr`, `subject`, `status` (`created`/`rejected`), `task_id`, `reason` | dziennik, bez treści; unikalny Message-ID |
 | `oauth_states` | jednorazowy `state` OAuth (15 min) | PoC-6 |
-| `inbound_addresses`, `push_subscriptions` | token i nadawcy adresu e-mail; subskrypcje Web Push | **tymczasowe z PoC-6** — w MVP-1 przechodzą do `profiles` / `devices` |
+| `inbound_addresses`, `push_subscriptions` | token i nadawcy adresu e-mail; subskrypcje Web Push | **tymczasowe z PoC-6** — `push_subscriptions` przechodzi do `devices` w MVP-4, `inbound_addresses` do `profiles` w v1.x razem z e-mailem (D9; decyzja 2026-11-19) |
 | `push_queue` | kolejka wysyłek Web Push | tymczasowa — w MVP-4 zastąpi ją `core/reminders.ts` z dziennikiem wysyłek per urządzenie |
-| `activity_log` | `id`, `scope_id`, `table_name`, `row_id`, `changes jsonb`, `device_id`, `at` | historia zmian (M3), jak w EP |
+| `activity_log` | `id` (identity), `scope_id`, `table_name`, `row_id`, `changes jsonb`, `device_id` (węzeł HLC zmiany), `actor_id`, `at` | historia zmian zadań (M3) z triggera; tylko odczyt, poza strumieniem synchronizacji (MVP-1) |
 
 Ustalenia z PoC-6: tabele integracji mają `user_id` (= zakres osobisty) i `row_version`; każdy zapis podbija `sync_scopes.sync_version` (sygnał Realtime), a w `pull_changes` dochodzą w Etapie 5 jako tylko do odczytu. Wydarzenie całodniowe ma daty pływające `start_date`/`end_date` (koniec bez włączenia, jak w iCalendar); `start_at`/`end_at` tylko dla wydarzeń z godziną. Zadanie z integracji dostaje HLC serwera w `field_clock` każdego pola (`create_integration_task`).
 
@@ -432,6 +432,7 @@ Ustalenia z PoC-6: tabele integracji mają `user_id` (= zakres osobisty) i `row_
 
 ### Pobieranie (`pull_changes`)
 - Jak w EP: trigger podbija `sync_scopes.sync_version` (blokada wiersza zakresu do końca transakcji) i nadaje wierszowi `row_version`. Klient wysyła mapę `{scope_id: ostatnia_wersja}`, dostaje wiersze z `row_version` większym (z usuniętymi) w jednej migawce bazy.
+- **Strony** (MVP-1): `pull_changes(p_since, p_limit = 1000)` zwraca wiersze po zakresie i `row_version` (jeden licznik zakresu we wszystkich tabelach), `more` i w `scopes[id].version` kursor — pełną wersję zakresu, który przyszedł w całości. Silnik pyta dalej, dopóki `more`, i raportuje postęp (`onPullProgress`).
 - Pierwsza synchronizacja: pełna migawka **stronicowana** po tabelach ze wskaźnikiem postępu (MVP-1; w PoC 2 017 zadań bez stronicowania = ~4,2 s do pierwszego zapytania w przeglądarce, ~1 MB).
 - Kolejność cyklu: wyślij outbox → pobierz zmiany → przelicz zależne stany (`due_date` serii, powiadomienia, widżety, liczniki).
 - Online: Realtime na wierszach `sync_scopes` użytkownika = sygnał do pobrania; dodatkowe pobranie po gotowości subskrypcji (zimny start Realtime, wniosek z EP). Offline → online: natychmiastowy cykl. Telefon w tle: `expo-background-task` (co ok. 15 min, zależnie od systemu).

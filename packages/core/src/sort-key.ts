@@ -62,3 +62,23 @@ export function keyBetween(before?: string, after?: string): string {
     prefix += DIGITS[lowDigit];
   }
 }
+
+/**
+ * Przeniesienie elementu `from` → `to` na liście posortowanej po `sort_key`: zwykle jedna zmiana
+ * (nowy klucz między sąsiadami w nowym miejscu). Gdy klucze się powtarzają albo brak między nimi
+ * miejsca — świeże klucze całej listy w nowej kolejności (tylko te, które się zmieniły).
+ */
+export function reorderPatches<T extends { id: string; sort_key: string }>(items: readonly T[], from: number, to: number): { id: string; sort_key: string }[] {
+  if (from === to || from < 0 || to < 0 || from >= items.length || to >= items.length) return [];
+  const rest = items.filter((_, i) => i !== from);
+  const moved = items[from]!;
+  const before = rest[to - 1]?.sort_key;
+  const after = rest[to]?.sort_key;
+  try {
+    return [{ id: moved.id, sort_key: keyBetween(before, after) }];
+  } catch {
+    const order = [...rest.slice(0, to), moved, ...rest.slice(to)];
+    const keys = renumber(order.length);
+    return order.flatMap((item, i) => (item.sort_key === keys[i] ? [] : [{ id: item.id, sort_key: keys[i]! }]));
+  }
+}
