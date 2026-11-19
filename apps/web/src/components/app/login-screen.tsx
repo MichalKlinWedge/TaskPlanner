@@ -1,5 +1,6 @@
 "use client";
 
+import { authErrorMessage } from "@taskplanner/core";
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 
@@ -7,13 +8,20 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 
 import { Button, Card, Field, Input, Notice } from "./ui";
 
-/** Komunikat błędu Supabase Auth po polsku (najczęstsze przypadki). */
-function authError(message: string): string {
-  if (/provider is not enabled|Unsupported provider/i.test(message)) return "Logowanie Google nie jest włączone na tym serwerze.";
-  if (/rate limit|too many/i.test(message)) return "Za dużo prób — odczekaj chwilę i spróbuj ponownie.";
-  if (/invalid.*email|Unable to validate email/i.test(message)) return "Niepoprawny adres e-mail.";
-  if (/fetch|network/i.test(message)) return "Brak połączenia z serwerem.";
-  return message;
+/**
+ * Błąd z adresu powrotu (Supabase dopisuje `error_code` / `error_description` w zapytaniu albo
+ * po `#`, np. zużyty link z maila). Odczytany raz i usunięty z adresu.
+ */
+function redirectError(): string | null {
+  if (typeof window === "undefined") return null;
+  const url = new URL(window.location.href);
+  const params = new URLSearchParams(url.hash.slice(1));
+  url.searchParams.forEach((value, key) => params.set(key, value));
+  const code = params.get("error_code") ?? params.get("error");
+  if (!code) return null;
+  const message = params.get("error_description");
+  window.history.replaceState(null, "", url.pathname);
+  return authErrorMessage({ code, message });
 }
 
 /** Ustawienia Supabase Auth (`/auth/v1/settings`): włączeni dostawcy. Brak odpowiedzi = nie wiadomo (null). */
@@ -37,6 +45,10 @@ export function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const fromRedirect = redirectError();
+    if (fromRedirect) void Promise.resolve().then(() => setError(fromRedirect));
+  }, []);
   // Czy serwer ma włączone logowanie Google (inaczej `signInWithOAuth` prowadzi na stronę błędu).
   const [googleEnabled, setGoogleEnabled] = useState<boolean | null>(null);
   useEffect(() => {
@@ -55,7 +67,7 @@ export function LoginScreen() {
     const { error: e } = await supabaseBrowser().auth.signInWithOAuth({ provider: "google", options: { redirectTo } });
     // Przy powodzeniu przeglądarka przechodzi do Google; tu wracamy tylko z błędem.
     if (e) {
-      setError(authError(e.message));
+      setError(authErrorMessage(e));
       setBusy(false);
     }
   };
@@ -68,7 +80,7 @@ export function LoginScreen() {
     setError(null);
     const { error: e } = await supabaseBrowser().auth.signInWithOtp({ email: address, options: { emailRedirectTo: redirectTo } });
     setBusy(false);
-    if (e) setError(authError(e.message));
+    if (e) setError(authErrorMessage(e));
     else setSentTo(address);
   };
 
