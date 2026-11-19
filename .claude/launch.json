@@ -9,6 +9,12 @@
       "autoPort": true
     },
     {
+      "name": "web-local-3010",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/dev-alt.mjs", "--local", "--port", "3010"],
+      "port": 3010
+    },
+    {
       "name": "web-local",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "web:local"],
