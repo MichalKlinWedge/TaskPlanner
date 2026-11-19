@@ -50,7 +50,7 @@ Część telefoniczna MVP-3 w `apps/mobile`: zakładki `src/app/(tabs)/`, szczeg
 
 ## T7. Synchronizacja w tle
 
-1. Ustawienia → „Synchronizacja w tle: co ≥ 15 min”. W dev buildzie „Wyzwól zadanie w tle (test)” → nowy przebieg z czasem.
+1. Ustawienia → „Synchronizacja w tle: co ≥ 15 min”. Przebieg od razu (`expo-background-task` pomija zadanie, gdy aplikacja jest na wierzchu — najpierw wyjść z aplikacji): `adb logcat -s WM-SystemJobScheduler` podaje numer zadania, potem `adb shell cmd jobscheduler run -f -n androidx.work.systemjobscheduler pl.taskplanner.app <numer>` → po otwarciu nowy przebieg z czasem w ustawieniach. Ta sama praca bez czekania: „Przelicz teraz”.
 2. Aplikacja zamknięta, sieć włączona: zmiana terminu i przypomnienia na webie. Po ≤ ~30 min (decyduje Android) przypomnienie przychodzi według nowego terminu, a widżet pokazuje zmianę bez otwierania aplikacji.
 
 ## T8. Cały dzień w trybie samolotowym (kryterium odbioru)
@@ -69,11 +69,11 @@ Część telefoniczna MVP-3 w `apps/mobile`: zakładki `src/app/(tabs)/`, szczeg
 | Scenariusz | Data | Wynik | Uwagi |
 | --- | --- | --- | --- |
 | T1 | 19.11.2026 | OK | dev build, 5 767 wierszy / 6 stron: przed poprawką 22,9–23,5 s (zapis 4,9 s, **kolejka 15,9 s** — odświeżanie widoków po każdej stronie), po poprawce **3,4 s** (zapytanie 1,5 s, zapis 2,6 s, scalenie 0,2 s, kolejka 0,06 s); MVP-1: ~27 s |
-| T2 | | | |
+| T2 | 19.11.2026 | OK (po poprawkach) | zakładki, przełącznik przestrzeni, drzewo i `view_prefs`, wyszukiwarka bez polskich znaków i w opisach. Poprawione: liczniki w „Przeglądaj” liczyły inaczej niż web (teraz otwarte zadania bez podzadań, tagi w wybranej przestrzeni, filtry przez `selectFiltered`); pisanie w wyszukiwarce czekało na wyniki (odroczone zapytanie). Do T9: przełączenie przestrzeni 3–5 s w dev buildzie |
 | T3 | 19.11.2026 | OK | pola, termin, godzina, przypomnienia; drobiazg: przy „Początek” zbędna podpowiedź „dziś” |
-| T4 | 19.11.2026 | częściowo | chipy (godzina, priorytet, tag, przypomnienie) i zapis na serwerze OK; skróty i udostępnianie — do sprawdzenia |
-| T5 | 19.11.2026 | w toku | przesunięcie w prawo = ukończ + „Cofnij” (po poprawce kierunku), odświeżenie widoku 0,27 s (zapytania 0,22 s po zastąpieniu podzapytania tagów; wcześniej 0,9 s) |
+| T4 | 19.11.2026 | OK (po poprawce) | chipy i zapis na serwerze; skróty Szybkie dodawanie / Dziś / Szukaj przy zimnym starcie i z tła (z tła ~10 s — przeładowanie dev clienta); udostępnienie (intencja jak z Chrome: `EXTRA_TEXT` + `EXTRA_TITLE`) — tytuł w polu, link w opisie, „Dodaj” bez tytułu = tytuł strony. Poprawione: kolejne udostępnienie przy otwartym ekranie dokładało drugi ekran na stos. Do sprawdzenia z prawdziwym Chrome: czy tytuł przychodzi w `EXTRA_SUBJECT` (expo-share-intent go nie czyta) |
+| T5 | 19.11.2026 | OK | przesunięcie w prawo = ukończ + „Cofnij” (po poprawce kierunku), w lewo = menu terminu; zaznaczanie przytrzymaniem i pasek (ukończ, dziś, jutro, data, priorytet, przenieś, kosz) z „Cofnij”; odczyt danych 0,22 s (wcześniej 0,9 s). Do T9: odświeżenie listy po akcji 1,8–2,5 s w dev buildzie; pierwsze dotknięcie paska tuż po przytrzymaniu bywa pomijane |
 | T6 | 19.11.2026 | OK (po poprawkach) | przypomnienie o czasie co do sekundy, treść „Za 5 min (14:16)”; „Odłóż 10 min” przy zabitym procesie — wraca po 10 min; „Ukończ” w tle i z ekranu blokady: powiadomienie znika, zadanie na serwerze po ~9 s (dev build). Znalezione i poprawione: przypomnienie zadania dodanego tuż przed wyjściem z aplikacji nie było planowane do jej otwarcia (timery i render Reacta stoją w tle); „Ukończ” w tle czytało wszystkie dane (35 s) i czekało z wysyłką do otwarcia aplikacji, powiadomienie wisiało do końca zapisu. Uwaga do testów: ponowne połączenie debugowania bezprzewodowego kasuje `adb reverse` — zmiany zostają w outboksie i idą po otwarciu (sprawdzone) |
-| T7 | | | |
+| T7 | 19.11.2026 | częściowo | wymuszony przebieg w tle (`cmd jobscheduler run -f`): wysyłka + pobranie + przypomnienia + widżet w 5,8 s, „Worker result SUCCESS”, 6 przebiegów w 24 h. Usunięty przycisk „Wyzwól zadanie w tle (test)” — przy otwartej aplikacji expo tylko dokłada zadanie z opóźnieniem 15 min. Zostaje T7.2 (zmiana na webie przy zamkniętej aplikacji) |
 | T8 | | | |
 | T9 | | | |

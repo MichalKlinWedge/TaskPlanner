@@ -24,8 +24,15 @@ export const unstable_settings = { anchor: '(tabs)' };
 /** Udostępnienie z innej aplikacji (Chrome → „Udostępnij”) → ekran szybkiego dodawania. */
 function ShareRedirect() {
   const { hasShareIntent } = useShareIntentContext();
+  const segments = useSegments();
+  // Tylko odczyt w efekcie: wyjście z ekranu bez dodania nie może go otworzyć ponownie.
+  const onShare = useRef(false);
   useEffect(() => {
-    if (hasShareIntent) router.push('/share');
+    onShare.current = segments[0] === 'share';
+  }, [segments]);
+  useEffect(() => {
+    // Ekran już otwarty pokazuje nowe udostępnienie sam — kolejny na stosie wracałby „Wstecz” do starego.
+    if (hasShareIntent && !onShare.current) router.push('/share');
   }, [hasShareIntent]);
   return null;
 }

@@ -5,7 +5,7 @@
  */
 import { buildSearchIndex, LIST_KIND, search, taskSearchItem, type SearchItem } from '@taskplanner/core';
 import { router, Stack, type Href } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { TaskRow } from '@/components/task-row';
@@ -40,7 +40,9 @@ export default function SearchScreen() {
     return buildSearchIndex(items);
   }, [data, descriptions]);
 
-  const results = useMemo(() => (query.trim() ? search(index, query, { limit: 40, recent: readRecent() }) : []), [index, query]);
+  // Szukanie po ~2 000 zadaniach przy każdym znaku — odroczone, żeby pisanie nie czekało na wyniki.
+  const deferredQuery = useDeferredValue(query);
+  const results = useMemo(() => (deferredQuery.trim() ? search(index, deferredQuery, { limit: 40, recent: readRecent() }) : []), [index, deferredQuery]);
   const byId = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
 
   const openItem = (item: SearchItem) => {

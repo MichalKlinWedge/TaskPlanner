@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 
-import { backgroundRuns, backgroundState, runBackgroundSync, triggerBackgroundSyncForTesting, type BackgroundRun, type BackgroundState } from '@/lib/background-sync';
+import { backgroundRuns, backgroundState, runBackgroundSync, type BackgroundRun, type BackgroundState } from '@/lib/background-sync';
 import { permissionState, requestExactAlarms, requestNotificationPermission, type PermissionState } from '@/lib/reminders';
 import { lastSchedule, scheduleReminders, type ScheduleResult } from '@/lib/scheduler';
 
@@ -86,7 +86,6 @@ export function BackgroundStatus() {
       </P>
       <Row>
         <Button kind="secondary" title="Przelicz teraz" disabled={busy} onPress={() => void act(runBackgroundSync)} />
-        {__DEV__ && background.registered ? <Button kind="secondary" title="Wyzwól zadanie w tle (test)" disabled={busy} onPress={() => void act(triggerBackgroundSyncForTesting)} /> : null}
       </Row>
     </Section>
   );

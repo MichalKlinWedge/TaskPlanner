@@ -1,8 +1,9 @@
 /**
  * „Przeglądaj”: wyszukiwarka, przestrzenie → listy i projekty, tagi i zapisane filtry z licznikami
- * otwartych zadań (reguły z core: `isOpen`, `matchesFilter`), kosz, ustawienia, narzędzia PoC.
+ * otwartych zadań liczonymi jak na webie (`isOpen`, `selectFiltered` z core: wszystkie poziomy drzewa,
+ * bez nawyków, tagi w bieżącej przestrzeni), kosz, ustawienia, narzędzia PoC.
  */
-import { isOpen, LIST_KIND, matchesFilter } from '@taskplanner/core';
+import { isOpen, LIST_KIND, selectFiltered } from '@taskplanner/core';
 import { router, type Href } from 'expo-router';
 import { useMemo, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -44,18 +45,18 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 
 export default function BrowseScreen() {
   const p = usePalette();
-  const { data, today, workspaceId } = useView();
-  const open = useMemo(() => data.tasks.filter(isOpen), [data.tasks]);
+  const { data, ctx, workspaceId } = useView();
   const counts = useMemo(() => {
     const byList = new Map<string, number>();
     const byTag = new Map<string, number>();
-    for (const t of open) {
-      if (t.parentId === null) byList.set(t.listId, (byList.get(t.listId) ?? 0) + 1);
-      for (const tag of t.tagIds) byTag.set(tag, (byTag.get(tag) ?? 0) + 1);
+    for (const t of data.tasks) {
+      if (!isOpen(t) || t.kind !== 'task') continue;
+      byList.set(t.listId, (byList.get(t.listId) ?? 0) + 1);
+      if (!workspaceId || t.workspaceId === workspaceId) for (const tag of t.tagIds) byTag.set(tag, (byTag.get(tag) ?? 0) + 1);
     }
-    const byFilter = new Map(data.savedFilters.map((f) => [f.id, open.filter(matchesFilter(f.query, today)).length]));
+    const byFilter = new Map(data.savedFilters.map((f) => [f.id, selectFiltered(data.tasks, f.query, ctx).length]));
     return { byList, byTag, byFilter };
-  }, [open, data.savedFilters, today]);
+  }, [data.tasks, data.savedFilters, ctx, workspaceId]);
   const workspaces = data.workspaces.filter((w) => !workspaceId || w.id === workspaceId);
 
   return (

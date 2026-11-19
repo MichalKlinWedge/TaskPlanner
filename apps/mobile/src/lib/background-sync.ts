@@ -76,6 +76,3 @@ export async function backgroundState(): Promise<BackgroundState> {
   const [status, registered] = await Promise.all([BackgroundTask.getStatusAsync(), TaskManager.isTaskRegisteredAsync(BACKGROUND_SYNC_TASK)]);
   return { available: status === BackgroundTask.BackgroundTaskStatus.Available, registered };
 }
-
-/** Tylko w buildzie deweloperskim: przebieg zadania od razu (sprawdzenie bez czekania 15 min). */
-export const triggerBackgroundSyncForTesting = () => BackgroundTask.triggerTaskWorkerForTestingAsync();
