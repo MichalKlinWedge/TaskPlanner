@@ -111,6 +111,8 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 - `seed:dev` ładuje dane z `tools/seed-dev` do lokalnej bazy.
 - Z bramki po PoC: `tasks.board_sort_key` (D15) w schemacie; stronicowana pierwsza migawka `pull_changes` ze wskaźnikiem postępu (PoC-5: 2 017 zadań = ~4,2 s); tymczasowe tabele PoC-6 (`inbound_addresses`, `push_subscriptions`) przeniesione do `profiles` / `devices`, strefa z ustawień profilu; jawne granty w każdej migracji (PoC-6: projekt w chmurze ich nie nadaje).
 
+**Stan (19.11.2026):** w toku na gałęzi `mvp-1`. Zrobione: migracja `20261119100000_mvp1_model.sql` (wszystkie tabele §5 poza integracjami, `board_sort_key`, `lists.archived_at`, `activity_log`, profil z kontem, stronicowane `pull_changes`), 26 testów pgTAP (`supabase/tests/model.test.sql`) i 2 integracyjne, `TABLES`/`MODEL` dla nowych tabel, onboarding w `core/onboarding.ts` (deterministyczne id przestrzeni), web: logowanie (Google, magic link), onboarding, ustawienia, przestrzenie i listy, wskaźnik synchronizacji, osobna lokalna baza na użytkownika. Zostało: telefon (logowanie z deep linkiem, onboarding, przestrzenie i listy), Google w chmurze (dostawca w panelu Supabase), `db push` migracji do chmury, przeniesienie tymczasowych tabel PoC-6 (propozycja: e-mail razem z D9 w v1.x, subskrypcje push razem z `push_queue` w MVP-4).
+
 **Kryterium odbioru:** zadanie dodane na telefonie w trybie samolotowym pojawia się na webie < 5 s po włączeniu sieci; równoległe edycje offline różnych pól tego samego zadania zachowują obie zmiany; drugi użytkownik nie widzi niczego (test pgTAP i ręcznie). `npm run test:db` i `npm run test:sync` zielone.
 
 ### MVP-2 — Web: listy, zadania, szybkie dodawanie, paleta (≈ 5–7 dni)
