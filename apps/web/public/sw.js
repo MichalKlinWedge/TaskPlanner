@@ -3,7 +3,9 @@
  * bazie (SQLite w OPFS) — tu chodzi tylko o to, żeby strona, skrypty i SQLite WASM wczytały się bez
  * sieci. Rejestracja tylko w buildzie produkcyjnym (`lib/service-worker.ts`).
  *
- * - Nawigacja: najpierw sieć (nowe wdrożenie od razu), bez sieci — zapamiętana strona główna.
+ * - Nawigacja: najpierw sieć (nowe wdrożenie od razu), bez sieci albo po `PAGE_TIMEOUT` przy słabej
+ *   sieci — zapamiętana strona tej ścieżki, inaczej główna (także skróty z manifestu: `/?quick=1`,
+ *   `/#/calendar`).
  * - `/_next/static/*`, `/sqlite-wasm/*`, ikony: najpierw pamięć (pliki z hashem / wersją w nazwie).
  * - Pozostałe pliki tej domeny (manifest, ikony aplikacji): pamięć, w tle odświeżenie.
  * - Inne domeny (Supabase, Google) i zapytania RSC — bez udziału SW.
@@ -20,9 +22,10 @@
  * workerze karty-lidera), więc przekazuje odhaczenie otwartej karcie (`habit-done`) albo otwiera nową
  * (`/?habitDone=<id>&date=<dzień>`) — zapis robi aplikacja (`habitEntryOps`).
  */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL = `tp-shell-${VERSION}`;
 const STATIC = `tp-static-${VERSION}`;
+const PAGE_TIMEOUT = 4000;
 const PRECACHE = ['/', '/manifest.webmanifest', '/icon.svg', '/icons/icon-192.png', '/sqlite-wasm/index.mjs', '/sqlite-wasm/sqlite3.wasm'];
 
 self.addEventListener('install', (event) => {
@@ -56,15 +59,25 @@ async function cacheFirst(request) {
   return response;
 }
 
-async function networkFirstPage(request) {
-  try {
-    const response = await fetch(request);
-    // Pod kluczem „/”, niezależnie od `?code=` z logowania i części `#`.
-    if (response.ok && response.type === 'basic') (await caches.open(SHELL)).put('/', response.clone());
+async function networkFirstPage(event) {
+  // Pod ścieżką, bez `?code=` z logowania, `?quick=1` ze skrótu i części `#` (strona `/prywatnosc`
+  // nie może zastąpić zapamiętanej aplikacji).
+  const key = new URL(event.request.url).pathname;
+  const network = fetch(event.request).then(async (response) => {
+    if (response.ok && response.type === 'basic') await (await caches.open(SHELL)).put(key, response.clone());
     return response;
+  });
+  // „Wi-Fi bez internetu” nie odpowiada wcale — po czasie strona z pamięci; odpowiedź sieci, gdy
+  // przyjdzie, odświeży zapamiętaną stronę na następny start.
+  event.waitUntil(network.catch(() => undefined));
+  const timeout = new Promise((resolve) => setTimeout(resolve, PAGE_TIMEOUT));
+  try {
+    const first = await Promise.race([network, timeout]);
+    if (first) return first;
   } catch {
-    return (await caches.match('/')) ?? Response.error();
+    // Bez sieci — niżej strona z pamięci.
   }
+  return (await caches.match(key)) ?? (await caches.match('/')) ?? network.catch(() => Response.error());
 }
 
 async function staleWhileRevalidate(request) {
@@ -85,7 +98,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (request.headers.get('RSC') || url.searchParams.has('_rsc') || url.pathname.startsWith('/dev/') || url.pathname === '/sw.js') return;
-  if (request.mode === 'navigate') return event.respondWith(networkFirstPage(request));
+  if (request.mode === 'navigate') return event.respondWith(networkFirstPage(event));
   if (isStatic(url)) return event.respondWith(cacheFirst(request));
   event.respondWith(staleWhileRevalidate(request));
 });

@@ -47,10 +47,39 @@ export function startOfflineSupport() {
     .then(() => navigator.serviceWorker.ready)
     .then((registration) => {
       // Pliki wczytane przed przejęciem kontroli przez SW (pierwsza wizyta) — też do pamięci.
-      const urls = performance.getEntriesByType("resource").map((e) => e.name);
-      registration.active?.postMessage({ type: "cache-urls", urls });
+      registration.active?.postMessage({ type: "cache-urls", urls: loadedUrls() });
       update({ serviceWorker: navigator.serviceWorker.controller ? "active" : "installing" });
     })
     .catch(() => update({ serviceWorker: "unsupported" }));
-  navigator.serviceWorker.addEventListener("controllerchange", () => update({ serviceWorker: "active" }));
+  // Nowy SW (pierwsza wizyta albo nowe `VERSION` w `sw.js`) zaczyna z pustą pamięcią plików, a ta
+  // strona wczytała już swoje skrypty przez poprzedniego — bez ponownej listy start offline by nie
+  // działał do następnego wejścia z siecią.
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    navigator.serviceWorker.controller?.postMessage({ type: "cache-urls", urls: loadedUrls() });
+    update({ serviceWorker: "active" });
+  });
+}
+
+const loadedUrls = () => performance.getEntriesByType("resource").map((e) => e.name);
+
+/** Pliki, które SW trzyma w pamięci (`isStatic` w `sw.js`) — reszta idzie z sieci albo z bazy. */
+const offlineFile = (url: URL) => url.origin === location.origin && /^\/(_next\/static|sqlite-wasm|icons)\//.test(url.pathname);
+
+export interface OfflineCheck {
+  total: number;
+  missing: string[];
+}
+
+/**
+ * Czy start bez sieci ma wszystko: strona główna, SQLite WASM i każdy plik powłoki, który ta strona
+ * wczytała, są w pamięci SW. Sprawdza tylko to, co już wczytano — widoki są w jednym
+ * pakiecie, a oś czasu dociąga się w wolnej chwili po starcie (`shell.tsx`).
+ */
+export async function checkOfflineCache(): Promise<OfflineCheck | null> {
+  if (typeof caches === "undefined" || !navigator.serviceWorker?.controller) return null;
+  const urls = [...new Set(loadedUrls())].map((href) => new URL(href)).filter(offlineFile);
+  const required = ["/", "/sqlite-wasm/index.mjs", "/sqlite-wasm/sqlite3.wasm", ...urls.map((u) => u.pathname + u.search)];
+  const missing: string[] = [];
+  for (const path of new Set(required)) if (!(await caches.match(path))) missing.push(path);
+  return { total: new Set(required).size, missing };
 }

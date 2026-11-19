@@ -3,6 +3,8 @@
 import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 
+// Przy imporcie: `beforeinstallprompt` przychodzi zaraz po wczytaniu strony (przycisk w Ustawieniach).
+import "@/lib/install";
 import { startOfflineSupport } from "@/lib/service-worker";
 import { storedUser, supabaseBrowser } from "@/lib/supabase-browser";
 

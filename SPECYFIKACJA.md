@@ -304,7 +304,7 @@ Widoki stałe w pasku bocznym [W+A]:
 
 ### M20. Offline, PWA, widżety
 - **Offline**: wszystkie funkcje poza: odświeżeniem kalendarzy zewnętrznych, przyjęciem maila (przychodzi po synchronizacji), podglądem linków, pobraniem niezbuforowanych załączników. Wskaźnik stanu: „Offline — N zmian czeka”.
-- **PWA**: manifest z ikonami i skrótami (Szybkie dodawanie, Dziś), Service Worker z powłoką aplikacji, `navigator.storage.persist()` (ochrona lokalnej bazy przed wyczyszczeniem), instalacja na pulpicie (Chrome/Edge).
+- **PWA**: manifest z ikonami i skrótami (Szybkie dodawanie, Dziś, Kalendarz), Service Worker z powłoką aplikacji, `navigator.storage.persist()` (ochrona lokalnej bazy przed wyczyszczeniem), instalacja na pulpicie (Chrome/Edge).
 - **Widżety Android** (Etap 11): „Dziś” (lista do 10 zadań, odhaczanie bez otwierania aplikacji), „Szybkie dodawanie” (przycisk + mikrofon klawiatury), „Nawyki” (dzisiejsze nawyki do odhaczenia). Dane z lokalnej bazy; odświeżanie po zmianie danych i co 30 min. Skróty aplikacji (long-press ikony): Dodaj zadanie, Dziś, Tryb skupienia.
 - **Pulpit**: zainstalowana PWA + skróty. Natywny widżet pulpitu i globalny skrót klawiszowy — v1.x (Tauri, D11).
 
