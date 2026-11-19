@@ -6,6 +6,7 @@ export * from './format.ts';
 export * from './habits.ts';
 export * from './hlc.ts';
 export * from './ids.ts';
+export * from './kanban.ts';
 export * from './labels.ts';
 export * from './onboarding.ts';
 export * from './quick-add.ts';

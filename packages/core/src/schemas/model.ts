@@ -40,6 +40,8 @@ export const TimeZone = z.string().refine((zone) => {
 /** `lists.view_prefs`: ustawienia widoku listy (M2). */
 export const ViewPrefs = z.object({
   view: z.enum(['list', 'kanban', 'calendar', 'timeline']).optional(),
+  /** Kryterium kolumn tablicy (M10). */
+  boardBy: z.enum(['status', 'priority', 'weekday', 'tag', 'list']).optional(),
   groupBy: GroupBy.optional(),
   sortBy: SortBy.optional(),
   completed: CompletedMode.optional(),

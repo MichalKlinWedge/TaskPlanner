@@ -15,6 +15,7 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -29,6 +30,13 @@ const useTaskSensors = () =>
   useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
 // ── Lista: kolejność i drzewo ────────────────────────────────────────────────────────────────
+
+/** Wiersz pod wskaźnikiem (z klawiatury — najbliższy); puszczenie poza listą nic nie zmienia. */
+const rowCollision: CollisionDetection = (args) => {
+  if (!args.pointerCoordinates) return closestCenter(args);
+  const hits = pointerWithin(args);
+  return hits.length ? closestCenter({ ...args, droppableContainers: args.droppableContainers.filter((c) => hits.some((h) => h.id === c.id)) }) : [];
+};
 
 /** Lista z przeciąganiem: `ids` — wiersze w kolejności na ekranie (spłaszczone drzewo). */
 export function SortableTaskList({ ids, children }: { ids: readonly string[]; children: ReactNode }) {
@@ -46,7 +54,7 @@ export function SortableTaskList({ ids, children }: { ids: readonly string[]; ch
   };
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={rowCollision} onDragEnd={onDragEnd}>
       <SortableContext items={[...ids]} strategy={verticalListSortingStrategy}>
         <ul className="divide-y divide-[var(--line)]">{children}</ul>
       </SortableContext>

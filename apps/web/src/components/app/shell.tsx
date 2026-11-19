@@ -4,7 +4,7 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, bulkTaskOps, isEmptyFilter, isOpen, plural, selectInbox, selectToday, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
+import { applyFilter, BOARD_BY, bulkTaskOps, isEmptyFilter, isOpen, plural, selectInbox, selectToday, type BoardBy, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
@@ -12,6 +12,7 @@ import { useAppData, useToday, type List } from "@/lib/app-data";
 import { routeHash, useRoute, type Route } from "@/lib/route";
 
 import { AppEnvProvider, useAppEnv, visibleTaskIds } from "./app-env";
+import { Board } from "./board";
 import { CommandPalette, ShortcutsDialog, type PaletteMode, type PalettePick } from "./command-palette";
 import { FilterBar } from "./filter-bar";
 import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-views";
@@ -118,6 +119,24 @@ export function Shell({
     return { inbox: selectInbox(data.tasks, inboxIds, ctx).length, today: view.overdue.length + view.today.length, overdue: view.overdue.length, perList, perTag, perFilter };
   }, [data.tasks, data.lists, data.savedFilters, ctx]);
 
+  // Kryterium kolumn tablicy `#/board` — per przeglądarka (tablica listy ma je w `view_prefs`).
+  const [boardBy, setBoardByState] = useState<BoardBy>(() => {
+    try {
+      const value = localStorage.getItem("tp-board-by");
+      return value && value in BOARD_BY ? (value as BoardBy) : "status";
+    } catch {
+      return "status";
+    }
+  });
+  const setBoardBy = (by: BoardBy) => {
+    setBoardByState(by);
+    try {
+      localStorage.setItem("tp-board-by", by);
+    } catch {
+      // Bez pamięci przeglądarki — do odświeżenia.
+    }
+  };
+
   // Filtr doraźny (chipy) nad Inbox / Dziś / Nadchodzące / listą — do zmiany widoku.
   const [adhoc, setAdhoc] = useState<FilterQuery>({});
 
@@ -138,7 +157,8 @@ export function Shell({
   const list = route.view === "list" ? data.lists.find((l) => l.id === route.id) : undefined;
   const tag = route.view === "tag" ? data.tags.find((t) => t.id === route.id) : undefined;
   const savedFilter = route.view === "filter" ? data.savedFilters.find((f) => f.id === route.id) : undefined;
-  const filterable = ["inbox", "today", "upcoming", "list"].includes(route.view);
+  const filterable = ["inbox", "today", "upcoming", "list", "board"].includes(route.view);
+  const wide = route.view === "board" || list?.prefs.view === "kanban";
   // Widoki dostają zadania po filtrze doraźnym; liczniki paska bocznego liczą się z pełnych danych.
   const viewData = filterable && !isEmptyFilter(adhoc) ? { ...data, tasks: applyFilter(data.tasks, adhoc, today) } : data;
   const toolbar = filterable ? (
@@ -154,6 +174,23 @@ export function Shell({
       <TodayView {...props} />
     ) : route.view === "upcoming" ? (
       <UpcomingView {...props} />
+    ) : route.view === "board" ? (
+      <>
+        <header className="mb-2">
+          <h1 className="text-xl font-semibold">Tablica</h1>
+          <p className="text-sm text-[var(--muted)]">{workspaceId ? data.workspaces.find((w) => w.id === workspaceId)?.name : "Wszystkie przestrzenie"} — zawęź chipami filtrów</p>
+        </header>
+        {toolbar}
+        <Board
+          data={data}
+          ctx={ctx}
+          tasks={viewData.tasks.filter((t) => !workspaceId || t.workspaceId === workspaceId)}
+          by={boardBy}
+          onBy={setBoardBy}
+          listId={targetInbox?.id}
+          showList
+        />
+      </>
     ) : route.view === "manage" ? (
       manage
     ) : route.view === "settings" ? (
@@ -231,6 +268,7 @@ export function Shell({
               <NavItem route={{ view: "inbox" }} current={route} navigate={navigate} icon="📥" label="Inbox" count={counts.inbox} />
               <NavItem route={{ view: "today" }} current={route} navigate={navigate} icon="☀️" label="Dziś" count={counts.today} alert={counts.overdue > 0} />
               <NavItem route={{ view: "upcoming" }} current={route} navigate={navigate} icon="📅" label="Nadchodzące" />
+              <NavItem route={{ view: "board" }} current={route} navigate={navigate} icon="▦" label="Tablica" />
             </nav>
             {workspaces.map((w) => (
               <WorkspaceLists key={w.id} name={w.name} color={w.color} lists={data.lists.filter((l) => l.workspaceId === w.id && l.kind !== "inbox")} counts={counts.perList} route={route} navigate={navigate} />
@@ -256,7 +294,7 @@ export function Shell({
             </nav>
           </aside>
           <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-3xl p-4 pb-20 sm:p-6">{content}</div>
+            <div className={`mx-auto w-full p-4 pb-20 sm:p-6 ${wide ? "" : "max-w-3xl"}`}>{content}</div>
           </main>
           {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>
@@ -398,7 +436,7 @@ function WorkspaceLists({
 
 // ── Klawiatura i polecenia ───────────────────────────────────────────────────────────────────
 
-const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" } };
+const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" }, k: { view: "board" } };
 
 /** Akcja na zaznaczonych z dymkiem „Cofnij”. */
 function useBulk(selected: readonly string[]) {
@@ -566,6 +604,7 @@ function PaletteHost({
       "view.inbox": () => then(() => navigate({ view: "inbox" })),
       "view.today": () => then(() => navigate({ view: "today" })),
       "view.upcoming": () => then(() => navigate({ view: "upcoming" })),
+      "view.kanban": () => then(() => navigate({ view: "board" })),
       "task.quick_add": () => then(openQuick),
       "task.complete": () => then(() => bulk({ kind: "complete" }, "Ukończono")),
       "task.today": () => then(() => bulk({ kind: "today" }, "Na dziś")),

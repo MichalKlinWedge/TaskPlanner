@@ -33,6 +33,7 @@ export interface LocalTaskRow {
   completed_at: string | null;
   created_at: string | null;
   sort_key: string;
+  board_sort_key?: string | null;
   postpone_count: number | null;
   field_clock?: unknown;
 }
@@ -79,6 +80,7 @@ export function toViewTask(row: LocalTaskRow, tagIds: readonly string[] = []): V
     // Wiersz utworzony offline nie ma jeszcze `created_at` z serwera.
     createdAt: row.created_at ?? new Date(0).toISOString(),
     sortKey: row.sort_key,
+    boardSortKey: row.board_sort_key ?? null,
     tagIds,
     postponeCount: Number(row.postpone_count ?? 0),
     statusChangedAt: fieldChangedAt(row.field_clock, 'status'),

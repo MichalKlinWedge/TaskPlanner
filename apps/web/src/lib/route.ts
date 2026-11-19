@@ -10,6 +10,7 @@ export type Route =
   | { view: "inbox" }
   | { view: "today" }
   | { view: "upcoming" }
+  | { view: "board" }
   | { view: "list"; id: string }
   | { view: "tag"; id: string }
   | { view: "filter"; id: string }
@@ -25,6 +26,7 @@ export function parseRoute(hash: string): Route {
     case "inbox":
     case "today":
     case "upcoming":
+    case "board":
     case "manage":
     case "trash":
     case "settings":
