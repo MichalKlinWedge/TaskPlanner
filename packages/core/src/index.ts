@@ -17,4 +17,5 @@ export * from './schemas/primitives.ts';
 export * from './search.ts';
 export * from './sort-key.ts';
 export * from './tasks.ts';
+export * from './time-blocking.ts';
 export * from './views.ts';
