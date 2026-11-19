@@ -187,13 +187,36 @@ export interface OccurrenceOptions {
   limit?: number;
 }
 
+const dayNumber = (date: LocalDate) => Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10))) / 86_400_000;
+
+/**
+ * Numer okresu, od którego warto szukać dat ≥ `from` (o jeden wcześniej — okres może zaczynać się
+ * przed `from`). Bez tego seria codzienna sprzed lat liczyłaby każdy dzień od kotwicy.
+ */
+function firstPeriod(rule: RRule, anchor: LocalDate, from: LocalDate): number {
+  if (from <= anchor) return 0;
+  const [ay, am] = anchor.split('-').map(Number) as [number, number];
+  const [fy, fm] = from.split('-').map(Number) as [number, number];
+  const units =
+    rule.freq === 'DAILY'
+      ? dayNumber(from) - dayNumber(anchor)
+      : rule.freq === 'WEEKLY'
+        ? Math.floor((dayNumber(from) - dayNumber(addDays(anchor, 1 - isoWeekday(anchor)))) / 7)
+        : rule.freq === 'MONTHLY'
+          ? (fy - ay) * 12 + (fm - am)
+          : fy - ay;
+  return Math.max(0, Math.floor(units / rule.interval) - 1);
+}
+
 /** Wystąpienia reguły od kotwicy (włącznie), z `COUNT` liczonym od kotwicy. */
 export function occurrences(recurrence: ScheduleRecurrence, { from, to, limit = 1000 }: OccurrenceOptions = {}): LocalDate[] {
   const rule = parseRrule(recurrence.rrule);
   const out: LocalDate[] = [];
   let counted = 0;
+  // `COUNT` liczy od kotwicy, więc tylko bez niego można przeskoczyć do `from`.
+  const start = from && !rule.count ? firstPeriod(rule, recurrence.anchor, from) : 0;
   // Pusty okres nie kończy pętli (29 lutego, 31. dnia), ale ogranicza ją bezpiecznik.
-  for (let k = 0, empty = 0; empty < 2000 && out.length < limit; k++) {
+  for (let k = start, empty = 0; empty < 2000 && out.length < limit; k++) {
     const dates = period(rule, recurrence.anchor, k).filter((d) => d >= recurrence.anchor);
     empty = dates.length ? 0 : empty + 1;
     for (const date of dates) {

@@ -41,15 +41,16 @@ export const maxHlc = (...values: (Hlc | undefined | null)[]): Hlc | undefined =
   values.reduce<Hlc | undefined>((best, value) => (value && (!best || value > best) ? value : best), undefined);
 
 export class HlcClock {
+  readonly node: string;
+  private readonly now: () => number;
   private wall = 0;
   private counter = 0;
 
-  constructor(
-    readonly node: string,
-    private readonly now: () => number = () => Date.now(),
-    last?: Hlc,
-  ) {
+  // Bez właściwości w parametrach konstruktora: Node uruchamia `.ts` przez usuwanie typów (`erasableSyntaxOnly`).
+  constructor(node: string, now: () => number = () => Date.now(), last?: Hlc) {
     formatHlc({ wall: 0, counter: 0, node });
+    this.node = node;
+    this.now = now;
     if (last) this.receive(last);
   }
 

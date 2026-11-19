@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { capitalized, dayChip, dayLabel, dayMonth, formatMinutes, plural, pluralForm, shortDate } from '../format.ts';
-import { PRIORITY, TASK_STATUS } from '../labels.ts';
+import { capitalized, dayChip, dayLabel, dayMonth, formatMinutes, plural, pluralForm, relativeDay, shortDate } from '../format.ts';
+import { PRIORITY, REMINDER_KIND, TASK_STATUS, WEEKDAY } from '../labels.ts';
 import { LocalTime, Priority } from '../schemas/primitives.ts';
 
 describe('odmiana po liczbie', () => {
@@ -53,5 +53,32 @@ describe('schematy i etykiety', () => {
     expect(Priority.safeParse(5).success).toBe(false);
     expect(PRIORITY[1].label).toBe('Krytyczny');
     expect(TASK_STATUS.waiting).toBe('Oczekuje');
+  });
+});
+
+describe('dzień względny (dziś = śr 18.11.2026)', () => {
+  const today = '2026-11-18';
+  it.each([
+    ['2026-11-18', 'dziś', 'dziś'],
+    ['2026-11-19', 'jutro', 'jutro'],
+    ['2026-11-17', 'wczoraj', 'wczoraj'],
+    ['2026-11-20', 'pt 20 lis', 'za 2 dni'],
+    ['2026-11-21', 'sob 21 lis', 'za 3 dni'],
+    ['2026-11-16', 'pon 16 lis', '2 dni temu'],
+    ['2026-12-01', 'wt 1 gru', 'za 13 dni'],
+    ['2026-12-02', 'śr 2 gru', 'za 2 tygodnie'],
+    ['2026-10-14', 'śr 14 paź', '5 tygodni temu'],
+    ['2027-02-15', 'pon 15 lut 2027', 'za 2 miesiące'],
+    ['2028-01-10', 'pon 10 sty 2028', 'za rok'],
+    ['2021-11-18', 'czw 18 lis 2021', '5 lat temu'],
+  ] as const)('%s', (date, chip, distance) => {
+    expect(relativeDay(date, today)).toBe(chip);
+    expect(relativeDay(date, today, 'distance')).toBe(distance);
+  });
+
+  it('etykiety przypomnień i dni tygodnia', () => {
+    expect(REMINDER_KIND.relative).toBe('Przed terminem');
+    expect(Object.keys(WEEKDAY)).toHaveLength(7);
+    expect(WEEKDAY[7].label).toBe('niedziela');
   });
 });

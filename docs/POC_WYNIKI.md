@@ -2,16 +2,16 @@
 
 ## PoC-6 — Integracje serwerowe (18.11.2026)
 
-**Werdykt: GO dla Google Calendar (watch 3,9 s na prawdziwym Google w chmurze) i Web Push (zamknięta karta Chrome); `pg_cron`/`pg_net` działają na Free. ICS: GO (plik Google odświeża się ~25 s po zmianie). E-mail: GO lokalnie, prawdziwa droga przez Cloudflare czeka na domenę (D9)** (`docs/POC6_KONFIGURACJA.md`).
+**Werdykt: GO dla Google Calendar (watch 3,9 s na prawdziwym Google w chmurze) i Web Push (zamknięta karta Chrome); `pg_cron`/`pg_net` działają na Free. ICS: GO (plik Google odświeża się ~25 s po zmianie). E-mail: GO lokalnie; prawdziwa droga przez Cloudflare razem z M19 w v1.x (D9)** (`docs/POC6_KONFIGURACJA.md`).
 Cała droga każdej integracji działa na lokalnym Supabase. Usługi zewnętrzne zastępują w testach fałszywe Google,
 serwer ICS i usługa push, zachowujące się jak w dokumentacji (stronicowanie, `syncToken`, 410, kanały, VAPID i aes128gcm).
-Nic nie wskazuje na No-go. Otwarte pozostają czasy po stronie Google i Cloudflare oraz plan Free.
+Nic nie wskazuje na No-go. Google, ICS, Web Push i `pg_cron` na Free sprawdzone też na prawdziwych usługach (niżej).
 
 | Kryterium Go (PLAN_ETAPOWY PoC-6) | Lokalnie | Prawdziwe usługi |
 |---|---|---|
 | Zmiana w Google widoczna < 1 min (watch) | ✅ powiadomienie → `calendar_events` **63 ms** (fałszywe Google, ten sam protokół) | ✅ **3,9 s** od `updated` wydarzenia w Google do zapisu w `calendar_events` w chmurze (zmiana tytułu, webhook — poza minutą crona); OAuth *In production* bez weryfikacji, kanał TTL 7 dni |
 | … albo < 15 min (ICS) | ✅ `pg_cron` → `pg_net` → `cron/poll` → zapis **290 ms**, zadanie `*/10 * * * *` (było `*/15`); niezmieniony plik → 304 | ✅ tajny adres iCal własnego kalendarza: zmiana w Google → widoczna w pliku po **~25 s** (±30 s, 1 próba), `cron/poll` → `calendar_events` **1,2 s**. Razem przy cronie co 10 min (`20261118170000_poc6_ics_10min.sql`): najwyżej ~10,5 min, średnio ~5,5 min (przy 15 min najgorzej ~15,5 min) |
-| Mail → zadanie < 1 min | ✅ `inbound-email` **237–336 ms** (MIME + zadanie), kod Workera → funkcja → zadanie **43 ms** | ⏳ domena w Cloudflare (D9) |
+| Mail → zadanie < 1 min | ✅ `inbound-email` **237–336 ms** (MIME + zadanie), kod Workera → funkcja → zadanie **43 ms** | ⏳ v1.x razem z M19 (D9): domena w Cloudflare |
 | Push dociera do zamkniętej karty | ✅ wpis w kolejce → dostarczenie przez `pg_cron` **37,7 s / 54,0 s** (≤ 60 s + wysyłka); podpis VAPID i treść sprawdzone kryptograficznie | ✅ **Chrome (FCM), karta zamknięta** (`openWindows: 0`): funkcja → service worker **205 ms**, wpis w kolejce → odbiór 14 s; przy otwartej karcie 156 ms / 39 s (`npm run push-page --workspace tools/edge-tests`) |
 | Token odświeżania *In production* > 7 dni | — | ⏳ w trakcie MVP (z planu) |
 | `pg_cron`, `pg_net` na planie Free | ✅ lokalnie (pg_cron 1.6.4, pg_net 0.20.4) | ✅ projekt „TaskPlanner” (eu-west-1): migracja z `create extension` przeszła, `taskplanner-reminders-push` co minutę → `pg_net` → funkcja odpowiada 200 (`{"items":0}`); `cron/poll`, `cron/renew`, `inbound-email` działają na bazie w chmurze |
@@ -65,10 +65,31 @@ dziennych (11 500 wystąpień, 95 KiB) w **110–150 ms** w Node, przy limicie C
 - Chrome: odmowa powiadomień zapisana dla `localhost` blokuje też rejestrację service workera (Chrome nie pobiera `sw.js`) — strona próbna pokazuje stan zgody i pełny błąd. Do pomocy w ustawieniach (MVP-4).
 - Docker Desktop na Windows: fałszywe usługi na `0.0.0.0:54590` są osiągalne z kontenera funkcji jako `host.docker.internal`, a z bazy funkcje widać jako `supabase_kong_taskplanner:8000`.
 
-**Niesprawdzone / czeka na użytkownika:**
-- Prawdziwe Google: ekran „unverified app” w stanie *In production*, opóźnienie powiadomień `watch` do funkcji w chmurze, `nextSyncToken` przy pierwszym zapytaniu z `timeMin`/`timeMax`, opóźnienie tajnego adresu iCal po zmianie w Google.
-- Cloudflare: czas Email Routing → Worker → funkcja, nagłówki `Authentication-Results` dodawane przez Cloudflare (od tego zależy reguła DMARC), limit CPU Workera na Free.
+**Niesprawdzone:**
+- Token odświeżania Google w stanie *In production* > 7 dni (w trakcie MVP).
+- Cloudflare (v1.x, D9): czas Email Routing → Worker → funkcja, nagłówki `Authentication-Results` dodawane przez Cloudflare (od tego zależy reguła DMARC), limit CPU Workera na Free.
 - Załączniki z maila (Etap 10), wybór kalendarzy w UI i ekran „Połączone kalendarze” (Etap 5), strefa z ustawień profilu zamiast `inbound_addresses.time_zone` (MVP-1).
+## PoC-5 — Widoki webowe na lokalnych danych (18.11.2026)
+
+**Werdykt: GO z warunkami.** Biblioteki: **FullCalendar 6.1.22** (MIT), **dnd-kit** (core 6.3, sortable 10), **SVAR React Gantt 2.8.3** (MIT, darmowa wersja wystarcza — własnego komponentu SVG nie budowałem), **TipTap 3.34 + @tiptap/markdown**. Strona prób: `/dev/views`. Dane: `npm run seed:dev -- --load` (5 746 operacji przez `push_changes` w 3,4 s, 0 odrzuceń) → 2 017 zadań w lokalnej bazie przeglądarki (OPFS).
+
+Pomiary w panelu przeglądarki aplikacji Claude (Chromium); w spoczynku panel daje średnio **20,1 ms na klatkę**, więc to jest punkt odniesienia, a nie 16,7 ms. W schowanym panelu `requestAnimationFrame` nie działa wcale — pomiary tylko przy widocznym panelu.
+
+| Kryterium | Kalendarz | Kanban | Oś czasu | Markdown |
+|---|---|---|---|---|
+| Działanie | ✅ tydzień/dzień/miesiąc, „cały dzień”, przeciąganie z panelu bocznego, zmiana długości; zapis do lokalnej bazy i na serwer sprawdzony | ✅ zmiana kolumny (status) i kolejności, klawiatura (KeyboardSensor) | ✅ przesuwanie, rozciąganie krawędzi (1 → 3 dni), zależności klikiem w uchwyty, czerwone naruszenie; zapis dat na serwer sprawdzony | ✅ |
+| Przeciąganie | ✅ **60 kl./s**, 0 zgubionych z 90 | ✅ w ruchu 16–17 ms; ⚠️ **start przeciągania 150–184 ms** (jedna klatka: dnd-kit mierzy ~400 kart), upuszczenie 61 ms | ✅ śr. 19,1 ms (jak spoczynek), pojedyncze klatki 33–50 ms | — |
+| Przełączenie widoku < 150 ms | ✅ 67–71 ms | ❌ 1 040 ms przy 1 800 kartach → ✅ **114–122 ms** przy 100 kartach na kolumnę („pokaż więcej”) | ⚠️ **165–190 ms** (pierwsze 533 ms z ładowaniem biblioteki) | ✅ 91 ms |
+| Zapis i odczyt bez strat | — | — | — | ✅ **96/100** bez zmian, **100/100** stabilne, 0 utraconej treści |
+
+**Warunki na MVP / Etap 6:**
+- **Kanban:** nie rysować wszystkich kart naraz — porcje (jak w PoC) albo wirtualizacja; tylko widoczne karty jako `useSortable`. Pierwsza klatka przeciągania do zmierzenia ponownie po tej zmianie.
+- **Kolejność kart przy kanbanie wielu list:** `sort_key` jest per lista/rodzic, więc na tablicy z kilku list klucze nie są uporządkowane między sobą (`keyBetween` rzuca wyjątek — w PoC obejście „za poprzednikiem”). Do decyzji w MVP-4: osobny klucz kolejności tablicy (`board_sort_key`) albo kanban zawsze w obrębie jednej listy.
+- **Oś czasu:** trzymać widok zamontowany po pierwszym otwarciu (albo przedładować kod), żeby zejść poniżej 150 ms; polskie napisy z `@svar-ui/gantt-locales`; **SVAR przyjmuje cykle zależności** (A→B i B→A) — blokada w `core/dependencies.ts`; zależności w PoC tylko w pamięci, tabela `task_dependencies` w Etapie 6.
+- **Markdown:** `descriptionMarkdown` (`apps/web/src/lib/editor.ts`) zapisuje goły adres URL goło — TipTap pisze `[url](url)`, a marki renderują się z zastępnikiem zamiast tekstu, więc poprawka jest na gotowym tekście. Pozostałe 4 różnice: dwie listy oddzielone pustą linią łączą się w jedną — w CommonMark to i tak jedna lista.
+- **Pierwsza synchronizacja w przeglądarce:** 2 017 zadań pobrane i pierwsze zapytanie gotowe po ~4,2 s — stronicowanie migawki i wskaźnik postępu w MVP-1.
+
+**Uwagi do testów E2E:** SVAR reaguje na zdarzenia `pointer*` (same `mouse*` nie ruszają paska), zależności tworzy kliknięcie w uchwyt końca, potem początku; dnd-kit — `pointer*` z odległością aktywacji 4 px; FullCalendar — `mouse*`.
 
 ## PoC-3 — Cykliczność i nawyki (18.11.2026)
 
@@ -119,7 +140,7 @@ dziennych (11 500 wystąpień, 95 KiB) w **110–150 ms** w Node, przy limicie C
 - Przyimek („w”, „we”, „o”, „na”) i myślnik na końcu albo początku tytułu są usuwane.
 
 **Uwagi:**
-- Korpus pisałem sam (przykłady + pułapki), więc 100 % mierzy zgodność z ustaloną gramatyką, a nie trafność na prawdziwych wpisach. Prawdziwy sprawdzian: zadania z obecnego narzędzia użytkownika (D13) dopisane do korpusu przed MVP-2.
+- Korpus pisałem sam (przykłady + pułapki), więc 100 % mierzy zgodność z ustaloną gramatyką, a nie trafność na prawdziwych wpisach. Prawdziwy sprawdzian: prawdziwe zadania wpisane przez użytkownika (D13: brak narzędzia do importu) dopisane do korpusu przed MVP-2.
 - Cofnięcie rozpoznania wstawia `\` w tekst pola (widać to w polu). W MVP-2 cofnięte zakresy trzymać w stanie komponentu, a nie w tekście.
 - Chip cyklu pokazuje surowe RRULE — opis po polsku (`describeRecurrence`) to PoC-3.
 

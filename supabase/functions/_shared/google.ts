@@ -33,12 +33,12 @@ export interface GoogleSecret {
 }
 
 export class GoogleError extends Error {
-  constructor(
-    readonly status: number,
-    readonly reason: string,
-    message: string,
-  ) {
+  readonly status: number;
+  readonly reason: string;
+  constructor(status: number, reason: string, message: string) {
     super(message);
+    this.status = status;
+    this.reason = reason;
   }
   /** Token odświeżania odwołany albo wygasły — konto trzeba połączyć ponownie. */
   get revoked() {

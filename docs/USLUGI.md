@@ -15,7 +15,7 @@ Stan na **18.11.2026** (oficjalna dokumentacja i cenniki). Przed wprowadzeniem n
 | Edge Runtime lokalnie | 1.77.8 (zgodny z Deno 2.1.4); importy spoza `supabase/functions` (np. `packages/core`) działają, `npm:` i `jsr:` przez mapę importów | W | PoC-6 |
 | Realtime | 200 jednoczesnych połączeń, 2 mln wiadomości/mies., 100 wiad./s | W | supabase.com/docs/guides/realtime/limits |
 
-**Wniosek:** sprawdzić, ile aktywnych projektów zajmuje ExpeditionPlan — przy 2 aktywnych TaskPlanner wymaga wstrzymania jednego albo planu Pro (D10).
+**Wniosek:** TaskPlanner ma projekt na osobnym koncie Supabase (D10), więc limit 2 aktywnych projektów go nie ogranicza; nadal obowiązuje wstrzymanie po 7 dniach niskiej aktywności (wiersz wyżej).
 
 ## Vercel (Hobby)
 | Warunek | Wartość | Pewność | Źródło |

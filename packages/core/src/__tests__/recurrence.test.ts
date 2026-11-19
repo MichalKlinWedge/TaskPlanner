@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { datetime, RRule as OracleRule } from 'rrule';
 import { describe, expect, it } from 'vitest';
 
+import { addDays } from '../dates.ts';
 import { parseQuickAdd } from '../quick-add.ts';
 import { describeRecurrence, formatRrule, nextDue, occurrences, parseRrule, type Recurrence, type ScheduleRecurrence } from '../recurrence.ts';
 
@@ -120,6 +121,30 @@ describe('porównanie z rrule.js (losowe reguły z podzbioru)', () => {
       if (JSON.stringify(ours) !== JSON.stringify(oracle)) mismatches.push(`${rrule} @ ${anchor}\n  nasze:   ${ours.slice(0, 6).join(' ')}\n  rrule.js: ${oracle.slice(0, 6).join(' ')}`);
     }
     expect(mismatches.slice(0, 5).join('\n')).toBe('');
+  });
+
+  it('przeskok do `from` daje te same daty co liczenie od kotwicy (500 reguł)', () => {
+    const mismatches: string[] = [];
+    for (let i = 0; i < 500; i++) {
+      const rrule = randomRule();
+      const anchor = `${2020 + Math.floor(random() * 6)}-${String(1 + Math.floor(random() * 12)).padStart(2, '0')}-${String(1 + Math.floor(random() * 28)).padStart(2, '0')}`;
+      const from = addDays(anchor, Math.floor(random() * 2500) - 30);
+      const recurrence = { mode: 'schedule' as const, rrule, anchor };
+      // Ograniczenie `to`: rzadka reguła roczna przy 10 000 wystąpieniach wyszłaby poza rok 9999.
+      const to = `${Number(from.slice(0, 4)) + 40}-12-31`;
+      const full = occurrences(recurrence, { to, limit: 10_000 })
+        .filter((d) => d >= from)
+        .slice(0, 20);
+      const fast = occurrences(recurrence, { from, to, limit: 20 });
+      if (JSON.stringify(fast) !== JSON.stringify(full)) mismatches.push(`${rrule} @ ${anchor} od ${from}\n  przeskok: ${fast.slice(0, 4).join(' ')}\n  pełne:    ${full.slice(0, 4).join(' ')}`);
+    }
+    expect(mismatches.slice(0, 5).join('\n')).toBe('');
+  });
+
+  it('wydajność: 14 dni serii codziennej sprzed 6 lat < 1 ms', () => {
+    const start = performance.now();
+    for (let i = 0; i < 100; i++) occurrences({ mode: 'schedule', rrule: 'FREQ=DAILY', anchor: '2020-01-01' }, { from: '2026-11-18', to: '2026-12-01' });
+    expect((performance.now() - start) / 100).toBeLessThan(1);
   });
 
   it('format RRULE tam i z powrotem', () => {
