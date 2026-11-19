@@ -12,6 +12,8 @@
 
 -- D15: kolejność kart na tablicy z kilku list (pusty = kolejność automatyczna).
 alter table public.tasks add column board_sort_key text check (board_sort_key ~ '^[0-9a-z]+$');
+-- Archiwizacja list (M2, ekran przestrzeni i list): lista znika z paska bocznego, zadania zostają.
+alter table public.lists add column archived_at timestamptz;
 
 -- ── Nowe tabele synchronizowane ──────────────────────────────────────────────────────────────
 

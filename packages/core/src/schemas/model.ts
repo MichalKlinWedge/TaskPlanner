@@ -145,6 +145,7 @@ export const ListRow = z
     project_status: ProjectStatus.nullable(),
     sort_key: SortKey,
     view_prefs: ViewPrefs,
+    archived_at: Instant.nullable(),
   })
   .refine((l) => !l.start_date || !l.end_date || l.start_date <= l.end_date, { message: 'Koniec projektu przed początkiem.', path: ['end_date'] })
   .refine((l) => l.kind === 'project' || (!l.project_status && !l.start_date && !l.end_date), { message: 'Daty i status mają tylko projekty.', path: ['kind'] });

@@ -26,6 +26,8 @@ export interface SyncEngineOptions {
   pullPageSize?: number;
   /** Postęp pobierania (wskaźnik pierwszej synchronizacji). */
   onPullProgress?: (progress: { page: number; done: boolean }) => void;
+  /** Początek i koniec każdej synchronizacji (wskaźnik stanu): `ok` po udanej, `error` po nieudanej. */
+  onSyncState?: (state: { syncing: true } | { syncing: false; ok: boolean; error?: unknown; at: number }) => void;
 }
 
 type Listener = () => void;
@@ -201,12 +203,17 @@ export class SyncEngine {
       return this.running;
     }
     this.running = (async () => {
+      this.options.onSyncState?.({ syncing: true });
       try {
         do {
           this.again = false;
           await this.push();
           await this.pull();
         } while (this.again);
+        this.options.onSyncState?.({ syncing: false, ok: true, at: this.now() });
+      } catch (error) {
+        this.options.onSyncState?.({ syncing: false, ok: false, error, at: this.now() });
+        throw error;
       } finally {
         this.running = null;
       }

@@ -59,5 +59,19 @@ export const WEEKDAY: Record<IsoWeekday, { label: string; short: string }> = {
   7: { label: 'niedziela', short: 'ndz' },
 };
 
+/** Kolory przestrzeni, list i tagów do wyboru w UI (#RRGGBB, jak `Color` w modelu). */
+export const COLORS: readonly { value: string; label: string }[] = [
+  { value: '#4F46E5', label: 'indygo' },
+  { value: '#2563EB', label: 'niebieski' },
+  { value: '#0891B2', label: 'turkusowy' },
+  { value: '#16A34A', label: 'zielony' },
+  { value: '#CA8A04', label: 'żółty' },
+  { value: '#EA580C', label: 'pomarańczowy' },
+  { value: '#DC2626', label: 'czerwony' },
+  { value: '#DB2777', label: 'różowy' },
+  { value: '#9333EA', label: 'fioletowy' },
+  { value: '#57534E', label: 'szary' },
+];
+
 /** Skróty miesięcy (od stycznia). */
 export const MONTH_SHORT = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'] as const;

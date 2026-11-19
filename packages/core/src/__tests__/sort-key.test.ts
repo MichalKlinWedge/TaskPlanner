@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { SortKey } from '../schemas/primitives.ts';
-import { keyBetween, NoRoomError, renumber } from '../sort-key.ts';
+import { keyBetween, NoRoomError, renumber, reorderPatches } from '../sort-key.ts';
 
 const valid = (key: string) => SortKey.safeParse(key).success;
 
@@ -53,5 +53,35 @@ describe('klucz kolejności', () => {
   it('klucze z generatora nigdy nie kończą się zerem', () => {
     const keys = [keyBetween(), keyBetween('0010'), keyBetween('0010', '0020'), keyBetween(undefined, '0010'), keyBetween('0019z', '002')];
     for (const key of keys) expect(key.endsWith('0'), key).toBe(false);
+  });
+});
+
+describe('reorderPatches', () => {
+  const items = [
+    { id: 'a', sort_key: '1' },
+    { id: 'b', sort_key: '2' },
+    { id: 'c', sort_key: '3' },
+  ];
+  const apply = (list: typeof items, patches: { id: string; sort_key: string }[]) =>
+    list.map((i) => ({ ...i, ...patches.find((p) => p.id === i.id) })).sort((x, y) => (x.sort_key < y.sort_key ? -1 : 1)).map((i) => i.id);
+
+  it('przeniesienie w górę, w dół, na początek i na koniec — jedna zmiana', () => {
+    expect(reorderPatches(items, 2, 0)).toHaveLength(1);
+    expect(apply(items, reorderPatches(items, 2, 0))).toEqual(['c', 'a', 'b']);
+    expect(apply(items, reorderPatches(items, 0, 1))).toEqual(['b', 'a', 'c']);
+    expect(apply(items, reorderPatches(items, 0, 2))).toEqual(['b', 'c', 'a']);
+    expect(apply(items, reorderPatches(items, 1, 0))).toEqual(['b', 'a', 'c']);
+  });
+
+  it('powtórzone klucze (domyślne „n”) → przenumerowanie całej listy', () => {
+    const same = [{ id: 'a', sort_key: 'n' }, { id: 'b', sort_key: 'n' }, { id: 'c', sort_key: 'n' }];
+    const patches = reorderPatches(same, 0, 1);
+    expect(patches.length).toBeGreaterThan(1);
+    expect(apply(same, patches)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('bez ruchu albo poza zakresem — brak zmian', () => {
+    expect(reorderPatches(items, 1, 1)).toEqual([]);
+    expect(reorderPatches(items, 0, 5)).toEqual([]);
   });
 });

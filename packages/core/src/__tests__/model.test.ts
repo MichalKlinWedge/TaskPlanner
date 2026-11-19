@@ -67,7 +67,7 @@ describe('zadanie', () => {
 });
 
 describe('lista', () => {
-  const list = { id: ID, scope_id: ID2, kind: 'project', name: 'Remont', color: '#2563eb', icon: null, description_md: null, start_date: '2026-11-01', end_date: '2026-12-31', project_status: 'active', sort_key: '0010', view_prefs: {} } as const;
+  const list = { id: ID, scope_id: ID2, kind: 'project', name: 'Remont', color: '#2563eb', icon: null, description_md: null, start_date: '2026-11-01', end_date: '2026-12-31', project_status: 'active', sort_key: '0010', view_prefs: {}, archived_at: null } as const;
   it('projekt z datami; zwykła lista bez dat i statusu', () => {
     expect(ListRow.safeParse(list).success).toBe(true);
     expect(issues(ListRow.safeParse({ ...list, end_date: '2026-10-01' }))).toEqual(['end_date: Koniec projektu przed początkiem.']);
