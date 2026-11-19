@@ -8,6 +8,7 @@
  *   google-start   wypisuje adres zgody Google (otwórz go w przeglądarce)
  *   status         konta, kalendarze, liczba wydarzeń, ostatnie zmiany
  *   watch <tytuł>  czeka, aż w `calendar_events` pojawi się wydarzenie o tym tytule (pomiar opóźnienia)
+ *   ics-watch <tytuł>  co 30 s pobiera `ICS_TEST_URL`; gdy tytuł się pojawi — `cron/poll` i opóźnienie względem Google
  *
  * `--cloud`: to samo na projekcie w chmurze (`supabase link`, sekrety z `supabase/functions/.env.cloud`,
  * hasło `CLOUD_DEV_USER_PASSWORD` z `.env.local`). Sekretów nie wypisuje (adres ICS, tokeny).
@@ -147,6 +148,35 @@ switch (cmd) {
     }
     break;
   }
+  case 'ics-watch': {
+    const title = args.join(' ');
+    const t0 = Date.now();
+    let checks = 0;
+    for (;;) {
+      checks++;
+      let text = '';
+      try {
+        text = await (await fetch(env.ICS_TEST_URL!, { headers: { 'cache-control': 'no-cache' } })).text();
+      } catch (error) {
+        // Przerwa w sieci (uśpienie, DNS) — następna próba za 30 s.
+        console.warn(`${new Date().toISOString()} pobranie nieudane: ${(error as Error).cause ?? error}`);
+      }
+      if (text.includes(`SUMMARY:${title}`)) {
+        const seen = new Date();
+        console.log(`ICS z Google zawiera „${title}” o ${seen.toISOString()} (${checks}. pobranie, ${Math.round((Date.now() - t0) / 1000)} s od startu)`);
+        const r = await call('calendar-sync/cron/poll', { cron: true });
+        const { data } = await admin.from('calendar_events').select('updated_at, calendars!inner(calendar_accounts!inner(provider))')
+          .eq('user_id', userId).eq('title', title).eq('calendars.calendar_accounts.provider', 'ics').is('deleted_at', null).limit(1);
+        console.log(`cron/poll: HTTP ${r.status}, ${r.ms} ms; w calendar_events (ICS): ${data?.[0]?.updated_at ?? 'BRAK'}`);
+        const google = await googleUpdated(title);
+        if (google) console.log(`Google: zmiana zapisana ${google}; plik ICS po ${((seen.getTime() - Date.parse(google)) / 1000).toFixed(0)} s (dokładność ±30 s)`);
+        break;
+      }
+      if (Date.now() - t0 > 6 * 3600_000) throw new Error('Brak po 6 h');
+      await new Promise((r) => setTimeout(r, 30_000));
+    }
+    break;
+  }
   default:
-    console.log('Polecenia: ics | poll | sync | google-start | status | watch <tytuł>');
+    console.log('Polecenia: ics | poll | sync | google-start | status | watch <tytuł> | ics-watch <tytuł>');
 }

@@ -2,7 +2,7 @@
 
 ## PoC-6 — Integracje serwerowe (18.11.2026)
 
-**Werdykt: GO dla Google Calendar (watch 3,9 s na prawdziwym Google w chmurze) i Web Push (zamknięta karta Chrome); `pg_cron`/`pg_net` działają na Free. E-mail: GO lokalnie, prawdziwa droga przez Cloudflare czeka na domenę (D9); ICS: opóźnienie po stronie Google do zmierzenia na własnym kalendarzu** (`docs/POC6_KONFIGURACJA.md`).
+**Werdykt: GO dla Google Calendar (watch 3,9 s na prawdziwym Google w chmurze) i Web Push (zamknięta karta Chrome); `pg_cron`/`pg_net` działają na Free. ICS: GO (plik Google odświeża się ~25 s po zmianie). E-mail: GO lokalnie, prawdziwa droga przez Cloudflare czeka na domenę (D9)** (`docs/POC6_KONFIGURACJA.md`).
 Cała droga każdej integracji działa na lokalnym Supabase. Usługi zewnętrzne zastępują w testach fałszywe Google,
 serwer ICS i usługa push, zachowujące się jak w dokumentacji (stronicowanie, `syncToken`, 410, kanały, VAPID i aes128gcm).
 Nic nie wskazuje na No-go. Otwarte pozostają czasy po stronie Google i Cloudflare oraz plan Free.
@@ -10,7 +10,7 @@ Nic nie wskazuje na No-go. Otwarte pozostają czasy po stronie Google i Cloudfla
 | Kryterium Go (PLAN_ETAPOWY PoC-6) | Lokalnie | Prawdziwe usługi |
 |---|---|---|
 | Zmiana w Google widoczna < 1 min (watch) | ✅ powiadomienie → `calendar_events` **63 ms** (fałszywe Google, ten sam protokół) | ✅ **3,9 s** od `updated` wydarzenia w Google do zapisu w `calendar_events` w chmurze (zmiana tytułu, webhook — poza minutą crona); OAuth *In production* bez weryfikacji, kanał TTL 7 dni |
-| … albo < 15 min (ICS) | ✅ `pg_cron` → `pg_net` → `cron/poll` → zapis **290 ms**, zadanie `*/15 * * * *`; niezmieniony plik → 304 | ✅ prawdziwy plik Google („Święta w Polsce”): dodanie 604 ms, 18 wydarzeń; ⏳ opóźnienie zmiany we własnym kalendarzu (tajny adres iCal) |
+| … albo < 15 min (ICS) | ✅ `pg_cron` → `pg_net` → `cron/poll` → zapis **290 ms**, zadanie `*/15 * * * *`; niezmieniony plik → 304 | ✅ tajny adres iCal własnego kalendarza: zmiana w Google → widoczna w pliku po **~25 s** (±30 s, 1 próba), `cron/poll` → `calendar_events` **1,2 s**. Razem: do 15 min (odstęp crona) + ~0,5 min, średnio ~8 min — dla twardego „< 15 min” cron co 10–14 min |
 | Mail → zadanie < 1 min | ✅ `inbound-email` **237–336 ms** (MIME + zadanie), kod Workera → funkcja → zadanie **43 ms** | ⏳ domena w Cloudflare (D9) |
 | Push dociera do zamkniętej karty | ✅ wpis w kolejce → dostarczenie przez `pg_cron` **37,7 s / 54,0 s** (≤ 60 s + wysyłka); podpis VAPID i treść sprawdzone kryptograficznie | ✅ **Chrome (FCM), karta zamknięta** (`openWindows: 0`): funkcja → service worker **205 ms**, wpis w kolejce → odbiór 14 s; przy otwartej karcie 156 ms / 39 s (`npm run push-page --workspace tools/edge-tests`) |
 | Token odświeżania *In production* > 7 dni | — | ⏳ w trakcie MVP (z planu) |
@@ -33,6 +33,8 @@ dziennych (11 500 wystąpień, 95 KiB) w **110–150 ms** w Node, przy limicie C
 | Sekrety lokalne, fałszywe usługi, testy, strona próbna push | `tools/edge-tests` |
 
 **Prawdziwe Google (18.11.2026):** osobny projekt Google Cloud „TaskPlanner” w stanie *In production* (ekran „unverified app”, „Advanced → Go to TaskPlanner”). Lokalnie: OAuth → Vault → `calendarList` → pełna synchronizacja z `timeMin`/`timeMax` zwraca `nextSyncToken` → nowe wydarzenie przez przyrost (`full: false`, 1 wiersz, 513 ms dla dwóch kalendarzy). W chmurze: kanał `watch` dla kalendarza głównego, zmiana tytułu w Google → `calendar_events` w 3,9 s. Narzędzie: `npm run real --workspace tools/edge-tests -- <ics|poll|sync|google-start|status|watch> [--cloud]`.
+
+**Prawdziwy ICS (19.11.2026):** `npm run real --workspace tools/edge-tests -- ics-watch <tytuł>` pobiera tajny adres co 30 s i po pojawieniu się zmiany wywołuje `cron/poll`. Google pokazał zmianę tytułu w pliku po ~25 s.
 
 **Wdrożenie w chmurze (18.11.2026):** `db push` (migracje PoC-6), `secrets set --env-file supabase/functions/.env.cloud` (plik poza repozytorium: osobne `CRON_SECRET` i `INBOUND_SECRET`, klucze VAPID te same co lokalnie), `functions deploy` trzech funkcji (bundel 0,8–1,5 MB, `packages/core` spoza `supabase/` dołączony), Vault: `functions_url`, `cron_secret` (`db query --linked`, każda instrukcja osobno — API zapytań nie przyjmuje bloku `do $$`).
 
