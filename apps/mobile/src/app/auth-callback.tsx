@@ -12,16 +12,16 @@ import { Button, P, Screen, Section } from '@/components/ui';
 import { completeAuth } from '@/lib/auth';
 
 export default function AuthCallback() {
-  const params = useLocalSearchParams<{ code?: string; error?: string; error_description?: string }>();
+  const params = useLocalSearchParams<{ code?: string; error?: string; error_code?: string; error_description?: string }>();
   const [error, setError] = useState<string | null>(null);
 
-  const { code, error: failure, error_description: description } = params;
+  const { code, error: failure, error_code: failureCode, error_description: description } = params;
 
   useEffect(() => {
-    completeAuth({ code, error: failure, error_description: description })
+    completeAuth({ code, error: failure, error_code: failureCode, error_description: description })
       .then(() => router.replace('/'))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, [code, failure, description]);
+  }, [code, failure, failureCode, description]);
 
   return (
     <Screen>
@@ -29,7 +29,7 @@ export default function AuthCallback() {
         {error ? (
           <>
             <P tone="bad">{error}</P>
-            <P muted>Link z maila działa raz i przez ograniczony czas; wyślij nowy z ekranu „Konto i serwer”.</P>
+            <P muted>Link z maila działa raz i przez godzinę; nowy wyślesz z ekranu „Konto i serwer”.</P>
             <Button title="Konto i serwer" onPress={() => router.replace('/settings')} />
           </>
         ) : (

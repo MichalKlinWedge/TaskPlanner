@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { capitalized, dayChip, dayLabel, dayMonth, formatMinutes, plural, pluralForm, relativeDay, shortDate } from '../format.ts';
-import { PRIORITY, REMINDER_KIND, TASK_STATUS, WEEKDAY } from '../labels.ts';
+import { authErrorMessage, capitalized, dayChip, dayLabel, dayMonth, formatMinutes, plural, pluralForm, relativeDay, shortDate } from '../format.ts';
+import { AUTH_ERROR, PRIORITY, REMINDER_KIND, TASK_STATUS, WEEKDAY } from '../labels.ts';
 import { LocalTime, Priority } from '../schemas/primitives.ts';
 
 describe('odmiana po liczbie', () => {
@@ -80,5 +80,22 @@ describe('dzień względny (dziś = śr 18.11.2026)', () => {
     expect(REMINDER_KIND.relative).toBe('Przed terminem');
     expect(Object.keys(WEEKDAY)).toHaveLength(7);
     expect(WEEKDAY[7].label).toBe('niedziela');
+  });
+});
+
+describe('błędy logowania po polsku', () => {
+  it('po kodzie GoTrue i `error_code` z adresu powrotu', () => {
+    expect(authErrorMessage({ code: 'otp_expired', message: 'Email link is invalid or has expired' })).toBe(AUTH_ERROR.otp_expired);
+    expect(authErrorMessage({ code: 'pkce_code_verifier_not_found', message: 'PKCE code verifier not found in storage.' })).toBe(AUTH_ERROR.pkce_code_verifier_not_found);
+    expect(authErrorMessage({ code: 'over_email_send_rate_limit', message: 'email rate limit exceeded' })).toBe(AUTH_ERROR.over_email_send_rate_limit);
+  });
+  it('bez kodu — po treści (sieć, dostawca, wygasły link)', () => {
+    expect(authErrorMessage({ name: 'AuthRetryableFetchError', message: 'Network request failed', status: 0 })).toBe(AUTH_ERROR.network);
+    expect(authErrorMessage({ code: 'validation_failed', message: 'Unsupported provider: provider is not enabled' })).toBe(AUTH_ERROR.provider_disabled);
+    expect(authErrorMessage('Email link is invalid or has expired')).toBe(AUTH_ERROR.otp_expired);
+  });
+  it('nieznany błąd — komunikat serwera, pusty — ogólny', () => {
+    expect(authErrorMessage({ code: 'hook_timeout', message: 'Hook timed out' })).toBe('Hook timed out');
+    expect(authErrorMessage(null)).toBe('Nie udało się zalogować.');
   });
 });
