@@ -1,9 +1,12 @@
 /**
- * `npm run seed:dev -- --load [--today RRRR-MM-DD] [--seed 1]` — zestaw z `generate.ts` do LOKALNEGO
- * Supabase jako `dev@taskplanner.test` (`npm run dev:user`), przez `push_changes` jak z urządzenia.
- * Identyfikatory są deterministyczne: ponowne uruchomienie nie dubluje danych.
+ * `npm run seed:dev -- --load [--today RRRR-MM-DD] [--seed 1] [--email adres]` — zestaw z `generate.ts`
+ * do LOKALNEGO Supabase przez `push_changes` jak z urządzenia. Domyślnie jako `dev@taskplanner.test`
+ * (`npm run dev:user`, hasło z `.env.local`); inne konto zakładane kluczem `service_role` z losowym
+ * hasłem (nigdzie nie zapisanym — skrypty pomiarów ustawiają własne). Identyfikatory są
+ * deterministyczne: ponowne uruchomienie nie dubluje danych.
  */
 import { execSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -20,14 +23,40 @@ interface Op {
   hlc: string;
 }
 
-export async function loadDataset(dataset: SeedDataset): Promise<void> {
+export const DEV_EMAIL = 'dev@taskplanner.test';
+
+/** Hasło konta: deweloperskie z `.env.local`, inne — nowe losowe ustawione kluczem `service_role`. */
+async function passwordFor(email: string, root: string, status: { API_URL: string; SECRET_KEY?: string; SERVICE_ROLE_KEY?: string }): Promise<string> {
+  if (email === DEV_EMAIL) {
+    const env = readFileSync(`${root}.env.local`, 'utf8');
+    const password = /^DEV_USER_PASSWORD=(.+)$/m.exec(env)?.[1]?.trim();
+    if (!password) throw new Error('Brak DEV_USER_PASSWORD w .env.local — najpierw `npm run dev:user`.');
+    return password;
+  }
+  const admin = createClient(status.API_URL, (status.SECRET_KEY ?? status.SERVICE_ROLE_KEY)!, { auth: { persistSession: false } });
+  const password = randomBytes(18).toString('base64url');
+  for (let page = 1; ; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw new Error(`listUsers: ${error.message}`);
+    const user = data.users.find((u) => u.email === email);
+    if (user) {
+      const { error: e } = await admin.auth.admin.updateUserById(user.id, { password });
+      if (e) throw new Error(`updateUser ${email}: ${e.message}`);
+      return password;
+    }
+    if (data.users.length < 1000) break;
+  }
+  const { error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+  if (error) throw new Error(`createUser ${email}: ${error.message}`);
+  console.log(`${email}: konto utworzone`);
+  return password;
+}
+
+export async function loadDataset(dataset: SeedDataset, email = DEV_EMAIL): Promise<void> {
   const root = fileURLToPath(new URL('../../../', import.meta.url));
-  const env = readFileSync(`${root}.env.local`, 'utf8');
-  const email = /^DEV_USER_EMAIL=(.+)$/m.exec(env)?.[1]?.trim() ?? 'dev@taskplanner.test';
-  const password = /^DEV_USER_PASSWORD=(.+)$/m.exec(env)?.[1]?.trim();
-  if (!password) throw new Error('Brak DEV_USER_PASSWORD w .env.local — najpierw `npm run dev:user`.');
   const raw = execSync('npx --yes supabase@2.122.0 status -o json', { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   const status = JSON.parse(raw.slice(raw.indexOf('{')));
+  const password = await passwordFor(email, root, status);
   const client = createClient(status.API_URL, status.PUBLISHABLE_KEY ?? status.ANON_KEY, { auth: { persistSession: false } });
   const { data: auth, error } = await client.auth.signInWithPassword({ email, password });
   if (error || !auth.user) throw new Error(`Logowanie ${email}: ${error?.message}`);
@@ -63,7 +92,7 @@ export async function loadDataset(dataset: SeedDataset): Promise<void> {
       due_time: t.dueTime,
       duration_min: t.durationMin,
       recurrence: t.recurrence,
-      completed_at: t.status === 'done' ? new Date().toISOString() : null,
+      completed_at: t.status === 'done' ? (t.completedAt ?? new Date().toISOString()) : null,
       sort_key: t.sortKey,
     });
   }

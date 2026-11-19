@@ -63,12 +63,26 @@ export const isOpen = (task: Pick<ViewTask, 'status'>): boolean => task.status !
 
 const inWorkspace = (ctx: ViewContext) => (task: ViewTask) => !ctx.workspaceId || task.workspaceId === ctx.workspaceId;
 
-const completedOn = (task: ViewTask, ctx: ViewContext): LocalDate | null => (task.completedAt ? localDateAt(task.completedAt, ctx.timeZone) : null);
+/**
+ * Czy zadanie zamknięto dziś (w strefie `ctx`). Data z zapisu chwili różni się od lokalnej najwyżej
+ * o dobę w każdą stronę (strefy od −12 do +14 h), więc odległe daty odpadają bez `Intl` — przy
+ * 10 000 zadań `formatToParts` dla każdego zamkniętego kosztowało ~40 ms na przeliczenie „Dziś”.
+ */
+function completedToday(ctx: ViewContext): (task: ViewTask) => boolean {
+  const from = addDays(ctx.today, -2);
+  const to = addDays(ctx.today, 2);
+  return (task) => {
+    if (!task.completedAt) return false;
+    const day = task.completedAt.slice(0, 10);
+    return day >= from && day <= to && localDateAt(task.completedAt, ctx.timeZone) === ctx.today;
+  };
+}
 
 /** Widoczność zamkniętych zadań; otwarte przechodzą zawsze. */
 export function withCompleted(tasks: readonly ViewTask[], mode: CompletedMode, ctx: ViewContext): ViewTask[] {
   if (mode === 'all') return [...tasks];
-  return tasks.filter((t) => isOpen(t) || (mode === 'today' && completedOn(t, ctx) === ctx.today));
+  const doneToday = completedToday(ctx);
+  return tasks.filter((t) => isOpen(t) || (mode === 'today' && doneToday(t)));
 }
 
 // ── Kolejność ────────────────────────────────────────────────────────────────────────────────
@@ -127,6 +141,7 @@ export interface TodayView {
 export function selectToday(tasks: readonly ViewTask[], ctx: ViewContext, { completed = 'today' }: { completed?: CompletedMode } = {}): TodayView {
   const view: TodayView = { overdue: [], today: [], ongoing: [], habits: [], done: [] };
   const { today } = ctx;
+  const doneToday = completedToday(ctx);
   for (const t of tasks) {
     if (!inWorkspace(ctx)(t)) continue;
     if (t.kind === 'habit') {
@@ -134,7 +149,7 @@ export function selectToday(tasks: readonly ViewTask[], ctx: ViewContext, { comp
       continue;
     }
     if (!isOpen(t)) {
-      if (completed !== 'hidden' && completedOn(t, ctx) === today) view.done.push(t);
+      if (completed !== 'hidden' && doneToday(t)) view.done.push(t);
       continue;
     }
     if (!t.dueDate) continue;

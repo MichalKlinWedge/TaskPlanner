@@ -121,7 +121,9 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
   const tasks = useLocalQuery<SqlRow>(
     store,
     `select t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
-            t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count, t.field_clock,
+            t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count,
+            -- Z zegarów pól widoki potrzebują tylko statusu (\`statusChangedAt\`); cały JSON przy 10 000 zadań to ~5 MB na odczyt.
+            json_object('status', json_extract(t.field_clock, '$.status')) as field_clock,
             (select group_concat(tt.tag_id) from task_tags tt where tt.task_id = t.id and tt.deleted_at is null) as tag_ids
        from tasks t where t.deleted_at is null`,
     [],

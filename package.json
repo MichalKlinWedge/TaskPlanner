@@ -17,6 +17,8 @@
     "mobile": "node scripts/sync-env.mjs && npm run start --workspace apps/mobile",
     "supabase": "npx --yes supabase@2.122.0",
     "test:sync": "npm run test:integration --workspace packages/sync",
+    "test:e2e": "npm run test:e2e --workspace tools/e2e --",
+    "perf": "npm run perf --workspace tools/e2e --",
     "test:db": "npx --yes supabase@2.122.0 test db",
     "seed:dev": "npm run seed --workspace tools/seed-dev --",
     "brand": "node scripts/brand.mjs",

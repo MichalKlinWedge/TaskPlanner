@@ -1,9 +1,10 @@
 /**
  * Deterministyczny zestaw danych deweloperskich (PLAN_ETAPOWY Etap 0): 5 przestrzeni, 40 list
- * i projektów, 2 000 zadań (z podzadaniami do 4 poziomów), tagi i 15 nawyków z historią 90 dni.
- * Służy do testów wydajności widoków (PoC-5) i do `seed:dev` od MVP-1. Ten sam `seed` = te same dane.
+ * i projektów, 2 000 zadań (z podzadaniami do 4 poziomów; `tasks` — inna liczba, np. 10 000 do
+ * pomiarów z Etapu 13), tagi i 15 nawyków z historią 90 dni. Służy do testów wydajności widoków
+ * (PoC-5) i do `seed:dev` od MVP-1. Ten sam `seed` = te same dane.
  */
-import { keyBetween, type ListKind, type Priority, type TaskStatus } from '@taskplanner/core';
+import { keyBetween, uuidv5, type ListKind, type Priority, type TaskStatus } from '@taskplanner/core';
 
 export interface SeedOptions {
   /** Dzień odniesienia (terminy rozkładają się wokół niego), `RRRR-MM-DD`. */
@@ -11,6 +12,11 @@ export interface SeedOptions {
   seed?: number;
   tasks?: number;
   habits?: number;
+  /**
+   * Sól identyfikatorów: ten sam zestaw dla innego konta dostaje inne id (UUIDv5 z soli i id
+   * z generatora), więc nie koliduje z wierszami pierwszego konta. Brak = id jak dotąd.
+   */
+  idSalt?: string;
 }
 
 export interface SeedWorkspace { id: string; name: string; color: string; sortKey: string }
@@ -32,6 +38,8 @@ export interface SeedTask {
   recurrence: { mode: 'schedule'; rrule: string; anchor: string } | null;
   tagIds: string[];
   sortKey: string;
+  /** Ukończone: chwila ukończenia (ostatnie 30 dni, z id — bez dodatkowych losowań). */
+  completedAt?: string | null;
 }
 export interface SeedCompletion { taskId: string; occurrenceDate: string; kind: 'done' | 'skipped' }
 export interface SeedDataset { workspaces: SeedWorkspace[]; lists: SeedList[]; tags: SeedTag[]; tasks: SeedTask[]; completions: SeedCompletion[] }
@@ -68,14 +76,15 @@ const addDays = (date: string, days: number): string => {
   return d.toISOString().slice(0, 10);
 };
 
-export function generateDataset({ today, seed = 1, tasks: taskCount = 2000, habits: habitCount = 15 }: SeedOptions): SeedDataset {
+export function generateDataset({ today, seed = 1, tasks: taskCount = 2000, habits: habitCount = 15, idSalt }: SeedOptions): SeedDataset {
   const random = rng(seed);
   const int = (min: number, max: number) => min + Math.floor(random() * (max - min + 1));
   const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)]!;
   // UUID w formacie v4 z generatora — powtarzalny między uruchomieniami.
   const uuid = () => {
     const hex = Array.from({ length: 32 }, () => Math.floor(random() * 16).toString(16)).join('');
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${'89ab'[int(0, 3)]}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+    const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${'89ab'[int(0, 3)]}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+    return idSalt ? uuidv5(`seed:${idSalt}:${id}`) : id;
   };
   const nextKey = (() => {
     const last = new Map<string, string>();
@@ -110,6 +119,10 @@ export function generateDataset({ today, seed = 1, tasks: taskCount = 2000, habi
   const tags = TAGS.map((name) => ({ id: uuid(), name }));
 
   const tasks: SeedTask[] = [];
+  // Głębokość i zadania listy zapamiętane przy dodawaniu: szukanie rodziców po całej tablicy
+  // w pętli przy 10 000 zadań trwało minuty. Kolejność losowań bez zmian (ten sam `seed` = te same dane).
+  const depth = new Map<string, number>();
+  const byList = new Map<string, SeedTask[]>();
   const newTask = (list: SeedList, parent: SeedTask | null): SeedTask => {
     const hasDate = random() < 0.65;
     const dueDate = hasDate ? addDays(today, int(-10, 45)) : null;
@@ -132,24 +145,19 @@ export function generateDataset({ today, seed = 1, tasks: taskCount = 2000, habi
       tagIds: tags.filter(() => random() < 0.12).map((tag) => tag.id),
       sortKey: nextKey(`${list.id}/${parent?.id ?? ''}`),
     };
+    // Rozłożone na 30 dni (≈ 1/30 dziś): wszystkie „ukończone teraz” dawały tysiące wierszy w „Dziś”.
+    if (task.status === 'done') task.completedAt = `${addDays(today, -(parseInt(task.id.slice(0, 4), 16) % 30))}T16:00:00Z`;
     tasks.push(task);
+    depth.set(task.id, parent ? depth.get(parent.id)! + 1 : 1);
+    if (!byList.has(list.id)) byList.set(list.id, []);
+    byList.get(list.id)!.push(task);
     return task;
-  };
-
-  const depthOf = (task: SeedTask): number => {
-    let depth = 1;
-    let current = task;
-    while (current.parentId) {
-      current = tasks.find((t) => t.id === current.parentId)!;
-      depth++;
-    }
-    return depth;
   };
 
   while (tasks.length < taskCount) {
     const list = pick(lists);
     // Co piąte zadanie jest podzadaniem istniejącego z tej samej listy (do 4 poziomów).
-    const candidates = random() < 0.2 ? tasks.filter((t) => t.listId === list.id && depthOf(t) < 4) : [];
+    const candidates = random() < 0.2 ? (byList.get(list.id) ?? []).filter((t) => depth.get(t.id)! < 4) : [];
     newTask(list, candidates.length ? pick(candidates) : null);
   }
 
