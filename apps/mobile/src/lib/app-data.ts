@@ -91,19 +91,29 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
   const profile = (await db.all<SqlRow>('select settings from profiles where id = ?', [engine.userId]))[0];
   const settings = parseSettings(profile?.settings);
   const today = localDateAt(new Date(), settings.timeZone);
-  const [workspaces, lists, tags, filters, tasks, habits] = await Promise.all([
+  const queried = Date.now();
+  const [workspaces, lists, tags, filters, tasks, taskTags, habits] = await Promise.all([
     db.all<SqlRow>('select id, name, color, sort_key from workspaces where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs from lists where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, name, color, sort_key from tags where deleted_at is null'),
     db.all<SqlRow>('select id, name, icon, query, sort_key from saved_filters where deleted_at is null'),
     db.all<SqlRow>(
       `select t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
-              t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.postpone_count, t.field_clock,
-              (select group_concat(tt.tag_id) from task_tags tt where tt.task_id = t.id and tt.deleted_at is null) as tag_ids
+              t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.postpone_count, t.field_clock
          from tasks t where t.deleted_at is null`,
     ),
+    // Osobno i pogrupowane w JS: podzapytanie na każde zadanie było najdroższą częścią odczytu na telefonie.
+    db.all<SqlRow>('select task_id, tag_id from task_tags where deleted_at is null order by rowid'),
     db.all<SqlRow>("select task_id from task_completions where occurrence_date = ? and kind = 'done' and deleted_at is null", [today]),
   ]);
+  if (__DEV__) console.info('dane widoków: zapytania', `${Date.now() - queried} ms`);
+  const tagsOf = new Map<string, string[]>();
+  for (const r of taskTags) {
+    const id = String(r.task_id);
+    const list = tagsOf.get(id);
+    if (list) list.push(String(r.tag_id));
+    else tagsOf.set(id, [String(r.tag_id)]);
+  }
   const allLists = lists
     .map((r): List => {
       const prefs = ViewPrefs.safeParse(json(r.view_prefs) ?? {});
@@ -133,7 +143,7 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
       .sort(byKey),
     // Zadania z zarchiwizowanych list nie trafiają do widoków.
     tasks: tasks
-      .map((r) => toViewTask(r as unknown as LocalTaskRow, typeof r.tag_ids === 'string' && r.tag_ids ? r.tag_ids.split(',') : []))
+      .map((r) => toViewTask(r as unknown as LocalTaskRow, tagsOf.get(String(r.id)) ?? []))
       .filter((t) => listIds.has(t.listId)),
     habitsDoneToday: new Set(habits.map((r) => String(r.task_id))),
     settings,
@@ -162,7 +172,9 @@ async function reload() {
   try {
     do {
       dirty = false;
+      const started = Date.now();
       data = await loadAppData(await localEngine());
+      if (__DEV__) console.info('dane widoków', `${data.tasks.length} zadań, ${Date.now() - started} ms`);
       listeners.forEach((l) => l());
     } while (dirty);
   } catch (error) {

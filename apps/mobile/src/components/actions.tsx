@@ -176,7 +176,7 @@ export function TaskActionsProvider({ children }: { children: ReactNode }) {
     <ActionsContext.Provider value={value}>
       {children}
       {toast ? (
-        <View pointerEvents="box-none" style={[styles.toastWrap, { bottom: insets.bottom + 72 }]}>
+        <View pointerEvents="box-none" style={[styles.toastWrap, { bottom: insets.bottom + 150 }]}>
           <View accessibilityRole="alert" style={[styles.toast, { backgroundColor: p.fg }]}>
             <Text style={[styles.toastText, { color: p.bg }]} numberOfLines={2}>
               {toast.text}

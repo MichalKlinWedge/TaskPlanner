@@ -7,15 +7,16 @@ import { localDateAt, selectToday } from '@taskplanner/core';
 import { Platform } from 'react-native';
 import { requestWidgetUpdate } from 'react-native-android-widget';
 
-import { currentWorkspace } from '../lib/app-data';
+import { currentWorkspace, type AppData } from '../lib/app-data';
 import { headlessData } from '../lib/headless';
 import { toLocalTime } from '../lib/time';
 import { TODAY_WIDGET, todayWidget, type WidgetTask } from './today-widget';
 
-export async function renderTodayWidget() {
+/** `given` — już wczytane dane widoków (ekran); bez nich odczyt z bazy. */
+export async function renderTodayWidget(given?: AppData) {
   const updatedAt = toLocalTime(new Date());
   try {
-    const data = await headlessData();
+    const data = given ?? (await headlessData());
     const today = localDateAt(new Date(), data.settings.timeZone);
     const workspaceId = currentWorkspace();
     const view = selectToday(data.tasks, { today, timeZone: data.settings.timeZone, workspaceId: data.workspaces.some((w) => w.id === workspaceId) ? workspaceId : null });
@@ -32,8 +33,8 @@ export async function renderTodayWidget() {
   }
 }
 
-export async function refreshTodayWidget() {
+export async function refreshTodayWidget(data?: AppData) {
   if (Platform.OS !== 'android') return;
-  const widget = await renderTodayWidget();
+  const widget = await renderTodayWidget(data);
   await requestWidgetUpdate({ widgetName: TODAY_WIDGET, renderWidget: () => widget });
 }

@@ -12,6 +12,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { readJson, writeJson } from './config';
+import type { AppData } from './app-data';
 import { headlessData } from './headless';
 import { localEngine } from './sync';
 
@@ -53,8 +54,14 @@ const identifier = (key: string) => PREFIX + key.replace(/[^A-Za-z0-9_-]/g, '_')
 let running: Promise<ScheduleResult | null> | null = null;
 let again = false;
 
-/** Przeplanowanie; równoległe wywołania łączą się (jedno w toku + jedno po nim). */
-export function scheduleReminders(): Promise<ScheduleResult | null> {
+let latest: AppData | undefined;
+
+/**
+ * Przeplanowanie; równoległe wywołania łączą się (jedno w toku + jedno po nim). `data` — już
+ * wczytane dane widoków (ekran), bez nich odczyt z bazy (zadanie w tle, akcja z powiadomienia).
+ */
+export function scheduleReminders(data?: AppData): Promise<ScheduleResult | null> {
+  latest = data;
   if (running) {
     again = true;
     return running;
@@ -63,7 +70,9 @@ export function scheduleReminders(): Promise<ScheduleResult | null> {
     let result: ScheduleResult | null = null;
     do {
       again = false;
-      result = await scheduleOnce();
+      const given = latest;
+      latest = undefined;
+      result = await scheduleOnce(given);
     } while (again);
     return result;
   })().finally(() => {
@@ -72,13 +81,13 @@ export function scheduleReminders(): Promise<ScheduleResult | null> {
   return running;
 }
 
-async function scheduleOnce(): Promise<ScheduleResult | null> {
+async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
   if (Platform.OS !== 'android') return null;
   const now = Date.now();
   try {
     const [perm, exact] = await Promise.all([Notifications.getPermissionsAsync(), Notifications.getExactAlarmPermissionsAsync()]);
     if (!perm.granted) return null;
-    const data = await headlessData();
+    const data = given ?? (await headlessData());
     const engine = await localEngine();
     const [rules, zones] = await Promise.all([
       engine.db.all<{ id: string; task_id: string; kind: string; offset_min: number | null; at_date: string | null; at_time: string | null }>(

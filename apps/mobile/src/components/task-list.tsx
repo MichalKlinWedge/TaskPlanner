@@ -35,7 +35,8 @@ export function TaskSections({ sections, header, empty, quickAdd }: { sections: 
       <SectionList
         sections={visible}
         keyExtractor={(item) => item.key}
-        renderItem={({ item }) => <TaskRow {...item} />}
+        // `key` tylko dla listy — nie w propsach wiersza (React nie pozwala na `key` w spreadzie).
+        renderItem={({ item: { key: _key, ...row } }) => <TaskRow {...row} />}
         renderSectionHeader={({ section }) =>
           section.title ? (
             <View style={[styles.header, { backgroundColor: p.bg, borderColor: p.border }]}>

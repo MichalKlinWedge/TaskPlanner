@@ -36,7 +36,12 @@ export interface PullProgress {
   done: boolean;
   rows: number;
   fetchMs: number;
+  /** Transakcja zapisu (SQL + scalenie w JS), bez czekania w kolejce bazy. */
   writeMs: number;
+  /** Czekanie na kolejkę bazy przed transakcją (inne zapytania, np. odświeżenie widoków). */
+  waitMs: number;
+  /** Z tego scalenie w JS (`mergeRemote`). */
+  mergeMs: number;
 }
 
 type Listener = () => void;
@@ -323,20 +328,29 @@ export class SyncEngine {
 
   /** Pobranie wszystkich zmian stronami (`pull_changes` z limitem; pierwsza pełna migawka też w porcjach). */
   async pull(): Promise<void> {
-    for (let page = 0; ; page++) {
-      const { more, ...timing } = await this.pullPage();
-      this.options.onPullProgress?.({ page: page + 1, done: !more, ...timing });
-      if (!more) return;
+    // Słuchacze (odświeżenie widoków) dostają zmiany raz, po ostatniej stronie: odczyty między
+    // stronami stawały w kolejce bazy przed zapisem kolejnej (na telefonie 16 s z 23 s pierwszej synchronizacji).
+    const touched = new Set<string>();
+    try {
+      for (let page = 0; ; page++) {
+        const { more, ...timing } = await this.pullPage(touched);
+        this.options.onPullProgress?.({ page: page + 1, done: !more, ...timing });
+        if (!more) return;
+      }
+    } finally {
+      if (touched.size) this.notify(touched);
     }
   }
 
-  private async pullPage(): Promise<{ more: boolean; rows: number; fetchMs: number; writeMs: number }> {
+  private async pullPage(touched: Set<string>): Promise<{ more: boolean } & Omit<PullProgress, 'page' | 'done'>> {
     const started = Date.now();
     const result: PullResult = await this.remote.pull(this.since, this.options.pullPageSize ?? PULL_PAGE);
     const fetched = Date.now();
-    const touched = new Set<string>();
     let count = 0;
+    let began = 0;
+    let mergeMs = 0;
     await this.db.transaction(async (tx) => {
+      began = Date.now();
       // Tabela po tabeli (rodzice przed dziećmi): jedno zapytanie o lokalne wiersze, scalenie w JS,
       // zapis hurtowy. Wiersze, w których coś zostało lokalne (niewysłana zmiana), dostają zakres
       // liczony z rodzica już zapisanego w tej transakcji — po kolei, po zapisie hurtowym reszty.
@@ -348,10 +362,12 @@ export class SyncEngine {
         const locals = await this.loadMany(tx, table, remotes.map((r) => r.id as string));
         const plain: SqlRow[] = [];
         const won: SqlRow[] = [];
+        const merging = Date.now();
         for (const remote of remotes) {
           const { row, localWon } = mergeRemote(table, locals.get(remote.id as string), remote);
           (localWon ? won : plain).push(row);
         }
+        mergeMs += Date.now() - merging;
         await this.upsertMany(tx, table, plain);
         for (const row of won) {
           await this.deriveScope(tx, table, row);
@@ -370,8 +386,7 @@ export class SyncEngine {
       await this.setMeta(tx, 'clock', this.clock.last);
     });
     const written = Date.now();
-    if (touched.size) this.notify(touched);
-    return { more: result.more === true, rows: count, fetchMs: fetched - started, writeMs: written - fetched };
+    return { more: result.more === true, rows: count, fetchMs: fetched - started, writeMs: written - began, waitMs: began - fetched, mergeMs };
   }
 }
 

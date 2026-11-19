@@ -19,7 +19,7 @@ function PullPerfInfo({ perf }: { perf: PullPerf }) {
     <P muted mono>
       {`Ostatnie pobranie (${when}): ${perf.rows} wierszy, ${perf.pages} str., razem ${seconds(perf.totalMs)}
 ` +
-        `zapytanie pull_changes ${seconds(perf.fetchMs)} · zapis SQLite ${seconds(perf.writeMs)}
+        `zapytanie pull_changes ${seconds(perf.fetchMs)} · zapis SQLite ${seconds(perf.writeMs)} (scalenie ${seconds(perf.mergeMs ?? 0)}) · kolejka ${seconds(perf.waitMs ?? 0)}
 ` +
         `najwolniejsza strona: ${seconds(perf.slowest.fetchMs)} + ${seconds(perf.slowest.writeMs)}`}
     </P>

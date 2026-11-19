@@ -91,8 +91,8 @@ function BackgroundWork() {
   useEffect(() => {
     if (!data.loaded) return;
     const timer = setTimeout(() => {
-      void scheduleReminders();
-      void refreshTodayWidget().catch(() => undefined);
+      void scheduleReminders(data);
+      void refreshTodayWidget(data).catch(() => undefined);
     }, 1500);
     return () => clearTimeout(timer);
   }, [data]);

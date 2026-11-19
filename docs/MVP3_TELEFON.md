@@ -68,11 +68,11 @@ Część telefoniczna MVP-3 w `apps/mobile`: zakładki `src/app/(tabs)/`, szczeg
 
 | Scenariusz | Data | Wynik | Uwagi |
 | --- | --- | --- | --- |
-| T1 | | | |
+| T1 | 19.11.2026 | OK | dev build, 5 767 wierszy / 6 stron: przed poprawką 22,9–23,5 s (zapis 4,9 s, **kolejka 15,9 s** — odświeżanie widoków po każdej stronie), po poprawce **3,4 s** (zapytanie 1,5 s, zapis 2,6 s, scalenie 0,2 s, kolejka 0,06 s); MVP-1: ~27 s |
 | T2 | | | |
 | T3 | | | |
 | T4 | | | |
-| T5 | | | |
+| T5 | 19.11.2026 | w toku | przesunięcie w prawo = ukończ + „Cofnij” (po poprawce kierunku), odświeżenie widoku 0,27 s (zapytania 0,22 s po zastąpieniu podzapytania tagów; wcześniej 0,9 s) |
 | T6 | | | |
 | T7 | | | |
 | T8 | | | |

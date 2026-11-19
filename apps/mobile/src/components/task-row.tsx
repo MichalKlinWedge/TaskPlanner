@@ -134,7 +134,8 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
       )}
       onSwipeableWillOpen={(direction) => {
         swipe.current?.close();
-        if (direction === SwipeDirection.LEFT) void toggle(task, { habitDone });
+        // Kierunek = ruch palca: w prawo odsłania lewy panel („Ukończ”).
+        if (direction === SwipeDirection.RIGHT) void toggle(task, { habitDone });
         else void rescheduleWithMenu(task, today, actions);
       }}
     >

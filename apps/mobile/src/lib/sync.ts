@@ -67,6 +67,10 @@ export interface PullPerf {
   rows: number;
   fetchMs: number;
   writeMs: number;
+  /** Czekanie na kolejkę bazy przed zapisem strony. */
+  waitMs: number;
+  /** Część zapisu: scalenie w JS. */
+  mergeMs: number;
   totalMs: number;
   /** Najwolniejsza strona (ms zapytania / zapisu). */
   slowest: { fetchMs: number; writeMs: number };
@@ -82,18 +86,22 @@ function initialStatus(): SyncStatus {
   return { syncing: false, lastAt, error: null, pull: null, firstSync: lastAt === null, pullPerf: readJson<PullPerf | null>(PULL_PERF_KEY, null) };
 }
 
-/** Bieżące pobranie (strony jednej synchronizacji); zapisywane, gdy przyszły jakieś wiersze. */
+/** Bieżące pobranie (strony jednej synchronizacji); zapisywane od 100 wierszy. */
 let perf: PullPerf | null = null;
 
 function recordPullPage(page: PullProgress) {
-  if (page.page === 1 || !perf) perf = { at: Date.now(), pages: 0, rows: 0, fetchMs: 0, writeMs: 0, totalMs: 0, slowest: { fetchMs: 0, writeMs: 0 } };
+  if (page.page === 1 || !perf) perf = { at: Date.now(), pages: 0, rows: 0, fetchMs: 0, writeMs: 0, waitMs: 0, mergeMs: 0, totalMs: 0, slowest: { fetchMs: 0, writeMs: 0 } };
   perf.pages = page.page;
   perf.rows += page.rows;
   perf.fetchMs += page.fetchMs;
   perf.writeMs += page.writeMs;
+  perf.waitMs += page.waitMs;
+  perf.mergeMs += page.mergeMs;
   perf.totalMs = Date.now() - perf.at;
   if (page.fetchMs + page.writeMs > perf.slowest.fetchMs + perf.slowest.writeMs) perf.slowest = { fetchMs: page.fetchMs, writeMs: page.writeMs };
-  if (page.done && perf.rows > 0) {
+  if (__DEV__ && page.done) console.info('pull', JSON.stringify(perf));
+  // Drobne pobrania (pojedyncza zmiana z webu) nie nadpisują pomiaru dużego.
+  if (page.done && perf.rows >= 100) {
     writeJson(PULL_PERF_KEY, perf);
     setStatus({ pullPerf: { ...perf } });
   }
