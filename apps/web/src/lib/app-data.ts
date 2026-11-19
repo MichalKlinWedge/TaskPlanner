@@ -5,7 +5,7 @@
  * (z tagami) i dzisiejsze wykonania nawyków. Zapytania odświeżają się po każdej zmianie tabel
  * (także z innej karty i z synchronizacji); reguły widoków liczy `@taskplanner/core`.
  */
-import { FilterQuery, localDateAt, ProfileSettings, toHabitCompletion, toViewTask, ViewPrefs, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ViewTask } from "@taskplanner/core";
+import { AttachmentPreview, FilterQuery, localDateAt, ProfileSettings, toHabitCompletion, toViewTask, ViewPrefs, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ViewTask } from "@taskplanner/core";
 import type { SqlRow, TabStore } from "@taskplanner/sync";
 import { useEffect, useMemo, useState } from "react";
 
@@ -48,6 +48,21 @@ export interface SavedFilter {
   sortKey: string;
 }
 
+/** Załącznik zadania (M5): plik w Storage albo link z podglądem strony. */
+export interface Attachment {
+  id: string;
+  taskId: string;
+  kind: "file" | "link";
+  storagePath: string | null;
+  name: string;
+  mime: string | null;
+  size: number | null;
+  url: string | null;
+  /** Link: `null` = podgląd jeszcze nie pobrany, `{}` = niedostępny. */
+  preview: AttachmentPreview | null;
+  createdAt: string;
+}
+
 export interface AppData {
   workspaces: Workspace[];
   lists: List[];
@@ -58,6 +73,8 @@ export interface AppData {
   habitsDoneToday: Set<string>;
   /** Wpisy nawyków (`task_completions`): id nawyku → wpisy (statystyki, pasek dni, „Dziś”). */
   habitCompletions: Map<string, HabitCompletion[]>;
+  /** Załączniki: id zadania → wiersze (od najstarszego — id to UUIDv7). */
+  attachments: Map<string, Attachment[]>;
   loaded: boolean;
 }
 
@@ -118,6 +135,12 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
     [],
     ["task_completions", "tasks"],
   );
+  const attachments = useLocalQuery<Row>(
+    store,
+    "select id, task_id, kind, storage_path, name, mime, size_bytes, url, preview, created_at from attachments where deleted_at is null order by id",
+    [],
+    ["attachments"],
+  );
 
   return useMemo(() => {
     const listIds = new Set<string>();
@@ -160,7 +183,24 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
         map.set(id, [...(map.get(id) ?? []), toHabitCompletion({ occurrence_date: r.occurrence_date, kind: r.kind, value: r.value })]);
         return map;
       }, new Map<string, HabitCompletion[]>()),
+      attachments: attachments.rows.reduce((map, r) => {
+        const preview = r.preview === null ? null : AttachmentPreview.safeParse(json(r.preview) ?? {});
+        const item: Attachment = {
+          id: String(r.id),
+          taskId: String(r.task_id),
+          kind: r.kind === "link" ? "link" : "file",
+          storagePath: (r.storage_path as string | null) ?? null,
+          name: String(r.name),
+          mime: (r.mime as string | null) ?? null,
+          size: r.size_bytes === null ? null : Number(r.size_bytes),
+          url: (r.url as string | null) ?? null,
+          preview: preview === null ? null : preview.success ? preview.data : {},
+          createdAt: String(r.created_at ?? ""),
+        };
+        map.set(item.taskId, [...(map.get(item.taskId) ?? []), item]);
+        return map;
+      }, new Map<string, Attachment[]>()),
       loaded: workspaces.ms !== null && lists.ms !== null && tasks.ms !== null,
     };
-  }, [workspaces, lists, tags, filters, tasks, habits, today]);
+  }, [workspaces, lists, tags, filters, tasks, habits, attachments, today]);
 }

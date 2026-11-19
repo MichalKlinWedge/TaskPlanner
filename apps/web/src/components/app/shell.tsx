@@ -4,7 +4,7 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, BOARD_BY, bulkTaskOps, habitsForDay, isEmptyFilter, isOpen, plural, selectInbox, selectToday, type BoardBy, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
+import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, plural, selectInbox, selectToday, type BoardBy, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -22,6 +22,7 @@ import { FilterBar } from "./filter-bar";
 import { FocusIndicator, FocusProvider, FocusScreen } from "./focus";
 import { DailyReview, ReviewNudge, WeeklyReview } from "./review";
 import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-views";
+import { AttachmentsProvider } from "./attachments";
 import { HabitDetail, HabitNotificationActions, HabitsView } from "./habits";
 import { QuickAddDialog } from "./quick-add";
 import { TaskPanel } from "./task-panel";
@@ -81,12 +82,15 @@ export function Shell({
   const stored = useSyncExternalStore(subscribeWorkspace, readWorkspace, () => ALL);
   const workspaceId = stored !== ALL && data.workspaces.some((w) => w.id === stored) ? stored : null;
   const [menuOpen, setMenuOpen] = useState(false);
+  // Etap 10: udostępnienie (Web Share Target) i zakładka: `/?share_title=…&share_text=…&share_url=…`.
+  const [shared, setShared] = useState(() => (typeof window !== "undefined" ? readShare(new URLSearchParams(window.location.search)) : null));
   // Skrót „Szybkie dodawanie” z ikony aplikacji: `/?quick=1`.
-  const [quickOpen, setQuickOpen] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("quick"));
+  const [quickOpen, setQuickOpen] = useState(() => typeof window !== "undefined" && (new URLSearchParams(window.location.search).has("quick") || shared !== null));
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (url.searchParams.has("quick")) {
+    if (url.searchParams.has("quick") || SHARE_PARAMS.some((p) => url.searchParams.has(p))) {
       url.searchParams.delete("quick");
+      for (const p of SHARE_PARAMS) url.searchParams.delete(p);
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
     }
     // Powrót z ekranu zgody Google (`lib/calendars.ts`) → ustawienia z listą kalendarzy.
@@ -290,6 +294,7 @@ export function Shell({
   return (
     <AppEnvProvider value={{ store, data, userId, timeZone: settings.timeZone, today, workspaceId, openTask: setOpenTaskId, openTaskId, selectedIds, select }}>
       <TaskActionsProvider store={store} timeZone={settings.timeZone} tasks={data.tasks}>
+        <AttachmentsProvider store={store} userId={userId}>
         <FocusProvider store={store} userId={userId} settings={settings}>
         <ReminderToasts />
         <HabitNotificationActions />
@@ -382,7 +387,16 @@ export function Shell({
           </main>
           {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>
-        <QuickAddDialog open={quickOpen} onClose={() => setQuickOpen(false)} {...quickDefaults} />
+        <QuickAddDialog
+          key={shared ? "shared" : "quick"}
+          open={quickOpen}
+          onClose={() => {
+            setQuickOpen(false);
+            setShared(null);
+          }}
+          {...quickDefaults}
+          {...(shared && { initialText: shared.text, link: shared.url ? { url: shared.url, shared: true } : undefined, placeholder: "Zadanie z udostępnionego linku" })}
+        />
         {palette ? (
           <PaletteHost
             mode={palette}
@@ -396,6 +410,7 @@ export function Shell({
         ) : null}
         {shortcutsOpen ? <ShortcutsDialog onClose={() => setShortcutsOpen(false)} /> : null}
         </FocusProvider>
+        </AttachmentsProvider>
       </TaskActionsProvider>
     </AppEnvProvider>
   );
@@ -523,6 +538,15 @@ function WorkspaceLists({
 
 /** Tryb skupienia z zadaniem (zaznaczonym albo otwartym) albo bez. */
 const focusRoute = (taskId: string | null | undefined): Route => (taskId ? { view: "focus", id: taskId } : { view: "focus" });
+
+/** Parametry udostępnienia (manifest `share_target`, zakładka w „Ustawieniach”). */
+export const SHARE_PARAMS = ["share_title", "share_text", "share_url"] as const;
+
+function readShare(params: URLSearchParams): { text: string; url: string | null } | null {
+  if (!SHARE_PARAMS.some((p) => params.get(p))) return null;
+  const result = sharedText({ title: params.get("share_title"), text: params.get("share_text"), url: params.get("share_url") });
+  return result.text ? result : null;
+}
 
 const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" }, h: { view: "habits" } };
 

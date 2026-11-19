@@ -197,6 +197,7 @@ Oznaczenia: **[W]** web, **[A]** Android, **[W+A]** oba.
 - Web: edytor WYSIWYG (TipTap), skróty Markdown w trakcie pisania. Telefon: edytor z paskiem narzędzi i przełącznikiem podgląd/edycja.
 - **Załączniki** (Etap 10): pliki do 25 MB w prywatnym buckecie `attachments` (`{user_id}/{task_id}/{uuid}-{nazwa}`), podgląd obrazów i PDF, załączniki z maila. Telefon: zdjęcie z aparatu / plik; wysyłka w kolejce offline (jak `journal-photos.ts` w EP), pobieranie na żądanie i pamięć podręczna.
 - Link jako załącznik: URL + tytuł + ikona strony (z `link-preview`).
+- Zrobione (19.11.2026, Etap 10, web): `core/attachments.ts`, kolejka `sync/files.ts` (`createFileQueue` — wiersz po wysłaniu pliku), RLS Storage w `*_etap10_attachments.sql`, Edge Function `link-preview` (ochrona SSRF: tylko publiczne adresy, przekierowania sprawdzane co krok); web Share Target, bookmarklet, wklejony adres. Telefon — do zrobienia.
 
 ### M6. Priorytety, terminy, czas trwania
 - Priorytet 1–4: **1 Krytyczny** (czerwony), **2 Wysoki** (pomarańczowy), **3 Średni** (niebieski), **4 Niski** (szary, domyślny). Flaga w kolorze na liście, pasek koloru na kanbanie i w kalendarzu. Etykiety w `core/labels.ts` (`PRIORITY`).

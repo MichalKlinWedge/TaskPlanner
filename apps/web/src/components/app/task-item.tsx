@@ -147,8 +147,9 @@ export interface TaskItemProps {
 
 export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd }: TaskItemProps) {
   const { toggle } = useTaskActions();
-  const { openTask, selectedIds, select } = useAppEnv();
+  const { openTask, selectedIds, select, data } = useAppEnv();
   const selected = selectedIds.has(task.id);
+  const attachments = data.attachments.get(task.id)?.length ?? 0;
   const closed = task.kind === "habit" ? Boolean(habitDone) : !isOpen(task);
   const date = virtualDate ?? task.dueDate;
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
@@ -223,6 +224,7 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
             </span>
           ) : null}
           {task.status === "in_progress" || task.status === "waiting" ? <span>{task.status === "in_progress" ? "w trakcie" : "oczekuje"}</span> : null}
+          {attachments ? <span title={`Załączniki: ${attachments}`}>📎 {attachments}</span> : null}
           {listName ? <span className="truncate">{listName}</span> : null}
         </span>
       </button>
