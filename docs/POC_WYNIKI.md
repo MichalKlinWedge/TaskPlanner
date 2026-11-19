@@ -1,5 +1,43 @@
 # Wyniki PoC
 
+## PoC-4 — Android: przypomnienia, widżet, udostępnianie, kalendarz (18.11.2026)
+
+**Werdykt (19.11.2026): GO** — wszystkie biblioteki zostają (`expo-notifications`, `react-native-android-widget`, `expo-share-intent`, `expo-calendar`), przypomnienia **tylko z dokładnymi alarmami** (`USE_EXACT_ALARM`). Telefon: Galaxy S22 Ultra, Android 16, One UI; dev build z Metro i release. Scenariusze: `docs/POC4_TELEFON.md` (S1–S9).
+
+**Bez 3-dobowego pomiaru (decyzja użytkownika: „nie mam czasu na takie długie testy, jedzmy dalej”).** Dokładność przypomnień oparta na tym, że system przyjął wszystkie 50 alarmów jako dokładne (`window=0`, `setExactAndAllowWhileIdle`) — nie na zmierzonym ≥ 95 % ±1 min w Doze. Seria S4 (do 22.11 08:39) zostaje na telefonie; jej raport, jeśli powstanie, dopisać tutaj. Do sprawdzenia przy okazji w MVP-3: tytuł strony z prawdziwego Chrome (S7) i płynność przeciągania palcem (S8 vs S9 — wybór widoku dnia odłożony do MVP-3; domyślnie własna oś, bo calendar-kit nie przesunął bloku gestem).
+
+| Kryterium | Wynik | Jak sprawdzone |
+|---|---|---|
+| Biblioteki na SDK 58 / New Architecture | ✅ `expo-doctor` 20/20; bundel Hermes (`expo export --platform android`, 2 039 modułów) | lokalnie |
+| PoC-1 na telefonie: SQLite + silnik (outbox, odrzucenie, scalanie per pole, UUIDv5, 500 zapisów < 10 s) | ✅ `node:sqlite` i ✅ expo-sqlite na telefonie: 9/9; 500 zapisów offline **5,6 s** w release (11,1 ms/zapis; dev build 9,8 s), wysłanie 500 op. 0,30 s (dev 0,94 s) | `src/selftest/local-sync.ts`, S1 |
+| PoC-1/2/3 w Hermes (id, HLC, cykliczność 15 + 1 000 wystąpień < 20 ms, nawyki 5, korpus szybkiego dodawania 100 %) | ✅ **45/45** (Hermes 260318099.0.5): id/HLC 6/6, cykliczność 15/15 + 1 000 wystąpień **7,7–15 ms** (dev / release, rozrzut między przebiegami), nawyki 5/5, korpus 99/99, pułapki 0/17, **0,09 ms/wpis**; release 45/45; Intl po polsku, polyfille | ekran „Samosprawdzenie” (S1) |
+| Przypomnienia ≥ 95 % ±1 min z dokładnymi alarmami / ≤ 10 min bez nich (50 na 72 h, noc w Doze) | ⏳ S3, S4 (3 doby). Szybki test bez dokładnych alarmów (3 w 6 min, ekran wygaszony): opóźnienia **+90 s, +180 s, +60 s** (2. i 3. zgrupowane w jednym wybudzeniu), ±1 min 1/3. `dumpsys alarm`: `setAndAllowWhileIdle` dostaje okno ≈ 75 % czasu do terminu (+2 min → okno 1 min 30 s, +10 min → 7 min 30 s). Doze przez adb na One UI nie do wymuszenia (`force-idle` zostaje w INACTIVE) — tylko noc. **Bez dokładnych alarmów: NO-GO** (okno rośnie z wyprzedzeniem) → decyzja: `USE_EXACT_ALARM` w `app.json` (APK poza Google Play, przyznane przy instalacji); 3-dobowy pomiar tylko z dokładnymi alarmami (S4). **S4 wystartował 19.11 08:37** (release z `USE_EXACT_ALARM`): 50 alarmów `window=0 exactAllowReason=policy_permission`, 19.11 08:39:47 → 22.11 08:39:47 | ekran „Przypomnienia”, `dumpsys alarm` / `notification` |
+| „Ukończ” / „Jutro” / „Odłóż 10 min” przy zamkniętej aplikacji, bez sieci → SQLite + outbox | ✅ dev build, aplikacja usunięta z ostatnich (brak procesu), tryb samolotowy: „Ukończ” → `done`, „Jutro” → termin +1 dzień, „Odłóż 10 min” → nowy alarm; 3/3 `[background-task] OK`, powiadomienie znika, aplikacja się nie otwiera, outbox +8. Czas od stuknięcia do zapisu 7–15 s (start procesu + bundel z Metro) — ⏳ zmierzyć w release | dziennik akcji, baza z telefonu |
+| Widżet „Dziś” z odhaczaniem przy zamkniętej aplikacji, bez sieci | ✅ dev build, aplikacja zatrzymana (`am force-stop`), tryb samolotowy: klik → `WIDGET_CLICK` → Headless JS → zapis + przerysowanie ≈ 2 s (obsługa w JS 274 ms); cykliczny „Trening” → `task_completions` (UUIDv5) i termin na jutro; outbox rośnie. Pierwszy klik tuż po `force-stop` zgubiony (launcher przebudowywał widżet) — ⏳ powtórzyć w release po usunięciu z ostatnich, restart telefonu | dziennik widżetu, baza z telefonu (`run-as`) |
+| Link z Chrome → szybkie dodawanie | ✅ intencja `SEND text/plain` (jak z Chrome) przy zamkniętej aplikacji → „Szybkie dodawanie” z linkiem; „jutro o 20 !2” → termin, godzina, priorytet, `source.kind = link`. Tytuł strony nie dochodzi: `expo-share-intent` czyta `EXTRA_TITLE`, a nie `EXTRA_SUBJECT`. ⏳ prawdziwy Chrome | `adb shell am start -a android.intent.action.SEND` |
+| Kalendarz telefonu + calendar-kit (przeciąganie, zmiana długości) | ⚠️ wydarzenia z 18 kalendarzy widoczne obok zadań, 81 wydarzeń z 8 dni (pierwszy pomiar 16,2 s obejmował okno zgody — poprawione). calendar-kit: przytrzymanie zaznacza blok (uchwyty), przeciągnięcie syntetycznym gestem przewija widok zamiast przesuwać blok. Własna oś (S9): przytrzymanie i przesunięcie → „Zapisano 09:45” w 46 ms. ⏳ płynność palcem, release | `adb shell input motionevent` |
+
+**Co powstało (`apps/mobile`):**
+- Wejście `index.ts`: polyfille → rejestracja zadań w tle (`src/background/register.ts`: `TaskManager.defineTask` dla odpowiedzi na powiadomienia, `registerWidgetTaskHandler`) → `expo-router/entry`. Zadania w tle muszą być zarejestrowane przed routerem, bo Headless JS startuje bez ekranu.
+- `src/lib/sync.ts`: jeden `SyncEngine` (expo-sqlite, `autoSync: false`, ręczne `requestSync` po zapisie, gdy jest konto) — wspólny dla ekranów, widżetu i akcji z powiadomień. Bez konta zapis lokalny w zakresie `OFFLINE_USER_ID`.
+- `src/lib/tasks.ts`: operacje na zadaniach przez `mutate` (ukończenie cyklicznego = wiersz `task_completions` z UUIDv5 + `nextDue`, „jutro”, przesunięcie bloku), szybkie dodawanie z linkiem (`source.kind = 'link'`).
+- `src/lib/reminders.ts`: kanał HIGH, kategoria z 3 akcjami `opensAppToForeground: false`, seria N przypomnień z pomiarem (czas pokazania = `postTime` z `getPresentedNotificationsAsync`), raport; obsługa akcji idempotentna (ta sama odpowiedź może przyjść z zadania w tle i z listenera).
+- `src/widget/*`: widżet „Today” (`react-native-android-widget`, jasny/ciemny), klik → przełączenie zadania w lokalnej bazie i przerysowanie.
+- Ekrany: menu ze stanem outboxa, „Dziś i widżet”, „Przypomnienia”, „Szybkie dodawanie” (share intent), „Kalendarz” (calendar-kit + `expo-calendar`), „Oś dnia (własna)” (Gesture Handler 3), „Samosprawdzenie”, „Serwer i konto”.
+- Metro: korpus `fixtures/quick-add.jsonl` importowany jako moduł (`metro/jsonl-transformer.js`).
+
+**Ustalenia techniczne:**
+- expo-notifications: akcja inna niż domyślna przy aplikacji poza pierwszym planem uruchamia zadanie `registerTaskAsync` (Headless JS); przy żywym procesie przychodzi też listener — stąd obsługa idempotentna (`poc4.handled`).
+- Dokładne alarmy: bez `SCHEDULE_EXACT_ALARM` biblioteka używa `setAndAllowWhileIdle` (okno systemowe), z pozwoleniem — `setExactAndAllowWhileIdle`; typ wyzwalacza `alarmClock` → `setAlarmClock`. Na Androidzie 14+ pozwolenie domyślnie odebrane — użytkownik włącza je w „Alarmy i przypomnienia”.
+- Pliki widżetu muszą mieć `'use no memo'` (React Compiler psuje drzewo widżetu, które nie jest renderowane przez React Native).
+- calendar-kit: `hourFormat` jest propem `CalendarBody`, nie `CalendarContainer`.
+
+**Dokładne alarmy — decyzja: `USE_EXACT_ALARM`.** Bez pozwolenia Android planuje przypomnienie przez `setAndAllowWhileIdle` z oknem ≈ 75 % czasu do terminu (zmierzone: +2 min → okno 1,5 min, +10 min → 7,5 min; górnej granicy okna dla terminów za wiele godzin nie zmierzono), więc „przypomnienie o 9:00” może przyjść dużo później. `SCHEDULE_EXACT_ALARM` na Androidzie 14+ jest domyślnie odebrane i wymaga ręcznego włączenia w ustawieniach. `USE_EXACT_ALARM` (API 33+) system przyznaje przy instalacji; w Google Play wolno go używać tylko aplikacjom budzika/kalendarza — dystrybuujemy APK poza Play, więc ograniczenie nas nie dotyczy (przy ewentualnej publikacji w Play wrócić do `SCHEDULE_EXACT_ALARM` + prośba w aplikacji). `SCHEDULE_EXACT_ALARM` zostaje dla Androida 12–12L.
+
+**Build i aktualizacje — decyzja: bez EAS.** Darmowy limit EAS Build (15 buildów Androida/mies.) wyczerpał się w trakcie PoC-4, więc APK budujemy sami: lokalnie przez USB (`npx expo run:android`) i w GitHub Actions (`.github/workflows/android.yml`: prebuild → `assembleRelease` → podpis kluczem z sekretów → artefakt, opcjonalnie Release). EAS Update (OTA) odpada: **na razie nowy APK zamiast OTA, ewentualnie później własny serwer zgodny z protokołem Expo Updates**. `expo-updates` zostaje w zależnościach (bez `updates.url` nic nie pobiera), skrypt `ota` usunięty. Instrukcja: `docs/ANDROID_BUILD.md`, limity Actions: `docs/USLUGI.md`.
+
+**Build na Windows:** CMake/ninja z katalogu worktree (`…\.claude\worktrees\…`) przekracza 260 znaków; `subst` psuje codegen (Node rozwiązuje prawdziwą ścieżkę). Ninja 1.10 z CMake 3.22.1 nie obsługuje długich ścieżek nawet w kopii `C:\tp` przy `LongPathsEnabled = 1` (ścieżki obiektów codegenu ~275 znaków). Działa CMake 3.31.6 z SDK (ninja 1.12.1): `cmake.dir` w `android/local.properties`. Na runnerze Linux problemu nie ma.
+
 ## PoC-6 — Integracje serwerowe (18.11.2026)
 
 **Werdykt: GO dla Google Calendar (watch 3,9 s na prawdziwym Google w chmurze) i Web Push (zamknięta karta Chrome); `pg_cron`/`pg_net` działają na Free. ICS: GO (plik Google odświeża się ~25 s po zmianie). E-mail: GO lokalnie; prawdziwa droga przez Cloudflare razem z M19 w v1.x (D9)** (`docs/POC6_KONFIGURACJA.md`).
@@ -69,6 +107,7 @@ dziennych (11 500 wystąpień, 95 KiB) w **110–150 ms** w Node, przy limicie C
 - Token odświeżania Google w stanie *In production* > 7 dni (w trakcie MVP).
 - Cloudflare (v1.x, D9): czas Email Routing → Worker → funkcja, nagłówki `Authentication-Results` dodawane przez Cloudflare (od tego zależy reguła DMARC), limit CPU Workera na Free.
 - Załączniki z maila (Etap 10), wybór kalendarzy w UI i ekran „Połączone kalendarze” (Etap 5), strefa z ustawień profilu zamiast `inbound_addresses.time_zone` (MVP-1).
+
 ## PoC-5 — Widoki webowe na lokalnych danych (18.11.2026)
 
 **Werdykt: GO z warunkami.** Biblioteki: **FullCalendar 6.1.22** (MIT), **dnd-kit** (core 6.3, sortable 10), **SVAR React Gantt 2.8.3** (MIT, darmowa wersja wystarcza — własnego komponentu SVG nie budowałem), **TipTap 3.34 + @tiptap/markdown**. Strona prób: `/dev/views`. Dane: `npm run seed:dev -- --load` (5 746 operacji przez `push_changes` w 3,4 s, 0 odrzuceń) → 2 017 zadań w lokalnej bazie przeglądarki (OPFS).

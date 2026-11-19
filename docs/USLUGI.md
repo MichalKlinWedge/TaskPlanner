@@ -32,6 +32,19 @@ Stan na **18.11.2026** (oficjalna dokumentacja i cenniki). Przed wprowadzeniem n
 | Buildy | 15 Android + 15 iOS miesięcznie, kolejka niskiego priorytetu, limit 45 min | W | expo.dev/pricing |
 | EAS Update | 1 000 MAU, bez dopłat | W | docs.expo.dev/billing/plans |
 
+**Wniosek (PoC-4, 18.11.2026):** EAS nie używamy — limit 15 buildów wyczerpał się w trakcie PoC-4, a builder w chmurze nie jest potrzebny. APK lokalnie i w GitHub Actions (`docs/ANDROID_BUILD.md`), bez EAS Update.
+
+## GitHub Actions (plan Free, konto osobiste)
+| Warunek | Wartość | Pewność | Źródło |
+|---|---|---|---|
+| Repozytoria publiczne | standardowe runnery bez opłat | W | docs.github.com/en/billing/concepts/product-billing/github-actions (18.11.2026) |
+| Repozytoria prywatne — limit | **12 USD/mies.** wliczonego zużycia (kwota, nie minuty) ≈ **2 000 min** Linux 2-core; reset na początku miesiąca; zaokrąglanie każdego joba w górę do pełnej minuty | W | j.w. |
+| Stawki (zamiast dawnych mnożników) | Linux 2-core x64 0,006 USD/min (1×), Linux arm64 0,005, Windows 2-core 0,010 (≈ 1,7×), macOS 0,062 (≈ 10×) | W | docs.github.com/en/billing/reference/actions-runner-pricing (18.11.2026) |
+| Po wyczerpaniu | bez metody płatności — **blokada** (nie obciążenie) | W | j.w. |
+| Artefakty | 500 MB (wspólnie z Packages), cache 10 GB na repozytorium | W | j.w. |
+
+**Wniosek:** build APK na `ubuntu-latest` (najtańszy, bez problemu długich ścieżek Windows); szacunkowo 15–25 min na build bez cache Gradle → ok. 80–130 buildów/mies. w limicie. Artefakt z retencją 30 dni, starsze APK w Releases.
+
 ## Google (OAuth, Calendar API)
 | Warunek | Wartość | Pewność | Źródło |
 |---|---|---|---|

@@ -10,6 +10,10 @@
     "android": {
       "package": "pl.taskplanner.app",
       "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.USE_EXACT_ALARM"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "monochromeImage": "./assets/images/adaptive-icon-monochrome.png",
@@ -27,6 +31,45 @@
           "resizeMode": "contain",
           "backgroundColor": "#FAFAFA",
           "dark": { "backgroundColor": "#09090B" }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#2563eb"
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "TaskPlanner pokazuje wydarzenia z kalendarza obok zadań."
+        }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "Today",
+              "label": "TaskPlanner — Dziś",
+              "description": "Zadania na dziś z odhaczaniem",
+              "minWidth": "250dp",
+              "minHeight": "180dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 3,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "androidIntentFilters": [
+            "text/*"
+          ],
+          "disableIOS": true
         }
       ]
     ],

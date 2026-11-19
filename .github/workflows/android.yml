@@ -1,0 +1,97 @@
+# APK Androida bez EAS: prebuild Expo + Gradle na runnerze GitHub, podpis kluczem z sekretów.
+# Uruchamianie: ręcznie (Actions → Android APK → Run workflow) albo push tagu `android-v*`.
+# Sekrety (Settings → Secrets and variables → Actions): ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+# ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD — instrukcja w docs/ANDROID_BUILD.md. Bez nich APK jest
+# podpisany kluczem debug (do testów, nie do aktualizacji wersji podpisanej właściwym kluczem).
+name: Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Utworzyć GitHub Release z APK'
+        type: boolean
+        default: false
+  push:
+    tags: ['android-v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Zmienne publiczne aplikacji (opcjonalne; adres serwera można też ustawić w aplikacji).
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: npm ci
+
+      - name: Prebuild (android/ generowany, nie w repozytorium)
+        working-directory: apps/mobile
+        run: npx expo prebuild --platform android --no-install
+
+      - name: assembleRelease
+        working-directory: apps/mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Podpis kluczem z sekretów
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APK=apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          VERSION=$(node -p "require('./apps/mobile/app.json').expo.version")
+          OUT="taskplanner-${VERSION}-${GITHUB_RUN_NUMBER}.apk"
+          if [ -z "${KEYSTORE_BASE64}" ]; then
+            echo "::warning::Brak sekretów keystore — APK podpisany kluczem debug."
+            cp "$APK" "$OUT"
+          else
+            BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            "$BUILD_TOOLS/zipalign" -f -p 4 "$APK" aligned.apk
+            "$BUILD_TOOLS/apksigner" sign --ks "$RUNNER_TEMP/release.jks" \
+              --ks-pass env:KEYSTORE_PASSWORD --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD \
+              --out "$OUT" aligned.apk
+            "$BUILD_TOOLS/apksigner" verify --print-certs "$OUT" | head -3
+            rm -f "$RUNNER_TEMP/release.jks"
+          fi
+          echo "APK=$OUT" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK }}
+          path: ${{ env.APK }}
+          retention-days: 30
+
+      - name: GitHub Release
+        if: startsWith(github.ref, 'refs/tags/android-v') || inputs.release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "$GITHUB_REF" != refs/tags/* ]]; then TAG="android-build-${GITHUB_RUN_NUMBER}"; fi
+          gh release create "$TAG" "$APK" --target "$GITHUB_SHA" --title "TaskPlanner Android ${TAG}" --notes "APK z przebiegu ${GITHUB_RUN_ID}." --prerelease
