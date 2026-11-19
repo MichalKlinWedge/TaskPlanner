@@ -95,6 +95,8 @@ export class FakeServices {
   push: PushRequest[] = [];
   pushStatus = new Map<string, number>();
   email = 'tester@gmail.com';
+  /** Strony dla `link-preview` (Etap 10): `/pages/<nazwa>`; `delayMs` — odpowiedź po czasie. */
+  pages = new Map<string, { status?: number; headers?: Record<string, string>; body?: string | Buffer; delayMs?: number }>();
 
   async start(): Promise<void> {
     this.server = createServer((req, res) => {
@@ -114,6 +116,11 @@ export class FakeServices {
   /** Adres usługi push widziany z kontenera funkcji. */
   pushEndpoint(id: string) {
     return `http://host.docker.internal:${FAKE_PORT}/push/${id}`;
+  }
+
+  /** Adres strony testowej widziany z kontenera funkcji. */
+  pageUrl(name: string) {
+    return `http://host.docker.internal:${FAKE_PORT}/pages/${name}`;
   }
 
   icsUrl(name: string) {
@@ -207,6 +214,15 @@ export class FakeServices {
       const id = path.slice('/push/'.length);
       this.push.push({ id, headers: req.headers, body, at: Date.now() });
       return send(res, this.pushStatus.get(id) ?? 201);
+    }
+
+    if (path.startsWith('/pages/')) {
+      const page = this.pages.get(path.slice('/pages/'.length));
+      if (!page) return send(res, 404, 'nie ma', { 'content-type': 'text/plain' });
+      if (page.delayMs) await new Promise((r) => setTimeout(r, page.delayMs));
+      if (res.destroyed) return;
+      res.writeHead(page.status ?? 200, { 'content-type': 'text/html; charset=utf-8', ...page.headers });
+      return res.end(page.body ?? '');
     }
 
     if (path.startsWith('/ics/')) {

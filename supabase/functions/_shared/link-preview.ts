@@ -78,8 +78,12 @@ export function isPublicIp(ip: string): boolean {
   return (first & 0xe000) === 0x2000; // tylko globalne unicast 2000::/3
 }
 
-/** Adres dopuszczony do pobrania (bez sprawdzenia DNS) albo `PreviewError`. */
-export function checkTarget(raw: string, base?: URL): URL {
+/**
+ * Adres dopuszczony do pobrania (bez sprawdzenia DNS) albo `PreviewError`. `allow` — hosty
+ * (`nazwa:port`) zwolnione z blokady adresów prywatnych i portów: tylko fałszywe usługi testów
+ * integracyjnych (`LINK_PREVIEW_TEST_HOSTS` w `.env.test`); przekierowanie poza nie jest sprawdzane normalnie.
+ */
+export function checkTarget(raw: string, base?: URL, allow?: ReadonlySet<string>): URL {
   let url: URL;
   try {
     url = new URL(raw, base);
@@ -88,6 +92,7 @@ export function checkTarget(raw: string, base?: URL): URL {
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new PreviewError('Tylko adresy http(s)');
   if (url.username || url.password) throw new PreviewError('Adres z danymi logowania');
+  if (allow?.has(url.host.toLowerCase())) return url;
   if (url.port && url.port !== '80' && url.port !== '443') throw new PreviewError('Niedozwolony port');
   const host = url.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
   if (!host || host === 'localhost' || /\.(localhost|local|internal|lan|home|arpa)$/.test(host) || (!host.includes('.') && !host.includes(':'))) {
@@ -192,17 +197,22 @@ export interface PreviewDeps {
   /** Adresy IP nazwy (A i AAAA). */
   resolve: (host: string) => Promise<string[]>;
   timeoutMs?: number;
+  /** Hosty testowe (`nazwa:port`) bez blokady adresów prywatnych — patrz `checkTarget`. */
+  allowHosts?: readonly string[];
 }
 
 /** Pobranie i podgląd strony z ochroną SSRF; `PreviewError` = adres niedozwolony / strona niedostępna. */
 export async function fetchPreview(raw: string, deps: PreviewDeps): Promise<AttachmentPreview> {
   const signal = AbortSignal.timeout(deps.timeoutMs ?? TIMEOUT_MS);
-  let url = checkTarget(raw);
+  const allow = new Set((deps.allowHosts ?? []).map((h) => h.toLowerCase()));
+  let url = checkTarget(raw, undefined, allow);
   for (let hop = 0; ; hop++) {
     const host = url.hostname.replace(/^\[|\]$/g, '');
-    const ips = ipv4(host) || host.includes(':') ? [host] : await deps.resolve(host).catch(() => []);
-    if (!ips.length) throw new PreviewError('Nieznany host');
-    if (ips.some((ip) => !isPublicIp(ip))) throw new PreviewError('Adres prywatny');
+    if (!allow.has(url.host.toLowerCase())) {
+      const ips = ipv4(host) || host.includes(':') ? [host] : await deps.resolve(host).catch(() => []);
+      if (!ips.length) throw new PreviewError('Nieznany host');
+      if (ips.some((ip) => !isPublicIp(ip))) throw new PreviewError('Adres prywatny');
+    }
 
     const res = await deps.fetch(url.href, {
       redirect: 'manual',
@@ -213,7 +223,7 @@ export async function fetchPreview(raw: string, deps: PreviewDeps): Promise<Atta
       const location = res.headers.get('location');
       await res.body?.cancel().catch(() => undefined);
       if (!location || hop >= MAX_REDIRECTS) throw new PreviewError('Za dużo przekierowań');
-      url = checkTarget(location, url);
+      url = checkTarget(location, url, allow);
       continue;
     }
     if (!res.ok) {

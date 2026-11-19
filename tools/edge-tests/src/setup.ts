@@ -104,6 +104,7 @@ async function main() {
     GOOGLE_API_BASE: `${fake}/calendar/v3`,
     GOOGLE_ALLOW_HTTP_WEBHOOK: '1',
     PUSH_ALLOW_HTTP: '1',
+    LINK_PREVIEW_TEST_HOSTS: `host.docker.internal:${FAKE_PORT}`,
   }, 'Edge Functions w testach integracyjnych (fałszywe Google i usługa push)');
 
   vaultPut('functions_url', FUNCTIONS_URL_FROM_DB);

@@ -87,4 +87,20 @@ describe('pobranie strony', () => {
 
     await expect(fetchPreview('https://a.pl/', deps({ 'https://a.pl/': () => page('x', { status: 404 }) }))).rejects.toThrow('404');
   });
+
+  it('host testowy (`allowHosts`) bez blokady — przekierowanie z niego sprawdzane normalnie', async () => {
+    const fake = 'http://host.docker.internal:54590';
+    const routes = {
+      [`${fake}/pages/a`]: () => page('<title>Atrapa</title>'),
+      [`${fake}/pages/meta`]: () => new Response(null, { status: 302, headers: { location: 'http://169.254.169.254/latest' } }),
+      [`${fake}/pages/port`]: () => new Response(null, { status: 302, headers: { location: 'http://host.docker.internal:54321/' } }),
+    };
+    const dns = { 'host.docker.internal': ['192.168.65.254'] };
+    const allowed = { ...deps(routes, dns), allowHosts: ['host.docker.internal:54590'] };
+    expect((await fetchPreview(`${fake}/pages/a`, allowed)).title).toBe('Atrapa');
+    await expect(fetchPreview(`${fake}/pages/meta`, allowed)).rejects.toThrow('Adres prywatny');
+    await expect(fetchPreview(`${fake}/pages/port`, allowed)).rejects.toThrow('Niedozwolony port');
+    // Bez zwolnienia ten sam host jest odrzucany (port i adres prywatny).
+    await expect(fetchPreview(`${fake}/pages/a`, deps(routes, dns))).rejects.toThrow(PreviewError);
+  });
 });
