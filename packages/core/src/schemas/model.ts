@@ -95,6 +95,8 @@ export const ProfileSettings = z.object({
   dailyReview: z.object({ enabled: z.boolean().default(false), time: LocalTime.default('20:00') }).prefault({}),
   weeklyReview: z.object({ enabled: z.boolean().default(false), weekday: IsoWeekday.default(7), time: LocalTime.default('18:00') }).prefault({}),
   theme: z.enum(['system', 'light', 'dark']).default('system'),
+  /** Onboarding zakończony (M1) — bez niego aplikacja po zalogowaniu pokazuje kreator. */
+  onboarded: z.boolean().default(false),
 });
 export type ProfileSettings = z.infer<typeof ProfileSettings>;
 

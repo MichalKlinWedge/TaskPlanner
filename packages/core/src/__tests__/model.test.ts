@@ -111,6 +111,7 @@ describe('ustawienia profilu', () => {
       dailyReview: { enabled: false, time: '20:00' },
       weeklyReview: { enabled: false, weekday: 7, time: '18:00' },
       theme: 'system',
+      onboarded: false,
     });
   });
   it('częściowe ustawienia uzupełnia, błędne odrzuca', () => {

@@ -322,6 +322,19 @@ max_frequency = "5s"
 # Use an external OAuth provider. The full list of providers are: `apple`, `azure`, `bitbucket`,
 # `discord`, `facebook`, `github`, `gitlab`, `google`, `keycloak`, `linkedin_oidc`, `notion`, `twitch`,
 # `twitter`, `x`, `slack`, `spotify`, `workos`, `zoom`.
+# Logowanie Google (M1). Lokalnie wyłączone, żeby `supabase start` działał bez kluczy: aby włączyć,
+# ustaw `enabled = true` i podaj w `supabase/.env` (git-ignored) SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID
+# i SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET; w kliencie OAuth Google dodaj adres powrotu
+# http://127.0.0.1:54521/auth/v1/callback. W chmurze: panel Supabase → Authentication → Providers → Google.
+[auth.external.google]
+enabled = false
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+redirect_uri = ""
+url = ""
+skip_nonce_check = true
+email_optional = false
+
 [auth.external.apple]
 enabled = false
 client_id = ""
