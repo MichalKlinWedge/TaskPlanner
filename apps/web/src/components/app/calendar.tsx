@@ -28,8 +28,10 @@ import {
   resizeBlockPatch,
   scheduleBlockPatch,
   selectInbox,
+  zonedInstant,
   selectToday,
   unscheduleBlockPatch,
+  type CalendarEventLike,
   type LocalDate,
   type ProfileSettings,
   type TaskOp,
@@ -39,12 +41,26 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { AppData } from "@/lib/app-data";
+import { useLocalQuery } from "@/lib/local-store";
 
 import { useAppEnv } from "./app-env";
 import { useTaskActions } from "./task-item";
 import { Select } from "./ui";
 
 type CalendarView = "timeGridDay" | "timeGridWeek" | "dayGridMonth";
+
+interface ExternalRow extends Record<string, string | number | null> {
+  id: string;
+  title: string;
+  all_day: number;
+  start_at: string | null;
+  end_at: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  location: string | null;
+  color: string | null;
+  calendar: string;
+}
 const VIEWS: readonly CalendarView[] = ["timeGridDay", "timeGridWeek", "dayGridMonth"];
 const VIEW_KEY = "tp-calendar-view";
 /** Ile zadań panel rysuje (reszta — zawęź źródło albo filtr). */
@@ -81,7 +97,7 @@ function panelTasks(source: string, data: AppData, ctx: ViewContext): ViewTask[]
 }
 
 export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: ViewContext; settings: ProfileSettings }) {
-  const { openTask, select } = useAppEnv();
+  const { openTask, select, store } = useAppEnv();
   const { run } = useTaskActions();
   const [view, setView] = useState<CalendarView>(readView);
   const [range, setRange] = useState<{ from: LocalDate; to: LocalDate } | null>(null);
@@ -94,13 +110,34 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
   const tasks = useMemo(() => data.tasks.filter((t) => t.kind === "task" && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId)), [data.tasks, ctx.workspaceId]);
   const byId = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
 
+  // Wydarzenia z kalendarzy zewnętrznych (widoczne kalendarze) nachodzące na zakres widoku.
+  const bounds = range ? [zonedInstant(range.from, "00:00", timeZone).toISOString(), zonedInstant(range.to, "00:00", timeZone).toISOString()] : ["", ""];
+  const external = useLocalQuery<ExternalRow>(
+    store,
+    `select e.id, e.title, e.all_day, e.start_at, e.end_at, e.start_date, e.end_date, e.location, c.color, c.name as calendar
+       from calendar_events e join calendars c on c.id = e.calendar_id
+      where c.visible = 1 and ((e.all_day = 0 and e.start_at < ? and e.end_at > ?) or (e.all_day = 1 and e.start_date < ? and e.end_date > ?))`,
+    [bounds[1]!, bounds[0]!, range?.to ?? "", range?.from ?? ""],
+    ["calendar_events", "calendars"],
+  ).rows;
+  const calendarEvents = useMemo(() => {
+    const info = new Map<string, ExternalRow>();
+    const list: CalendarEventLike[] = external.map((r) => {
+      info.set(r.id, r);
+      return { id: r.id, title: r.title || "(bez tytułu)", allDay: !!r.all_day, startAt: r.start_at, endAt: r.end_at, startDate: r.start_date, endDate: r.end_date };
+    });
+    return { list, info };
+  }, [external]);
+
   const events = useMemo<EventInput[]>(() => {
     if (!range) return [];
-    const entries = calendarEntries(tasks, [], range.from, range.to, { timeZone, defaultDurationMin: duration });
+    const entries = calendarEntries(tasks, calendarEvents.list, range.from, range.to, { timeZone, defaultDurationMin: duration });
     const out: EventInput[] = entries.map((e) => {
       const task = e.kind === "task" ? byId.get(e.id) : undefined;
-      const color = task ? (PRIORITY[task.priority]?.color ?? PRIORITY[4].color) : undefined;
+      const source = e.kind === "event" ? calendarEvents.info.get(e.id) : undefined;
+      const color = task ? (PRIORITY[task.priority]?.color ?? PRIORITY[4].color) : (source?.color ?? undefined);
       return {
+        ...(source && { backgroundColor: "var(--surface)", textColor: "var(--foreground)" }),
         id: e.key,
         title: `${e.conflict ? "⚠ " : ""}${e.virtual ? "↻ " : ""}${e.title}`,
         start: e.start,
@@ -110,17 +147,17 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
         durationEditable: e.kind === "task" && !e.virtual && !e.passive && !e.allDay,
         borderColor: e.conflict ? "var(--danger)" : color,
         classNames: [`tp-${e.kind}`, e.passive ? "tp-passive" : "", e.virtual ? "tp-virtual" : "", e.conflict ? "tp-conflict" : ""].filter(Boolean),
-        extendedProps: { taskId: e.kind === "task" ? e.id : null, conflict: e.conflict },
+        extendedProps: { taskId: e.kind === "task" ? e.id : null, conflict: e.conflict, hint: source ? [source.calendar, source.location].filter(Boolean).join(" · ") : null },
       };
     });
     // Wolne okna w godzinach pracy — tylko w widoku dnia (M11).
     if (view === "timeGridDay") {
-      for (const slot of freeSlotTimes(tasks, [], range.from, settings.workHours, { timeZone, defaultDurationMin: duration })) {
+      for (const slot of freeSlotTimes(tasks, calendarEvents.list, range.from, settings.workHours, { timeZone, defaultDurationMin: duration })) {
         out.push({ id: `free:${slot.start}`, start: slot.start, end: slot.end, display: "background", classNames: ["tp-free"], title: "Wolne" });
       }
     }
     return out;
-  }, [range, tasks, byId, timeZone, duration, view, settings.workHours]);
+  }, [range, tasks, byId, calendarEvents, timeZone, duration, view, settings.workHours]);
 
   const conflictCount = useMemo(() => events.filter((e) => e.extendedProps?.conflict).length, [events]);
   const candidates = useMemo(() => panelTasks(source, data, ctx), [source, data, ctx]);
@@ -266,6 +303,11 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
           eventResize={onResize}
           eventDragStop={onDragStop}
           eventClick={onClick}
+          eventDidMount={(info) => {
+            const hint = info.event.extendedProps.hint as string | null;
+            info.el.title = hint ? `${info.event.title}
+${hint}` : info.event.title;
+          }}
         />
       </div>
     </div>

@@ -9,6 +9,7 @@ import type { TabStore } from "@taskplanner/sync";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { useAppData, useToday, type List } from "@/lib/app-data";
+import { GOOGLE_RETURN_PARAM } from "@/lib/calendars";
 import { routeHash, useRoute, type Route } from "@/lib/route";
 
 import { AppEnvProvider, useAppEnv, visibleTaskIds } from "./app-env";
@@ -78,6 +79,14 @@ export function Shell({
     if (url.searchParams.has("quick")) {
       url.searchParams.delete("quick");
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+    // Powrót z ekranu zgody Google (`lib/calendars.ts`) → ustawienia z listą kalendarzy.
+    if (url.searchParams.has(GOOGLE_RETURN_PARAM)) {
+      url.searchParams.delete(GOOGLE_RETURN_PARAM);
+      url.searchParams.delete("account");
+      url.hash = "#/settings";
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
     }
   }, []);
   // Klik w przypomnienie przy zamkniętej karcie: `/?task=<id>` (Service Worker, M8).

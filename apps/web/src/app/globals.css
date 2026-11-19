@@ -84,3 +84,12 @@ body {
   background: color-mix(in srgb, #16a34a 14%, transparent);
   opacity: 1;
 }
+/* Wydarzenia z kalendarzy zewnętrznych: tylko do odczytu, kreskowane tło, kolor kalendarza w ramce. */
+.tp-calendar .fc-event.tp-event {
+  border-width: 1px 1px 1px 4px;
+  background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--muted) 14%, transparent) 6px 12px);
+  cursor: default;
+}
+.tp-calendar .fc-event.tp-event .fc-event-main {
+  color: var(--foreground);
+}

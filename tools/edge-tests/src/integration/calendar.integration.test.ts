@@ -188,6 +188,17 @@ describe('Google Calendar', () => {
     fake.refreshTokenRevoked = false;
   });
 
+  it('wybór kalendarzy (Etap 5): ukryty — bez kanału `watch`, ponownie widoczny — kanał wraca; cudzy — 404', async () => {
+    const update = (jwt: string, visible: boolean) => fn('calendar-sync/calendars/update', { jwt, body: JSON.stringify({ calendarId: primaryId, visible }) });
+    expect((await update(user.jwt, false)).status).toBe(200);
+    expect((await db.from('calendars').select('visible').eq('id', primaryId).single()).data!.visible).toBe(false);
+    expect(fake.activeChannels(PRIMARY)).toHaveLength(0);
+    expect((await update(user.jwt, true)).status).toBe(200);
+    expect(fake.activeChannels(PRIMARY)).toHaveLength(1);
+    const stranger = await createUser('obcy-kalendarz');
+    expect((await update(stranger.jwt, false)).status).toBe(404);
+  });
+
   it('odłączenie: kanały zatrzymane, token odwołany, wydarzenia i sekret Vault usunięte', async () => {
     const { data: acc } = await db.from('calendar_accounts').select('secret_id').eq('id', accountId).single();
     const res = await fn('calendar-sync/accounts/delete', { jwt: user.jwt, body: JSON.stringify({ accountId }) });

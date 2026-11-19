@@ -2,7 +2,7 @@
 -- Uruchomienie: npm run test:db
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(35);
+select plan(38);
 
 insert into auth.users (id, email) values
   ('00000000-0000-4000-8000-0000000000b1', 'wlasciciel-int@test.local'),
@@ -76,8 +76,13 @@ select is((select count(*)::int from public.calendar_events), 1, 'właściciel w
 select is((select label from public.calendar_accounts), 'ja@gmail.com', 'właściciel widzi konto');
 select throws_ok($$ select secret_id from public.calendar_accounts $$, '42501', null, 'secret_id niewidoczne dla klienta');
 select throws_ok($$ select sync_state from public.calendars $$, '42501', null, 'sync_state (syncToken, token kanału) niewidoczne');
+select ok(not (public.pull_changes() -> 'tables' -> 'calendar_accounts' -> 0 ?| array['secret_id', 'sync_state'])
+          and not (public.pull_changes() -> 'tables' -> 'calendars' -> 0 ? 'sync_state')
+          and jsonb_array_length(public.pull_changes() -> 'tables' -> 'calendar_events') = 1,
+  'pull_changes: konto, kalendarz i wydarzenie bez sekretów i stanu synchronizacji (Etap 5)');
 select pg_temp.login(:X);
 select is((select count(*)::int from public.calendar_events) + (select count(*)::int from public.calendar_accounts), 0, 'obcy nic nie widzi');
+select is(jsonb_array_length(public.pull_changes() -> 'tables' -> 'calendar_events'), 0, 'obcy nie dostaje wydarzeń w pull_changes');
 
 -- ── Adres e-mail i zadanie z integracji ─────────────────────────────────────────────────────
 select pg_temp.login(:U);
@@ -110,6 +115,8 @@ select ok((select push_subscription is null and field_clock ->> 'push_subscripti
 delete from public.calendar_accounts where id = :A;
 select is((select count(*)::int from vault.secrets where name = 'calendar_account:' || :A) + (select count(*)::int from public.calendar_events where calendar_id = :C),
   0, 'usunięcie konta usuwa sekret Vault i wydarzenia');
+select is((select array_agg(tbl order by tbl) from public.integration_tombstones where user_id = :U), array['calendar_accounts', 'calendars'],
+  'nagrobki konta i kalendarza dla pull_changes');
 reset role;
 select set_eq($$ select jobname || ' ' || schedule from cron.job where jobname like 'taskplanner-%' $$,
   array['taskplanner-reminders-push * * * * *', 'taskplanner-calendar-poll */10 * * * *', 'taskplanner-calendar-renew 17 3 * * *', 'taskplanner-oauth-states-cleanup 23 * * * *'],

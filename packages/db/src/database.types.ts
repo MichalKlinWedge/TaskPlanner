@@ -165,6 +165,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"integration_tombstones": {
+                  Row: {
+                    "deleted_at": string,"id": string,"row_version": number,"tbl": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "deleted_at"?: string,"id": string,"row_version": number,"tbl": string,"user_id": string
+                  }
+                  Update: {
+                    "deleted_at"?: string,"id"?: string,"row_version"?: number,"tbl"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"lists": {
                   Row: {
                     "archived_at": string | null,"color": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"description_md": string | null,"end_date": string | null,"field_clock": NonNullable<Json>,"icon": string | null,"id": string,"kind": string,"name": string,"project_status": string | null,"row_version": number,"scope_id": string,"sort_key": string,"start_date": string | null,"updated_at": string,"view_prefs": NonNullable<Json>
@@ -585,6 +599,9 @@ isOneToOne: false
                            },
 "pull_changes":
 { Args: { "p_limit"?: number,"p_since"?: Json }; Returns: Json
+                           },
+"pulled_readonly_tables":
+{ Args: Record<PropertyKey, never>; Returns: (string)[]
                            },
 "push_changes":
 { Args: { "p_ops": Json }; Returns: Json

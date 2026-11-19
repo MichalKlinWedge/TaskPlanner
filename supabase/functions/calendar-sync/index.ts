@@ -7,6 +7,7 @@
  *   POST ics/add             (użytkownik)  → {url, label?} adres ICS do Vault, pierwsza synchronizacja
  *   POST accounts/sync       (użytkownik)  → {accountId} odśwież teraz
  *   POST accounts/delete     (użytkownik)  → {accountId} zatrzymaj kanały, odwołaj token, usuń konto (kaskada + Vault)
+ *   POST calendars/update    (użytkownik)  → {calendarId, visible} wybór kalendarzy (ukryty: bez synchronizacji i kanału)
  *   POST cron/poll           (pg_cron, co 10 min) → ICS i kalendarze Google bez świeżej synchronizacji
  *   POST cron/renew          (pg_cron, codziennie) → odnowienie kanałów `watch` przed wygaśnięciem, sprzątanie okna
  */
@@ -168,6 +169,23 @@ async function accountDelete(req: Request): Promise<Response> {
   return json({ deleted: account.id });
 }
 
+async function calendarUpdate(req: Request): Promise<Response> {
+  const user = await requireUser(req);
+  const body = await req.json().catch(() => ({}));
+  if (typeof body.calendarId !== 'string' || typeof body.visible !== 'boolean') throw new HttpError(400, 'Brak calendarId albo visible');
+  const db = admin();
+  const { data: cal } = await db.from('calendars').select('id, account_id, visible').eq('id', body.calendarId).eq('user_id', user.id).maybeSingle();
+  if (!cal) throw new HttpError(404, 'Nie ma takiego kalendarza');
+  if (cal.visible !== body.visible) {
+    const { error } = await db.from('calendars').update({ visible: body.visible }).eq('id', cal.id);
+    if (error) throw error;
+    // Google: włączony — pobranie i kanał `watch`, wyłączony — zatrzymanie kanału (reszta przy `cron/poll`).
+    const account = await ownAccount(user.id, cal.account_id);
+    if (account.provider === 'google') await syncAccount(db, account, { cfg: googleConfig(), webhookUrl: webhookUrl() });
+  }
+  return json({ calendarId: cal.id, visible: body.visible });
+}
+
 /** Ograniczona równoległość, żeby jedno wolne konto nie blokowało reszty i nie przekroczyć 150 s. */
 async function eachLimited<T>(items: T[], limit: number, fn: (item: T) => Promise<void>) {
   const queue = [...items];
@@ -241,6 +259,7 @@ serve(async (req, url) => {
   if (m === 'POST' && path === 'ics/add') return icsAdd(req);
   if (m === 'POST' && path === 'accounts/sync') return accountSync(req);
   if (m === 'POST' && path === 'accounts/delete') return accountDelete(req);
+  if (m === 'POST' && path === 'calendars/update') return calendarUpdate(req);
   if (m === 'POST' && path === 'cron/poll') return cronPoll(req);
   if (m === 'POST' && path === 'cron/renew') return cronRenew(req);
   throw new HttpError(404, `Nieznana ścieżka ${m} ${path}`);

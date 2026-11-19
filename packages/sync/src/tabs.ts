@@ -6,7 +6,10 @@
  */
 import type { SyncEngine } from './engine.ts';
 import type { SqlRow, SqlValue } from './local-db.ts';
-import { SYNCED_TABLES, type SyncedTable } from './specs.ts';
+import { READONLY_TABLES, SYNCED_TABLES, type SyncedTable } from './specs.ts';
+
+/** Tabele, o których zmianach dowiadują się widoki (także tylko do odczytu — kalendarze). */
+const WATCHED = [...SYNCED_TABLES, ...READONLY_TABLES];
 
 export interface TabStore {
   readonly isLeader: boolean;
@@ -78,7 +81,7 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
     if (closed) return;
     ready = createEngine().then((created) => {
       engine = created;
-      for (const table of SYNCED_TABLES) {
+      for (const table of WATCHED) {
         created.watch([table], () => {
           notify([table]);
           channel.postMessage({ kind: 'changed', tables: [table] } satisfies Message);
@@ -86,7 +89,7 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
       }
       // Rola i odświeżenie widoków dopiero z gotowym silnikiem (`isLeader` = jest silnik).
       roleListeners.forEach((listener) => listener(true));
-      notify(SYNCED_TABLES);
+      notify(WATCHED);
       return created;
     });
     channel.postMessage({ kind: 'leader', tab } satisfies Message);
@@ -96,7 +99,7 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
   channel.onmessage = async (event: MessageEvent<Message>) => {
     const message = event.data;
     if (message.kind === 'changed') notify(message.tables);
-    else if (message.kind === 'leader' && message.tab !== tab) notify(SYNCED_TABLES);
+    else if (message.kind === 'leader' && message.tab !== tab) notify(WATCHED);
     else if (message.kind === 'request' && ready) {
       try {
         const result = await execute(message.body);

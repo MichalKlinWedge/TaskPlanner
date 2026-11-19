@@ -10,6 +10,7 @@ import { offlineStatus, subscribeOffline } from "@/lib/service-worker";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useTheme } from "@/lib/theme";
 
+import { CalendarsCard } from "./calendars-card";
 import { ProfileForm, type ProfileValues } from "./profile-form";
 import { RemindersCard } from "./reminders-card";
 import { Shell } from "./shell";
@@ -93,6 +94,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
               />
             </Card>
             <RemindersCard store={store} userId={userId} />
+            <CalendarsCard store={store} timeZone={parseSettings(settings).timeZone} />
             <OfflineCard />
           </>
         }
