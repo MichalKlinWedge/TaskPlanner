@@ -9,6 +9,7 @@ Część telefoniczna MVP-1 w `apps/mobile`: ekran „Konto i serwer” (`src/ap
 - **Dev build** (`cd apps/mobile && npx expo run:android`, `docs/ANDROID_BUILD.md`). Release nie łączy się z lokalnym Supabase po `http` (Android 9+ blokuje ruch bez TLS), więc scenariusze z lokalnym serwerem robić na dev buildzie. Po dodaniu `expo-web-browser` i `expo-network` trzeba przebudować APK (nowe moduły natywne).
 - Telefon przez USB: `adb reverse tcp:54521 tcp:54521` i `adb reverse tcp:54524 tcp:54524`. Wtedy adres serwera w aplikacji to `http://127.0.0.1:54521`, a link z maila (wskazuje 127.0.0.1:54521) otwiera się w Chrome na telefonie. W Wi-Fi (`http://<IP komputera>:54521`) link z maila nie zadziała — logowanie kodem z maila.
 - Po `npm run supabase -- db reset` konta mają nowe id: na telefonie najpierw „Wyloguj (czyści dane lokalne)”, potem logowanie od nowa (stara sesja kończy się błędem synchronizacji, np. `permission denied`).
+- Gdy USB się sypie (Windows pokazuje „Galaxy S22 Ultra” ze statusem Error, `adb devices` puste albo `offline`), działa debugowanie bezprzewodowe: Opcje programisty → Debugowanie bezprzewodowe → „Sparuj … kodu parowania”, `adb pair <IP:port parowania> <kod>`, `adb connect <IP:port>`. Adres z ekranu telefonu może się różnić od widocznego z komputera — właściwy podaje `adb mdns services`. `adb reverse` działa też przez Wi-Fi.
 - Dev build z `expo-dev-client`: link z maila otwierać, gdy aplikacja działa (jest w tle). Przy zimnym starcie deep link może trafić do ekranu launchera dev clienta zamiast do aplikacji.
 
 ## M1. Logowanie linkiem z maila (deep link)
@@ -88,7 +89,7 @@ Na telefonie (do wykonania; telefon nie był podłączony w czasie implementacji
 
 | Scenariusz | Data | Wynik |
 |---|---|---|
-| M1 link z maila | | |
+| M1 link z maila | 19.11.2026 | **OK** (Galaxy S22 Ultra, dev build, `adb reverse` przez Wi-Fi, aplikacja w tle). Link „Sign in” w Mailpit w Chrome → aplikacja; serwer: `/verify` 303 i w tej samej sekundzie `/token` (`grant_type=pkce`) 200, potem `pull_changes` 200; ekran „Witaj w TaskPlanner” ze strefą `Europe/Warsaw`. Drugie kliknięcie tego samego linku: ekran „Nie udało się zalogować” z przyciskiem „Konto i serwer” — komunikat serwera po angielsku („Email link is invalid or has expired”). Zimny start z linku — nie sprawdzony. |
 | M2 kod z maila | | |
 | M3 Google | | |
 | M4 zmiana konta | | |

@@ -4,7 +4,7 @@ Decyzja (PoC-4, 18.11.2026): APK budujemy sami — lokalnie (`expo run:android` 
 
 ## Lokalnie (iteracja z telefonem przez USB)
 
-1. JDK 17 (np. Temurin) i Android SDK: `platform-tools`, `platforms;android-37.0`, `build-tools;37.0.0`, `ndk;27.1.12297006`, `cmake;3.22.1` (Android Studio instaluje je samo; bez niego — `cmdline-tools` + `sdkmanager`). Zmienne `JAVA_HOME`, `ANDROID_HOME`, `platform-tools` w `PATH`.
+1. JDK 17 (np. Temurin) i Android SDK: `platform-tools`, `platforms;android-37.0`, `build-tools;37.0.0`, `ndk;27.1.12297006`, `cmake;3.22.1` (Android Studio instaluje je samo; bez niego — `cmdline-tools` + `sdkmanager`). Zmienne `JAVA_HOME`, `ANDROID_HOME`, `platform-tools` w `PATH`. (19.11.2026: JDK 17.0.12 pada na tym komputerze już przy `java -version` (EXCEPTION_ACCESS_VIOLATION, Windows 11 26300); build debug przeszedł na JDK 26 z Gradle 9.4.1.)
 2. Telefon: Opcje programisty → Debugowanie USB; po podłączeniu zaakceptować klucz komputera (`adb devices` pokazuje `device`).
 3. `cd apps/mobile && npx expo run:android` — prebuild, build debug, instalacja i Metro. Kolejne zmiany JS przez Metro bez przebudowy; przebudowa tylko po zmianie zależności natywnych albo `app.json`.
 4. Build samodzielny (JS w APK, do testów bez komputera): `npx expo run:android --variant release` albo `cd android && gradlew assembleRelease`.
