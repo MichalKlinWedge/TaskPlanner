@@ -503,6 +503,7 @@ Recurrence =
 - API (PoC-3): `habitPeriods`, `habitStreak` (passa i najdłuższa passa), `habitRate`, `habitDays` (mapa cieplna), schemat `HabitSettings`.
 - Cel „N razy w tygodniu/miesiącu”: okres z dniami wolnymi, w którym zrobione + wolne ≥ N, nie przerywa passy i nie zalicza. Dzień z wartością poniżej celu ilościowego to „częściowo” (mapa cieplna), a w passie — niezaliczony.
 - Test na historiach w `fixtures/habits.json` (wartości policzone ręcznie).
+- Zrobione (19.11.2026, Etap 8): `habitStats` (passy, regularność ostatnich 7/30/90 dni, sumy), `habitWeeks` (tygodnie ISO: dni zrobione, cel tygodnia, suma wartości), `habitYear` (mapa 53 tygodni), `habitDayStatus`, `habitEntryOps` (uzupełnianie do 7 dni wstecz), `habitsForDay`, `habitNeedsReminder`, formularz `habitDraft` / `habitFields` / `habitSaveOps`; `HabitSettings.time` — pora nawyku (przypomnienia względne). `habitRate` liczy okresy względem prawdziwego „dziś” (dzień `to` sprzed dziś bez wpisu = opuszczony). Historie 90-dniowe w `fixtures/habits-90.json`.
 
 ### 7.6. Przypomnienia (`reminders.ts`)
 - `reminderFireTimes(tasks, reminders, window, settings, zone)` → lista `{taskId, reminderId, occurrenceDate, fireAt (instant)}` — z czasu pływającego i bieżącej strefy urządzenia. Używają jej telefon (planowanie lokalne) i `reminders-push` (serwer, strefa z ustawień profilu).
