@@ -5,7 +5,7 @@ import type { Hlc } from '@taskplanner/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { RemoteRow } from './merge.ts';
-import type { SyncedTable } from './specs.ts';
+import type { ReadonlyTable, SyncedTable } from './specs.ts';
 
 export interface PushOp {
   op: string;
@@ -38,7 +38,7 @@ export interface ScopeInfo {
 
 export interface PullResult {
   scopes: Record<string, ScopeInfo>;
-  tables: Partial<Record<SyncedTable, RemoteRow[]>>;
+  tables: Partial<Record<SyncedTable | ReadonlyTable, RemoteRow[]>>;
   /** Jest dalszy ciąg: `scopes[id].version` to wtedy kursor, od którego pytać dalej. */
   more?: boolean;
   serverHlc: Hlc;

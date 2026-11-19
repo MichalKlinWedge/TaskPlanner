@@ -3,7 +3,7 @@
  * Dwa urządzenia tego samego użytkownika (telefon, web), trzecie z przesuniętym zegarem,
  * obcy użytkownik. `npm run test:sync` (wymaga `npm run supabase -- start`).
  */
-import { completionId, inboxId, uuidv7 } from '@taskplanner/core';
+import { advanceFocus, completionId, FOCUS_IDLE, focusEntryId, focusStepOps, inboxId, parseFocusState, pauseFocus, startFocus, uuidv7 } from '@taskplanner/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createDevice, createUser, waitFor, type Device, type TestUser } from './helpers/devices.ts';
@@ -277,5 +277,91 @@ describe('MVP-1: pełny model i stronicowanie', () => {
     expect(merged).toMatchObject({ title: 'Zmiana z webu', priority: 4, scope_id: W });
     await web.engine.sync();
     expect(await serverTask(web, ids[5]!)).toMatchObject({ title: 'Zmiana z webu', priority: 4 });
+  });
+});
+
+describe('Etap 6: zapis wsadowy i zależności', () => {
+  it('kilka zmian w jednej transakcji, błędne pole — nic nie zapisane; cykl zależności z dwóch urządzeń odrzucony (TP002)', async () => {
+    const [a, b] = [uuidv7(), uuidv7()];
+    const ab = uuidv7();
+    await phone.engine.mutateMany([
+      { table: 'tasks', id: a, patch: { list_id: L, title: 'Pomiary', due_date: '2026-11-23' } },
+      { table: 'tasks', id: b, patch: { list_id: L, title: 'Projekt', due_date: '2026-11-24' } },
+      { table: 'task_dependencies', id: ab, patch: { predecessor_id: a, successor_id: b, kind: 'finish_to_start', lag_days: 1 } },
+    ]);
+    expect(await phone.engine.pendingCount()).toBe(3);
+    expect((await phone.engine.get('task_dependencies', ab))?.scope_id).toBe(W);
+    await expect(
+      phone.engine.mutateMany([
+        { table: 'tasks', id: a, patch: { title: 'Zmienione' } },
+        { table: 'tasks', id: b, patch: { nope: 1 } },
+      ]),
+    ).rejects.toThrow(/Pola spoza tasks: nope/);
+    expect((await row(phone, 'tasks', a))?.title).toBe('Pomiary');
+    expect(await phone.engine.pendingCount()).toBe(3);
+    await phone.engine.sync();
+    expect(phone.rejected).toEqual([]);
+    await web.engine.sync();
+    expect((await web.engine.get('task_dependencies', ab))?.lag_days).toBe(1);
+
+    // Web (offline) nie wie o zależności dodanej w międzyczasie na telefonie → cykl wykrywa dopiero serwer.
+    const bc = uuidv7();
+    const c = uuidv7();
+    web.net.online = false;
+    await phone.engine.mutateMany([
+      { table: 'tasks', id: c, patch: { list_id: L, title: 'Zamówienie', due_date: '2026-11-25' } },
+      { table: 'task_dependencies', id: bc, patch: { predecessor_id: b, successor_id: c } },
+    ]);
+    await phone.engine.sync();
+    const ca = uuidv7();
+    await web.engine.mutate('tasks', c, { title: 'Zamówienie (web)' });
+    await web.engine.mutate('task_dependencies', ca, { predecessor_id: c, successor_id: a });
+    web.net.online = true;
+    await web.engine.sync();
+    expect(web.rejected.map((r) => r.code)).toEqual(['TP002']);
+    expect(await web.engine.get('task_dependencies', ca)).toBeUndefined();
+  });
+});
+
+describe('Etap 7: timer skupienia', () => {
+  it('aktywny timer widoczny na drugim urządzeniu; koniec etapu doliczony na obu — te same wpisy', async () => {
+    const task = await sharedTask('Raport');
+    const t0 = new Date('2026-11-19T09:00:00Z');
+    const newId = focusEntryId(user.id);
+    const start = startFocus(FOCUS_IDLE, { taskId: task, now: t0, newId });
+    await web.engine.mutateMany(focusStepOps(user.id, start));
+    await web.engine.sync();
+    expect(web.rejected).toEqual([]);
+    await phone.engine.sync();
+    const seen = parseFocusState((await phone.engine.get('profiles', user.id))?.focus);
+    expect(seen).toEqual(start.state);
+    const entry = await phone.engine.get('time_entries', start.state.entryId!);
+    expect(entry).toMatchObject({ task_id: task, kind: 'focus', ended_at: null, pomodoro_index: 1, scope_id: W });
+
+    // Oba urządzenia (offline) doliczają koniec pracy niezależnie — po synchronizacji jedna przerwa.
+    web.net.online = false;
+    phone.net.online = false;
+    const later = new Date(t0.getTime() + 26 * 60_000);
+    const onWeb = advanceFocus(start.state, later, { newId });
+    const onPhone = advanceFocus(seen, new Date(later.getTime() + 60_000), { newId });
+    await web.engine.mutateMany(focusStepOps(user.id, onWeb));
+    await phone.engine.mutateMany(focusStepOps(user.id, onPhone));
+    web.net.online = true;
+    phone.net.online = true;
+    await web.engine.sync();
+    await phone.engine.sync();
+    await web.engine.sync();
+    const entries = (await web.client.from('time_entries').select('id, kind, started_at, ended_at, pomodoro_index').order('started_at')).data ?? [];
+    expect(entries.map((e) => `${e.kind}#${e.pomodoro_index}:${e.ended_at ? 'closed' : 'open'}`)).toEqual(['focus#1:closed', 'break#1:open']);
+    expect(Date.parse(entries[0]!.ended_at!)).toBe(t0.getTime() + 25 * 60_000);
+
+    // Pauza na telefonie → web widzi pauzę.
+    const paused = pauseFocus(onPhone.state, new Date(later.getTime() + 120_000));
+    await phone.engine.mutateMany(focusStepOps(user.id, paused));
+    await phone.engine.sync();
+    await web.engine.sync();
+    expect(parseFocusState((await web.engine.get('profiles', user.id))?.focus)).toMatchObject({ phase: 'short_break', paused: true });
+    // Timer nie nadpisuje ustawień (osobne pole profilu).
+    expect(((await web.engine.get('profiles', user.id))?.settings as Record<string, unknown> | undefined)?.focus ?? null).not.toEqual(paused.state);
   });
 });

@@ -7,26 +7,40 @@ import type { LocalDate, LocalTime } from './schemas/primitives.ts';
 const toDate = (date: LocalDate) => new Date(`${date}T12:00:00Z`);
 const fromDate = (d: Date): LocalDate => d.toISOString().slice(0, 10);
 
+// `Intl.DateTimeFormat` jest drogi w tworzeniu (kalendarz liczy setki chwil na widok) — jeden na strefę
+// (strefa urządzenia ustala się przy pierwszym użyciu, do przeładowania strony).
+const formatters = new Map<string, Intl.DateTimeFormat>();
+function formatter(kind: 'date' | 'minute' | 'second', timeZone?: string): Intl.DateTimeFormat {
+  const key = `${kind}|${timeZone ?? ''}`;
+  let f = formatters.get(key);
+  if (!f) {
+    const time = kind === 'date' ? {} : { hourCycle: 'h23' as const, hour: '2-digit' as const, minute: '2-digit' as const, ...(kind === 'second' && { second: '2-digit' as const }) };
+    f = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', ...time });
+    formatters.set(key, f);
+  }
+  return f;
+}
+
 /**
  * Dzień lokalny chwili `instant` w strefie `timeZone` (domyślnie urządzenia): „Dziś” i dzień
  * ukończenia (`completed_at timestamptz`) liczone według zegara ściennego (SPECYFIKACJA §7.1).
  */
 export function localDateAt(instant: Date | string, timeZone?: string): LocalDate {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(instant));
+  const parts = formatter('date', timeZone).formatToParts(new Date(instant));
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 /** Lokalny zegar ścienny chwili jako `RRRR-MM-DDTGG:MM` (kontekst `now` szybkiego dodawania). */
 export function localDateTimeAt(instant: Date | string, timeZone?: string): string {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(instant));
+  const parts = formatter('minute', timeZone).formatToParts(new Date(instant));
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
   return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
 }
 
 /** Przesunięcie strefy w chwili `ms` (minuty; Warszawa zimą = 60). */
 function zoneOffsetMin(ms: number, timeZone?: string): number {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(new Date(ms));
+  const parts = formatter('second', timeZone).formatToParts(new Date(ms));
   const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
   const asUtc = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
   return Math.round((asUtc - Math.floor(ms / 1000) * 1000) / 60_000);

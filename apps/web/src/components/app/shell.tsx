@@ -4,22 +4,32 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, bulkTaskOps, isEmptyFilter, isOpen, plural, selectInbox, selectToday, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
+import { applyFilter, BOARD_BY, bulkTaskOps, isEmptyFilter, isOpen, plural, selectInbox, selectToday, type BoardBy, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { useAppData, useToday, type List } from "@/lib/app-data";
-import { routeHash, useRoute, type Route } from "@/lib/route";
+import { GOOGLE_RETURN_PARAM } from "@/lib/calendars";
+import { DEFAULT_ROUTE, routeHash, useRoute, type Route } from "@/lib/route";
 
 import { AppEnvProvider, useAppEnv, visibleTaskIds } from "./app-env";
+import { Board } from "./board";
+import { CalendarScreen } from "./calendar";
+import { DayPlan } from "./day-plan";
 import { CommandPalette, ShortcutsDialog, type PaletteMode, type PalettePick } from "./command-palette";
 import { FilterBar } from "./filter-bar";
+import { FocusIndicator, FocusProvider, FocusScreen } from "./focus";
 import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-views";
 import { QuickAddDialog } from "./quick-add";
 import { TaskPanel } from "./task-panel";
 import { TaskActionsProvider, useTaskActions } from "./task-item";
 import { Select, Splash } from "./ui";
 import { InboxView, ListView, TodayView, TrashView, UpcomingView } from "./views";
+
+// Oś czasu (SVAR Gantt) — osobny kawałek kodu, dociągany w wolnej chwili po starcie i przy pierwszym otwarciu.
+const loadTimeline = () => import("./timeline");
+const TimelineScreen = dynamic(() => loadTimeline().then((m) => m.TimelineScreen), { ssr: false, loading: () => <Splash text="Wczytywanie osi czasu…" /> });
 
 const WORKSPACE_KEY = "tp-workspace";
 const ALL = "all";
@@ -77,8 +87,30 @@ export function Shell({
       url.searchParams.delete("quick");
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
     }
+    // Powrót z ekranu zgody Google (`lib/calendars.ts`) → ustawienia z listą kalendarzy.
+    if (url.searchParams.has(GOOGLE_RETURN_PARAM)) {
+      url.searchParams.delete(GOOGLE_RETURN_PARAM);
+      url.searchParams.delete("account");
+      url.hash = "#/settings";
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    }
   }, []);
-  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  // Klik w przypomnienie przy zamkniętej karcie: `/?task=<id>` (Service Worker, M8).
+  const [openTaskId, setOpenTaskId] = useState<string | null>(() => (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("task") : null));
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("task")) {
+      url.searchParams.delete("task");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === "open-task" && typeof event.data.taskId === "string") setOpenTaskId(event.data.taskId);
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, []);
 
   const [palette, setPalette] = useState<PaletteMode | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -118,6 +150,24 @@ export function Shell({
     return { inbox: selectInbox(data.tasks, inboxIds, ctx).length, today: view.overdue.length + view.today.length, overdue: view.overdue.length, perList, perTag, perFilter };
   }, [data.tasks, data.lists, data.savedFilters, ctx]);
 
+  // Kryterium kolumn tablicy `#/board` — per przeglądarka (tablica listy ma je w `view_prefs`).
+  const [boardBy, setBoardByState] = useState<BoardBy>(() => {
+    try {
+      const value = localStorage.getItem("tp-board-by");
+      return value && value in BOARD_BY ? (value as BoardBy) : "status";
+    } catch {
+      return "status";
+    }
+  });
+  const setBoardBy = (by: BoardBy) => {
+    setBoardByState(by);
+    try {
+      localStorage.setItem("tp-board-by", by);
+    } catch {
+      // Bez pamięci przeglądarki — do odświeżenia.
+    }
+  };
+
   // Filtr doraźny (chipy) nad Inbox / Dziś / Nadchodzące / listą — do zmiany widoku.
   const [adhoc, setAdhoc] = useState<FilterQuery>({});
 
@@ -133,12 +183,25 @@ export function Shell({
     });
   }, [hash]);
 
+  // „Wyjdź” z trybu skupienia wraca do ostatniego innego widoku.
+  const [lastRoute, setLastRoute] = useState<Route>(DEFAULT_ROUTE);
+  if (route.view !== "focus" && routeHash(route) !== routeHash(lastRoute)) setLastRoute(route);
+
+  // Oś czasu zostaje zamontowana po pierwszym otwarciu — powrót do niej bez ponownego rysowania.
+  const [timelineOpened, setTimelineOpened] = useState(false);
+  if (route.view === "timeline" && !timelineOpened) setTimelineOpened(true);
+  useEffect(() => {
+    const idle = window.requestIdleCallback ?? ((fn: () => void) => window.setTimeout(fn, 2000));
+    idle(() => void loadTimeline());
+  }, []);
+
   if (!data.loaded) return <Splash text="Wczytywanie zadań…" />;
 
   const list = route.view === "list" ? data.lists.find((l) => l.id === route.id) : undefined;
   const tag = route.view === "tag" ? data.tags.find((t) => t.id === route.id) : undefined;
   const savedFilter = route.view === "filter" ? data.savedFilters.find((f) => f.id === route.id) : undefined;
-  const filterable = ["inbox", "today", "upcoming", "list"].includes(route.view);
+  const filterable = ["inbox", "today", "upcoming", "list", "board"].includes(route.view);
+  const wide = route.view === "board" || route.view === "calendar" || route.view === "timeline" || list?.prefs.view === "kanban";
   // Widoki dostają zadania po filtrze doraźnym; liczniki paska bocznego liczą się z pełnych danych.
   const viewData = filterable && !isEmptyFilter(adhoc) ? { ...data, tasks: applyFilter(data.tasks, adhoc, today) } : data;
   const toolbar = filterable ? (
@@ -151,9 +214,33 @@ export function Shell({
     route.view === "inbox" ? (
       <InboxView {...props} />
     ) : route.view === "today" ? (
-      <TodayView {...props} />
+      <TodayView {...props} aside={<DayPlan data={data} ctx={ctx} settings={settings} />} />
     ) : route.view === "upcoming" ? (
       <UpcomingView {...props} />
+    ) : route.view === "board" ? (
+      <>
+        <header className="mb-2">
+          <h1 className="text-xl font-semibold">Tablica</h1>
+          <p className="text-sm text-[var(--muted)]">{workspaceId ? data.workspaces.find((w) => w.id === workspaceId)?.name : "Wszystkie przestrzenie"} — zawęź chipami filtrów</p>
+        </header>
+        {toolbar}
+        <Board
+          data={data}
+          ctx={ctx}
+          tasks={viewData.tasks.filter((t) => !workspaceId || t.workspaceId === workspaceId)}
+          by={boardBy}
+          onBy={setBoardBy}
+          listId={targetInbox?.id}
+          showList
+        />
+      </>
+    ) : route.view === "calendar" ? (
+      <>
+        <h1 className="sr-only">Kalendarz</h1>
+        <CalendarScreen data={data} ctx={ctx} settings={settings} />
+      </>
+    ) : route.view === "timeline" ? null : route.view === "focus" ? (
+      <FocusScreen key={route.id ?? ""} taskId={route.id ?? null} ctx={ctx} onExit={() => navigate(lastRoute)} navigate={navigate} />
     ) : route.view === "manage" ? (
       manage
     ) : route.view === "settings" ? (
@@ -172,7 +259,16 @@ export function Shell({
       <p className="py-6 text-sm text-[var(--muted)]">Ta lista nie istnieje albo jest zarchiwizowana.</p>
     );
 
-  const content = body;
+  const content = (
+    <>
+      {body}
+      {timelineOpened ? (
+        <div hidden={route.view !== "timeline"}>
+          <TimelineScreen data={data} ctx={ctx} active={route.view === "timeline"} />
+        </div>
+      ) : null}
+    </>
+  );
 
   const workspaces = workspaceId ? data.workspaces.filter((w) => w.id === workspaceId) : data.workspaces;
   // Okno szybkiego dodawania dodaje tam, skąd je wywołano (lista / „Dziś” z dzisiejszym terminem).
@@ -181,8 +277,10 @@ export function Shell({
   return (
     <AppEnvProvider value={{ store, data, userId, timeZone: settings.timeZone, today, workspaceId, openTask: setOpenTaskId, openTaskId, selectedIds, select }}>
       <TaskActionsProvider store={store} timeZone={settings.timeZone} tasks={data.tasks}>
+        <FocusProvider store={store} userId={userId} settings={settings}>
+        <ReminderToasts />
         <Keyboard
-          blocked={quickOpen || palette !== null || shortcutsOpen}
+          blocked={quickOpen || palette !== null || shortcutsOpen || route.view === "focus"}
           selected={selected}
           setSelected={setSelected}
           navigate={navigate}
@@ -191,6 +289,7 @@ export function Shell({
           openShortcuts={() => setShortcutsOpen(true)}
         />
         <div className="flex min-h-0 flex-1">
+          {route.view === "focus" ? null : (
           <button
             type="button"
             className="fixed right-4 bottom-4 z-20 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white shadow-lg md:hidden"
@@ -200,10 +299,11 @@ export function Shell({
           >
             {menuOpen ? "Zamknij" : "Menu"}
           </button>
+          )}
           <aside
             id="sidebar"
             aria-label="Nawigacja"
-            className={`${menuOpen ? "fixed inset-0 z-10 block" : "hidden"} w-full shrink-0 overflow-y-auto border-r border-[var(--line)] bg-[var(--surface)] p-3 text-sm md:static md:block md:w-64`}
+            className={`${menuOpen ? "fixed inset-0 z-10 block" : "hidden"} w-full shrink-0 overflow-y-auto border-r border-[var(--line)] bg-[var(--surface)] p-3 text-sm md:static md:w-64 ${route.view === "focus" ? "md:hidden" : "md:block"}`}
           >
             <Select
               aria-label="Przestrzeń"
@@ -218,6 +318,7 @@ export function Shell({
                 </option>
               ))}
             </Select>
+            <FocusIndicator navigate={navigate} />
             <button
               type="button"
               onClick={() => setQuickOpen(true)}
@@ -231,6 +332,9 @@ export function Shell({
               <NavItem route={{ view: "inbox" }} current={route} navigate={navigate} icon="📥" label="Inbox" count={counts.inbox} />
               <NavItem route={{ view: "today" }} current={route} navigate={navigate} icon="☀️" label="Dziś" count={counts.today} alert={counts.overdue > 0} />
               <NavItem route={{ view: "upcoming" }} current={route} navigate={navigate} icon="📅" label="Nadchodzące" />
+              <NavItem route={{ view: "board" }} current={route} navigate={navigate} icon="▦" label="Tablica" />
+              <NavItem route={{ view: "calendar" }} current={route} navigate={navigate} icon="🗓" label="Kalendarz" />
+              <NavItem route={{ view: "timeline" }} current={route} navigate={navigate} icon="📊" label="Oś czasu" />
             </nav>
             {workspaces.map((w) => (
               <WorkspaceLists key={w.id} name={w.name} color={w.color} lists={data.lists.filter((l) => l.workspaceId === w.id && l.kind !== "inbox")} counts={counts.perList} route={route} navigate={navigate} />
@@ -256,7 +360,7 @@ export function Shell({
             </nav>
           </aside>
           <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-3xl p-4 pb-20 sm:p-6">{content}</div>
+            <div className={`mx-auto w-full p-4 pb-20 sm:p-6 ${wide ? "" : route.view === "today" ? "max-w-5xl" : "max-w-3xl"}`}>{content}</div>
           </main>
           {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>
@@ -273,6 +377,7 @@ export function Shell({
           />
         ) : null}
         {shortcutsOpen ? <ShortcutsDialog onClose={() => setShortcutsOpen(false)} /> : null}
+        </FocusProvider>
       </TaskActionsProvider>
     </AppEnvProvider>
   );
@@ -398,7 +503,10 @@ function WorkspaceLists({
 
 // ── Klawiatura i polecenia ───────────────────────────────────────────────────────────────────
 
-const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" } };
+/** Tryb skupienia z zadaniem (zaznaczonym albo otwartym) albo bez. */
+const focusRoute = (taskId: string | null | undefined): Route => (taskId ? { view: "focus", id: taskId } : { view: "focus" });
+
+const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" } };
 
 /** Akcja na zaznaczonych z dymkiem „Cofnij”. */
 function useBulk(selected: readonly string[]) {
@@ -417,6 +525,20 @@ function useBulk(selected: readonly string[]) {
 }
 
 /** Skróty klawiszowe (M17); jednoklawiszowe nie działają w polach tekstowych ani przy otwartym oknie. */
+/** Przypomnienie push przy otwartej karcie — także dymek w aplikacji (M8). */
+function ReminderToasts() {
+  const { notify } = useTaskActions();
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === "reminder") notify(`🔔 ${event.data.title ?? "Przypomnienie"}${event.data.body ? ` — ${event.data.body}` : ""}`);
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [notify]);
+  return null;
+}
+
 function Keyboard({
   blocked,
   selected,
@@ -496,6 +618,7 @@ function Keyboard({
         "2": () => bulk({ kind: "priority", priority: 2 }, "Priorytet wysoki"),
         "3": () => bulk({ kind: "priority", priority: 3 }, "Priorytet średni"),
         "4": () => bulk({ kind: "priority", priority: 4 }, "Priorytet niski"),
+        f: () => navigate(focusRoute(selected.at(-1) ?? openTaskId)),
       };
       const handler = handlers[key];
       // Enter bez zaznaczenia zostaje przyciskom i linkom.
@@ -566,6 +689,10 @@ function PaletteHost({
       "view.inbox": () => then(() => navigate({ view: "inbox" })),
       "view.today": () => then(() => navigate({ view: "today" })),
       "view.upcoming": () => then(() => navigate({ view: "upcoming" })),
+      "view.kanban": () => then(() => navigate({ view: "board" })),
+      "view.calendar": () => then(() => navigate({ view: "calendar" })),
+      "view.timeline": () => then(() => navigate({ view: "timeline" })),
+      "focus.start": () => then(() => navigate(focusRoute(selected.at(-1) ?? null))),
       "task.quick_add": () => then(openQuick),
       "task.complete": () => then(() => bulk({ kind: "complete" }, "Ukończono")),
       "task.today": () => then(() => bulk({ kind: "today" }, "Na dziś")),

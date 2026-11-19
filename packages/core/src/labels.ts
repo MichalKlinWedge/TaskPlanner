@@ -1,6 +1,7 @@
 /**
  * Etykiety wartości ze schematów (SPECYFIKACJA §7.9). Aplikacje nie definiują własnych.
  */
+import type { FocusPhase } from './focus.ts';
 import type { IsoWeekday, ListKind, Priority, ProjectStatus, ReminderKind, TaskStatus } from './schemas/primitives.ts';
 
 export const PRIORITY: Record<Priority, { label: string; short: string; color: string }> = {
@@ -176,4 +177,14 @@ export const AUTH_ERROR: Record<string, string> = {
   request_timeout: 'Serwer nie odpowiedział na czas — spróbuj ponownie.',
   access_denied: 'Logowanie odrzucone.',
   network: 'Brak połączenia z serwerem.',
+};
+
+/** Etapy timera skupienia (M14). */
+export const FOCUS_PHASE: Record<FocusPhase, string> = {
+  idle: 'Bez timera',
+  focus: 'Praca',
+  short_break: 'Krótka przerwa',
+  long_break: 'Długa przerwa',
+  ready: 'Przerwa skończona',
+  stopwatch: 'Stoper',
 };

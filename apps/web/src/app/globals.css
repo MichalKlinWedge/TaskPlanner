@@ -37,3 +37,85 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
 }
+
+/* Kalendarz (FullCalendar, `components/app/calendar.tsx`): kolory z motywu, typy pozycji. */
+.tp-calendar {
+  --fc-border-color: var(--line);
+  --fc-page-bg-color: var(--surface);
+  --fc-neutral-bg-color: var(--hover);
+  --fc-list-event-hover-bg-color: var(--hover);
+  --fc-today-bg-color: color-mix(in srgb, var(--accent) 8%, transparent);
+  --fc-event-bg-color: color-mix(in srgb, var(--accent) 85%, var(--surface));
+  --fc-event-border-color: var(--accent);
+  --fc-non-business-color: color-mix(in srgb, var(--muted) 10%, transparent);
+  --fc-now-indicator-color: var(--danger);
+  --fc-button-bg-color: var(--surface);
+  --fc-button-border-color: var(--line);
+  --fc-button-text-color: var(--foreground);
+  --fc-button-hover-bg-color: var(--hover);
+  --fc-button-hover-border-color: var(--line);
+  --fc-button-active-bg-color: var(--accent);
+  --fc-button-active-border-color: var(--accent);
+  font-size: 0.8125rem;
+}
+.tp-calendar .fc .fc-button-primary:not(:disabled).fc-button-active {
+  color: #fff;
+}
+.tp-calendar .fc .fc-toolbar-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.tp-calendar .fc-event.tp-task {
+  border-left-width: 4px;
+}
+.tp-calendar .fc-event.tp-passive {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+.tp-calendar .fc-event.tp-virtual {
+  opacity: 0.65;
+  border-style: dashed;
+}
+.tp-calendar .fc-event.tp-conflict {
+  outline: 2px solid var(--danger);
+  outline-offset: -1px;
+}
+.tp-calendar .fc-bg-event.tp-free {
+  background: color-mix(in srgb, #16a34a 14%, transparent);
+  opacity: 1;
+}
+/* Wydarzenia z kalendarzy zewnętrznych: tylko do odczytu, kreskowane tło, kolor kalendarza w ramce. */
+.tp-calendar .fc-event.tp-event {
+  border-width: 1px 1px 1px 4px;
+  background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--muted) 14%, transparent) 6px 12px);
+  cursor: default;
+}
+.tp-calendar .fc-event.tp-event .fc-event-main {
+  color: var(--foreground);
+}
+/* Spotkanie z kalendarza w „Planie dnia” (`day-plan.tsx`) — jak w kalendarzu: kreskowane, tylko do odczytu. */
+.tp-plan-event {
+  background-color: var(--surface);
+  background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--muted) 14%, transparent) 6px 12px);
+}
+
+/* Oś czasu (`components/app/timeline.tsx`, SVAR Gantt). */
+.tp-timeline .wx-gantt {
+  font-family: inherit;
+}
+/* Postęp wynika z ukończonych zadań — bez uchwytu do przeciągania. */
+.tp-timeline .wx-progress-marker {
+  display: none;
+}
+.tp-timeline .tp-gantt-violated {
+  background: var(--danger);
+  color: #fff;
+}
+/* Dziś: kolumna z czerwoną linią po lewej (dzień) albo lekko podświetlony tydzień / miesiąc. */
+.tp-timeline .tp-gantt-today {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  box-shadow: inset 2px 0 0 var(--danger);
+}
+.tp-timeline .tp-gantt-today-period {
+  background: color-mix(in srgb, var(--danger) 7%, transparent);
+}

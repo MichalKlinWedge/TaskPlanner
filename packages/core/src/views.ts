@@ -36,6 +36,8 @@ export interface ViewTask {
   /** `timestamptz` (ISO). */
   createdAt: string;
   sortKey: string;
+  /** Kolejność na tablicy kanbanu z kilku list (D15); brak = kolejność automatyczna. */
+  boardSortKey?: string | null;
   tagIds: readonly string[];
   /** Ile razy termin przesunięto na później (przegląd oznacza ≥ 3 do decyzji). */
   postponeCount: number;

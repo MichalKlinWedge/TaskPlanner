@@ -11,6 +11,10 @@
  * Strona po starcie wysyła listę już wczytanych plików (`cache-urls`) — pierwsza wizyta przed
  * przejęciem kontroli przez SW też zostaje w pamięci. Stare pliki `/_next/static` po wdrożeniach
  * zostają (kilka MB na wdrożenie); czyszczenie przy zmianie `VERSION`.
+ *
+ * Web Push (M8): przypomnienie z `reminders-push` → powiadomienie systemowe (także przy zamkniętej
+ * karcie); otwarta karta dostaje też wiadomość `reminder` (dymek w aplikacji). Klik w powiadomienie
+ * otwiera zadanie w istniejącej karcie (`open-task`) albo w nowej (`/?task=<id>`).
  */
 const VERSION = 'v1';
 const SHELL = `tp-shell-${VERSION}`;
@@ -92,6 +96,45 @@ self.addEventListener('message', (event) => {
         if (url.origin !== self.location.origin || !isStatic(url) || (await cache.match(url.href))) continue;
         await cache.add(url.href).catch(() => undefined);
       }
+    })(),
+  );
+});
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: event.data?.text() };
+  }
+  event.waitUntil(
+    (async () => {
+      await self.registration.showNotification(data.title || 'TaskPlanner', {
+        body: data.body || '',
+        tag: data.key,
+        icon: '/icons/icon-192.png',
+        data: { url: data.url || '/', taskId: data.taskId },
+      });
+      for (const client of await self.clients.matchAll({ type: 'window', includeUncontrolled: true })) {
+        client.postMessage({ type: 'reminder', title: data.title, body: data.body, taskId: data.taskId });
+      }
+    })(),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const { url = '/', taskId } = event.notification.data || {};
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const open = windows.find((w) => new URL(w.url).origin === self.location.origin);
+      if (open) {
+        await open.focus();
+        if (taskId) open.postMessage({ type: 'open-task', taskId });
+        return;
+      }
+      await self.clients.openWindow(url);
     })(),
   );
 });

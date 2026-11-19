@@ -4,7 +4,7 @@
  * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
  * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { completeTaskOps, describeRecurrence, isOpen, localDateAt, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -34,9 +34,8 @@ export const useTaskActions = (): TaskActions => {
   return actions;
 };
 
-const apply = async (store: TabStore, ops: readonly TaskOp[]) => {
-  for (const op of ops) await store.mutate(op.table, op.id, op.patch);
-};
+/** Operacje w jednej transakcji — jedno odświeżenie widoków (np. 16 zmian przy przesunięciu projektu). */
+const apply = (store: TabStore, ops: readonly TaskOp[]) => store.mutateMany(ops);
 
 /** Akcje zadań i dymek „Cofnij” na dole ekranu. `tasks` — do pytania o otwarte podzadania. */
 export function TaskActionsProvider({ store, timeZone, tasks, children }: { store: TabStore; timeZone?: string; tasks: readonly ViewTask[]; children: ReactNode }) {
@@ -65,7 +64,7 @@ export function TaskActionsProvider({ store, timeZone, tasks, children }: { stor
           return;
         }
         const now = new Date();
-        const result = completeTaskOps(task, { now, timeZone });
+        const result = completeTaskOps(task, { now, timeZone, subtasks: task.recurrence ? descendants(tasks, task.id) : [] });
         // M3: rodzic z otwartymi podzadaniami — „Ukończyć też podzadania?” (domyślnie tak).
         const open = task.recurrence ? [] : openDescendants(tasks, task.id);
         if (open.length && window.confirm(`„${task.title}” ma ${plural(open.length, ["otwarte podzadanie", "otwarte podzadania", "otwartych podzadań"])}. Ukończyć też je?`)) {

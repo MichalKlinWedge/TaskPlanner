@@ -71,8 +71,8 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     scope: 'derived',
   },
   profiles: {
-    columns: columns<'profiles'>()(['display_name', 'settings']),
-    json: ['settings'],
+    columns: columns<'profiles'>()(['display_name', 'settings', 'focus']),
+    json: ['settings', 'focus'],
     scope: 'self',
   },
   devices: {
@@ -112,6 +112,37 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
   },
 };
 
+// ── Tylko do odczytu (integracje, `pulled_readonly_tables()`) ─────────────────────────────────
+
+/**
+ * Tabele, które przychodzą w `pull_changes`, ale klient ich nie pisze (zapis: Edge Functions).
+ * Lokalnie bez `field_clock` i outboxu; usunięcie (nagrobek / `deleted_at`) kasuje wiersz.
+ */
+export const READONLY_TABLES = ['calendar_accounts', 'calendars', 'calendar_events'] as const;
+export type ReadonlyTable = (typeof READONLY_TABLES)[number];
+
+const readonlyColumns = <T extends ReadonlyTable>() => <const C extends readonly (keyof Tables<T> & string)[]>(cols: C) => cols;
+
+/** Lokalne kolumny (poza `id`, `scope_id`) — tylko te, które `pull_changes` wysyła klientom. */
+export const READONLY: { [T in ReadonlyTable]: { columns: readonly string[]; bool: readonly string[] } } = {
+  calendar_accounts: {
+    columns: readonlyColumns<'calendar_accounts'>()(['provider', 'label', 'status', 'last_synced_at', 'last_error', 'created_at', 'updated_at', 'row_version']),
+    bool: [],
+  },
+  calendars: {
+    columns: readonlyColumns<'calendars'>()(['account_id', 'name', 'color', 'visible', 'is_task_target', 'last_synced_at', 'created_at', 'updated_at', 'row_version']),
+    bool: ['visible', 'is_task_target'],
+  },
+  calendar_events: {
+    columns: readonlyColumns<'calendar_events'>()([
+      'calendar_id', 'external_id', 'title', 'all_day', 'start_at', 'end_at', 'start_date', 'end_date', 'location', 'task_id', 'created_at', 'updated_at', 'row_version',
+    ]),
+    bool: ['all_day'],
+  },
+};
+
+export const readonlyColumnsOf = (table: ReadonlyTable): readonly string[] => ['id', 'scope_id', ...READONLY[table].columns];
+
 /** Pola, które klient wysyła w `push_changes` (= `writable_columns` w bazie). */
 export const writableFields = (table: SyncedTable): readonly string[] => [...TABLES[table].columns, 'deleted_at'];
 
@@ -139,6 +170,12 @@ export function localSchema(): string[] {
   }
   statements.push('create index if not exists task_dependencies_predecessor on task_dependencies (predecessor_id)');
   statements.push('create index if not exists task_dependencies_successor on task_dependencies (successor_id)');
+  for (const table of READONLY_TABLES) {
+    statements.push(`create table if not exists ${table} (${readonlyColumnsOf(table).map((c) => (c === 'id' ? 'id text primary key' : c)).join(', ')})`);
+  }
+  statements.push('create index if not exists calendars_account on calendars (account_id)');
+  statements.push('create index if not exists calendar_events_calendar on calendar_events (calendar_id)');
+  statements.push('create index if not exists calendar_events_start on calendar_events (start_at)');
   statements.push(
     "create table if not exists _outbox (seq integer primary key autoincrement, op_id text not null unique, tbl text not null, row_id text not null, data text not null, hlc text not null, status text not null default 'pending', error text)",
   );

@@ -108,22 +108,23 @@ export interface DateChange {
 }
 
 /**
- * Przesunięcie zadania o `deltaDays` i — „Przesuń zależne” — wszystkich jego następników
- * (przechodnio) o tyle samo, więc odstępy między nimi zostają. Z `workdays` przesunięcie liczy się
- * w dniach roboczych. Zadania bez terminu nie mają paska i nie są przesuwane.
+ * Przesunięcie zadania (albo kilku — pasek projektu) o `deltaDays` i — „Przesuń zależne” — wszystkich
+ * następników (przechodnio) o tyle samo, więc odstępy między nimi zostają. Z `workdays` przesunięcie
+ * liczy się w dniach roboczych. Zadania bez terminu nie mają paska i nie są przesuwane.
  */
 export function shiftSuccessors(
   tasks: readonly ScheduledTask[],
   deps: readonly Pick<Dependency, 'predecessorId' | 'successorId'>[],
-  taskId: string,
+  taskId: string | readonly string[],
   deltaDays: number,
   { cascade = true, workdays }: { cascade?: boolean; workdays?: readonly number[] } = {},
 ): DateChange[] {
   if (deltaDays === 0) return [];
   const graph = successorsOf(deps);
-  const moved = new Set([taskId]);
+  const roots = typeof taskId === 'string' ? [taskId] : [...taskId];
+  const moved = new Set(roots);
   if (cascade) {
-    for (const queue = [taskId]; queue.length; ) {
+    for (const queue = [...roots]; queue.length; ) {
       for (const s of graph.get(queue.shift()!) ?? []) {
         if (!moved.has(s)) {
           moved.add(s);

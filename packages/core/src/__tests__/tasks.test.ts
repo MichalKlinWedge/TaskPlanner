@@ -13,11 +13,13 @@ import {
   deleteTaskOps,
   descendants,
   dropTaskOps,
+  endSeriesOps,
   moveTaskOps,
   openDescendants,
   quickAddTaskOps,
   reopenTaskPatch,
   restoreTaskOps,
+  skipOccurrenceOps,
   taskDepth,
   toViewTask,
   type LocalTaskRow,
@@ -113,6 +115,52 @@ describe('completeTaskOps', () => {
 
   it('ponowne otwarcie', () => {
     expect(reopenTaskPatch()).toEqual({ status: 'todo', completed_at: null });
+  });
+});
+
+describe('wystąpienia serii (M7)', () => {
+  const weekly = toViewTask({ ...row, recurrence: { mode: 'schedule', rrule: 'FREQ=WEEKLY;BYDAY=WE', anchor: '2026-11-04' } });
+  const subtasks = [
+    { id: 's1', status: 'done' as const, completedAt: '2026-11-18T10:00:00.000Z' },
+    { id: 's2', status: 'todo' as const, completedAt: null },
+    { id: 's3', status: 'in_progress' as const, completedAt: null },
+  ];
+
+  it('ukończenie serii resetuje podzadania i cofa reset', () => {
+    const { ops, undo } = completeTaskOps(weekly, { now: NOW, subtasks });
+    expect(ops.slice(2)).toEqual([
+      { table: 'tasks', id: 's1', patch: { status: 'todo', completed_at: null } },
+      { table: 'tasks', id: 's3', patch: { status: 'todo', completed_at: null } },
+    ]);
+    expect(undo.slice(2)).toEqual([
+      { table: 'tasks', id: 's1', patch: { status: 'done', completed_at: '2026-11-18T10:00:00.000Z' } },
+      { table: 'tasks', id: 's3', patch: { status: 'in_progress', completed_at: null } },
+    ]);
+  });
+
+  it('koniec serii nie rusza podzadań', () => {
+    const last = toViewTask({ ...row, recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY;COUNT=3', anchor: '2026-11-16' } });
+    expect(completeTaskOps(last, { now: NOW, subtasks }).ops.map((o) => o.id)).toEqual([completionId(ID, '2026-11-18'), ID]);
+  });
+
+  it('pominięcie: wpis skipped i następny termin', () => {
+    const { ops, nextDue } = skipOccurrenceOps(weekly, { now: NOW });
+    expect(nextDue).toBe('2026-11-25');
+    expect(ops[0]).toMatchObject({ table: 'task_completions', id: completionId(ID, '2026-11-18'), patch: { kind: 'skipped' } });
+    expect(ops[1]).toMatchObject({ patch: { due_date: '2026-11-25' } });
+  });
+
+  it('pominięcie ostatniego wystąpienia anuluje serię; zwykłe zadanie nie ma czego pomijać', () => {
+    const last = toViewTask({ ...row, recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY;COUNT=3', anchor: '2026-11-16' } });
+    expect(skipOccurrenceOps(last, { now: NOW }).ops[1]!.patch).toEqual({ status: 'cancelled', completed_at: '2026-11-19T11:00:00.000Z' });
+    expect(skipOccurrenceOps(toViewTask(row), { now: NOW }).ops).toEqual([]);
+  });
+
+  it('zakończenie serii: anulowana, reguła zostaje, cofnięcie', () => {
+    const { ops, undo } = endSeriesOps(weekly, NOW);
+    expect(ops).toEqual([{ table: 'tasks', id: ID, patch: { status: 'cancelled', completed_at: '2026-11-19T11:00:00.000Z' } }]);
+    expect(undo).toEqual([{ table: 'tasks', id: ID, patch: { status: 'todo', completed_at: null } }]);
+    expect(endSeriesOps(toViewTask(row), NOW).ops).toEqual([]);
   });
 });
 

@@ -9,7 +9,7 @@
  */
 import { z } from 'zod';
 
-import { FocusSettings } from '../focus.ts';
+import { FocusSettings, FocusState } from '../focus.ts';
 import { HabitSettings } from '../habits.ts';
 import { Recurrence } from '../recurrence.ts';
 import { ReviewStats } from '../review.ts';
@@ -40,6 +40,8 @@ export const TimeZone = z.string().refine((zone) => {
 /** `lists.view_prefs`: ustawienia widoku listy (M2). */
 export const ViewPrefs = z.object({
   view: z.enum(['list', 'kanban', 'calendar', 'timeline']).optional(),
+  /** Kryterium kolumn tablicy (M10). */
+  boardBy: z.enum(['status', 'priority', 'weekday', 'tag', 'list']).optional(),
   groupBy: GroupBy.optional(),
   sortBy: SortBy.optional(),
   completed: CompletedMode.optional(),
@@ -107,6 +109,8 @@ export const ProfileRow = z.object({
   id: Id,
   display_name: z.string().trim().max(100).nullable(),
   settings: ProfileSettings,
+  /** Timer skupienia (Etap 7); `null` = brak. */
+  focus: FocusState.nullable(),
 });
 
 export const DeviceRow = z.object({

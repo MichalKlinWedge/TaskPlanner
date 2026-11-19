@@ -5,7 +5,7 @@
  * (klik cofa rozpoznanie), podgląd tytułu i listy docelowej, wiele linii naraz (wklejenie).
  * Ten sam komponent w widokach (pole na górze) i w oknie wywoływanym klawiszem `Q` / `Ctrl+Spacja`.
  */
-import { localDateTimeAt, parseQuickAdd, plural, quickAddChip, quickAddTaskOps, suppressToken, type LocalDate, type QuickAddContext, type QuickAddTokenKind } from "@taskplanner/core";
+import { localDateTimeAt, parseQuickAdd, plural, quickAddChip, quickAddTaskOps, suppressToken, taskTagOps, type LocalDate, type TaskOp, type QuickAddContext, type QuickAddTokenKind } from "@taskplanner/core";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 
 import { lastSortKey, useAppEnv } from "./app-env";
@@ -28,6 +28,8 @@ export interface QuickAddProps {
   listId?: string;
   /** Termin, gdy wpis go nie podaje. */
   dueDate?: LocalDate | null;
+  /** Pola z kolumny tablicy (status, priorytet), gdy wpis ich nie podaje; tagi dokładane. */
+  defaults?: { status?: string; priority?: number; tagNames?: readonly string[] };
   /** Podzadanie tego zadania (lista rodzica, wskazanie listy we wpisie pomijane). */
   parent?: { id: string; listId: string };
   placeholder?: string;
@@ -37,7 +39,7 @@ export interface QuickAddProps {
   onCancel?: () => void;
 }
 
-export function QuickAdd({ listId, dueDate, parent, placeholder = "Dodaj zadanie", autoFocus, onAdded, onCancel }: QuickAddProps) {
+export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dodaj zadanie", autoFocus, onAdded, onCancel }: QuickAddProps) {
   const { data, userId, timeZone, today, workspaceId } = useAppEnv();
   const { run, notify } = useTaskActions();
   const [text, setText] = useState("");
@@ -82,7 +84,7 @@ export function QuickAdd({ listId, dueDate, parent, placeholder = "Dodaj zadanie
 
   const add = async (lines: string[], more: boolean) => {
     if (!defaultListId) return notify("Brak listy docelowej — utwórz przestrzeń w „Przestrzenie i listy”.");
-    const ops = [];
+    const ops: TaskOp[] = [];
     const added: { taskId: string; listId: string }[] = [];
     // Kolejne zadania z jednego wklejenia idą po sobie: klucz kolejności z poprzedniego.
     const keys = new Map<string, string>();
@@ -92,7 +94,10 @@ export function QuickAdd({ listId, dueDate, parent, placeholder = "Dodaj zadanie
       const base = scope(defaultListId);
       const result = quickAddTaskOps(parsed, line, { ...base, lastSortKey: (id) => keys.get(id) ?? base.lastSortKey(id) });
       keys.set(parent?.id ?? result.listId, result.ops[0]!.patch.sort_key as string);
+      if (defaults?.status) Object.assign(result.ops[0]!.patch, { status: defaults.status }, defaults.status === "done" ? { completed_at: new Date().toISOString() } : {});
+      if (defaults?.priority && !parsed.fields.priority) result.ops[0]!.patch.priority = defaults.priority;
       ops.push(...result.ops);
+      if (defaults?.tagNames?.length) ops.push(...taskTagOps({ userId, tags: data.tags }, result.taskId, defaults.tagNames).filter((op) => !ops.some((o) => o.table === op.table && o.id === op.id)));
       added.push(result);
     }
     if (!added.length) return notify("Zadanie musi mieć tytuł.");

@@ -2,44 +2,58 @@
 
 /**
  * Panel zadania (MVP-2): wszystkie pola zadania, opis w Markdown (TipTap), tagi, przypomnienia,
- * podzadania (do 4 poziomów), historia zmian (online, z `activity_log`) i kosz. Każda zmiana to
+ * podzadania (do 4 poziomów), czas pracy (M14), zależności (poprzednicy / następnicy, M12), historia zmian (online, z `activity_log`) i kosz. Każda zmiana to
  * `store.mutate` jednego pola — synchronizacja scala zmiany pól z innych urządzeń (§6).
  */
 import {
+  addDependencyOps,
   canAddSubtask,
+  clampLag,
   datesPatch,
+  dependencyErrorText,
   deleteTaskOps,
+  descendants,
+  endSeriesOps,
   describeRecurrence,
   formatMinutes,
+  isOpen,
   LIST_KIND,
   moveTaskOps,
-  parseQuickAdd,
+  normalizeText,
+  plural,
   PRIORITY,
   REMINDER_PRESETS,
   reminderOffset,
   relativeDay,
+  removeDependencyOps,
   shortDate,
+  skipOccurrenceOps,
   TASK_FIELD,
   TASK_STATUS,
+  taskLinks,
   taskTagId,
   taskTagOps,
-  localDateTimeAt,
   uuidv7,
   type LocalDate,
   type LocalTime,
   type Priority,
+  type Recurrence,
+  type TaskLink,
   type TaskStatus,
   type ViewTask,
 } from "@taskplanner/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 
+import { useDependencies } from "@/lib/dependencies";
 import { descriptionExtensions, descriptionMarkdown } from "@/lib/editor";
 import { useLocalQuery } from "@/lib/local-store";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 import { useAppEnv } from "./app-env";
+import { TaskTimeField } from "./focus";
 import { QuickAdd } from "./quick-add";
+import { RecurrenceEditor } from "./recurrence-editor";
 import { TaskItem, useTaskActions } from "./task-item";
 import { Button, IconButton, Input, Select } from "./ui";
 
@@ -67,7 +81,7 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
 }
 
 export function TaskPanel({ taskId }: { taskId: string }) {
-  const { store, data, userId, today, timeZone, openTask } = useAppEnv();
+  const { data, userId, today, timeZone, openTask } = useAppEnv();
   const { run, toggle } = useTaskActions();
   const task = data.tasks.find((t) => t.id === taskId);
 
@@ -174,18 +188,18 @@ export function TaskPanel({ taskId }: { taskId: string }) {
             }}
           />
         </Field>
-        <Field label="Termin">
-          <Input type="date" value={task.dueDate ?? ""} onChange={(e) => void update(datesPatch(task, { due_date: (e.target.value || null) as LocalDate | null }))} />
-        </Field>
-        <Field label="Godzina">
-          <Input type="time" value={task.dueTime ?? ""} disabled={!task.dueDate} onChange={(e) => void update(datesPatch(task, { due_time: (e.target.value || null) as LocalTime | null }))} />
-        </Field>
         <Field label="Początek">
           <Input type="date" value={task.startDate ?? ""} max={task.dueDate ?? undefined} disabled={!task.dueDate} onChange={(e) => void update(datesPatch(task, { start_date: (e.target.value || null) as LocalDate | null }))} />
         </Field>
         <div className="flex items-end text-xs text-[var(--muted)]">
           {task.dueDate ? `${relativeDay(task.dueDate, today, "distance")}${task.durationMin ? ` · ${formatMinutes(task.durationMin)}` : ""}` : "Bez terminu"}
         </div>
+        <Field label="Termin">
+          <Input type="date" value={task.dueDate ?? ""} onChange={(e) => void update(datesPatch(task, { due_date: (e.target.value || null) as LocalDate | null }))} />
+        </Field>
+        <Field label="Godzina">
+          <Input type="time" value={task.dueTime ?? ""} disabled={!task.dueDate} onChange={(e) => void update(datesPatch(task, { due_time: (e.target.value || null) as LocalTime | null }))} />
+        </Field>
       </div>
 
       <RecurrenceField key={`rec:${task.id}`} task={task} onSave={(patch) => void update(patch)} timeZone={timeZone} today={today} />
@@ -195,7 +209,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
       <RemindersField key={`rem:${task.id}`} task={task} />
 
       <Block title="Opis">
-        <DescriptionEditor key={task.id} taskId={task.id} store={store} />
+        <DescriptionEditor key={task.id} taskId={task.id} />
       </Block>
 
       <Block title={`Podzadania${children.length ? ` · ${children.filter((c) => c.status === "done").length}/${children.filter((c) => c.status !== "cancelled").length}` : ""}`}>
@@ -213,6 +227,10 @@ export function TaskPanel({ taskId }: { taskId: string }) {
         )}
       </Block>
 
+      <TaskTimeField task={task} />
+
+      <DependenciesField key={`dep:${task.id}`} task={task} />
+
       <History key={`hist:${task.id}`} taskId={task.id} lists={new Map(data.lists.map((l) => [l.id, l.kind === "inbox" ? `Inbox (${workspaceName.get(l.workspaceId)})` : l.name]))} />
 
       <div className="mt-4 flex items-center justify-between border-t border-[var(--line)] pt-3 text-xs text-[var(--muted)]">
@@ -222,6 +240,132 @@ export function TaskPanel({ taskId }: { taskId: string }) {
         </Button>
       </div>
     </PanelFrame>
+  );
+}
+
+/**
+ * Zależności koniec→początek (M12): „Czeka na” (poprzednicy) i „Blokuje” (następnicy) z opóźnieniem
+ * w dniach i naruszeniem; dodanie wyszukaniem zadania z tej samej przestrzeni — przez `addDependencyOps`
+ * (cykl, duplikat i inna przestrzeń są blokowane). Na osi czasu zależności tworzy się przeciągnięciem.
+ */
+function DependenciesField({ task }: { task: ViewTask }) {
+  const { store, data, openTask } = useAppEnv();
+  const { run, notify } = useTaskActions();
+  const deps = useDependencies(store);
+  const links = useMemo(() => taskLinks(task.id, data.tasks, deps), [task.id, data.tasks, deps]);
+  const [adding, setAdding] = useState<"predecessor" | "successor" | null>(null);
+  const [query, setQuery] = useState("");
+  const byId = new Map(data.tasks.map((t) => [t.id, t]));
+  const titleOf = (id: string) => `„${byId.get(id)?.title ?? "?"}”`;
+  const needle = normalizeText(query.trim());
+  const candidates = adding && needle ? data.tasks.filter((t) => t.id !== task.id && t.kind === "task" && t.workspaceId === task.workspaceId && isOpen(t) && normalizeText(t.title).includes(needle)).slice(0, 8) : [];
+
+  const add = (otherId: string) => {
+    const next = adding === "predecessor" ? { predecessorId: otherId, successorId: task.id } : { predecessorId: task.id, successorId: otherId };
+    const result = addDependencyOps(data.tasks, deps, next);
+    if ("error" in result) return notify(dependencyErrorText(result.error, titleOf));
+    void run(result.ops, { text: `Zależność: ${titleOf(next.predecessorId)} → ${titleOf(next.successorId)}`, undo: result.undo });
+    setAdding(null);
+    setQuery("");
+  };
+
+  const item = (link: TaskLink) => {
+    const other = byId.get(link.otherId);
+    const { dependency: d } = link;
+    return (
+      <li key={d.id} className="flex items-center gap-2 py-1 text-sm">
+        <button type="button" className={`min-w-0 flex-1 truncate text-left hover:text-[var(--accent)] ${other && !isOpen(other) ? "text-[var(--muted)] line-through" : ""}`} onClick={() => openTask(link.otherId)}>
+          {other?.title ?? "?"}
+        </button>
+        {link.violation ? (
+          <span className="shrink-0 text-xs text-[var(--danger)]" title={`Następnik może zacząć się najwcześniej ${shortDate(link.violation.earliestStart)}`}>
+            ⚠ {plural(link.violation.days, ["dzień", "dni", "dni"])} za wcześnie
+          </span>
+        ) : null}
+        <label className="flex shrink-0 items-center gap-1 text-xs text-[var(--muted)]" title="Odstęp w dniach między końcem poprzednika a początkiem następnika">
+          +
+          <Input
+            key={`${d.id}:${d.lagDays}`}
+            type="number"
+            min={-365}
+            max={365}
+            step={1}
+            defaultValue={d.lagDays}
+            className="w-16 py-0.5 text-xs"
+            aria-label={`Odstęp w dniach: ${other?.title ?? ""}`}
+            onBlur={(e) => {
+              const lag = clampLag(Number(e.target.value));
+              if (lag !== d.lagDays) void run([{ table: "task_dependencies", id: d.id, patch: { lag_days: lag } }]);
+            }}
+          />
+          dni
+        </label>
+        <IconButton
+          label="Usuń zależność"
+          onClick={() => {
+            const result = removeDependencyOps(d.id);
+            void run(result.ops, { text: `Usunięto zależność ${titleOf(d.predecessorId)} → ${titleOf(d.successorId)}`, undo: result.undo });
+          }}
+        >
+          ×
+        </IconButton>
+      </li>
+    );
+  };
+
+  const count = links.predecessors.length + links.successors.length;
+  return (
+    <Block title={`Zależności${count ? ` · ${count}` : ""}`}>
+      {links.predecessors.length ? (
+        <>
+          <h4 className="text-xs text-[var(--muted)]">Czeka na</h4>
+          <ul className="mb-2 divide-y divide-[var(--line)]" aria-label="Poprzednicy">
+            {links.predecessors.map(item)}
+          </ul>
+        </>
+      ) : null}
+      {links.successors.length ? (
+        <>
+          <h4 className="text-xs text-[var(--muted)]">Blokuje</h4>
+          <ul className="mb-2 divide-y divide-[var(--line)]" aria-label="Następnicy">
+            {links.successors.map(item)}
+          </ul>
+        </>
+      ) : null}
+      {adding ? (
+        <div className="flex flex-col gap-1">
+          <div className="flex gap-2">
+            <Input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={adding === "predecessor" ? "Na co czeka to zadanie?" : "Co czeka na to zadanie?"} aria-label="Szukaj zadania" className="min-w-0 flex-1" onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), setAdding(null))} />
+            <Button kind="ghost" onClick={() => setAdding(null)}>
+              Anuluj
+            </Button>
+          </div>
+          {candidates.length ? (
+            <ul className="rounded-md border border-[var(--line)] text-sm" aria-label="Zadania do wyboru">
+              {candidates.map((t) => (
+                <li key={t.id}>
+                  <button type="button" className="block w-full truncate px-2 py-1 text-left hover:bg-black/5 dark:hover:bg-white/10" onClick={() => add(t.id)}>
+                    {t.title}
+                    {t.dueDate ? <span className="ml-2 text-xs text-[var(--muted)]">{shortDate(t.dueDate)}</span> : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : needle ? (
+            <p className="text-xs text-[var(--muted)]">Brak otwartych zadań o takim tytule w tej przestrzeni.</p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <Button kind="ghost" onClick={() => setAdding("predecessor")}>
+            + Czeka na…
+          </Button>
+          <Button kind="ghost" onClick={() => setAdding("successor")}>
+            + Blokuje…
+          </Button>
+        </div>
+      )}
+    </Block>
   );
 }
 
@@ -272,45 +416,54 @@ function TitleField({ value, onSave }: { value: string; onSave: (title: string) 
 }
 
 function RecurrenceField({ task, onSave, timeZone, today }: { task: ViewTask; onSave: (patch: Record<string, unknown>) => void; timeZone?: string; today: LocalDate }) {
+  const { data } = useAppEnv();
+  const { run } = useTaskActions();
   const [editing, setEditing] = useState(false);
-  const [text, setText] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    // Ta sama gramatyka co szybkie dodawanie: „co tydzień”, „w dni robocze”, „co 3 dni po ukończeniu”.
-    const parsed = parseQuickAdd(`x ${text}`, { now: localDateTimeAt(new Date(), timeZone), workspaces: [], lists: [], tags: [] });
-    const rec = parsed.fields.recurrence;
-    if (!rec) return setError("Nie rozpoznano — np. „co tydzień”, „w dni robocze”, „co miesiąc 15.”, „co 3 dni po ukończeniu”.");
-    // Seria liczy się od terminu zadania (kotwica), a nie od dziś — „co 2 tygodnie” od 28.12 to 11.01.
-    const due = task.dueDate ?? parsed.fields.dueDate ?? today;
-    onSave({ recurrence: rec.mode === "schedule" ? { ...rec, anchor: due } : rec, due_date: due });
+  const anchor = task.dueDate ?? today;
+  const save = (recurrence: Recurrence) => {
+    // Seria liczy się od terminu zadania; termin przechodzi na pierwsze pasujące wystąpienie.
+    const due = recurrence.mode === "schedule" ? recurrence.anchor : anchor;
+    onSave({ recurrence, ...datesPatch(task, { due_date: due }) });
     setEditing(false);
-    setText("");
-    setError(null);
+  };
+  const series = task.recurrence && task.kind === "task" && isOpen(task);
+  const skip = () => {
+    const now = new Date();
+    const result = skipOccurrenceOps(task, { now, timeZone, subtasks: descendants(data.tasks, task.id) });
+    void run(result.ops, { text: result.nextDue ? `Pominięto — następny termin: ${relativeDay(result.nextDue, today)}` : "Pominięto ostatnie wystąpienie — seria zakończona", undo: result.undo });
+  };
+  const end = () => {
+    if (!window.confirm(`Zakończyć serię „${task.title}”? Kolejne wystąpienia nie powstaną.`)) return;
+    const result = endSeriesOps(task, new Date());
+    void run(result.ops, { text: `Zakończono serię „${task.title}”`, undo: result.undo });
   };
   return (
     <Block title="Powtarzanie">
       {editing ? (
-        <form onSubmit={submit} className="flex flex-col gap-1">
-          <div className="flex gap-2">
-            <Input autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="np. co tydzień w poniedziałek" aria-label="Reguła powtarzania" className="flex-1" />
-            <Button type="submit">Ustaw</Button>
-            <Button kind="ghost" onClick={() => setEditing(false)}>
-              Anuluj
-            </Button>
-          </div>
-          {error ? <p className="text-xs text-[var(--danger)]">{error}</p> : null}
-        </form>
+        <RecurrenceEditor value={task.recurrence} anchor={anchor} today={today} timeZone={timeZone} onSave={save} onCancel={() => setEditing(false)} />
       ) : (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span>{task.recurrence ? `↻ ${describeRecurrence(task.recurrence)}` : <span className="text-[var(--muted)]">Nie powtarza się</span>}</span>
-          <Button kind="ghost" onClick={() => setEditing(true)}>
-            {task.recurrence ? "Zmień" : "Ustaw"}
-          </Button>
-          {task.recurrence ? (
-            <Button kind="ghost" onClick={() => onSave({ recurrence: null })}>
-              Usuń
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span>{task.recurrence ? `↻ ${describeRecurrence(task.recurrence)}` : <span className="text-[var(--muted)]">Nie powtarza się</span>}</span>
+            <Button kind="ghost" onClick={() => setEditing(true)}>
+              {task.recurrence ? "Zmień" : "Ustaw"}
             </Button>
+            {task.recurrence ? (
+              <Button kind="ghost" onClick={() => onSave({ recurrence: null })} title="Zadanie zostaje, przestaje się powtarzać">
+                Usuń
+              </Button>
+            ) : null}
+          </div>
+          {series ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <Button kind="ghost" onClick={skip}>
+                Pomiń to wystąpienie
+              </Button>
+              <Button kind="ghost" onClick={end}>
+                Zakończ serię
+              </Button>
+              <span className="text-xs text-[var(--muted)]">Zmiana terminu wyżej przesuwa tylko to wystąpienie.</span>
+            </div>
           ) : null}
         </div>
       )}
@@ -425,7 +578,9 @@ function RemindersField({ task }: { task: ViewTask }) {
   );
 }
 
-function DescriptionEditor({ taskId, store }: { taskId: string; store: ReturnType<typeof useAppEnv>["store"] }) {
+/** Opis zadania w Markdown — w panelu i w trybie skupienia. */
+export function DescriptionEditor({ taskId }: { taskId: string }) {
+  const { store } = useAppEnv();
   const { run } = useTaskActions();
   const { rows, ms } = useLocalQuery<Row>(store, "select description_md from tasks where id = ?", [taskId], ["tasks"]);
   const saved = (rows[0]?.description_md as string | null) ?? "";

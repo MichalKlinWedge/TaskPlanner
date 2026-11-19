@@ -5,7 +5,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  addWallMinutes,
+  blockLanes,
   blocksForDay,
+  calendarEntries,
+  freeSlotTimes,
   conflictIds,
   conflicts,
   freeSlots,
@@ -72,6 +76,42 @@ describe('konflikty i wolne okna', () => {
     ]);
     expect(freeSlots(plan, work, { timeZone: WAW, minMinutes: 60 }).map((s) => minutesToTime(s.startMin))).toEqual(['11:00', '13:00', '15:30']);
     expect(freeSlots({ ...plan, date: '2026-11-21' }, work, { timeZone: WAW })).toEqual([]);
+  });
+});
+
+describe('kalendarz (zakres dni)', () => {
+  it('bloki jako zegar ścienny, cały dzień, seria wirtualnie, konflikty; wydarzenie wielodniowe raz', () => {
+    const weekly = task('w', { dueDate: '2026-11-19', dueTime: '08:00', recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY', anchor: '2026-11-19' } });
+    const list = calendarEntries([task('a', { dueTime: '09:30' }), task('b', { dueTime: null }), task('x', { status: 'cancelled' }), task('old', { dueDate: '2026-11-01' }), weekly], events, DAY, '2026-11-21', { timeZone: WAW });
+    const simple = list.map((e) => [e.key, e.start, e.end, e.virtual, e.conflict]);
+    expect(simple).toEqual([
+      ['task:b:2026-11-19', '2026-11-19', '2026-11-20', false, false],
+      ['task:w:2026-11-19', '2026-11-19T08:00', '2026-11-19T09:00', false, false],
+      ['task:a:2026-11-19', '2026-11-19T09:30', '2026-11-19T10:30', false, true],
+      ['task:w:2026-11-20', '2026-11-20T08:00', '2026-11-20T09:00', true, false],
+      ['event:e3', '2026-11-18', '2026-11-20', false, false],
+      ['event:e1', '2026-11-19T10:00', '2026-11-19T11:00', false, true],
+      ['event:e2', '2026-11-19T12:30', '2026-11-19T13:00', false, false],
+    ]);
+    expect(addWallMinutes('2026-11-19T23:30', 90)).toBe('2026-11-20T01:00');
+  });
+
+  it('wolne okna dnia jako zegar ścienny', () => {
+    const work = { days: [1, 2, 3, 4, 5], start: '09:00' as const, end: '12:00' as const };
+    expect(freeSlotTimes([task('a', { dueTime: '09:00' })], events, DAY, work, { timeZone: WAW })).toEqual([{ start: '2026-11-19T11:00', end: '2026-11-19T12:00' }]);
+  });
+});
+
+describe('układ osi dnia', () => {
+  it('nakładające się obok siebie, rozłączne grupy osobno', () => {
+    const b = (id: string, startMin: number, endMin: number) => ({ id, kind: 'task' as const, startMin, endMin });
+    const lanes = blockLanes([b('a', 540, 600), b('b', 570, 630), b('c', 600, 660), b('d', 720, 750)]);
+    expect(Object.fromEntries(lanes)).toEqual({
+      'task:a': { lane: 0, lanes: 2 },
+      'task:b': { lane: 1, lanes: 2 },
+      'task:c': { lane: 0, lanes: 2 },
+      'task:d': { lane: 0, lanes: 1 },
+    });
   });
 });
 

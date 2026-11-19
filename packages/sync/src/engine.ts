@@ -8,7 +8,7 @@ import { HlcClock, uuidv7, type Hlc } from '@taskplanner/core';
 import type { LocalDb, SqlRow } from './local-db.ts';
 import { encodeRow, encodeValue, mergeClocks, mergeRemote, parseClock, type RemoteRow } from './merge.ts';
 import type { PullResult, PushResult, RejectedOp, Remote } from './remote.ts';
-import { localColumns, localSchema, SYNCED_TABLES, TABLES, writableFields, type SyncedTable } from './specs.ts';
+import { localColumns, localSchema, READONLY, READONLY_TABLES, readonlyColumnsOf, SYNCED_TABLES, TABLES, writableFields, type ReadonlyTable, type SyncedTable } from './specs.ts';
 
 export interface SyncEngineOptions {
   db: LocalDb;
@@ -59,6 +59,10 @@ const chunks = <T>(items: readonly T[], size: number): T[][] => {
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
 };
+/** Wersja zestawu tabel tylko do odczytu — zmiana wymusza ponowne pobranie zakresu osobistego. */
+const READONLY_VERSION = '1';
+/** Wydarzenia kalendarzy starsze niż tyle dni (koniec) — usuwane lokalnie (okno serwera: −30 dni). */
+const CALENDAR_KEEP_DAYS = 30;
 
 export class SyncEngine {
   readonly db: LocalDb;
@@ -107,6 +111,15 @@ export class SyncEngine {
     if (meta.device_id !== deviceId) await this.setMeta(this.db, 'device_id', deviceId);
     this.clock = new HlcClock(deviceId, this.now, meta.clock);
     this.since = meta.since ? JSON.parse(meta.since) : {};
+    // Tabele tylko do odczytu doszły po pierwszej synchronizacji: zakres osobisty raz od zera (jego
+    // wiersze przychodzą ponownie i scalają się bez zmian; przestrzenie — bez ponownego pobierania).
+    if (meta.readonly_tables !== READONLY_VERSION) {
+      if (this.since[this.userId] !== undefined) this.since[this.userId] = 0;
+      await this.db.transaction(async (tx) => {
+        await this.setMeta(tx, 'since', JSON.stringify(this.since));
+        await this.setMeta(tx, 'readonly_tables', READONLY_VERSION);
+      });
+    }
   }
 
   private setMeta(db: LocalDb, key: string, value: string) {
@@ -136,7 +149,7 @@ export class SyncEngine {
     }
   }
 
-  async get(table: SyncedTable, id: string): Promise<SqlRow | undefined> {
+  async get(table: SyncedTable | ReadonlyTable, id: string): Promise<SqlRow | undefined> {
     return (await this.db.all(`select * from ${table} where id = ?`, [id]))[0];
   }
 
@@ -152,34 +165,45 @@ export class SyncEngine {
 
   /** Wstaw albo zmień wiersz: tylko podane pola, z nowym HLC; wpis do outboxu w tej samej transakcji. */
   async mutate(table: SyncedTable, id: string, patch: Record<string, unknown>): Promise<Hlc> {
-    const allowed = writableFields(table);
-    const fields = Object.keys(patch);
-    const unknown = fields.filter((f) => !allowed.includes(f));
-    if (unknown.length) throw new Error(`Pola spoza ${table}: ${unknown.join(', ')}`);
-    const hlc = await this.db.transaction(async (tx) => {
-      const stamp = this.clock.tick();
-      const current = (await tx.all(`select * from ${table} where id = ?`, [id]))[0];
-      const row: SqlRow = current ? { ...current } : Object.fromEntries(localColumns(table).map((c) => [c, null]));
-      row.id = id;
-      for (const field of fields) row[field] = encodeValue(table, field, patch[field]);
-      const clock = parseClock(current?.field_clock);
-      for (const field of fields) clock[field] = stamp;
-      row.field_clock = JSON.stringify(clock);
-      await this.deriveScope(tx, table, row);
-      await this.upsert(tx, table, row);
-      await tx.run('insert into _outbox (op_id, tbl, row_id, data, hlc) values (?, ?, ?, ?, ?)', [
-        uuidv7(this.now()),
-        table,
-        id,
-        JSON.stringify(patch),
-        stamp,
-      ]);
+    const [hlc] = await this.mutateMany([{ table, id, patch }]);
+    return hlc!;
+  }
+
+  /**
+   * Kilka zmian w jednej transakcji (przesunięcie projektu na osi, operacje grupowe): jedno
+   * powiadomienie widoków i jedna synchronizacja zamiast osobnych dla każdej zmiany. Pola spoza
+   * tabeli — błąd przed zapisem czegokolwiek.
+   */
+  async mutateMany(ops: readonly { table: SyncedTable; id: string; patch: Record<string, unknown> }[]): Promise<Hlc[]> {
+    if (!ops.length) return [];
+    for (const { table, patch } of ops) {
+      const allowed = writableFields(table);
+      const unknown = Object.keys(patch).filter((f) => !allowed.includes(f));
+      if (unknown.length) throw new Error(`Pola spoza ${table}: ${unknown.join(', ')}`);
+    }
+    const stamps = await this.db.transaction(async (tx) => {
+      const out: Hlc[] = [];
+      for (const { table, id, patch } of ops) {
+        const fields = Object.keys(patch);
+        const stamp = this.clock.tick();
+        const current = (await tx.all(`select * from ${table} where id = ?`, [id]))[0];
+        const row: SqlRow = current ? { ...current } : Object.fromEntries(localColumns(table).map((c) => [c, null]));
+        row.id = id;
+        for (const field of fields) row[field] = encodeValue(table, field, patch[field]);
+        const clock = parseClock(current?.field_clock);
+        for (const field of fields) clock[field] = stamp;
+        row.field_clock = JSON.stringify(clock);
+        await this.deriveScope(tx, table, row);
+        await this.upsert(tx, table, row);
+        await tx.run('insert into _outbox (op_id, tbl, row_id, data, hlc) values (?, ?, ?, ?, ?)', [uuidv7(this.now()), table, id, JSON.stringify(patch), stamp]);
+        out.push(stamp);
+      }
       await this.setMeta(tx, 'clock', this.clock.last);
-      return stamp;
+      return out;
     });
-    this.notify([table]);
+    this.notify([...new Set(ops.map((o) => o.table))]);
     if (this.options.autoSync !== false) this.requestSync();
-    return hlc;
+    return stamps;
   }
 
   /** Miękkie usunięcie (`deleted_at`). */
@@ -326,6 +350,31 @@ export class SyncEngine {
     }
   }
 
+  /** Wiersz tabeli tylko do odczytu: zastąpienie albo usunięcie (z dziećmi usuniętego konta / kalendarza). */
+  private async applyReadonly(tx: LocalDb, table: ReadonlyTable, remote: RemoteRow) {
+    const id = String(remote.id);
+    if (remote.deleted_at) {
+      if (table === 'calendar_accounts') {
+        await tx.run('delete from calendar_events where calendar_id in (select id from calendars where account_id = ?)', [id]);
+        await tx.run('delete from calendars where account_id = ?', [id]);
+      }
+      if (table === 'calendars') await tx.run('delete from calendar_events where calendar_id = ?', [id]);
+      await tx.run(`delete from ${table} where id = ?`, [id]);
+      return;
+    }
+    const columns = readonlyColumnsOf(table);
+    const bool = READONLY[table].bool;
+    await tx.run(
+      `insert or replace into ${table} (${columns.join(', ')}) values (${columns.map(() => '?').join(', ')})`,
+      columns.map((c) => {
+        const value = remote[c];
+        if (value === undefined || value === null) return null;
+        if (bool.includes(c)) return value ? 1 : 0;
+        return typeof value === 'object' ? JSON.stringify(value) : (value as string | number);
+      }),
+    );
+  }
+
   /** Pobranie wszystkich zmian stronami (`pull_changes` z limitem; pierwsza pełna migawka też w porcjach). */
   async pull(): Promise<void> {
     // Słuchacze (odświeżenie widoków) dostają zmiany raz, po ostatniej stronie: odczyty między
@@ -374,10 +423,19 @@ export class SyncEngine {
           await this.upsert(tx, table, row);
         }
       }
+      for (const table of READONLY_TABLES) {
+        for (const remote of (result.tables[table] ?? []) as RemoteRow[]) {
+          await this.applyReadonly(tx, table, remote);
+          touched.add(table);
+        }
+      }
+      // Wydarzenia sprzed okna synchronizacji (serwer też je usuwa — `cron/renew`).
+      const cutoff = new Date(this.now() - CALENDAR_KEEP_DAYS * 86_400_000).toISOString();
+      await tx.run('delete from calendar_events where (all_day = 0 and end_at < ?) or (all_day = 1 and end_date < ?)', [cutoff, cutoff.slice(0, 10)]);
       // Zakres, do którego użytkownik stracił dostęp: jego wiersze znikają z urządzenia.
       for (const scope of Object.keys(this.since)) {
         if (!result.scopes[scope]) {
-          for (const table of SYNCED_TABLES) await tx.run(`delete from ${table} where scope_id = ?`, [scope]);
+          for (const table of [...SYNCED_TABLES, ...READONLY_TABLES]) await tx.run(`delete from ${table} where scope_id = ?`, [scope]);
         }
       }
       this.since = Object.fromEntries(Object.entries(result.scopes).map(([id, info]) => [id, info.version]));

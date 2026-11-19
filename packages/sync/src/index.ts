@@ -6,5 +6,17 @@ export { SyncEngine, type PullProgress, type SyncEngineOptions } from './engine.
 export { createLocalDb, type LocalDb, type SqlDriver, type SqlRow, type SqlValue } from './local-db.ts';
 export { decodeRow, encodeRow, mergeClocks, mergeRemote, parseClock, type FieldClock, type RemoteRow } from './merge.ts';
 export { supabaseRemote, type PullResult, type PushOp, type PushResult, type RejectedOp, type Remote, type ScopeInfo } from './remote.ts';
-export { isSyncedTable, localColumns, localSchema, SYNCED_TABLES, TABLES, writableFields, type SyncedTable, type TableSpec } from './specs.ts';
+export {
+  isSyncedTable,
+  localColumns,
+  localSchema,
+  READONLY,
+  READONLY_TABLES,
+  SYNCED_TABLES,
+  TABLES,
+  writableFields,
+  type ReadonlyTable,
+  type SyncedTable,
+  type TableSpec,
+} from './specs.ts';
 export { connectTabs, type TabStore, type TabStoreOptions } from './tabs.ts';

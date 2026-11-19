@@ -42,6 +42,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import type { AppData, List } from "@/lib/app-data";
 import { useLocalQuery } from "@/lib/local-store";
 
+import { Board } from "./board";
 import { DayDnd, DayDrop, DraggableTaskItem, SortableTaskItem, SortableTaskList } from "./dnd";
 import { QuickAdd } from "./quick-add";
 import { TaskItem, useTaskActions } from "./task-item";
@@ -113,53 +114,57 @@ export function InboxView({ data, ctx, targetInbox, toolbar }: ViewProps) {
 
 // ── Dziś ─────────────────────────────────────────────────────────────────────────────────────
 
-export function TodayView({ data, ctx, targetInbox, toolbar }: ViewProps) {
+/** `aside` — „Plan dnia” obok listy (na szerokim ekranie po prawej, na wąskim pod listą). */
+export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps & { aside?: ReactNode }) {
   const view = useMemo(() => selectToday(data.tasks, ctx), [data.tasks, ctx]);
   const names = listNames(data);
   const open = view.overdue.length + view.today.length;
   const empty = !open && !view.ongoing.length && !view.habits.length && !view.done.length;
   return (
-    <>
-      <Header title="Dziś" subtitle={`${capitalized(dayLabel(ctx.today))} · ${plural(open, ["zadanie", "zadania", "zadań"])}`} />
-      {toolbar}
-      <QuickAdd listId={targetInbox?.id} dueDate={ctx.today} placeholder="Dodaj zadanie na dziś" />
-      {view.overdue.length ? (
-        <Section title={VIEW_SECTION.overdue} count={view.overdue.length} tone="danger">
-          {view.overdue.map((t) => (
-            <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />
-          ))}
-        </Section>
-      ) : null}
-      {view.today.length ? (
-        <Section title={VIEW_SECTION.today} count={view.today.length}>
-          {view.today.map((t) => (
-            <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />
-          ))}
-        </Section>
-      ) : null}
-      {view.ongoing.length ? (
-        <Section title={VIEW_SECTION.ongoing} count={view.ongoing.length}>
-          {view.ongoing.map((t) => (
-            <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />
-          ))}
-        </Section>
-      ) : null}
-      {view.habits.length ? (
-        <Section title={VIEW_SECTION.habits} count={view.habits.length}>
-          {view.habits.map((t) => (
-            <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} habitDone={data.habitsDoneToday.has(t.id)} />
-          ))}
-        </Section>
-      ) : null}
-      {view.done.length ? (
-        <Section title={VIEW_SECTION.done} count={view.done.length}>
-          {view.done.map((t) => (
-            <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />
-          ))}
-        </Section>
-      ) : null}
-      {empty ? <Empty>Na dziś nic nie ma.</Empty> : null}
-    </>
+    <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-8">
+      <div className="min-w-0">
+        <Header title="Dziś" subtitle={`${capitalized(dayLabel(ctx.today))} · ${plural(open, ["zadanie", "zadania", "zadań"])}`} />
+        {toolbar}
+        <QuickAdd listId={targetInbox?.id} dueDate={ctx.today} placeholder="Dodaj zadanie na dziś" />
+        {view.overdue.length ? (
+          <Section title={VIEW_SECTION.overdue} count={view.overdue.length} tone="danger">
+            {view.overdue.map((t) => (
+              <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />
+            ))}
+          </Section>
+        ) : null}
+        {view.today.length ? (
+          <Section title={VIEW_SECTION.today} count={view.today.length}>
+            {view.today.map((t) => (
+              <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />
+            ))}
+          </Section>
+        ) : null}
+        {view.ongoing.length ? (
+          <Section title={VIEW_SECTION.ongoing} count={view.ongoing.length}>
+            {view.ongoing.map((t) => (
+              <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />
+            ))}
+          </Section>
+        ) : null}
+        {view.habits.length ? (
+          <Section title={VIEW_SECTION.habits} count={view.habits.length}>
+            {view.habits.map((t) => (
+              <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} habitDone={data.habitsDoneToday.has(t.id)} />
+            ))}
+          </Section>
+        ) : null}
+        {view.done.length ? (
+          <Section title={VIEW_SECTION.done} count={view.done.length}>
+            {view.done.map((t) => (
+              <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />
+            ))}
+          </Section>
+        ) : null}
+        {empty ? <Empty>Na dziś nic nie ma.</Empty> : null}
+      </div>
+      {aside}
+    </div>
   );
 }
 
@@ -234,6 +239,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
   const groupBy: GroupBy = list.prefs.groupBy ?? "none";
   const completed: CompletedMode = list.prefs.completed ?? "today";
 
+  const kanban = list.prefs.view === "kanban";
   const tasks = useMemo(() => withCompleted(data.tasks.filter((t) => t.listId === list.id), completed, ctx), [data.tasks, list.id, completed, ctx]);
   const tree = sortBy === "manual" && groupBy === "none";
   const rows = useMemo(() => {
@@ -252,34 +258,8 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
       return next;
     });
 
-  return (
-    <>
-      <Header title={list.name} subtitle={`${LIST_KIND[list.kind]} · ${plural(openCount, ["otwarte", "otwarte", "otwartych"])}`}>
-        <div className="flex flex-wrap gap-2">
-          <Select aria-label="Sortowanie" value={sortBy} onChange={(e) => setPrefs({ sortBy: e.target.value as SortBy })} className="py-1 text-xs">
-            {(Object.keys(SORT_BY) as SortBy[]).map((k) => (
-              <option key={k} value={k}>
-                {SORT_BY[k]}
-              </option>
-            ))}
-          </Select>
-          <Select aria-label="Grupowanie" value={groupBy} onChange={(e) => setPrefs({ groupBy: e.target.value as GroupBy })} className="py-1 text-xs">
-            {(Object.keys(GROUP_BY) as GroupBy[]).map((k) => (
-              <option key={k} value={k}>
-                {GROUP_BY[k]}
-              </option>
-            ))}
-          </Select>
-          <Select aria-label="Ukończone" value={completed} onChange={(e) => setPrefs({ completed: e.target.value as CompletedMode })} className="py-1 text-xs">
-            {(Object.keys(COMPLETED_MODE) as CompletedMode[]).map((k) => (
-              <option key={k} value={k}>
-                {COMPLETED_MODE[k]}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </Header>
-      {toolbar}
+  const listBody = (
+      <>
       <QuickAdd listId={list.id} placeholder={`Dodaj do „${list.name}”`} />
       {!tasks.length ? <Empty>Brak zadań.</Empty> : null}
       {rows ? (
@@ -312,6 +292,53 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
             </ul>
           ),
         )
+      )}
+    </>
+  );
+
+  return (
+    <>
+      <Header title={list.name} subtitle={`${LIST_KIND[list.kind]} · ${plural(openCount, ["otwarte", "otwarte", "otwartych"])}`}>
+        <div className="flex flex-wrap gap-2">
+          <div className="flex overflow-hidden rounded-md border border-[var(--line)] text-xs" role="radiogroup" aria-label="Widok">
+            {(["list", "kanban"] as const).map((v) => (
+              <button key={v} type="button" role="radio" aria-checked={(list.prefs.view ?? "list") === v} onClick={() => setPrefs({ view: v })} className={`px-2.5 py-1 ${(list.prefs.view ?? "list") === v ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--hover)]"}`}>
+                {v === "list" ? "Lista" : "Tablica"}
+              </button>
+            ))}
+          </div>
+          {kanban ? null : (
+            <>
+          <Select aria-label="Sortowanie" value={sortBy} onChange={(e) => setPrefs({ sortBy: e.target.value as SortBy })} className="py-1 text-xs">
+            {(Object.keys(SORT_BY) as SortBy[]).map((k) => (
+              <option key={k} value={k}>
+                {SORT_BY[k]}
+              </option>
+            ))}
+          </Select>
+          <Select aria-label="Grupowanie" value={groupBy} onChange={(e) => setPrefs({ groupBy: e.target.value as GroupBy })} className="py-1 text-xs">
+            {(Object.keys(GROUP_BY) as GroupBy[]).map((k) => (
+              <option key={k} value={k}>
+                {GROUP_BY[k]}
+              </option>
+            ))}
+          </Select>
+          <Select aria-label="Ukończone" value={completed} onChange={(e) => setPrefs({ completed: e.target.value as CompletedMode })} className="py-1 text-xs">
+            {(Object.keys(COMPLETED_MODE) as CompletedMode[]).map((k) => (
+              <option key={k} value={k}>
+                {COMPLETED_MODE[k]}
+              </option>
+            ))}
+          </Select>
+            </>
+          )}
+        </div>
+      </Header>
+      {toolbar}
+      {kanban ? (
+        <Board data={data} ctx={ctx} tasks={data.tasks.filter((t) => t.listId === list.id)} by={list.prefs.boardBy ?? "status"} onBy={(boardBy) => setPrefs({ boardBy })} listId={list.id} showList={false} />
+      ) : (
+        listBody
       )}
     </>
   );

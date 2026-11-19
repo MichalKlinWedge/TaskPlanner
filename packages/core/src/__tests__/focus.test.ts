@@ -3,7 +3,9 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { advanceFocus, DEFAULT_FOCUS, FOCUS_IDLE, focusMinutes, focusRemaining, FocusSettings, FocusState, pauseFocus, phaseEndsAt, resumeFocus, skipPhase, startFocus, stopFocus, type EntryOp } from '../focus.ts';
+import { advanceFocus, DEFAULT_FOCUS, FOCUS_IDLE, focusEntryId, focusMinutes, focusRemaining, FocusSettings, FocusState, focusStepOps, focusWeek, manualEntryOps, orphanEntryOps, parseFocusState, pauseFocus, phaseEndsAt, resumeFocus, skipPhase, startFocus, stopFocus, type EntryOp } from '../focus.ts';
+import { formatTimer } from '../format.ts';
+import { FOCUS_PHASE } from '../labels.ts';
 
 const T0 = Date.parse('2026-11-18T09:00:00Z');
 const at = (min: number) => new Date(T0 + min * 60_000);
@@ -108,5 +110,133 @@ describe('czas pracy', () => {
     expect(focusMinutes(entries, at(110), { taskId: 'b' })).toBe(10);
     expect(focusMinutes(entries, at(110))).toBe(65);
     expect(focusMinutes(entries, at(110), { from: at(10), to: at(70) })).toBe(25);
+  });
+});
+
+describe('zapis w aplikacji (Etap 7)', () => {
+  const user = '0190a000-0000-7000-8000-000000000001';
+
+  it('przejście → wpisy time_entries i stan w profilu; stop czyści stan', () => {
+    const start = startFocus(FOCUS_IDLE, { taskId: 't1', now: at(0), newId: focusEntryId(user) });
+    const ops = focusStepOps(user, start);
+    expect(ops).toEqual([
+      { table: 'time_entries', id: start.state.entryId, patch: { task_id: 't1', kind: 'focus', started_at: at(0).toISOString(), ended_at: null, pomodoro_index: 1 } },
+      { table: 'profiles', id: user, patch: { focus: start.state } },
+    ]);
+    const stop = focusStepOps(user, stopFocus(start.state, at(10)));
+    expect(stop).toEqual([
+      { table: 'time_entries', id: start.state.entryId, patch: { ended_at: at(10).toISOString() } },
+      { table: 'profiles', id: user, patch: { focus: null } },
+    ]);
+    expect(parseFocusState(JSON.stringify(start.state))).toEqual(start.state);
+    expect(parseFocusState(null)).toEqual(FOCUS_IDLE);
+    expect(parseFocusState('{zepsute')).toEqual(FOCUS_IDLE);
+  });
+
+  it('dwa urządzenia doliczają koniec etapu niezależnie — te same wpisy (id deterministyczne)', () => {
+    const start = startFocus(FOCUS_IDLE, { taskId: 't1', now: at(0), newId: focusEntryId(user) });
+    const a = advanceFocus(start.state, at(26), { newId: focusEntryId(user) });
+    const b = advanceFocus(start.state, at(29), { newId: focusEntryId(user) });
+    expect(a).toEqual(b);
+    expect(a.state.phase).toBe('short_break');
+  });
+
+  it('kryterium: 4 cykle Pomodoro → 4 wpisy pracy i 4 przerwy, ostatnia długa', () => {
+    const newId = focusEntryId(user);
+    let step = startFocus(FOCUS_IDLE, { taskId: 't1', now: at(0), newId });
+    const entries: EntryOp[] = [...step.entries];
+    let t = 0;
+    for (let cycle = 0; cycle < 4; cycle++) {
+      t += 25 + (cycle === 3 ? 15 : 5);
+      const done = advanceFocus(step.state, at(t), { newId });
+      entries.push(...done.entries);
+      expect(done.state.phase).toBe('ready');
+      if (cycle < 3) {
+        step = startFocus(done.state, { taskId: 't1', now: at(t), newId });
+        entries.push(...step.entries);
+      }
+    }
+    const opened = entries.filter((e): e is Extract<EntryOp, { op: 'open' }> => e.op === 'open');
+    expect(opened.map((e) => `${e.kind}#${e.pomodoroIndex}`)).toEqual(['focus#1', 'break#1', 'focus#2', 'break#2', 'focus#3', 'break#3', 'focus#4', 'break#4']);
+    expect(new Set(opened.map((e) => e.id)).size).toBe(8);
+    expect(entries.filter((e) => e.op === 'close')).toHaveLength(8);
+    expect(describeOps(entries.slice(-1))).toEqual([`close ${opened[7]!.id} @${t}`]);
+  });
+
+  it('porzucony wpis (stan wygrał na innym urządzeniu) zamyka się, bieżący i świeże zostają', () => {
+    const state = startFocus(FOCUS_IDLE, { taskId: 't2', now: at(30), newId: () => 'current' }).state;
+    const entries = [
+      { id: 'lost', taskId: 't1', kind: 'focus' as const, startedAt: at(20).toISOString(), endedAt: null, pomodoroIndex: 1 },
+      { id: 'current', taskId: 't2', kind: 'focus' as const, startedAt: at(30).toISOString(), endedAt: null, pomodoroIndex: 1 },
+      { id: 'old-watch', taskId: null, kind: 'focus' as const, startedAt: at(-600).toISOString(), endedAt: null, pomodoroIndex: null },
+      { id: 'fresh', taskId: 't3', kind: 'focus' as const, startedAt: at(39).toISOString(), endedAt: null, pomodoroIndex: 1 },
+    ];
+    expect(orphanEntryOps(entries, state, at(40))).toEqual([
+      { table: 'time_entries', id: 'lost', patch: { ended_at: at(30).toISOString() } },
+      { table: 'time_entries', id: 'old-watch', patch: { ended_at: at(30).toISOString() } },
+    ]);
+    // Bez działającego timera: Pomodoro — po długości etapu, stoper — teraz.
+    expect(orphanEntryOps([entries[0]!, entries[2]!], FOCUS_IDLE, at(100))).toEqual([
+      { table: 'time_entries', id: 'lost', patch: { ended_at: at(45).toISOString() } },
+      { table: 'time_entries', id: 'old-watch', patch: { ended_at: at(100).toISOString() } },
+    ]);
+  });
+
+  it('ręczny wpis kończy się teraz; poza zakresem — nic', () => {
+    expect(manualEntryOps('t1', 45, at(60), () => 'm1')).toEqual([
+      { table: 'time_entries', id: 'm1', patch: { task_id: 't1', kind: 'manual', started_at: at(15).toISOString(), ended_at: at(60).toISOString(), pomodoro_index: null } },
+    ]);
+    expect(manualEntryOps('t1', 0, at(60))).toEqual([]);
+    expect(manualEntryOps('t1', Number.NaN, at(60))).toEqual([]);
+  });
+
+  it('statystyki tygodnia: dni w strefie, przestrzenie, listy, zadania, ukończone Pomodoro', () => {
+    // Środa 18.11.2026 w Warszawie (UTC+1); tydzień od poniedziałku 16.11.
+    const e = (id: string, taskId: string | null, kind: 'focus' | 'break' | 'manual', from: string, to: string, pomodoroIndex: number | null) => ({
+      id,
+      taskId,
+      kind,
+      startedAt: new Date(from).toISOString(),
+      endedAt: new Date(to).toISOString(),
+      pomodoroIndex,
+    });
+    const entries = [
+      // Pomodoro z pauzą: dwa wpisy pracy #1, potem przerwa — jedno ukończone.
+      e('a', 't1', 'focus', '2026-11-16T08:00:00Z', '2026-11-16T08:10:00Z', 1),
+      e('b', 't1', 'focus', '2026-11-16T08:20:00Z', '2026-11-16T08:35:00Z', 1),
+      e('c', 't1', 'break', '2026-11-16T08:35:00Z', '2026-11-16T08:40:00Z', 1),
+      // Przerwane stopem — bez przerwy, nie liczy się jako ukończone.
+      e('d', 't2', 'focus', '2026-11-17T10:00:00Z', '2026-11-17T10:12:00Z', 1),
+      // Przez północ czasu warszawskiego (23:30–00:30): po 30 min we wtorek i w środę.
+      e('e', null, 'focus', '2026-11-17T22:30:00Z', '2026-11-17T23:30:00Z', null),
+      e('f', 't3', 'manual', '2026-11-18T09:00:00Z', '2026-11-18T10:00:00Z', null),
+      // Poprzedni tydzień — poza.
+      e('g', 't1', 'focus', '2026-11-15T10:00:00Z', '2026-11-15T11:00:00Z', null),
+    ];
+    const tasks = [
+      { id: 't1', listId: 'L1', workspaceId: 'W1' },
+      { id: 't2', listId: 'L2', workspaceId: 'W1' },
+      { id: 't3', listId: 'L3', workspaceId: 'W2' },
+    ];
+    const week = focusWeek(entries, tasks, { today: '2026-11-18', timeZone: 'Europe/Warsaw', now: new Date('2026-11-18T12:00:00Z') });
+    expect(week.from).toBe('2026-11-16');
+    expect(week.days.map((d) => d.minutes)).toEqual([25, 42, 90, 0, 0, 0, 0]);
+    expect(week.total).toBe(157);
+    expect(week.pomodoros).toBe(1);
+    expect(week.byWorkspace.map((b) => [b.id, b.minutes])).toEqual([
+      ['W2', 60],
+      [null, 60],
+      ['W1', 37],
+    ]);
+    expect(week.byList.find((b) => b.id === 'L1')?.minutes).toBe(25);
+    expect(week.byTask.find((b) => b.id === null)?.minutes).toBe(60);
+  });
+
+  it('tarcza timera i etykiety etapów', () => {
+    expect(formatTimer(25 * 60_000)).toBe('25:00');
+    expect(formatTimer(59_001)).toBe('1:00');
+    expect(formatTimer(0)).toBe('0:00');
+    expect(formatTimer(3_723_000)).toBe('1:02:03');
+    expect(FOCUS_PHASE.short_break).toBe('Krótka przerwa');
   });
 });
