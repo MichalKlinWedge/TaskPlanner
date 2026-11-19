@@ -187,18 +187,18 @@ export function TaskPanel({ taskId }: { taskId: string }) {
             }}
           />
         </Field>
-        <Field label="Termin">
-          <Input type="date" value={task.dueDate ?? ""} onChange={(e) => void update(datesPatch(task, { due_date: (e.target.value || null) as LocalDate | null }))} />
-        </Field>
-        <Field label="Godzina">
-          <Input type="time" value={task.dueTime ?? ""} disabled={!task.dueDate} onChange={(e) => void update(datesPatch(task, { due_time: (e.target.value || null) as LocalTime | null }))} />
-        </Field>
         <Field label="Początek">
           <Input type="date" value={task.startDate ?? ""} max={task.dueDate ?? undefined} disabled={!task.dueDate} onChange={(e) => void update(datesPatch(task, { start_date: (e.target.value || null) as LocalDate | null }))} />
         </Field>
         <div className="flex items-end text-xs text-[var(--muted)]">
           {task.dueDate ? `${relativeDay(task.dueDate, today, "distance")}${task.durationMin ? ` · ${formatMinutes(task.durationMin)}` : ""}` : "Bez terminu"}
         </div>
+        <Field label="Termin">
+          <Input type="date" value={task.dueDate ?? ""} onChange={(e) => void update(datesPatch(task, { due_date: (e.target.value || null) as LocalDate | null }))} />
+        </Field>
+        <Field label="Godzina">
+          <Input type="time" value={task.dueTime ?? ""} disabled={!task.dueDate} onChange={(e) => void update(datesPatch(task, { due_time: (e.target.value || null) as LocalTime | null }))} />
+        </Field>
       </div>
 
       <RecurrenceField key={`rec:${task.id}`} task={task} onSave={(patch) => void update(patch)} timeZone={timeZone} today={today} />
