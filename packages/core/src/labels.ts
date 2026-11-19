@@ -81,7 +81,8 @@ export const MONTH_SHORT = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'si
  * Tekst do pokazania wybiera `authErrorMessage` (`format.ts`); kod spoza listy = komunikat serwera.
  */
 export const AUTH_ERROR: Record<string, string> = {
-  otp_expired: 'Link albo kod z maila wygasł lub został już użyty — wyślij nowy.',
+  // GoTrue zwraca `otp_expired` także dla błędnie wpisanego kodu („Token has expired or is invalid”).
+  otp_expired: 'Kod albo link z maila jest błędny, wygasł lub został już użyty — sprawdź kod albo wyślij nowy.',
   flow_state_expired: 'Logowanie trwało za długo — zacznij je od nowa.',
   flow_state_not_found: 'Logowanie wygasło albo zostało już dokończone — zacznij je od nowa.',
   pkce_code_verifier_not_found: 'Link otwarto w innej aplikacji albo na innym urządzeniu niż to, z którego go wysłano — wyślij nowy stąd.',
