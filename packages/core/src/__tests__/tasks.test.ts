@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { completionId, tagId, taskTagId } from '../ids.ts';
 import { parseQuickAdd } from '../quick-add.ts';
 import {
+  bulkTaskOps,
   canAddSubtask,
   completeTaskOps,
   datesPatch,
@@ -248,5 +249,45 @@ describe('podzadania, przenoszenie, kosz', () => {
     expect(listId).toBe('L1');
     expect(ops[0]!.patch).toMatchObject({ list_id: 'L1', parent_id: 'a' });
     expect((ops[0]!.patch.sort_key as string) > 'k').toBe(true);
+  });
+});
+
+describe('bulkTaskOps', () => {
+  const base = toViewTask(row);
+  const a = { ...base, id: 'a', dueDate: '2026-11-18' as const, dueTime: '09:00' as const, priority: 3 as const };
+  const b = { ...base, id: 'b', parentId: 'a', dueDate: null, priority: 4 as const, postponeCount: 0 };
+  const c = { ...base, id: 'c', status: 'done' as const, completedAt: '2026-11-18T10:00:00Z' };
+  const all = [a, b, c];
+  const ctx = { today: '2026-11-19' as const, now: NOW };
+
+  it('priorytet z cofnięciem; bez zmiany — bez operacji', () => {
+    const { ops, undo } = bulkTaskOps([a, b], all, { kind: 'priority', priority: 4 }, ctx);
+    expect(ops).toEqual([{ table: 'tasks', id: 'a', patch: { priority: 4 } }]);
+    expect(undo).toEqual([{ table: 'tasks', id: 'a', patch: { priority: 3 } }]);
+  });
+
+  it('jutro: godzina zostaje, licznik przesunięć rośnie; cofnięcie przywraca termin i licznik', () => {
+    const { ops, undo } = bulkTaskOps([a, b], all, { kind: 'tomorrow' }, ctx);
+    expect(ops).toEqual([
+      { table: 'tasks', id: 'a', patch: { due_date: '2026-11-20', postpone_count: 3 } },
+      { table: 'tasks', id: 'b', patch: { due_date: '2026-11-20' } },
+    ]);
+    expect(undo[0]).toEqual({ table: 'tasks', id: 'a', patch: { due_date: '2026-11-18', postpone_count: 2 } });
+  });
+
+  it('przeniesienie i kosz: podzadanie zaznaczone z rodzicem idzie z nim raz', () => {
+    expect(bulkTaskOps([a, b], all, { kind: 'move', listId: 'L9' }, ctx).ops).toEqual([
+      { table: 'tasks', id: 'a', patch: { list_id: 'L9' } },
+      { table: 'tasks', id: 'b', patch: { list_id: 'L9' } },
+    ]);
+    const del = bulkTaskOps([b, a], all, { kind: 'delete' }, ctx);
+    expect(del.ops.map((o) => o.id)).toEqual(['a', 'b']);
+    expect(del.undo.every((u) => u.patch.deleted_at === null)).toBe(true);
+  });
+
+  it('ukończenie pomija zamknięte', () => {
+    const { ops, undo } = bulkTaskOps([a, c], all, { kind: 'complete' }, ctx);
+    expect(ops.map((o) => o.id)).toEqual(['a']);
+    expect(undo).toEqual([{ table: 'tasks', id: 'a', patch: { status: 'todo', completed_at: null } }]);
   });
 });

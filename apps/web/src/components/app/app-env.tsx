@@ -22,7 +22,16 @@ export interface AppEnv {
   openTask: (id: string | null) => void;
   /** Zadanie otwarte w panelu. */
   openTaskId: string | null;
+  /** Zaznaczone zadania (akcje palety i skrótów działają na nich). */
+  selectedIds: ReadonlySet<string>;
+  /** `only` — tylko to; `toggle` — Ctrl+klik; `range` — Shift+klik (od ostatnio wybranego). */
+  select: (id: string, mode?: "only" | "toggle" | "range") => void;
 }
+
+/** Zadania widoczne w treści, w kolejności na ekranie (bez wirtualnych wystąpień serii). */
+export const visibleTaskIds = (): string[] => [
+  ...new Set([...document.querySelectorAll<HTMLElement>("main [data-task-id]:not([data-virtual])")].map((el) => el.dataset.taskId!)),
+];
 
 const EnvContext = createContext<AppEnv | null>(null);
 export const AppEnvProvider = EnvContext.Provider;

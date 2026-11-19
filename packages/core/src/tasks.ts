@@ -9,6 +9,7 @@ import { isHlc, parseHlc } from './hlc.ts';
 import { completionId, tagId, taskTagId, uuidv7 } from './ids.ts';
 import { normalizeWord, type QuickAddResult } from './quick-add.ts';
 import { nextDue, Recurrence } from './recurrence.ts';
+import { reschedulePatch } from './review.ts';
 import { keyBetween } from './sort-key.ts';
 import type { LocalDate, LocalTime, Priority, TaskStatus } from './schemas/primitives.ts';
 import type { ViewTask } from './views.ts';
@@ -342,3 +343,97 @@ export function restoreTaskOps(
 /** Otwarte podzadania (pytanie „Ukończyć też podzadania?” przy ukończeniu rodzica). */
 export const openDescendants = <T extends TreeTask & Pick<ViewTask, 'status'>>(tasks: readonly T[], id: string): T[] =>
   descendants(tasks, id).filter((t) => t.status !== 'done' && t.status !== 'cancelled');
+
+// ── Operacje na zaznaczonych zadaniach (paleta, skróty, operacje grupowe M3) ───────────────
+
+export type BulkAction =
+  | { kind: 'complete' }
+  | { kind: 'priority'; priority: Priority }
+  | { kind: 'today' }
+  | { kind: 'tomorrow' }
+  | { kind: 'date'; date: LocalDate }
+  | { kind: 'move'; listId: string }
+  | { kind: 'delete' };
+
+const BEFORE: Record<string, (t: ViewTask) => unknown> = {
+  list_id: (t) => t.listId,
+  parent_id: (t) => t.parentId,
+  priority: (t) => t.priority,
+  status: (t) => t.status,
+  completed_at: (t) => t.completedAt,
+  due_date: (t) => t.dueDate,
+  due_time: (t) => t.dueTime,
+  start_date: (t) => t.startDate,
+  postpone_count: (t) => t.postponeCount,
+  deleted_at: () => null,
+};
+
+/** Odwrotność łatki zadania: poprzednie wartości tych samych pól. */
+const undoOf = (op: TaskOp, task: ViewTask | undefined): TaskOp => ({
+  table: op.table,
+  id: op.id,
+  patch: Object.fromEntries(Object.keys(op.patch).map((field) => [field, task ? (BEFORE[field]?.(task) ?? null) : null])),
+});
+
+/**
+ * Jedna akcja na wielu zadaniach naraz, z operacjami „Cofnij”. Zadania zamknięte pomija ukończenie;
+ * „Dziś / Jutro / data” liczy `reschedulePatch` (godzina zostaje, zakres przesuwa się w całości,
+ * przesunięcie na później zwiększa licznik). Podzadania zaznaczone razem z rodzicem przy
+ * przeniesieniu i usunięciu idą z nim (bez podwójnych operacji).
+ */
+export function bulkTaskOps(
+  selected: readonly ViewTask[],
+  all: readonly ViewTask[],
+  action: BulkAction,
+  { today, now, timeZone }: { today: LocalDate; now: Date | string; timeZone?: string },
+): { ops: TaskOp[]; undo: TaskOp[] } {
+  const byId = new Map(all.map((t) => [t.id, t]));
+  const ops: TaskOp[] = [];
+  const undo: TaskOp[] = [];
+  const push = (list: readonly TaskOp[]) => {
+    for (const op of list) {
+      if (ops.some((o) => o.table === op.table && o.id === op.id)) continue;
+      ops.push(op);
+      if (op.table === 'tasks') undo.push(undoOf(op, byId.get(op.id)));
+    }
+  };
+  const ids = new Set(selected.map((t) => t.id));
+  // Przy przeniesieniu / usunięciu wystarczą zaznaczone „najwyżej w drzewie”.
+  const tops = selected.filter((t) => {
+    for (let p = t.parentId; p; p = byId.get(p)?.parentId ?? null) if (ids.has(p)) return false;
+    return true;
+  });
+
+  for (const task of action.kind === 'move' || action.kind === 'delete' ? tops : selected) {
+    switch (action.kind) {
+      case 'complete': {
+        if (task.kind === 'task' && (task.status === 'done' || task.status === 'cancelled')) break;
+        const result = completeTaskOps(task, { now, timeZone });
+        for (const op of result.ops) if (!ops.some((o) => o.table === op.table && o.id === op.id)) ops.push(op);
+        undo.push(...result.undo);
+        break;
+      }
+      case 'priority':
+        if (task.priority !== action.priority) push([{ table: 'tasks', id: task.id, patch: { priority: action.priority } }]);
+        break;
+      case 'today':
+      case 'tomorrow':
+      case 'date': {
+        const patch = reschedulePatch(task, action, { today });
+        if (!patch) break;
+        const snake: Record<string, unknown> = { due_date: patch.dueDate };
+        if (patch.startDate !== undefined) snake.start_date = patch.startDate;
+        if (patch.postponeCount !== undefined) snake.postpone_count = patch.postponeCount;
+        push([{ table: 'tasks', id: task.id, patch: snake }]);
+        break;
+      }
+      case 'move':
+        push(moveTaskOps(all, task.id, action.listId));
+        break;
+      case 'delete':
+        push(deleteTaskOps(all, task.id, now));
+        break;
+    }
+  }
+  return { ops, undo };
+}

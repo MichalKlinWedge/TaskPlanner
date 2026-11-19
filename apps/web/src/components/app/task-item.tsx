@@ -45,7 +45,7 @@ export function TaskActionsProvider({ store, timeZone, tasks, children }: { stor
 
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast((t) => (t?.id === toast.id ? null : t)), 6000);
+    const timer = setTimeout(() => setToast((t) => (t?.id === toast.id ? null : t)), 10_000);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -146,8 +146,8 @@ export interface TaskItemProps {
 
 export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone }: TaskItemProps) {
   const { toggle } = useTaskActions();
-  const { openTask, openTaskId } = useAppEnv();
-  const selected = openTaskId === task.id;
+  const { openTask, selectedIds, select } = useAppEnv();
+  const selected = selectedIds.has(task.id);
   const closed = task.kind === "habit" ? Boolean(habitDone) : !isOpen(task);
   const date = virtualDate ?? task.dueDate;
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
@@ -155,9 +155,11 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
 
   return (
     <li
-      className={`group flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""} ${selected ? "bg-[var(--hover)]" : ""}`}
+      className={`group flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""} ${selected ? "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]" : ""}`}
       style={{ paddingLeft: depth * 20 }}
       data-task-id={task.id}
+      data-virtual={virtualDate ? "" : undefined}
+      data-selected={selected || undefined}
     >
       {collapsed === undefined ? (
         <span className="w-4 shrink-0" />
@@ -181,7 +183,17 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           {closed ? "✓" : ""}
         </button>
       )}
-      <button type="button" className="min-w-0 flex-1 cursor-pointer text-left" onClick={() => openTask(task.id)}>
+      <button
+        type="button"
+        className="min-w-0 flex-1 cursor-pointer text-left"
+        onClick={(e) => {
+          // Ctrl / Shift + klik — zaznaczanie wielu (operacje grupowe), zwykły klik — panel.
+          if (e.ctrlKey || e.metaKey) return select(task.id, "toggle");
+          if (e.shiftKey) return select(task.id, "range");
+          select(task.id);
+          openTask(task.id);
+        }}
+      >
         <span className={`block break-words ${closed ? "line-through opacity-50" : ""}`}>{task.title}</span>
         <span className="flex flex-wrap items-center gap-x-2 text-xs text-[var(--muted)]">
           {showDate && date ? <span className={overdue ? "font-medium text-[var(--danger)]" : ""}>{relativeDay(date, today)}</span> : null}
