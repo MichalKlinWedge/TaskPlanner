@@ -457,6 +457,7 @@ Recurrence =
 ### 7.3. Zależności i oś czasu (`dependencies.ts`)
 - `detectCycle(deps, newDep)`, `violations(tasks, deps)` (B.start < A.end + lag), `shiftSuccessors(tasks, deps, taskId, deltaDays)` (kaskadowo, zachowując odstępy; opcja dni roboczych z ustawień), `projectSpan(list, tasks)`.
 - Koniec zadania = `due_date` (+ `due_time` + `duration_min`, gdy jest godzina); początek = `start_date ?? due_date`.
+- Zrobione (18.11.2026): `taskSpan`, `detectCycle` (zwraca ścieżkę cyklu), `violations`, `shiftSuccessors` (`cascade: false` = „Tylko to zadanie”, `workdays` = dni robocze), `projectSpan`; w `dates.ts` `daysBetween`, `addWorkdays`. Granulacja dni: przy `lag_days` = 0 następnik może zacząć się w dniu końca poprzednika.
 
 ### 7.4. Time-blocking (`time-blocking.ts`)
 - `blocksForDay(tasks, events, date)`, `conflicts(blocks)` (nakładanie bloków i wydarzeń, z pominięciem wydarzeń „wolny”), `freeSlots(blocks, workHours, minMinutes)`.
@@ -471,9 +472,11 @@ Recurrence =
 
 ### 7.7. Pomodoro (`focus.ts`)
 - Maszyna stanów: `idle → focus → short_break/long_break → focus …`, stan = etap + `started_at` + pauzy; `remaining(state, now)`; przejście etapu zamyka i otwiera `time_entries`.
+- Zrobione (18.11.2026): `FocusSettings`, `FocusState` (Zod), `startFocus`/`pauseFocus`/`resumeFocus`/`stopFocus`/`skipPhase`/`advanceFocus` → `{ state, entries }` (operacje open/close na `time_entries`), `focusRemaining`, `phaseEndsAt` (do powiadomienia), `focusMinutes`. Pauza zamyka wpis, wznowienie otwiera nowy. Koniec pracy sam zaczyna przerwę, koniec przerwy przechodzi w `ready` (czeka na użytkownika) — uśpione urządzenie nie dopisuje fikcyjnych cykli; etap zamyka się w chwili swojego końca, nie przy następnym otwarciu aplikacji.
 
 ### 7.8. Przegląd (`review.ts`)
 - `dailyReviewQueue(tasks, today)`, `weeklyReviewSteps(…)` (Inbox, zaległe, projekty bez następnego kroku, „Oczekuje” > 7 dni), `reviewStats`.
+- Zrobione (18.11.2026): `dailyReviewQueue`, `ReviewAction` (Zod), `reschedulePatch` (godzina zostaje, zakres przesuwa się w całości, na później i „Kiedyś” → `postpone_count` + 1; „Kiedyś” niedostępne dla serii), `weeklyReview` (Inbox, zaległe, aktywne projekty bez otwartego zadania z terminem, „Oczekuje” > 7 dni według `statusChangedAt` — z `field_clock.status`, inaczej `created_at` — 7 dni naprzód, nawyki z ostatnich 7 dni, przesuwane ≥ 3 razy), `ReviewStats` + `reviewStats`. `ViewTask` ma `postponeCount` i opcjonalne `statusChangedAt`.
 
 ### 7.9. Etykiety i formatowanie
 - `labels.ts`: `PRIORITY`, `TASK_STATUS`, `LIST_KIND`, `PROJECT_STATUS`, `REMINDER_KIND`, `WEEKDAY`; `format.ts` (z EP: `plural`, `pluralForm`, `formatMinutes`, `shortDate`) + `relativeDay` („dziś”, „jutro”, „pt 21 lis”, „za 3 dni”, „2 dni temu”). Aplikacje nie definiują własnych etykiet.

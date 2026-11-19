@@ -37,6 +37,10 @@ export interface ViewTask {
   createdAt: string;
   sortKey: string;
   tagIds: readonly string[];
+  /** Ile razy termin przesunięto na później (przegląd oznacza ≥ 3 do decyzji). */
+  postponeCount: number;
+  /** Ostatnia zmiana statusu (czas z `field_clock.status`) — do „Oczekuje > 7 dni”. */
+  statusChangedAt?: string | null;
 }
 
 export interface ViewContext {

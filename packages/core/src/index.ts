@@ -1,4 +1,6 @@
 export * from './dates.ts';
+export * from './dependencies.ts';
+export * from './focus.ts';
 export * from './format.ts';
 export * from './habits.ts';
 export * from './hlc.ts';
@@ -6,6 +8,7 @@ export * from './ids.ts';
 export * from './labels.ts';
 export * from './quick-add.ts';
 export * from './recurrence.ts';
+export * from './review.ts';
 export * from './schemas/primitives.ts';
 export * from './sort-key.ts';
 export * from './views.ts';

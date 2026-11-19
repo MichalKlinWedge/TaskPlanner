@@ -17,6 +17,24 @@ export function localDateAt(instant: Date | string, timeZone?: string): LocalDat
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
+/** Dni między datami (`to` − `from`); ujemne, gdy `to` jest wcześniej. */
+export const daysBetween = (from: LocalDate, to: LocalDate): number => Math.round((toDate(to).getTime() - toDate(from).getTime()) / 86_400_000);
+
+/**
+ * Przesunięcie o `n` dni roboczych (`workdays` — numery ISO, domyślnie pon.–pt.): liczone są tylko
+ * dni robocze po drodze, więc wynik (dla `n` ≠ 0) zawsze wypada w dzień roboczy.
+ */
+export function addWorkdays(date: LocalDate, n: number, workdays: readonly number[] = [1, 2, 3, 4, 5]): LocalDate {
+  if (n === 0 || !workdays.length) return date;
+  const step = Math.sign(n);
+  let d = date;
+  for (let left = Math.abs(n); left > 0; ) {
+    d = addDays(d, step);
+    if (workdays.includes(isoWeekday(d))) left--;
+  }
+  return d;
+}
+
 /** Pierwszy dzień tygodnia zawierającego `date`; `firstDay` jak w ISO (1 = poniedziałek, 7 = niedziela). */
 export const weekStart = (date: LocalDate, firstDay = 1): LocalDate => addDays(date, -((isoWeekday(date) - firstDay + 7) % 7));
 

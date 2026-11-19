@@ -51,6 +51,7 @@ function task(over: Partial<ViewTask> = {}): ViewTask {
     createdAt: '2026-11-01T10:00:00Z',
     sortKey: '0010',
     tagIds: [],
+    postponeCount: 0,
     ...over,
   };
 }
