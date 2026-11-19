@@ -8,6 +8,7 @@ Część telefoniczna MVP-1 w `apps/mobile`: ekran „Konto i serwer” (`src/ap
 - Szablon maila z kodem (`supabase/templates/magic_link.html`, wpis `[auth.email.template.magic_link]` w `supabase/config.toml`) działa dopiero po ponownym uruchomieniu stosu (`npm run supabase -- stop` i `start`) z gałęzi, która go zawiera. Bez tego mail ma tylko link.
 - **Dev build** (`cd apps/mobile && npx expo run:android`, `docs/ANDROID_BUILD.md`). Release nie łączy się z lokalnym Supabase po `http` (Android 9+ blokuje ruch bez TLS), więc scenariusze z lokalnym serwerem robić na dev buildzie. Po dodaniu `expo-web-browser` i `expo-network` trzeba przebudować APK (nowe moduły natywne).
 - Telefon przez USB: `adb reverse tcp:54521 tcp:54521` i `adb reverse tcp:54524 tcp:54524`. Wtedy adres serwera w aplikacji to `http://127.0.0.1:54521`, a link z maila (wskazuje 127.0.0.1:54521) otwiera się w Chrome na telefonie. W Wi-Fi (`http://<IP komputera>:54521`) link z maila nie zadziała — logowanie kodem z maila.
+- Po `npm run supabase -- db reset` konta mają nowe id: na telefonie najpierw „Wyloguj (czyści dane lokalne)”, potem logowanie od nowa (stara sesja kończy się błędem synchronizacji, np. `permission denied`).
 - Dev build z `expo-dev-client`: link z maila otwierać, gdy aplikacja działa (jest w tle). Przy zimnym starcie deep link może trafić do ekranu launchera dev clienta zamiast do aplikacji.
 
 ## M1. Logowanie linkiem z maila (deep link)
