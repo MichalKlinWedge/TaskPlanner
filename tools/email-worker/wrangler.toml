@@ -1,0 +1,11 @@
+# Cloudflare Email Worker: Email Routing → `inbound-email` (SPECYFIKACJA M19, PoC-6).
+# Wdrożenie: `npm run deploy --workspace tools/email-worker -- --var INBOUND_URL:https://<ref>.supabase.co/functions/v1/inbound-email`
+# Sekret: `npx wrangler@4.164.0 secret put INBOUND_SECRET` (ta sama wartość co w sekretach Supabase).
+# Potem w Email Routing: reguła `zadania@<domena>` → Send to Worker `taskplanner-email`, Subaddressing włączone.
+name = "taskplanner-email"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+workers_dev = false
+
+[observability]
+enabled = true

@@ -6,17 +6,33 @@
     "orientation": "portrait",
     "scheme": "taskplanner",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/images/icon.png",
     "android": {
       "package": "pl.taskplanner.app",
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.USE_EXACT_ALARM"
-      ]
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "monochromeImage": "./assets/images/adaptive-icon-monochrome.png",
+        "backgroundColor": "#4F46E5"
+      }
     },
     "plugins": [
       "expo-router",
       "expo-sqlite",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#FAFAFA",
+          "dark": { "backgroundColor": "#09090B" }
+        }
+      ],
       [
         "expo-notifications",
         {

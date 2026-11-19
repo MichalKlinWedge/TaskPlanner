@@ -11,6 +11,7 @@ coverage/
 .env*.local
 supabase/.env
 supabase/functions/.env
+supabase/functions/.env.*
 
 # Supabase lokalnie
 supabase/.branches
@@ -30,6 +31,7 @@ npm-debug.*
 
 # Wygenerowane dane deweloperskie
 tools/seed-dev/out/
+tools/edge-tests/out/
 
 # SQLite WASM kopiowany przed next dev/build (scripts/copy-sqlite-wasm.mjs)
 apps/web/public/sqlite-wasm/

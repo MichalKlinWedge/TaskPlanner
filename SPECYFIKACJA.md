@@ -64,7 +64,8 @@ Status: projekt do zatwierdzenia. Decyzje otwarte są w §12 (z rekomendacją; b
 | Wyszukiwarka i paleta poleceń | MUST | MVP-2 | M17 |
 | Kalendarze zewnętrzne — odczyt | MUST | Etap 5 | M18 |
 | Kalendarze zewnętrzne — zapis (dwukierunkowo) | SHOULD | Etap 12 | M18 |
-| E-mail → zadanie, link → zadanie | SHOULD | Etap 10 | M19 |
+| Link → zadanie | SHOULD | Etap 10 | M19 |
+| E-mail → zadanie | COULD | v1.x (D9) | M19 |
 | Offline (pełna funkcjonalność) | MUST | od MVP-1 | M20, §6 |
 | Widżety na telefonie | SHOULD | Etap 11 | M20 |
 | Widżety na pulpicie | COULD (PWA + skróty; natywny widżet poza v1.0, D11) | Etap 11 / v1.x | M20 |
@@ -96,7 +97,7 @@ Status: projekt do zatwierdzenia. Decyzje otwarte są w §12 (z rekomendacją; b
    Edge Functions (Deno, packages/core):
      reminders-push   → Web Push (VAPID)
      calendar-sync    ↔ Google Calendar API (watch + syncToken), ICS
-     inbound-email    ← Cloudflare Email Routing + Email Worker
+     inbound-email    ← Cloudflare Email Routing + Email Worker (v1.x, D9)
      link-preview     → pobranie tytułu strony (ochrona przed SSRF)
    Web hostowany na Vercel; APK przez EAS, aktualizacje JS przez OTA.
 ```
@@ -125,7 +126,7 @@ Zasada: **UI czyta i pisze wyłącznie lokalną bazę**. Sieć to sprawa `packag
 | Powiadomienia | telefon: `expo-notifications` (lokalne, offline); web: **Web Push (VAPID)** z Edge Function | przypomnienie bez sieci na telefonie | FCM dla telefonu: nie działa offline |
 | Widżety Android | `react-native-android-widget` (plugin Expo) — weryfikacja w PoC-4 | widżet w JSX, zadania w tle (headless JS) | natywny Kotlin: drugi język |
 | Udostępnianie do aplikacji | `expo-share-intent` (Android), Web Share Target (PWA), bookmarklet | link → zadanie | — |
-| Poczta przychodząca | **Cloudflare Email Routing + Email Worker** → Edge Function | darmowe, własna domena | Postmark/Mailgun inbound: płatne |
+| Poczta przychodząca (v1.x, D9) | **Cloudflare Email Routing + Email Worker** → Edge Function | darmowe, własna domena | Postmark/Mailgun inbound: płatne |
 | Testy | Vitest (pakiety, web), pgTAP (RLS, RPC), testy integracyjne `packages/sync` na lokalnym Supabase, Playwright (web), Maestro (Android) | jak w EP | — |
 | Hosting | Supabase, Vercel (web), EAS (APK + OTA), Cloudflare (poczta) | — | — |
 
@@ -144,7 +145,7 @@ supabase/
   migrations/        tabele, RLS, triggery (row_version, field_clock), RPC push/pull
   functions/         Edge Functions: reminders-push, calendar-sync, inbound-email, link-preview
   tests/             pgTAP: RLS, push_changes, pull_changes
-workers/email/       Cloudflare Email Worker (przekazanie maila do inbound-email)
+workers/email/       Cloudflare Email Worker (przekazanie maila do inbound-email; v1.x)
 tools/seed-dev/      dane deweloperskie (5 przestrzeni, 2 000 zadań)
 fixtures/            quick-add.jsonl (korpus parsera), recurrence.json, historie nawyków
 scripts/             sync-env.mjs
@@ -278,6 +279,7 @@ Widoki stałe w pasku bocznym [W+A]:
 ### M17. Wyszukiwarka i paleta poleceń
 - **Paleta** `Ctrl+K` [W] (na [A]: ikona szukania z tymi samymi wynikami): zadania (tytuł, opis, tagi, nazwa listy), listy, przestrzenie, tagi, filtry, widoki i **akcje** („Przenieś do…”, „Ustaw priorytet…”, „Zaplanuj na jutro”, „Tryb skupienia”, „Nowy projekt”, „Przełącz przestrzeń”, „Przegląd dnia”, „Motyw ciemny”). Akcje działają na zaznaczonych zadaniach.
 - Wyszukiwanie lokalne: SQLite FTS5 (`unicode61 remove_diacritics 2` — „zolw” znajduje „żółw”), prefiksy, ranking (tytuł > tagi > opis), ostatnio używane na górze. Ten sam kod na webie i telefonie, działa offline.
+  - Zrobione (19.11.2026) w `core/search.ts` bez FTS5: indeks w pamięci (`buildSearchIndex`, `search`) — normalizacja bez ogonków i „ł”, każde słowo zapytania pasuje do początku słowa (środek słowa od 3 znaków, słabiej), wagi tytuł 10 > tagi 6 > słowa kluczowe akcji 5 > lista 4 > opis 2, zamknięte niżej, premia za ostatnie użycie, podświetlenia w tytule; 5 000 pozycji < 15 ms. FTS5 tylko, jeśli zabraknie wydajności (zawężenie kandydatów). Polecenia palety i skróty: `core/commands.ts` (`COMMANDS`, `LIST_SHORTCUTS`, `commandSearchItems`).
 - **Skróty [W]**: `Q` szybkie dodawanie, `Ctrl+K` paleta, `/` szukaj, `G` potem `I`/`T`/`U`/`K`/`C`/`O` — Inbox/Dziś/Nadchodzące/Kanban/Kalendarz/Oś czasu, `J`/`K` następne/poprzednie zadanie, `E` ukończ, `1`–`4` priorytet, `T` dziś, `M` jutro, `D` wybór daty, `F` tryb skupienia, `Del` kosz, `?` lista skrótów. Lista skrótów w `core` (etykiety), obsługa w `apps/web`.
 
 ### M18. Kalendarze zewnętrzne
@@ -291,7 +293,7 @@ Widoki stałe w pasku bocznym [W+A]:
 - Tokeny OAuth tylko na serwerze (Supabase Vault), nigdy w przeglądarce ani w APK.
 
 ### M19. Przechwytywanie treści
-- **E-mail → Inbox** (Etap 10): adres `zadania+<token>@<domena>`; Cloudflare Email Routing → Email Worker (parsowanie MIME) → Edge Function `inbound-email` (sekret współdzielony). Zadanie: tytuł = temat bez „Fwd:/Re:/PD:/Odp:” (z parserem M13 — „Faktura za prąd jutro #dom !2” działa), opis = treść tekstowa (Markdown, przycięte stopki i cytaty), załączniki → Storage, `source = {kind:'email', from, messageId, receivedAt}`.
+- **E-mail → Inbox** (v1.x, D9): adres `zadania+<token>@<domena>`; Cloudflare Email Routing → Email Worker (parsowanie MIME) → Edge Function `inbound-email` (sekret współdzielony). Zadanie: tytuł = temat bez „Fwd:/Re:/PD:/Odp:” (z parserem M13 — „Faktura za prąd jutro #dom !2” działa), opis = treść tekstowa (Markdown, przycięte stopki i cytaty), załączniki → Storage, `source = {kind:'email', from, messageId, receivedAt}`.
   - Akceptowane tylko wiadomości z adresów z listy nadawców w ustawieniach + poprawny token; token można wygenerować na nowo. Odrzucone trafiają do dziennika `inbound_messages`.
 - **Link → zadanie**: [A] udostępnianie z dowolnej aplikacji (`expo-share-intent`) otwiera szybkie dodawanie z URL; [W] PWA Web Share Target (Chrome na Androidzie), bookmarklet i wklejenie samego URL w szybkie dodawanie. Tytuł strony z `link-preview` (gdy offline — URL jako tytuł, uzupełnienie po synchronizacji).
 - Zaznaczony tekst udostępniony do aplikacji → zadanie z tym tekstem w opisie.
@@ -341,6 +343,7 @@ Zasady:
 - **Czas zadań = data i godzina pływające** (`date`, `time` — czas ścienny użytkownika), bo „o 10:00” znaczy 10:00 tam, gdzie akurat jestem. Opcjonalna `time_zone` przy zadaniu przypina je do strefy (np. telekonferencja z innym krajem). Zdarzenia rzeczywiste (ukończenie, czas pracy, wydarzenia z kalendarzy) to `timestamptz`.
 - Kolejność ręczna: `sort_key text` (klucze ułamkowe) w obrębie rodzica i listy.
 - `jsonb` walidowane schematami Zod z `packages/core/src/schemas` (camelCase).
+- Schematy wierszy i `jsonb` (19.11.2026): `packages/core/src/schemas/model.ts` — `MODEL` (wiersz po nazwie tabeli, kolumny snake_case z ograniczeniami migracji i regułami między polami), `ProfileSettings` (`parse({})` = domyślne), `ViewPrefs`, `TaskSource`, `AttachmentPreview`, `PushSubscriptionJson`. Test w `packages/sync` pilnuje, że wiersze tabel synchronizowanych mają dokładnie kolumny `TABLES` + `id`. `devices.reminder_channel` = `enabled`/`disabled` (czy urządzenie dostaje przypomnienia).
 
 ### Tabele — konto i struktura
 | Tabela | Najważniejsze kolumny | Uwagi |
@@ -434,6 +437,13 @@ Scenariusze na lokalnym Supabase z trzema klientami (2 × Node, 1 × przeglądar
 ### 7.1. Widoki
 - Funkcje czyste na tablicach wierszy (`selectToday`, `selectUpcoming`, `groupTasks`, `applyFilter`, `buildTree`); `packages/sync` dostarcza wiersze kandydatów zapytaniem z indeksem, `core` stosuje reguły (wirtualne wystąpienia, kolejność, grupowanie). Te same funkcje liczą liczniki w pasku bocznym, widżety i przegląd.
 - „Dziś” liczone według strefy urządzenia (dzień zmienia się o północy lokalnej; po północy widok odświeża się sam).
+- Zrobione w `core/views.ts` (18.11.2026): `selectToday`, `selectUpcoming`, `selectInbox`, `FilterQuery` + `applyFilter`/`matchesFilter`, `sortTasks`, `groupTasks`, `buildTree`/`flattenTree`/`progress`, `withCompleted`; wejście = `ViewTask` (camelCase, z `tagIds`). Ustalenia:
+  - w dniu najpierw zadania z godziną (według godziny), potem bez godziny (kolejność ręczna); zaległe od najstarszego terminu, potem priorytet,
+  - „Nadchodzące” zaczyna się od dziś (zaległe tylko w „Dziś”); wirtualne wystąpienia serii od dnia po późniejszej z dat: bieżący termin, dziś — zgodnie z `nextDue`; seria „po ukończeniu” nie ma wirtualnych wystąpień; nawyki są tylko w sekcji „Nawyki na dziś”,
+  - dzień ukończenia = data lokalna `completed_at` w strefie z ustawień (`localDateAt`),
+  - postęp rodzica nie liczy anulowanych podzadań; podzadanie bez rodzica na wejściu jest korzeniem,
+  - filtr zapisany ma daty względne (`{ offsetDays: 0 }` = dzień oglądania), więc „termin ≤ dziś” działa także jutro.
+- `occurrences` z `from` przeskakuje do okresu zawierającego `from` (bez `COUNT`): seria codzienna sprzed 6 lat — 14 dni w < 0,1 ms zamiast ~7 ms.
 
 ### 7.2. Cykliczność (`recurrence.ts`)
 ```ts
@@ -449,6 +459,7 @@ Recurrence =
 ### 7.3. Zależności i oś czasu (`dependencies.ts`)
 - `detectCycle(deps, newDep)`, `violations(tasks, deps)` (B.start < A.end + lag), `shiftSuccessors(tasks, deps, taskId, deltaDays)` (kaskadowo, zachowując odstępy; opcja dni roboczych z ustawień), `projectSpan(list, tasks)`.
 - Koniec zadania = `due_date` (+ `due_time` + `duration_min`, gdy jest godzina); początek = `start_date ?? due_date`.
+- Zrobione (18.11.2026): `taskSpan`, `detectCycle` (zwraca ścieżkę cyklu), `violations`, `shiftSuccessors` (`cascade: false` = „Tylko to zadanie”, `workdays` = dni robocze), `projectSpan`; w `dates.ts` `daysBetween`, `addWorkdays`. Granulacja dni: przy `lag_days` = 0 następnik może zacząć się w dniu końca poprzednika.
 
 ### 7.4. Time-blocking (`time-blocking.ts`)
 - `blocksForDay(tasks, events, date)`, `conflicts(blocks)` (nakładanie bloków i wydarzeń, z pominięciem wydarzeń „wolny”), `freeSlots(blocks, workHours, minMinutes)`.
@@ -463,12 +474,15 @@ Recurrence =
 
 ### 7.7. Pomodoro (`focus.ts`)
 - Maszyna stanów: `idle → focus → short_break/long_break → focus …`, stan = etap + `started_at` + pauzy; `remaining(state, now)`; przejście etapu zamyka i otwiera `time_entries`.
+- Zrobione (18.11.2026): `FocusSettings`, `FocusState` (Zod), `startFocus`/`pauseFocus`/`resumeFocus`/`stopFocus`/`skipPhase`/`advanceFocus` → `{ state, entries }` (operacje open/close na `time_entries`), `focusRemaining`, `phaseEndsAt` (do powiadomienia), `focusMinutes`. Pauza zamyka wpis, wznowienie otwiera nowy. Koniec pracy sam zaczyna przerwę, koniec przerwy przechodzi w `ready` (czeka na użytkownika) — uśpione urządzenie nie dopisuje fikcyjnych cykli; etap zamyka się w chwili swojego końca, nie przy następnym otwarciu aplikacji.
 
 ### 7.8. Przegląd (`review.ts`)
 - `dailyReviewQueue(tasks, today)`, `weeklyReviewSteps(…)` (Inbox, zaległe, projekty bez następnego kroku, „Oczekuje” > 7 dni), `reviewStats`.
+- Zrobione (18.11.2026): `dailyReviewQueue`, `ReviewAction` (Zod), `reschedulePatch` (godzina zostaje, zakres przesuwa się w całości, na później i „Kiedyś” → `postpone_count` + 1; „Kiedyś” niedostępne dla serii), `weeklyReview` (Inbox, zaległe, aktywne projekty bez otwartego zadania z terminem, „Oczekuje” > 7 dni według `statusChangedAt` — z `field_clock.status`, inaczej `created_at` — 7 dni naprzód, nawyki z ostatnich 7 dni, przesuwane ≥ 3 razy), `ReviewStats` + `reviewStats`. `ViewTask` ma `postponeCount` i opcjonalne `statusChangedAt`.
 
 ### 7.9. Etykiety i formatowanie
 - `labels.ts`: `PRIORITY`, `TASK_STATUS`, `LIST_KIND`, `PROJECT_STATUS`, `REMINDER_KIND`, `WEEKDAY`; `format.ts` (z EP: `plural`, `pluralForm`, `formatMinutes`, `shortDate`) + `relativeDay` („dziś”, „jutro”, „pt 21 lis”, „za 3 dni”, „2 dni temu”). Aplikacje nie definiują własnych etykiet.
+- Zrobione (19.11.2026): `REMINDER_KIND`, `WEEKDAY`, `MONTH_SHORT`, `VIEW_SECTION`; `relativeDay(date, today, 'date' | 'distance')`.
 
 ---
 
@@ -542,10 +556,10 @@ Szacowany koszt v1.0: 0 zł miesięcznie (+ domena, jeśli trzeba kupić). Supab
 | D5 | Składnia szybkiego dodawania | **`#` = lista/projekt/przestrzeń, w razie braku — tag; `@` = zawsze tag**; `!1–!4` priorytet; `~` czas trwania; `^` przypomnienie |
 | D6 | Statusy kanbanu | **Stałe 5 statusów** w v1.0; własne kolumny statusów w v1.x |
 | D7 | Zakres telefonu | **Pełna edycja + kalendarz dnia/tygodnia**; oś czasu (Gantt) tylko na webie; kanban na telefonie uproszczony |
-| D8 | Kalendarz firmowy (spotkania) | **Pytanie:** Google Workspace czy Microsoft 365? Rekomendacja: odczyt przez ICS i kalendarz telefonu od Etapu 5 (działa dla obu); zapis dwukierunkowy najpierw dla dostawcy, którego używasz na co dzień |
-| D9 | Domena dla adresu e-mail | **Pytanie:** która domena (musi mieć DNS w Cloudflare)? Bez domeny: przekazywanie z Gmaila filtrem do skrzynki obsługiwanej przez Cloudflare albo przesunięcie M19-e-mail do v1.x |
-| D10 | Projekt Supabase | **Osobny projekt** (Free), nie schemat w projekcie ExpeditionPlan |
+| D8 | Kalendarz firmowy (spotkania) | **Google** (decyzja 2026-11-18): dwukierunkowa synchronizacja z Google Calendar; ICS i kalendarz telefonu jako odczyt dla pozostałych; Microsoft 365 dopiero w v1.x |
+| D9 | Domena dla adresu e-mail | **E-mail → Inbox przesunięte do v1.x** (decyzja 2026-11-18) — wymaga domeny z DNS w Cloudflare; do tego czasu przechwytywanie przez udostępnianie z telefonu i Web Share Target (M19) |
+| D10 | Projekt Supabase | **Osobny projekt na osobnym koncie** Supabase (Free, decyzja 2026-11-18) — limit 2 aktywnych projektów konta ExpeditionPlan nie dotyczy TaskPlanner |
 | D11 | Widżety pulpitu | **PWA + skróty** w v1.0; natywny widżet / zasobnik / globalny skrót przez Tauri w v1.x |
 | D12 | Integracje na serwerze | **Supabase Edge Functions + `pg_cron`** (nie trasy API Vercela) |
-| D13 | Import z obecnego narzędzia | **Pytanie:** z czego przenosisz zadania (Todoist, TickTick, Microsoft To Do, Google Tasks, nic)? Import CSV/JSON wybranego narzędzia jako narzędzie `tools/import` w Etapie 13 |
+| D13 | Import z obecnego narzędzia | **Brak** (decyzja 2026-11-18): start od zera, bez `tools/import`; zostaje eksport/import JSON własnych danych (Etap 13). Korpus parsera uzupełnią przykładowe zadania wpisane przez użytkownika |
 | D14 | Język i nazwa | UI po polsku, nazwa aplikacji „TaskPlanner”, pakiety `@taskplanner/*` |
