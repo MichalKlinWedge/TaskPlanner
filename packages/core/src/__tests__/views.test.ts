@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { localDateAt, weekStart } from '../dates.ts';
+import { localDateAt, localDateTimeAt, weekStart } from '../dates.ts';
 import {
   applyFilter,
   buildTree,
@@ -62,6 +62,8 @@ describe('daty lokalne', () => {
   it('dzień ukończenia według strefy, nie UTC', () => {
     expect(localDateAt('2026-11-18T23:30:00Z', 'Europe/Warsaw')).toBe('2026-11-19');
     expect(localDateAt('2026-11-18T22:59:00Z', 'Europe/Warsaw')).toBe('2026-11-18');
+    expect(localDateTimeAt('2026-11-18T23:05:00Z', 'Europe/Warsaw')).toBe('2026-11-19T00:05');
+    expect(localDateTimeAt('2026-07-01T11:30:00Z', 'Europe/Warsaw')).toBe('2026-07-01T13:30');
   });
   it('początek tygodnia od poniedziałku albo niedzieli', () => {
     expect(weekStart('2026-11-18')).toBe('2026-11-16');

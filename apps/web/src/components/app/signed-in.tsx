@@ -74,6 +74,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
       {header}
       <Shell
         store={store}
+        userId={userId}
         settings={parseSettings(settings)}
         manage={<WorkspacesScreen store={store} />}
         settingsView={

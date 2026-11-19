@@ -4,7 +4,9 @@
  * Podstawa z ExpeditionPlan (`packages/core/src/format.ts`).
  */
 import { daysBetween, isoWeekday } from './dates.ts';
-import { AUTH_ERROR, MONTH_SHORT, WEEKDAY } from './labels.ts';
+import { AUTH_ERROR, MONTH_SHORT, PRIORITY, QUICK_ADD_KIND, WEEKDAY } from './labels.ts';
+import type { QuickAddResult, QuickAddToken } from './quick-add.ts';
+import { describeRecurrence } from './recurrence.ts';
 import type { IsoWeekday, LocalDate } from './schemas/primitives.ts';
 
 /** Forma rzeczownika po liczbie: 1, 2–4 (22, 103…), 5+ (także 12–14 i 0). */
@@ -84,4 +86,33 @@ export function authErrorMessage(error: { code?: string | null; message?: string
   if (/rate limit|too many/i.test(message)) return AUTH_ERROR.over_request_rate_limit!;
   if (/unable to validate email|invalid.*email/i.test(message)) return AUTH_ERROR.email_address_invalid!;
   return message || 'Nie udało się zalogować.';
+}
+
+/**
+ * Napis chipu rozpoznanego fragmentu szybkiego dodawania: „Termin: jutro”, „Lista: Dom › Remont
+ * kuchni”, „Powtarzanie: co tydzień w środę”. Wartość z pól wyniku, a gdy fragmentów jednego
+ * rodzaju jest kilka (tagi, przypomnienia) — z tekstu fragmentu.
+ */
+export function quickAddChip(token: QuickAddToken, { fields }: QuickAddResult, today: LocalDate): string {
+  const value = (() => {
+    switch (token.kind) {
+      case 'date':
+        return fields.dueDate ? relativeDay(fields.dueDate, today) : token.text;
+      case 'time':
+        return fields.dueTime ?? token.text;
+      case 'duration':
+        return fields.durationMin ? formatMinutes(fields.durationMin) : token.text;
+      case 'priority':
+        return fields.priority ? PRIORITY[fields.priority].label : token.text;
+      case 'target':
+        return fields.target ? (fields.target.kind === 'workspace' ? `${fields.target.name} (Inbox)` : `${fields.target.workspace} › ${fields.target.name}`) : token.text;
+      case 'recurrence':
+        return fields.recurrence ? describeRecurrence(fields.recurrence) : token.text;
+      case 'tag':
+        return token.text.replace(/^[@#]/, '');
+      default:
+        return token.text;
+    }
+  })();
+  return `${QUICK_ADD_KIND[token.kind]}: ${value}`;
 }

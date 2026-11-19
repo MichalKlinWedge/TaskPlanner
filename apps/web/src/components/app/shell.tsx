@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactN
 import { useAppData, useToday, type List } from "@/lib/app-data";
 import { routeHash, useRoute, type Route } from "@/lib/route";
 
+import { QuickAddDialog, QuickAddEnvProvider } from "./quick-add";
 import { TaskActionsProvider } from "./task-item";
 import { Select, Splash } from "./ui";
 import { InboxView, ListView, TodayView, UpcomingView } from "./views";
@@ -40,13 +41,43 @@ const subscribeWorkspace = (listener: () => void) => {
   return () => void workspaceListeners.delete(listener);
 };
 
-export function Shell({ store, settings, manage, settingsView }: { store: TabStore; settings: ProfileSettings; manage: ReactNode; settingsView: ReactNode }) {
+/** Pole tekstowe albo edytor — skróty jednoklawiszowe wtedy nie działają. */
+const isTyping = (target: EventTarget | null) =>
+  target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+
+export function Shell({
+  store,
+  userId,
+  settings,
+  manage,
+  settingsView,
+}: {
+  store: TabStore;
+  userId: string;
+  settings: ProfileSettings;
+  manage: ReactNode;
+  settingsView: ReactNode;
+}) {
   const today = useToday(settings.timeZone);
   const data = useAppData(store, today);
   const [route, navigate] = useRoute();
   const stored = useSyncExternalStore(subscribeWorkspace, readWorkspace, () => ALL);
   const workspaceId = stored !== ALL && data.workspaces.some((w) => w.id === stored) ? stored : null;
   const [menuOpen, setMenuOpen] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+
+  // Szybkie dodawanie z każdego miejsca (M13): `Q` poza polem tekstowym, `Ctrl+Spacja` zawsze.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const ctrlSpace = (event.ctrlKey || event.metaKey) && event.code === "Space";
+      const q = event.key.toLowerCase() === "q" && !event.ctrlKey && !event.metaKey && !event.altKey && !isTyping(event.target);
+      if (!ctrlSpace && !q) return;
+      event.preventDefault();
+      setQuickOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const ctx: ViewContext = useMemo(() => ({ today, timeZone: settings.timeZone, workspaceId, firstDayOfWeek: settings.firstDayOfWeek }), [today, settings.timeZone, workspaceId, settings.firstDayOfWeek]);
 
@@ -91,54 +122,68 @@ export function Shell({ store, settings, manage, settingsView }: { store: TabSto
     );
 
   const workspaces = workspaceId ? data.workspaces.filter((w) => w.id === workspaceId) : data.workspaces;
+  // Okno szybkiego dodawania dodaje tam, skąd je wywołano (lista / „Dziś” z dzisiejszym terminem).
+  const quickDefaults = list ? { listId: list.id } : route.view === "today" ? { listId: targetInbox?.id, dueDate: today } : { listId: targetInbox?.id };
 
   return (
     <TaskActionsProvider store={store} timeZone={settings.timeZone}>
-      <div className="flex min-h-0 flex-1">
-        <button
-          type="button"
-          className="fixed right-4 bottom-4 z-20 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white shadow-lg md:hidden"
-          aria-expanded={menuOpen}
-          aria-controls="sidebar"
-          onClick={() => setMenuOpen((o) => !o)}
-        >
-          {menuOpen ? "Zamknij" : "Menu"}
-        </button>
-        <aside
-          id="sidebar"
-          aria-label="Nawigacja"
-          className={`${menuOpen ? "fixed inset-0 z-10 block" : "hidden"} w-full shrink-0 overflow-y-auto border-r border-[var(--line)] bg-[var(--surface)] p-3 text-sm md:static md:block md:w-64`}
-        >
-          <Select
-            aria-label="Przestrzeń"
-            value={workspaceId ?? ALL}
-            onChange={(e) => writeWorkspace(e.target.value)}
-            className="mb-3 w-full"
+      <QuickAddEnvProvider value={{ data, userId, timeZone: settings.timeZone, today, workspaceId }}>
+        <div className="flex min-h-0 flex-1">
+          <button
+            type="button"
+            className="fixed right-4 bottom-4 z-20 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white shadow-lg md:hidden"
+            aria-expanded={menuOpen}
+            aria-controls="sidebar"
+            onClick={() => setMenuOpen((o) => !o)}
           >
-            <option value={ALL}>Wszystkie przestrzenie</option>
-            {data.workspaces.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
+            {menuOpen ? "Zamknij" : "Menu"}
+          </button>
+          <aside
+            id="sidebar"
+            aria-label="Nawigacja"
+            className={`${menuOpen ? "fixed inset-0 z-10 block" : "hidden"} w-full shrink-0 overflow-y-auto border-r border-[var(--line)] bg-[var(--surface)] p-3 text-sm md:static md:block md:w-64`}
+          >
+            <Select
+              aria-label="Przestrzeń"
+              value={workspaceId ?? ALL}
+              onChange={(e) => writeWorkspace(e.target.value)}
+              className="mb-3 w-full"
+            >
+              <option value={ALL}>Wszystkie przestrzenie</option>
+              {data.workspaces.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </Select>
+            <button
+              type="button"
+              onClick={() => setQuickOpen(true)}
+              title="Szybkie dodawanie (Q, Ctrl+Spacja)"
+              className="mb-3 flex w-full items-center gap-2 rounded-md bg-[var(--accent)] px-3 py-1.5 font-medium text-white hover:opacity-90"
+            >
+              <span aria-hidden>+</span> Dodaj zadanie
+              <kbd className="ml-auto rounded bg-white/20 px-1.5 text-xs font-normal">Q</kbd>
+            </button>
+            <nav className="flex flex-col gap-0.5">
+              <NavItem route={{ view: "inbox" }} current={route} navigate={navigate} icon="📥" label="Inbox" count={counts.inbox} />
+              <NavItem route={{ view: "today" }} current={route} navigate={navigate} icon="☀️" label="Dziś" count={counts.today} alert={counts.overdue > 0} />
+              <NavItem route={{ view: "upcoming" }} current={route} navigate={navigate} icon="📅" label="Nadchodzące" />
+            </nav>
+            {workspaces.map((w) => (
+              <WorkspaceLists key={w.id} name={w.name} color={w.color} lists={data.lists.filter((l) => l.workspaceId === w.id && l.kind !== "inbox")} counts={counts.perList} route={route} navigate={navigate} />
             ))}
-          </Select>
-          <nav className="flex flex-col gap-0.5">
-            <NavItem route={{ view: "inbox" }} current={route} navigate={navigate} icon="📥" label="Inbox" count={counts.inbox} />
-            <NavItem route={{ view: "today" }} current={route} navigate={navigate} icon="☀️" label="Dziś" count={counts.today} alert={counts.overdue > 0} />
-            <NavItem route={{ view: "upcoming" }} current={route} navigate={navigate} icon="📅" label="Nadchodzące" />
-          </nav>
-          {workspaces.map((w) => (
-            <WorkspaceLists key={w.id} name={w.name} color={w.color} lists={data.lists.filter((l) => l.workspaceId === w.id && l.kind !== "inbox")} counts={counts.perList} route={route} navigate={navigate} />
-          ))}
-          <nav className="mt-4 flex flex-col gap-0.5 border-t border-[var(--line)] pt-3">
-            <NavItem route={{ view: "manage" }} current={route} navigate={navigate} icon="🗂️" label="Przestrzenie i listy" />
-            <NavItem route={{ view: "settings" }} current={route} navigate={navigate} icon="⚙️" label="Ustawienia" />
-          </nav>
-        </aside>
-        <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-3xl p-4 pb-20 sm:p-6">{content}</div>
-        </main>
-      </div>
+            <nav className="mt-4 flex flex-col gap-0.5 border-t border-[var(--line)] pt-3">
+              <NavItem route={{ view: "manage" }} current={route} navigate={navigate} icon="🗂️" label="Przestrzenie i listy" />
+              <NavItem route={{ view: "settings" }} current={route} navigate={navigate} icon="⚙️" label="Ustawienia" />
+            </nav>
+          </aside>
+          <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
+            <div className="mx-auto w-full max-w-3xl p-4 pb-20 sm:p-6">{content}</div>
+          </main>
+        </div>
+        <QuickAddDialog open={quickOpen} onClose={() => setQuickOpen(false)} {...quickDefaults} />
+      </QuickAddEnvProvider>
     </TaskActionsProvider>
   );
 }

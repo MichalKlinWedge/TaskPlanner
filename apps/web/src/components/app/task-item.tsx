@@ -1,14 +1,12 @@
 "use client";
 
 /**
- * Wiersz zadania, pole „Dodaj zadanie” i akcje zadań (ukończenie z „Cofnij”, dodanie). Zapisy
- * idą przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
+ * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
+ * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { completeTaskOps, describeRecurrence, isOpen, keyBetween, localDateAt, PRIORITY, relativeDay, reopenTaskPatch, uuidv7, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { completeTaskOps, describeRecurrence, isOpen, localDateAt, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-
-import { Input } from "./ui";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 // ── Akcje ────────────────────────────────────────────────────────────────────────────────────
 
@@ -18,19 +16,12 @@ interface Toast {
   undo?: TaskOp[];
 }
 
-export interface NewTask {
-  listId: string;
-  title: string;
-  dueDate?: LocalDate | null;
-  parentId?: string | null;
-  /** Klucz ostatniego zadania na liście (nowe idzie na koniec). */
-  after?: string;
-}
-
 interface TaskActions {
   toggle: (task: ViewTask, opts?: { habitDone?: boolean }) => Promise<void>;
-  add: (task: NewTask) => Promise<string>;
-  error: (message: string) => void;
+  /** Zapis operacji po kolei; z `toast` — dymek, z `undo` — także „Cofnij”. */
+  run: (ops: readonly TaskOp[], toast?: { text: string; undo?: TaskOp[] }) => Promise<void>;
+  /** Dymek z komunikatem (np. błąd). */
+  notify: (message: string) => void;
 }
 
 const ActionsContext = createContext<TaskActions | null>(null);
@@ -82,23 +73,16 @@ export function TaskActionsProvider({ store, timeZone, children }: { store: TabS
     [store, timeZone, show],
   );
 
-  const add = useCallback(
-    async ({ listId, title, dueDate = null, parentId = null, after }: NewTask) => {
-      const id = uuidv7();
-      await store.mutate("tasks", id, {
-        list_id: listId,
-        parent_id: parentId,
-        kind: "task",
-        title,
-        status: "todo",
-        priority: 4,
-        due_date: dueDate,
-        sort_key: keyBetween(after),
-        postpone_count: 0,
-      });
-      return id;
+  const run = useCallback(
+    async (ops: readonly TaskOp[], toast?: { text: string; undo?: TaskOp[] }) => {
+      try {
+        await apply(store, ops);
+        if (toast) show(toast.text, toast.undo);
+      } catch (e) {
+        show(e instanceof Error ? e.message : String(e));
+      }
     },
-    [store],
+    [store, show],
   );
 
   const undo = async () => {
@@ -109,7 +93,7 @@ export function TaskActionsProvider({ store, timeZone, children }: { store: TabS
   };
 
   return (
-    <ActionsContext.Provider value={{ toggle, add, error: show }}>
+    <ActionsContext.Provider value={{ toggle, run, notify: show }}>
       {children}
       {toast ? (
         <div role="status" className="fixed bottom-4 left-1/2 z-30 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900">
@@ -195,25 +179,5 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
         </div>
       </div>
     </li>
-  );
-}
-
-// ── Dodawanie ────────────────────────────────────────────────────────────────────────────────
-
-/** Pole „Dodaj zadanie”: Enter dodaje i zostawia fokus (szybkie dodawanie z parserem — następny krok MVP-2). */
-export function AddTask({ placeholder = "Dodaj zadanie", onAdd, disabled }: { placeholder?: string; onAdd: (title: string) => Promise<unknown>; disabled?: boolean }) {
-  const [title, setTitle] = useState("");
-  const { error } = useTaskActions();
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const text = title.trim();
-    if (!text) return;
-    setTitle("");
-    void onAdd(text.slice(0, 500)).catch((e: unknown) => error(e instanceof Error ? e.message : String(e)));
-  };
-  return (
-    <form onSubmit={submit} className="my-2">
-      <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={`+ ${placeholder}`} aria-label={placeholder} maxLength={500} disabled={disabled} className="w-full" />
-    </form>
   );
 }

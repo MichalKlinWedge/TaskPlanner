@@ -3,8 +3,9 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { completionId } from '../ids.ts';
-import { completeTaskOps, reopenTaskPatch, toViewTask, type LocalTaskRow } from '../tasks.ts';
+import { completionId, tagId, taskTagId } from '../ids.ts';
+import { parseQuickAdd } from '../quick-add.ts';
+import { completeTaskOps, quickAddTaskOps, reopenTaskPatch, toViewTask, type LocalTaskRow, type QuickAddScope } from '../tasks.ts';
 
 const ID = '0190a000-0000-7000-8000-000000000001';
 
@@ -95,5 +96,77 @@ describe('completeTaskOps', () => {
 
   it('ponowne otwarcie', () => {
     expect(reopenTaskPatch()).toEqual({ status: 'todo', completed_at: null });
+  });
+});
+
+describe('quickAddTaskOps', () => {
+  const scope: QuickAddScope = {
+    userId: 'u1',
+    workspaces: [
+      { id: 'w-dom', name: 'Dom' },
+      { id: 'w-praca', name: 'Praca' },
+    ],
+    lists: [
+      { id: 'in-dom', workspaceId: 'w-dom', kind: 'inbox', name: 'Inbox' },
+      { id: 'in-praca', workspaceId: 'w-praca', kind: 'inbox', name: 'Inbox' },
+      { id: 'l-remont', workspaceId: 'w-dom', kind: 'project', name: 'Remont kuchni' },
+    ],
+    tags: [{ id: 'g-tel', name: 'telefon', sortKey: 'b' }],
+    defaultListId: 'in-dom',
+    lastSortKey: (listId) => (listId === 'l-remont' ? 'm' : undefined),
+    newId: (() => {
+      let n = 0;
+      return () => `id-${++n}`;
+    })(),
+  };
+  const parse = (text: string) =>
+    parseQuickAdd(text, {
+      now: '2026-11-18T12:00',
+      currentWorkspace: 'Dom',
+      workspaces: scope.workspaces.map((w) => w.name),
+      lists: [{ workspace: 'Dom', name: 'Remont kuchni', kind: 'project' }],
+      tags: scope.tags.map((t) => t.name),
+    });
+
+  it('pola, przestrzeń → jej Inbox, źródło', () => {
+    const text = 'Zapłacić rachunek za prąd jutro o 10:00 #praca !wysoki ~30m';
+    const { taskId, listId, ops } = quickAddTaskOps(parse(text), text, scope);
+    expect(listId).toBe('in-praca');
+    expect(ops).toEqual([
+      {
+        table: 'tasks',
+        id: taskId,
+        patch: expect.objectContaining({
+          list_id: 'in-praca',
+          title: 'Zapłacić rachunek za prąd',
+          priority: 2,
+          due_date: '2026-11-19',
+          due_time: '10:00',
+          duration_min: 30,
+          source: { kind: 'quick_add', text },
+        }),
+      },
+    ]);
+  });
+
+  it('lista z nazwy, koniec kolejności, tag istniejący i nowy, przypomnienie', () => {
+    const text = 'Kupić płytki #remont-kuchni @telefon @Hurtownia jutro o 9 ^15m';
+    const { taskId, listId, ops } = quickAddTaskOps(parse(text), text, scope);
+    expect(listId).toBe('l-remont');
+    expect((ops[0]!.patch.sort_key as string) > 'm').toBe(true);
+    const newTag = tagId('u1', 'Hurtownia');
+    expect(ops.slice(1)).toEqual([
+      { table: 'task_tags', id: taskTagId(taskId, 'g-tel'), patch: { task_id: taskId, tag_id: 'g-tel', deleted_at: null } },
+      { table: 'tags', id: newTag, patch: { name: 'Hurtownia', color: null, sort_key: expect.any(String) } },
+      { table: 'task_tags', id: taskTagId(taskId, newTag), patch: { task_id: taskId, tag_id: newTag, deleted_at: null } },
+      { table: 'reminders', id: expect.any(String), patch: { task_id: taskId, kind: 'relative', offset_min: 15, at_date: null, at_time: null } },
+    ]);
+  });
+
+  it('termin domyślny widoku, cykl, pusty tytuł', () => {
+    const { ops } = quickAddTaskOps(parse('Podlać kwiaty co tydzień'), 'Podlać kwiaty co tydzień', { ...scope, defaultDueDate: '2026-11-25' });
+    expect(ops[0]!.patch).toMatchObject({ list_id: 'in-dom', due_date: '2026-11-18', recurrence: { mode: 'schedule', rrule: 'FREQ=WEEKLY;BYDAY=WE' } });
+    expect(quickAddTaskOps(parse('Coś'), 'Coś', { ...scope, defaultDueDate: '2026-11-25' }).ops[0]!.patch.due_date).toBe('2026-11-25');
+    expect(() => quickAddTaskOps(parse('jutro'), 'jutro', scope)).toThrow('tytuł');
   });
 });

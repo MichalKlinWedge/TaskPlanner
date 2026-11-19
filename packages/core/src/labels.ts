@@ -60,6 +60,18 @@ export const GROUP_BY: Record<'none' | 'priority' | 'list' | 'date' | 'tag' | 's
   status: 'Status',
 };
 
+/** Rodzaje rozpoznanych fragmentów szybkiego dodawania (chipy). */
+export const QUICK_ADD_KIND: Record<'date' | 'time' | 'duration' | 'priority' | 'target' | 'tag' | 'recurrence' | 'reminder', string> = {
+  date: 'Termin',
+  time: 'Godzina',
+  duration: 'Czas',
+  priority: 'Priorytet',
+  target: 'Lista',
+  tag: 'Tag',
+  recurrence: 'Powtarzanie',
+  reminder: 'Przypomnienie',
+};
+
 /** Nazwy sekcji widoków (`views.ts`) i grup bez wartości. */
 export const VIEW_SECTION = {
   overdue: 'Zaległe',

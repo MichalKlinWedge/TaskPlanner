@@ -32,14 +32,14 @@ import {
   type SortBy,
   type ViewContext,
   type ViewPrefs,
-  type ViewTask,
 } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useMemo, useState, type ReactNode } from "react";
 
 import type { AppData, List } from "@/lib/app-data";
 
-import { AddTask, TaskItem, useTaskActions } from "./task-item";
+import { QuickAdd } from "./quick-add";
+import { TaskItem, useTaskActions } from "./task-item";
 import { Select } from "./ui";
 
 export interface ViewProps {
@@ -48,9 +48,6 @@ export interface ViewProps {
   /** Inbox, do którego trafiają nowe zadania z widoków zbiorczych. */
   targetInbox: List | undefined;
 }
-
-const lastKey = (tasks: readonly ViewTask[], listId: string): string | undefined =>
-  tasks.reduce<string | undefined>((max, t) => (t.listId === listId && t.parentId === null && (!max || t.sortKey > max) ? t.sortKey : max), undefined);
 
 function Header({ title, subtitle, children }: { title: string; subtitle?: string; children?: ReactNode }) {
   return (
@@ -85,7 +82,6 @@ const listNames = (data: AppData) => new Map(data.lists.map((l) => [l.id, l.name
 // ── Inbox ────────────────────────────────────────────────────────────────────────────────────
 
 export function InboxView({ data, ctx, targetInbox }: ViewProps) {
-  const { add } = useTaskActions();
   const inboxIds = useMemo(() => new Set(data.lists.filter((l) => l.kind === "inbox").map((l) => l.id)), [data.lists]);
   const tasks = useMemo(() => selectInbox(data.tasks, inboxIds, ctx), [data.tasks, inboxIds, ctx]);
   const workspaceName = new Map(data.workspaces.map((w) => [w.id, w.name]));
@@ -93,11 +89,7 @@ export function InboxView({ data, ctx, targetInbox }: ViewProps) {
   return (
     <>
       <Header title="Inbox" subtitle={plural(tasks.length, ["zadanie", "zadania", "zadań"])} />
-      <AddTask
-        placeholder={targetInbox && all ? `Dodaj do Inboxu („${workspaceName.get(targetInbox.workspaceId)}”)` : "Dodaj do Inboxu"}
-        disabled={!targetInbox}
-        onAdd={(title) => add({ listId: targetInbox!.id, title, after: lastKey(data.tasks, targetInbox!.id) })}
-      />
+      <QuickAdd listId={targetInbox?.id} placeholder={targetInbox && all ? `Dodaj do Inboxu („${workspaceName.get(targetInbox.workspaceId)}”)` : "Dodaj do Inboxu"} />
       {tasks.length ? (
         <ul className="divide-y divide-[var(--line)]">
           {tasks.map((t) => (
@@ -114,7 +106,6 @@ export function InboxView({ data, ctx, targetInbox }: ViewProps) {
 // ── Dziś ─────────────────────────────────────────────────────────────────────────────────────
 
 export function TodayView({ data, ctx, targetInbox }: ViewProps) {
-  const { add } = useTaskActions();
   const view = useMemo(() => selectToday(data.tasks, ctx), [data.tasks, ctx]);
   const names = listNames(data);
   const open = view.overdue.length + view.today.length;
@@ -122,11 +113,7 @@ export function TodayView({ data, ctx, targetInbox }: ViewProps) {
   return (
     <>
       <Header title="Dziś" subtitle={`${capitalized(dayLabel(ctx.today))} · ${plural(open, ["zadanie", "zadania", "zadań"])}`} />
-      <AddTask
-        placeholder="Dodaj zadanie na dziś"
-        disabled={!targetInbox}
-        onAdd={(title) => add({ listId: targetInbox!.id, title, dueDate: ctx.today, after: lastKey(data.tasks, targetInbox!.id) })}
-      />
+      <QuickAdd listId={targetInbox?.id} dueDate={ctx.today} placeholder="Dodaj zadanie na dziś" />
       {view.overdue.length ? (
         <Section title={VIEW_SECTION.overdue} count={view.overdue.length} tone="danger">
           {view.overdue.map((t) => (
@@ -170,7 +157,6 @@ export function TodayView({ data, ctx, targetInbox }: ViewProps) {
 // ── Nadchodzące ──────────────────────────────────────────────────────────────────────────────
 
 export function UpcomingView({ data, ctx, targetInbox }: ViewProps) {
-  const { add } = useTaskActions();
   const view = useMemo(() => selectUpcoming(data.tasks, ctx), [data.tasks, ctx]);
   const names = listNames(data);
   return (
@@ -181,7 +167,7 @@ export function UpcomingView({ data, ctx, targetInbox }: ViewProps) {
           {items.map((item) => (
             <TaskItem key={`${item.task.id}:${item.date}`} task={item.task} today={ctx.today} showDate={false} listName={names.get(item.task.listId)} virtualDate={item.virtual ? item.date : undefined} />
           ))}
-          {targetInbox ? <AddInline date={date} onAdd={(title) => add({ listId: targetInbox.id, title, dueDate: date, after: lastKey(data.tasks, targetInbox.id) })} /> : null}
+          {targetInbox ? <AddInline date={date} listId={targetInbox.id} /> : null}
         </Section>
       ))}
       {view.later.length ? (
@@ -201,7 +187,7 @@ export function UpcomingView({ data, ctx, targetInbox }: ViewProps) {
 }
 
 /** Dodanie na konkretny dzień: link „+ Dodaj” rozwijany do pola. */
-function AddInline({ date, onAdd }: { date: LocalDate; onAdd: (title: string) => Promise<unknown> }) {
+function AddInline({ date, listId }: { date: LocalDate; listId: string }) {
   const [open, setOpen] = useState(false);
   if (!open) {
     return (
@@ -214,7 +200,7 @@ function AddInline({ date, onAdd }: { date: LocalDate; onAdd: (title: string) =>
   }
   return (
     <li>
-      <AddTask placeholder={`Dodaj na ${dayLabel(date)}`} onAdd={onAdd} />
+      <QuickAdd listId={listId} dueDate={date} placeholder={`Dodaj na ${dayLabel(date)}`} autoFocus onCancel={() => setOpen(false)} />
     </li>
   );
 }
@@ -222,7 +208,7 @@ function AddInline({ date, onAdd }: { date: LocalDate; onAdd: (title: string) =>
 // ── Lista / projekt ──────────────────────────────────────────────────────────────────────────
 
 export function ListView({ data, ctx, list, store }: { data: AppData; ctx: ViewContext; list: List; store: TabStore }) {
-  const { add, error } = useTaskActions();
+  const { notify } = useTaskActions();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const sortBy: SortBy = list.prefs.sortBy ?? "manual";
   const groupBy: GroupBy = list.prefs.groupBy ?? "none";
@@ -237,7 +223,7 @@ export function ListView({ data, ctx, list, store }: { data: AppData; ctx: ViewC
   const groups = useMemo(() => (tree ? null : groupTasks(sortTasks(tasks, sortBy), groupBy, { lists: data.lists, tags: data.tags })), [tree, tasks, sortBy, groupBy, data.lists, data.tags]);
   const openCount = tasks.filter(isOpen).length;
 
-  const setPrefs = (patch: Partial<ViewPrefs>) => void store.mutate("lists", list.id, { view_prefs: { ...list.prefs, ...patch } }).catch((e: unknown) => error(String(e)));
+  const setPrefs = (patch: Partial<ViewPrefs>) => void store.mutate("lists", list.id, { view_prefs: { ...list.prefs, ...patch } }).catch((e: unknown) => notify(String(e)));
   const toggle = (id: string) =>
     setCollapsed((current) => {
       const next = new Set(current);
@@ -273,7 +259,7 @@ export function ListView({ data, ctx, list, store }: { data: AppData; ctx: ViewC
           </Select>
         </div>
       </Header>
-      <AddTask placeholder={`Dodaj do „${list.name}”`} onAdd={(title) => add({ listId: list.id, title, after: lastKey(data.tasks, list.id) })} />
+      <QuickAdd listId={list.id} placeholder={`Dodaj do „${list.name}”`} />
       {!tasks.length ? <Empty>Brak zadań.</Empty> : null}
       {rows ? (
         <ul className="divide-y divide-[var(--line)]">
