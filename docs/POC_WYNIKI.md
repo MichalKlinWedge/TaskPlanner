@@ -10,7 +10,7 @@ Nic nie wskazuje na No-go. Otwarte pozostają czasy po stronie Google i Cloudfla
 | Kryterium Go (PLAN_ETAPOWY PoC-6) | Lokalnie | Prawdziwe usługi |
 |---|---|---|
 | Zmiana w Google widoczna < 1 min (watch) | ✅ powiadomienie → `calendar_events` **63 ms** (fałszywe Google, ten sam protokół) | ✅ **3,9 s** od `updated` wydarzenia w Google do zapisu w `calendar_events` w chmurze (zmiana tytułu, webhook — poza minutą crona); OAuth *In production* bez weryfikacji, kanał TTL 7 dni |
-| … albo < 15 min (ICS) | ✅ `pg_cron` → `pg_net` → `cron/poll` → zapis **290 ms**, zadanie `*/15 * * * *`; niezmieniony plik → 304 | ✅ tajny adres iCal własnego kalendarza: zmiana w Google → widoczna w pliku po **~25 s** (±30 s, 1 próba), `cron/poll` → `calendar_events` **1,2 s**. Razem: do 15 min (odstęp crona) + ~0,5 min, średnio ~8 min — dla twardego „< 15 min” cron co 10–14 min |
+| … albo < 15 min (ICS) | ✅ `pg_cron` → `pg_net` → `cron/poll` → zapis **290 ms**, zadanie `*/10 * * * *` (było `*/15`); niezmieniony plik → 304 | ✅ tajny adres iCal własnego kalendarza: zmiana w Google → widoczna w pliku po **~25 s** (±30 s, 1 próba), `cron/poll` → `calendar_events` **1,2 s**. Razem przy cronie co 10 min (`20261118170000_poc6_ics_10min.sql`): najwyżej ~10,5 min, średnio ~5,5 min (przy 15 min najgorzej ~15,5 min) |
 | Mail → zadanie < 1 min | ✅ `inbound-email` **237–336 ms** (MIME + zadanie), kod Workera → funkcja → zadanie **43 ms** | ⏳ domena w Cloudflare (D9) |
 | Push dociera do zamkniętej karty | ✅ wpis w kolejce → dostarczenie przez `pg_cron` **37,7 s / 54,0 s** (≤ 60 s + wysyłka); podpis VAPID i treść sprawdzone kryptograficznie | ✅ **Chrome (FCM), karta zamknięta** (`openWindows: 0`): funkcja → service worker **205 ms**, wpis w kolejce → odbiór 14 s; przy otwartej karcie 156 ms / 39 s (`npm run push-page --workspace tools/edge-tests`) |
 | Token odświeżania *In production* > 7 dni | — | ⏳ w trakcie MVP (z planu) |
@@ -25,7 +25,7 @@ dziennych (11 500 wystąpień, 95 KiB) w **110–150 ms** w Node, przy limicie C
 | Element | Miejsce |
 |---|---|
 | Tabele `calendar_accounts`, `calendars`, `calendar_events`, `oauth_states`, `inbound_addresses`, `inbound_messages`, `push_subscriptions`, `push_queue`; RLS i uprawnienia kolumn; Vault; `create_integration_task`; `claim_push_queue`; `pg_cron` → `call_edge_function` | `supabase/migrations/20261118140000_poc6_integrations.sql` |
-| `calendar-sync`: OAuth Google (start, callback), webhook `watch`, ICS (dodanie), odświeżenie i odłączenie konta, `cron/poll` (co 15 min), `cron/renew` (codziennie) | `supabase/functions/calendar-sync` |
+| `calendar-sync`: OAuth Google (start, callback), webhook `watch`, ICS (dodanie), odświeżenie i odłączenie konta, `cron/poll` (co 10 min), `cron/renew` (codziennie) | `supabase/functions/calendar-sync` |
 | `inbound-email`: sekret Workera, token z adresu, lista nadawców, DMARC, jedno zadanie na Message-ID, parser szybkiego dodawania w temacie | `supabase/functions/inbound-email` |
 | `reminders-push`: `jsr:@negrel/webpush`, kolejka bez podwójnej wysyłki, 404/410 → usunięcie subskrypcji, ponowienia | `supabase/functions/reminders-push` |
 | Czysta logika (też w Node): parser ICS + rozwinięcie przez `core/recurrence.ts`, strefy przez `Intl`, klient Google, mail → zadanie | `supabase/functions/_shared` |

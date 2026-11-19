@@ -3,7 +3,7 @@
  * LOKALNE funkcje (`npm run serve --workspace tools/edge-tests`) i konto dev@taskplanner.test (`npm run dev:user`).
  *
  *   ics            dodaje kalendarz z `ICS_TEST_URL` (`.env.local`)
- *   poll           to, co robi cron co 15 min (`calendar-sync/cron/poll`)
+ *   poll           to, co robi cron co 10 min (`calendar-sync/cron/poll`)
  *   sync           odświeża teraz konta Google użytkownika (`accounts/sync`, przyrost z `syncToken`)
  *   google-start   wypisuje adres zgody Google (otwórz go w przeglądarce)
  *   status         konta, kalendarze, liczba wydarzeń, ostatnie zmiany

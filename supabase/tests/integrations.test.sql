@@ -98,7 +98,7 @@ select is((select count(*)::int from vault.secrets where name = 'calendar_accoun
   0, 'usunięcie konta usuwa sekret Vault i wydarzenia');
 reset role;
 select set_eq($$ select jobname || ' ' || schedule from cron.job where jobname like 'taskplanner-%' $$,
-  array['taskplanner-reminders-push * * * * *', 'taskplanner-calendar-poll */15 * * * *', 'taskplanner-calendar-renew 17 3 * * *', 'taskplanner-oauth-states-cleanup 23 * * * *'],
+  array['taskplanner-reminders-push * * * * *', 'taskplanner-calendar-poll */10 * * * *', 'taskplanner-calendar-renew 17 3 * * *', 'taskplanner-oauth-states-cleanup 23 * * * *'],
   'zadania pg_cron');
 
 select * from finish();

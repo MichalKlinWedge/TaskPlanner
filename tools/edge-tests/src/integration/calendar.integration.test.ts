@@ -239,10 +239,10 @@ describe('ICS', () => {
   });
 
   it('zmiana pliku → pg_cron → pg_net → calendar-sync/cron/poll → calendar_events', async () => {
-    expect(sql(`select schedule from cron.job where jobname = 'taskplanner-calendar-poll'`)).toBe('*/15 * * * *');
+    expect(sql(`select schedule from cron.job where jobname = 'taskplanner-calendar-poll'`)).toBe('*/10 * * * *');
     fake.setIcs('firma', ICS('Daily standup', ['BEGIN:VEVENT', 'UID:new@firma', `DTSTART;VALUE=DATE:${day(10).replaceAll('-', '')}`, 'SUMMARY:Dzień firmy', 'END:VEVENT'].join('\r\n')));
     const t0 = performance.now();
-    // To samo, co robi zadanie crona co 15 minut.
+    // To samo, co robi zadanie crona co 10 minut.
     sql(`select public.call_edge_function('calendar-sync/cron/poll')`);
     const rows = await waitFor(async () => {
       const r = await events(calendarId);

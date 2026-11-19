@@ -7,7 +7,7 @@
  *   POST ics/add             (użytkownik)  → {url, label?} adres ICS do Vault, pierwsza synchronizacja
  *   POST accounts/sync       (użytkownik)  → {accountId} odśwież teraz
  *   POST accounts/delete     (użytkownik)  → {accountId} zatrzymaj kanały, odwołaj token, usuń konto (kaskada + Vault)
- *   POST cron/poll           (pg_cron, co 15 min) → ICS i kalendarze Google bez świeżej synchronizacji
+ *   POST cron/poll           (pg_cron, co 10 min) → ICS i kalendarze Google bez świeżej synchronizacji
  *   POST cron/renew          (pg_cron, codziennie) → odnowienie kanałów `watch` przed wygaśnięciem, sprzątanie okna
  */
 import { syncWindow } from '../_shared/calendar.ts';
@@ -188,7 +188,7 @@ async function cronPoll(req: Request): Promise<Response> {
     if (Date.now() - started > 120_000) return;
     try {
       // Google ma `watch`; cron tylko dla kalendarzy bez świeżej synchronizacji (zgubione powiadomienie, brak kanału).
-      const results = await syncAccount(db, account, { cfg, webhookUrl: webhookUrl(), staleMs: account.provider === 'google' ? 14 * 60_000 : undefined });
+      const results = await syncAccount(db, account, { cfg, webhookUrl: webhookUrl(), staleMs: account.provider === 'google' ? 9 * 60_000 : undefined });
       summary.accounts++;
       for (const r of results) {
         summary.upserted += r.upserted;
