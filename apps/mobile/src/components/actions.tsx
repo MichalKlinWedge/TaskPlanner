@@ -60,6 +60,7 @@ const BULK_TEXT: Record<BulkAction['kind'], string> = {
   today: 'Na dziś',
   tomorrow: 'Na jutro',
   date: 'Nowy termin',
+  someday: 'Na kiedyś',
   move: 'Przeniesiono',
   delete: 'Do kosza',
 };

@@ -1,0 +1,272 @@
+/**
+ * Etap 8: statystyki nawyków (M15) na 90-dniowych historiach z `fixtures/habits-90.json` (wyniki
+ * policzone ręcznie) oraz odhaczanie wstecz, dni wolne, cele ilościowe i formularz nawyku.
+ */
+import { readFileSync } from 'node:fs';
+
+import { describe, expect, it } from 'vitest';
+
+import { addDays } from '../dates.ts';
+import {
+  addHabitValue,
+  canEditHabitDay,
+  describeHabit,
+  habitDayCounts,
+  habitDays,
+  habitDayStatus,
+  habitDraft,
+  habitEntryOps,
+  habitFields,
+  habitNeedsReminder,
+  habitProgressLabel,
+  habitSaveOps,
+  habitsForDay,
+  habitStats,
+  habitWeeks,
+  habitYear,
+  nextHabitEntry,
+  toHabit,
+  toHabitCompletion,
+  type Habit,
+  type HabitCompletion,
+} from '../habits.ts';
+import { completionId } from '../ids.ts';
+import { MODEL } from '../schemas/model.ts';
+import type { ViewTask } from '../views.ts';
+import { occurrences } from '../recurrence.ts';
+
+type Run = [string | number, number];
+interface Case {
+  name: string;
+  habit: Habit;
+  history:
+    | { runs: Run[] }
+    | { scheduled: { from: string; to: string; missed: string[]; skipped: string[]; extra: string[] } }
+    | { done: string[]; skipped: string[] };
+  expect: {
+    streak: { current: number; best: number };
+    rates: Record<'7' | '30' | '90', [number, number]>;
+    days: Record<string, number>;
+    weeks: [string, number, number | null, number][];
+    total: [number, number];
+  };
+}
+
+const fixture = JSON.parse(readFileSync(new URL('../../../../fixtures/habits-90.json', import.meta.url), 'utf8')) as { today: string; from: string; cases: Case[] };
+const { today, from } = fixture;
+
+/** Historia z fixture → wpisy `task_completions`. */
+function history(c: Case): HabitCompletion[] {
+  const h = c.history;
+  if ('runs' in h) {
+    const out: HabitCompletion[] = [];
+    let date = from;
+    for (const [mark, n] of h.runs) {
+      for (let i = 0; i < n; i++, date = addDays(date, 1)) {
+        if (mark === 'x') out.push({ date, kind: 'done' });
+        else if (mark === 's') out.push({ date, kind: 'skipped' });
+        else if (typeof mark === 'number') out.push({ date, kind: 'done', value: mark });
+      }
+    }
+    expect(date).toBe(addDays(today, 1));
+    return out;
+  }
+  if ('scheduled' in h) {
+    const s = h.scheduled;
+    const out = occurrences(c.habit.recurrence, { from: s.from, to: s.to, limit: 500 })
+      .filter((date) => !s.missed.includes(date))
+      .map((date): HabitCompletion => ({ date, kind: s.skipped.includes(date) ? 'skipped' : 'done' }));
+    return [...out, ...s.extra.map((date): HabitCompletion => ({ date, kind: 'done' }))];
+  }
+  return [...h.done.map((date): HabitCompletion => ({ date, kind: 'done' })), ...h.skipped.map((date): HabitCompletion => ({ date, kind: 'skipped' }))];
+}
+
+describe('Etap 8: statystyki na 90-dniowych historiach policzonych ręcznie', () => {
+  it('okno 90 dni zaczyna się 21.08', () => expect(addDays(today, -89)).toBe(from));
+
+  it.each(fixture.cases.map((c) => [c.name, c] as const))('%s', (_name, c) => {
+    const completions = history(c);
+    const stats = habitStats(c.habit, completions, today);
+    expect({ current: stats.streak.current, best: stats.streak.best }).toEqual(c.expect.streak);
+    expect({
+      7: [stats.rates[7].done, stats.rates[7].possible],
+      30: [stats.rates[30].done, stats.rates[30].possible],
+      90: [stats.rates[90].done, stats.rates[90].possible],
+    }).toEqual(c.expect.rates);
+    for (const w of [7, 30, 90] as const) {
+      const r = stats.rates[w];
+      expect(r.rate).toBe(r.possible ? r.done / r.possible : null);
+    }
+    expect(habitDayCounts(habitDays(c.habit, completions, from, today, today))).toEqual(c.expect.days);
+    const weeks = habitWeeks(c.habit, completions, today, c.expect.weeks.length);
+    expect(weeks.map((w) => [w.start, w.done, w.target, w.value])).toEqual(c.expect.weeks);
+    expect([stats.totalDone, stats.totalValue]).toEqual(c.expect.total);
+  });
+
+  it('mapa cieplna roku: 53 tygodnie pon–ndz, ostatnia kolumna z dziś, przyszłe dni puste', () => {
+    const c = fixture.cases[0]!;
+    const year = habitYear(c.habit, history(c), today);
+    expect(year.weeks).toHaveLength(53);
+    expect(year.weeks.every((w) => w.length === 7)).toBe(true);
+    const last = year.weeks.at(-1)!;
+    expect(last[0]!.date).toBe('2026-11-16');
+    expect(last.map((d) => d.future)).toEqual([false, false, false, true, true, true, true]);
+    expect(year.weeks[0]![0]!.date).toBe('2025-11-17');
+    // Ostatnie 365 dni: przed 21.08 nawyku nie było (neutralne).
+    expect(year.counts).toEqual({ done: 84, partial: 0, skipped: 2, missed: 3, pending: 1, off: 275 });
+    // 1.11 to niedziela — należy do tygodnia 26.10 (kolumna 49; 52 = 16.11).
+    expect(year.months.at(-1)).toEqual({ column: 49, month: 11 });
+  });
+});
+
+const daily: Habit = { recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY', anchor: '2026-11-01' } };
+const glasses: Habit = { ...daily, target: 8, unit: 'szklanek' };
+const thrice: Habit = { ...daily, goal: { period: 'week', times: 3 } };
+const NOW = '2026-11-18T19:00:00Z';
+
+describe('Etap 8: odhaczanie', () => {
+  it('wstecz najwyżej 7 dni i nie przed początkiem nawyku', () => {
+    expect(canEditHabitDay(daily, '2026-11-11', today)).toBe(true);
+    expect(canEditHabitDay(daily, '2026-11-10', today)).toBe(false);
+    expect(canEditHabitDay(daily, '2026-11-19', today)).toBe(false);
+    expect(canEditHabitDay({ ...daily, recurrence: { ...daily.recurrence, anchor: '2026-11-15' } }, '2026-11-14', today)).toBe(false);
+    expect(() => habitEntryOps(daily, 'h', '2026-11-10', { kind: 'done' }, { now: NOW, today })).toThrow('najwyżej 7 dni');
+    expect(() => habitEntryOps(daily, 'h', '2026-11-19', { kind: 'done' }, { now: NOW, today })).toThrow('nie nadszedł');
+  });
+
+  it('wpis z id deterministycznym; „Cofnij” przywraca poprzedni stan albo usuwa', () => {
+    const id = completionId('h', '2026-11-15');
+    const fresh = habitEntryOps(glasses, 'h', '2026-11-15', { kind: 'done', value: 8 }, { now: NOW, today });
+    expect(fresh.ops).toEqual([{ table: 'task_completions', id, patch: { task_id: 'h', occurrence_date: '2026-11-15', kind: 'done', value: 8, completed_at: '2026-11-18T19:00:00.000Z', deleted_at: null } }]);
+    expect(fresh.undo).toEqual([{ table: 'task_completions', id, patch: { deleted_at: '2026-11-18T19:00:00.000Z' } }]);
+
+    const skip = habitEntryOps(glasses, 'h', '2026-11-15', { kind: 'skipped' }, { now: NOW, today, previous: { date: '2026-11-15', kind: 'done', value: 5 } });
+    expect(skip.ops[0]!.patch).toMatchObject({ kind: 'skipped', value: null, deleted_at: null });
+    expect(skip.undo[0]!.patch).toMatchObject({ kind: 'done', value: 5, deleted_at: null });
+
+    const clear = habitEntryOps(glasses, 'h', '2026-11-15', null, { now: NOW, today });
+    expect(clear.ops).toEqual([{ table: 'task_completions', id, patch: { deleted_at: '2026-11-18T19:00:00.000Z' } }]);
+  });
+
+  it('klik w dzień: brak → zrobione (z celem) → wolne → brak; „+1” do celu ilościowego', () => {
+    expect(nextHabitEntry(glasses, null)).toEqual({ kind: 'done', value: 8 });
+    expect(nextHabitEntry(daily, null)).toEqual({ kind: 'done', value: null });
+    expect(nextHabitEntry(daily, { date: today, kind: 'done' })).toEqual({ kind: 'skipped' });
+    expect(nextHabitEntry(daily, { date: today, kind: 'skipped' })).toBeNull();
+    expect(addHabitValue(glasses, null, 1)).toEqual({ kind: 'done', value: 1 });
+    expect(addHabitValue(glasses, { date: today, kind: 'done', value: 3 }, 1)).toEqual({ kind: 'done', value: 4 });
+    expect(addHabitValue(glasses, { date: today, kind: 'done', value: null }, -1)).toEqual({ kind: 'done', value: 7 });
+    expect(addHabitValue(glasses, { date: today, kind: 'done', value: 1 }, -1)).toBeNull();
+    expect(addHabitValue(glasses, { date: today, kind: 'skipped' }, 1)).toEqual({ kind: 'done', value: 1 });
+  });
+
+  it('stan dnia: postęp celu ilościowego i okresu „N razy”', () => {
+    const c: HabitCompletion[] = [
+      { date: '2026-11-16', kind: 'done' },
+      { date: '2026-11-18', kind: 'done', value: 3 },
+    ];
+    const g = habitDayStatus(glasses, c, today, today);
+    expect(g).toMatchObject({ state: 'partial', value: 3, scheduled: true, period: null });
+    expect(habitProgressLabel(glasses, g)).toBe('3 / 8 szklanek');
+    const t = habitDayStatus(thrice, c, today, today);
+    expect(t.period).toEqual({ start: '2026-11-16', end: '2026-11-22', done: 2, times: 3, state: 'pending' });
+    expect(habitProgressLabel(thrice, t)).toBe('2 / 3 w tym tygodniu');
+    expect(habitDayStatus(daily, [], '2026-11-17', today).state).toBe('missed');
+  });
+
+  it('przypomnienie: nie po zrobieniu, dniu wolnym ani po osiągnięciu celu tygodnia; częściowo — tak', () => {
+    expect(habitNeedsReminder(daily, [], today)).toBe(true);
+    expect(habitNeedsReminder(daily, [{ date: today, kind: 'done' }], today)).toBe(false);
+    expect(habitNeedsReminder(daily, [{ date: today, kind: 'skipped' }], today)).toBe(false);
+    expect(habitNeedsReminder(glasses, [{ date: today, kind: 'done', value: 3 }], today)).toBe(true);
+    const week = ['2026-11-16', '2026-11-17'].map((date): HabitCompletion => ({ date, kind: 'done' }));
+    expect(habitNeedsReminder(thrice, week, today)).toBe(true);
+    expect(habitNeedsReminder(thrice, [...week, { date: '2026-11-15', kind: 'done' }], today)).toBe(true);
+    expect(habitNeedsReminder(thrice, [...week, { date: '2026-11-18', kind: 'done' }], '2026-11-19')).toBe(false);
+  });
+
+  it('wiersz bazy → wpis', () => {
+    expect(toHabitCompletion({ occurrence_date: '2026-11-18', kind: 'done', value: '3.5' })).toEqual({ date: '2026-11-18', kind: 'done', value: 3.5 });
+    expect(toHabitCompletion({ occurrence_date: '2026-11-18', kind: 'skipped', value: null })).toEqual({ date: '2026-11-18', kind: 'skipped', value: null });
+    expect(toHabit({ recurrence: { mode: 'after_completion', every: { unit: 'day', n: 1 } }, habit: null })).toBeNull();
+  });
+});
+
+describe('Etap 8: formularz nawyku', () => {
+  const roundTrip = (draft: Parameters<typeof habitFields>[0]) => habitDraft(habitFields(draft), today);
+
+  it('codziennie / wybrane dni / N razy / reguła spoza formularza — tam i z powrotem', () => {
+    const base = { start: '2026-11-18', target: null, unit: null, time: null };
+    expect(habitFields({ ...base, schedule: { kind: 'daily' } })).toEqual({ recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY', anchor: '2026-11-18' }, habit: {} });
+    expect(habitFields({ ...base, schedule: { kind: 'days', days: [5, 1, 3] } }).recurrence.rrule).toBe('FREQ=WEEKLY;BYDAY=MO,WE,FR');
+    expect(habitFields({ ...base, schedule: { kind: 'days', days: [1, 2, 3, 4, 5, 6, 7] } }).recurrence.rrule).toBe('FREQ=DAILY');
+    expect(roundTrip({ ...base, schedule: { kind: 'days', days: [1, 3, 5] } }).schedule).toEqual({ kind: 'days', days: [1, 3, 5] });
+    expect(roundTrip({ ...base, schedule: { kind: 'goal', period: 'month', times: 10 }, target: 8, unit: ' szklanek ', time: '07:30' })).toEqual({
+      ...base,
+      schedule: { kind: 'goal', period: 'month', times: 10 },
+      target: 8,
+      unit: 'szklanek',
+      time: '07:30',
+    });
+    expect(habitDraft({ recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY;INTERVAL=2', anchor: '2026-11-01' }, habit: null }, today).schedule).toEqual({ kind: 'custom', rrule: 'FREQ=DAILY;INTERVAL=2' });
+    expect(habitDraft(null, today)).toEqual({ ...base, schedule: { kind: 'daily' } });
+  });
+
+  it('błędy formularza', () => {
+    const base = { start: '2026-11-18', target: null, unit: null, time: null };
+    expect(() => habitFields({ ...base, schedule: { kind: 'days', days: [] } })).toThrow('co najmniej jeden dzień');
+    expect(() => habitFields({ ...base, schedule: { kind: 'goal', period: 'week', times: 8 } })).toThrow('od 1 do 7');
+    expect(() => habitFields({ ...base, schedule: { kind: 'daily' }, target: 0 })).toThrow('większy od zera');
+  });
+
+  it('opis nawyku', () => {
+    expect(describeHabit(daily)).toBe('codziennie');
+    expect(describeHabit(glasses)).toBe('codziennie · cel 8 szklanek');
+    expect(describeHabit(thrice)).toBe('3 razy w tygodniu');
+    expect(describeHabit({ ...daily, goal: { period: 'month', times: 1 } })).toBe('1 raz w miesiącu');
+    expect(describeHabit({ recurrence: { mode: 'schedule', rrule: 'FREQ=WEEKLY;BYDAY=MO,WE,FR', anchor: '2026-11-02' } })).toBe('pon, śr, pt');
+    expect(describeHabit({ recurrence: { mode: 'schedule', rrule: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', anchor: '2026-11-02' } })).toBe('w dni robocze');
+  });
+});
+
+describe('Etap 8: zapis nawyku i blok „Dziś”', () => {
+  const ids = ['00000000-0000-7000-8000-000000000001', '00000000-0000-7000-8000-000000000002'];
+  const draft = { schedule: { kind: 'goal' as const, period: 'week' as const, times: 3 }, start: '2026-11-18', target: 8, unit: 'szklanek', time: '07:30' as const };
+  const L = '00000000-0000-7000-8000-0000000000aa';
+
+  it('nowy nawyk = poprawny wiersz `tasks` + przypomnienie o porze', () => {
+    let n = 0;
+    const { taskId, ops } = habitSaveOps({ title: '  Woda ', listId: L, draft, remind: true, now: NOW, newId: () => ids[n++]! });
+    expect(taskId).toBe(ids[0]);
+    expect(ops.map((o) => o.table)).toEqual(['tasks', 'reminders']);
+    expect(MODEL.tasks.safeParse({ id: taskId, description_md: null, time_zone: null, completed_at: null, board_sort_key: null, postpone_count: 0, start_date: null, ...ops[0]!.patch }).success).toBe(true);
+    expect(ops[0]!.patch).toMatchObject({ kind: 'habit', title: 'Woda', habit: { goal: { period: 'week', times: 3 }, target: 8, unit: 'szklanek', time: '07:30' } });
+    expect(MODEL.reminders.safeParse({ id: ids[1], ...ops[1]!.patch }).success).toBe(true);
+  });
+
+  it('edycja: bez nowego przypomnienia, gdy jest; wyłączenie usuwa istniejące', () => {
+    const keep = habitSaveOps({ id: ids[0], title: 'Woda', listId: L, draft, remind: true, reminderIds: ['r1'], now: NOW });
+    expect(keep.ops).toHaveLength(1);
+    expect(Object.keys(keep.ops[0]!.patch).sort()).toEqual(['habit', 'list_id', 'recurrence', 'title']);
+    const off = habitSaveOps({ id: ids[0], title: 'Woda', listId: L, draft, remind: false, reminderIds: ['r1'], now: NOW });
+    expect(off.ops[1]).toEqual({ table: 'reminders', id: 'r1', patch: { deleted_at: '2026-11-18T19:00:00.000Z' } });
+    expect(() => habitSaveOps({ title: ' ', listId: L, draft, remind: false, now: NOW })).toThrow('nazwę');
+  });
+
+  it('nawyki dnia: zaliczone, wolne i cel tygodnia osiągnięty = załatwione', () => {
+    const view = (id: string, over: Partial<ViewTask>): ViewTask => ({
+      id, workspaceId: 'w', listId: L, parentId: null, kind: 'habit', title: id, status: 'todo', priority: 4, startDate: null, dueDate: null, dueTime: null, durationMin: null,
+      recurrence: daily.recurrence, habit: null, completedAt: null, createdAt: NOW, sortKey: '0', boardSortKey: null, tagIds: [], postponeCount: 0, statusChangedAt: null, ...over,
+    });
+    const tasks = [view('a', {}), view('b', {}), view('c', { habit: { goal: { period: 'week', times: 2 } } }), view('d', { status: 'cancelled' }), view('e', { kind: 'task' })];
+    const c = new Map<string, HabitCompletion[]>([
+      ['a', [{ date: today, kind: 'done' }]],
+      ['c', [{ date: '2026-11-16', kind: 'done' }, { date: '2026-11-17', kind: 'done' }]],
+    ]);
+    expect(habitsForDay(tasks, c, today, today).map((h) => [h.task.id, h.settled, h.streak.current])).toEqual([
+      ['a', true, 1],
+      ['b', false, 0],
+      ['c', true, 1],
+    ]);
+  });
+});

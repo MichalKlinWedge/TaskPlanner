@@ -1,14 +1,17 @@
 /**
- * `calendar-sync` — kalendarze zewnętrzne (SPECYFIKACJA M18, PoC-6).
+ * `calendar-sync` — kalendarze zewnętrzne (SPECYFIKACJA M18, PoC-6, Etap 12).
  *
- *   POST google/start        (użytkownik)  → {url} zgody Google (zakres calendar.readonly, offline)
+ *   POST google/start        (użytkownik)  → {url} zgody Google (calendar.readonly + calendar.app.created, offline)
  *   GET  google/callback     (Google)      → wymiana kodu, token odświeżania do Vault, kalendarze, pierwsza synchronizacja, `watch`
- *   POST google/webhook      (Google)      → powiadomienie kanału `watch` → synchronizacja przyrostowa (`syncToken`)
+ *   POST google/webhook      (Google)      → powiadomienie kanału `watch` → synchronizacja przyrostowa (`syncToken`);
+ *                                            kalendarz „TaskPlanner” → zmiany w zadaniach i uzgodnienie (`task-calendar.ts`)
+ *   POST tasks/flush         (pg_net, sekret crona) → {userId?} uzgodnienie zadań z kalendarzem „TaskPlanner”
+ *                                            (wyzwalacz na `tasks`/`profiles` po zatwierdzeniu zmiany)
  *   POST ics/add             (użytkownik)  → {url, label?} adres ICS do Vault, pierwsza synchronizacja
  *   POST accounts/sync       (użytkownik)  → {accountId} odśwież teraz
  *   POST accounts/delete     (użytkownik)  → {accountId} zatrzymaj kanały, odwołaj token, usuń konto (kaskada + Vault)
  *   POST calendars/update    (użytkownik)  → {calendarId, visible} wybór kalendarzy (ukryty: bez synchronizacji i kanału)
- *   POST cron/poll           (pg_cron, co 10 min) → ICS i kalendarze Google bez świeżej synchronizacji
+ *   POST cron/poll           (pg_cron, co 10 min) → ICS i kalendarze Google bez świeżej synchronizacji, kalendarze zadań
  *   POST cron/renew          (pg_cron, codziennie) → odnowienie kanałów `watch` przed wygaśnięciem, sprzątanie okna
  */
 import { syncWindow } from '../_shared/calendar.ts';
@@ -26,8 +29,9 @@ import {
   type AccountRow,
   type CalendarRow,
 } from '../_shared/calendar-sync.ts';
-import { authorizationUrl, CALENDAR_SCOPE, exchangeCode, idTokenEmail, revokeToken, type GoogleSecret } from '../_shared/google.ts';
+import { authorizationUrl, CALENDAR_SCOPE, CALENDAR_WRITE_SCOPE, exchangeCode, idTokenEmail, revokeToken, type GoogleConfig, type GoogleSecret } from '../_shared/google.ts';
 import { parseIcs } from '../_shared/ics.ts';
+import { flushUser, syncTaskCalendar, taskCalendarUsers } from '../_shared/task-calendar.ts';
 import { admin, functionsUrl, googleConfig, html, HttpError, json, optionalEnv, requireCron, requireUser, route, safeEqual, serve } from '../_shared/runtime.ts';
 
 const FN = 'calendar-sync';
@@ -76,19 +80,33 @@ async function googleCallback(url: URL): Promise<Response> {
   }
   if (!tokens.refresh_token) return html('Nie połączono', 'Google nie zwrócił tokenu odświeżania — spróbuj ponownie.', 400);
   const email = idTokenEmail(tokens.id_token) ?? 'Google';
+  const scopes = tokens.scope?.split(' ').filter(Boolean) ?? [];
 
+  // `sync_state.scopes`: zgoda na zapis (kalendarz „TaskPlanner”) jest opcjonalna na ekranie zgody.
   const { data: account, error } = await db
     .from('calendar_accounts')
-    .upsert({ user_id: st.user_id, provider: 'google', external_id: email, label: email, status: 'active', last_error: null }, { onConflict: 'user_id,provider,external_id' })
+    .upsert({ user_id: st.user_id, provider: 'google', external_id: email, label: email, status: 'active', last_error: null, sync_state: { scopes } }, { onConflict: 'user_id,provider,external_id' })
     .select()
     .single();
   if (error) throw error;
   const secret: GoogleSecret = { refreshToken: tokens.refresh_token, accessToken: tokens.access_token, expiresAt: Date.now() + tokens.expires_in * 1000 };
   await writeSecret(db, account.id, secret);
   const results = await syncAccount(db, account as AccountRow, { cfg, calendars: true, webhookUrl: webhookUrl() });
+  await flushTasks(cfg, st.user_id);
 
   if (st.redirect_to) return Response.redirect(`${st.redirect_to}${st.redirect_to.includes('?') ? '&' : '?'}account=${account.id}`, 302);
-  return html('Połączono kalendarz Google', `${email}: ${results.length} kalendarzy, ${results.reduce((n, r) => n + r.upserted, 0)} wydarzeń.`);
+  const write = scopes.includes(CALENDAR_WRITE_SCOPE) ? '' : ' Tylko odczyt — bez zgody na zapis zadania nie trafią do kalendarza „TaskPlanner”.';
+  return html('Połączono kalendarz Google', `${email}: ${results.length} kalendarzy, ${results.reduce((n, r) => n + r.upserted, 0)} wydarzeń.${write}`);
+}
+
+/** Uzgodnienie kalendarza zadań; błąd nie psuje wywołującej operacji (powtórzy je cron). */
+async function flushTasks(cfg: GoogleConfig, userId: string) {
+  try {
+    return await flushUser(admin(), cfg, userId, { webhookUrl: webhookUrl() });
+  } catch (error) {
+    console.error('kalendarz zadań', userId, error);
+    return null;
+  }
 }
 
 async function googleWebhook(req: Request): Promise<Response> {
@@ -103,11 +121,16 @@ async function googleWebhook(req: Request): Promise<Response> {
   if (!safeEqual(req.headers.get('x-goog-channel-token'), calendar.sync_state.channel?.token)) return new Response(null, { status: 401 });
   if (state === 'sync') return new Response(null, { status: 200 });
   const cfg = googleConfig();
-  const work = (async () => {
-    const token = await googleToken(db, cfg, calendar.account_id);
-    const r = await syncGoogleCalendar(db, cfg, calendar, token);
-    console.log(`webhook ${calendar.id}: +${r.upserted} −${r.deleted}${r.full ? ' (pełna)' : ''}`);
-  })();
+  const work = calendar.is_task_target
+    ? (async () => {
+      const r = await syncTaskCalendar(db, cfg, calendar, { webhookUrl: webhookUrl() });
+      console.log(`webhook zadań ${calendar.id}: ${JSON.stringify(r)}`);
+    })()
+    : (async () => {
+      const token = await googleToken(db, cfg, calendar.account_id);
+      const r = await syncGoogleCalendar(db, cfg, calendar, token);
+      console.log(`webhook ${calendar.id}: +${r.upserted} −${r.deleted}${r.full ? ' (pełna)' : ''}`);
+    })();
   // Domyślnie czekamy na wynik (prościej mierzyć, Google daje kilka sekund); `GOOGLE_WEBHOOK_ASYNC=1` — w tle.
   if (optionalEnv('GOOGLE_WEBHOOK_ASYNC') === '1') background(work);
   else await work;
@@ -146,7 +169,8 @@ async function accountSync(req: Request): Promise<Response> {
   const user = await requireUser(req);
   const account = await ownAccount(user.id, (await req.json().catch(() => ({}))).accountId);
   const results = await syncAccount(admin(), account, { cfg: account.provider === 'google' ? googleConfig() : undefined, calendars: true, webhookUrl: webhookUrl() });
-  return json({ results });
+  const tasks = account.provider === 'google' ? await flushTasks(googleConfig(), user.id) : null;
+  return json({ results, tasks });
 }
 
 async function accountDelete(req: Request): Promise<Response> {
@@ -174,8 +198,9 @@ async function calendarUpdate(req: Request): Promise<Response> {
   const body = await req.json().catch(() => ({}));
   if (typeof body.calendarId !== 'string' || typeof body.visible !== 'boolean') throw new HttpError(400, 'Brak calendarId albo visible');
   const db = admin();
-  const { data: cal } = await db.from('calendars').select('id, account_id, visible').eq('id', body.calendarId).eq('user_id', user.id).maybeSingle();
+  const { data: cal } = await db.from('calendars').select('id, account_id, visible, is_task_target').eq('id', body.calendarId).eq('user_id', user.id).maybeSingle();
   if (!cal) throw new HttpError(404, 'Nie ma takiego kalendarza');
+  if (cal.is_task_target) throw new HttpError(400, 'Kalendarz „TaskPlanner” wyłącza się wyborem przestrzeni.');
   if (cal.visible !== body.visible) {
     const { error } = await db.from('calendars').update({ visible: body.visible }).eq('id', cal.id);
     if (error) throw error;
@@ -217,7 +242,28 @@ async function cronPoll(req: Request): Promise<Response> {
       console.error('poll', account.id, e);
     }
   });
-  return json({ ...summary, ms: Date.now() - started });
+  // Zapas dla sygnałów z wyzwalaczy i kanałów `watch`: uzgodnienie wszystkich kalendarzy zadań.
+  const users = await taskCalendarUsers(db);
+  const tasks = { users: users.length, failed: 0 };
+  if (users.length) {
+    const taskCfg = cfg ?? googleConfig();
+    await eachLimited(users, 4, async (userId) => {
+      if (Date.now() - started > 130_000) return;
+      if (!(await flushTasks(taskCfg, userId))) tasks.failed++;
+    });
+  }
+  return json({ ...summary, tasks, ms: Date.now() - started });
+}
+
+async function tasksFlush(req: Request): Promise<Response> {
+  requireCron(req);
+  const body = await req.json().catch(() => ({}));
+  const db = admin();
+  const users = typeof body.userId === 'string' ? [body.userId] : await taskCalendarUsers(db);
+  const cfg = googleConfig();
+  const results = [];
+  for (const userId of users) results.push({ userId, results: await flushUser(db, cfg, userId, { webhookUrl: webhookUrl() }) });
+  return json({ users: results });
 }
 
 async function cronRenew(req: Request): Promise<Response> {
@@ -261,6 +307,7 @@ serve(async (req, url) => {
   if (m === 'POST' && path === 'accounts/delete') return accountDelete(req);
   if (m === 'POST' && path === 'calendars/update') return calendarUpdate(req);
   if (m === 'POST' && path === 'cron/poll') return cronPoll(req);
+  if (m === 'POST' && path === 'tasks/flush') return tasksFlush(req);
   if (m === 'POST' && path === 'cron/renew') return cronRenew(req);
   throw new HttpError(404, `Nieznana ścieżka ${m} ${path}`);
 });

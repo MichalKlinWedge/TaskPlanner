@@ -97,3 +97,29 @@ describe('treść i odłożenie', () => {
     expect(toReminderRule({ id: 'x', task_id: 't', kind: 'absolute', offset_min: null, at_date: '2026-11-20', at_time: '08:00:00' })).toEqual({ id: 'x', taskId: 't', kind: 'absolute', offsetMin: null, atDate: '2026-11-20', atTime: '08:00' });
   });
 });
+
+describe('nawyki (Etap 8)', () => {
+  const habit = task({ id: 'h', kind: 'habit', title: 'Woda', dueDate: null, dueTime: null, recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY', anchor: '2026-11-01' }, habit: { time: '07:30', target: 8, unit: 'szklanek' } });
+  const rule = rel(0, { id: 'hr', taskId: 'h' });
+
+  it('każdy dzień reguły o porze nawyku; bez pory — domyślna godzina; dni zaliczone i wolne pominięte', () => {
+    const all = reminderFireTimes([habit], [rule], { ...win, to: '2026-11-22T12:00:00Z' });
+    expect(all.map((f) => [f.key, f.fireAt])).toEqual([
+      ['hr:2026-11-20', '2026-11-20T06:30:00.000Z'],
+      ['hr:2026-11-21', '2026-11-21T06:30:00.000Z'],
+      ['hr:2026-11-22', '2026-11-22T06:30:00.000Z'],
+    ]);
+    const noTime = reminderFireTimes([{ ...habit, habit: null }], [rel(15, { id: 'hr', taskId: 'h' })], { ...win, to: '2026-11-21T12:00:00Z' });
+    expect(noTime.map((f) => f.fireAt)).toEqual(['2026-11-20T07:45:00.000Z', '2026-11-21T07:45:00.000Z']);
+    const done = new Map([['h', [{ date: '2026-11-20', kind: 'done' as const, value: 8 }, { date: '2026-11-21', kind: 'skipped' as const }, { date: '2026-11-22', kind: 'done' as const, value: 3 }]]]);
+    expect(reminderFireTimes([habit], [rule], { ...win, to: '2026-11-22T12:00:00Z', habitCompletions: done }).map((f) => f.key)).toEqual(['hr:2026-11-22']);
+  });
+
+  it('bezwzględne i zamknięte nawyki nie przypominają; treść z celem', () => {
+    expect(reminderFireTimes([habit], [{ ...rule, kind: 'absolute', offsetMin: null, atDate: '2026-11-20', atTime: '10:00' }], win)).toEqual([]);
+    expect(reminderFireTimes([{ ...habit, status: 'cancelled' }], [rule], win)).toEqual([]);
+    const [fire] = reminderFireTimes([habit], [rule], win);
+    expect(reminderBody(habit, fire!, '2026-11-20T06:30:00Z', WAW)).toEqual({ title: 'Woda', body: 'Nawyk na dziś · cel 8 szklanek' });
+    expect(reminderBody({ ...habit, habit: null }, fire!, '2026-11-20T06:30:00Z', WAW).body).toBe('Nawyk na dziś — odhacz, gdy zrobisz');
+  });
+});

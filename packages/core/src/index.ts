@@ -1,3 +1,5 @@
+export * from './attachments.ts';
+export * from './backup.ts';
 export * from './commands.ts';
 export * from './dates.ts';
 export * from './dependencies.ts';

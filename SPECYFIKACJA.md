@@ -197,6 +197,7 @@ Oznaczenia: **[W]** web, **[A]** Android, **[W+A]** oba.
 - Web: edytor WYSIWYG (TipTap), skróty Markdown w trakcie pisania. Telefon: edytor z paskiem narzędzi i przełącznikiem podgląd/edycja.
 - **Załączniki** (Etap 10): pliki do 25 MB w prywatnym buckecie `attachments` (`{user_id}/{task_id}/{uuid}-{nazwa}`), podgląd obrazów i PDF, załączniki z maila. Telefon: zdjęcie z aparatu / plik; wysyłka w kolejce offline (jak `journal-photos.ts` w EP), pobieranie na żądanie i pamięć podręczna.
 - Link jako załącznik: URL + tytuł + ikona strony (z `link-preview`).
+- Zrobione (19.11.2026, Etap 10, web): `core/attachments.ts`, kolejka `sync/files.ts` (`createFileQueue` — wiersz po wysłaniu pliku), RLS Storage w `*_etap10_attachments.sql`, Edge Function `link-preview` (ochrona SSRF: tylko publiczne adresy, przekierowania sprawdzane co krok); web Share Target, bookmarklet, wklejony adres. Telefon — do zrobienia.
 
 ### M6. Priorytety, terminy, czas trwania
 - Priorytet 1–4: **1 Krytyczny** (czerwony), **2 Wysoki** (pomarańczowy), **3 Średni** (niebieski), **4 Niski** (szary, domyślny). Flaga w kolorze na liście, pasek koloru na kanbanie i w kalendarzu. Etykiety w `core/labels.ts` (`PRIORITY`).
@@ -304,7 +305,7 @@ Widoki stałe w pasku bocznym [W+A]:
 
 ### M20. Offline, PWA, widżety
 - **Offline**: wszystkie funkcje poza: odświeżeniem kalendarzy zewnętrznych, przyjęciem maila (przychodzi po synchronizacji), podglądem linków, pobraniem niezbuforowanych załączników. Wskaźnik stanu: „Offline — N zmian czeka”.
-- **PWA**: manifest z ikonami i skrótami (Szybkie dodawanie, Dziś), Service Worker z powłoką aplikacji, `navigator.storage.persist()` (ochrona lokalnej bazy przed wyczyszczeniem), instalacja na pulpicie (Chrome/Edge).
+- **PWA**: manifest z ikonami i skrótami (Szybkie dodawanie, Dziś, Kalendarz), Service Worker z powłoką aplikacji, `navigator.storage.persist()` (ochrona lokalnej bazy przed wyczyszczeniem), instalacja na pulpicie (Chrome/Edge).
 - **Widżety Android** (Etap 11): „Dziś” (lista do 10 zadań, odhaczanie bez otwierania aplikacji), „Szybkie dodawanie” (przycisk + mikrofon klawiatury), „Nawyki” (dzisiejsze nawyki do odhaczenia). Dane z lokalnej bazy; odświeżanie po zmianie danych i co 30 min. Skróty aplikacji (long-press ikony): Dodaj zadanie, Dziś, Tryb skupienia.
 - **Pulpit**: zainstalowana PWA + skróty. Natywny widżet pulpitu i globalny skrót klawiszowy — v1.x (Tauri, D11).
 
@@ -365,7 +366,7 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 ### Tabele — konto i struktura
 | Tabela | Najważniejsze kolumny | Uwagi |
 |---|---|---|
-| `profiles` | `id` (= id użytkownika), `display_name`, `settings jsonb` (`ProfileSettings`, z flagą `onboarded`), `focus jsonb` (`FocusState` — aktywny timer skupienia, `null` = brak; Etap 7); `inbox_token`, `inbound_senders text[]` dojdą razem z e-mailem (v1.x, D9) | zakres osobisty; powstaje triggerem razem z kontem (MVP-1) |
+| `profiles` | `id` (= id użytkownika), `display_name`, `settings jsonb` (`ProfileSettings`, z flagą `onboarded`), `focus jsonb` (`FocusState` — aktywny timer skupienia, `null` = brak; Etap 7), `calendar_sync jsonb` (`CalendarSync` — konto Google z kalendarzem „TaskPlanner” i wysyłane przestrzenie, `null` = wyłączone; Etap 12); `inbox_token`, `inbound_senders text[]` dojdą razem z e-mailem (v1.x, D9) | zakres osobisty; powstaje triggerem razem z kontem (MVP-1) |
 | `devices` | `id`, `user_id`, `name`, `platform` (`web`/`android`), `reminder_channel`, `push_subscription jsonb`, `last_sync_at` | |
 | `sync_scopes` | `id`, `kind` (`workspace`/`personal`), `owner_id`, `sync_version bigint` | licznik zakresu; Realtime subskrybuje te wiersze |
 | `workspaces` | `id` (= `scope_id`), `name`, `color`, `icon`, `sort_key`, `archived_at` | jedna przestrzeń = jeden zakres |
@@ -391,7 +392,8 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 |---|---|---|
 | `calendar_accounts` | `id`, `user_id`, `provider` (`google`/`microsoft`/`ics`), `label`, `secret_id` (Vault), `sync_state jsonb`, `status` | tokeny i adres ICS w Vault; kolumny sekretów niewidoczne dla klientów |
 | `calendars` | `id`, `account_id`, `external_id`, `name`, `color`, `visible`, `is_task_target` | |
-| `calendar_events` | `id`, `calendar_id`, `external_id`, `title`, `start_at`, `end_at`, `all_day`, `location`, `etag`, `task_id` | okno −30…+180 dni; zakres osobisty |
+| `calendar_events` | `id`, `calendar_id`, `external_id`, `title`, `start_at`, `end_at`, `all_day`, `location`, `etag`, `task_id` | okno −30…+180 dni; zakres osobisty; bez wydarzeń kalendarza „TaskPlanner” (`is_task_target` — to zadania) |
+| `calendar_task_links` | `calendar_id`, `task_id`, `external_id`, `etag`, `pushed jsonb` (rzut zadania w chwili ostatniej zgodności) | tylko serwer (Etap 12): zadanie ↔ wydarzenie kalendarza „TaskPlanner”, podstawa scalania trójstronnego; `calendar_task_runs` — dzierżawa uzgadniania kalendarza |
 | `inbound_messages` | `id`, `user_id`, `received_at`, `from_addr`, `subject`, `status` (`created`/`rejected`), `task_id`, `reason` | dziennik, bez treści; unikalny Message-ID |
 | `oauth_states` | jednorazowy `state` OAuth (15 min) | PoC-6 |
 | `inbound_addresses` | token i nadawcy adresu e-mail | **tymczasowa z PoC-6** — przechodzi do `profiles` w v1.x razem z e-mailem (D9; decyzja 2026-11-19) |
@@ -446,6 +448,7 @@ Ustalenia z PoC-6: tabele integracji mają `user_id` (= zakres osobisty) i `row_
 
 ### Web — lokalna baza w przeglądarce
 - `sqlite-wasm` w Web Workerze, VFS `opfs-sahpool` (nie wymaga nagłówków COOP/COEP). VFS daje dostęp wyłączny, więc **jedna karta jest liderem** (Web Locks API) i trzyma bazę oraz synchronizację; pozostałe karty wysyłają zapytania i zmiany przez BroadcastChannel. Zamknięcie lidera → kolejna karta przejmuje blokadę.
+- Wersja protokołu kart (Etap 9): żądania i odpowiedzi niosą `TAB_PROTOCOL` (podbijany przy nowej operacji kart albo kolumnie / tabeli lokalnej, której starszy lider nie ma). Lider odrzuca nieznane operacje; karta, której lider ma starszą wersję (np. otwarty przed wdrożeniem), dostaje `staleLeader` — UI prosi o odświeżenie tamtej karty, a `mutateMany` kończy się błędem zamiast zgubić zmiany.
 - Brak OPFS (np. tryb prywatny) → tryb online: baza w pamięci, pełna migawka przy starcie, ostrzeżenie w UI.
 - `navigator.storage.persist()` przy pierwszym uruchomieniu; eksport kopii bazy w ustawieniach.
 
@@ -501,6 +504,7 @@ Recurrence =
 - API (PoC-3): `habitPeriods`, `habitStreak` (passa i najdłuższa passa), `habitRate`, `habitDays` (mapa cieplna), schemat `HabitSettings`.
 - Cel „N razy w tygodniu/miesiącu”: okres z dniami wolnymi, w którym zrobione + wolne ≥ N, nie przerywa passy i nie zalicza. Dzień z wartością poniżej celu ilościowego to „częściowo” (mapa cieplna), a w passie — niezaliczony.
 - Test na historiach w `fixtures/habits.json` (wartości policzone ręcznie).
+- Zrobione (19.11.2026, Etap 8): `habitStats` (passy, regularność ostatnich 7/30/90 dni, sumy), `habitWeeks` (tygodnie ISO: dni zrobione, cel tygodnia, suma wartości), `habitYear` (mapa 53 tygodni), `habitDayStatus`, `habitEntryOps` (uzupełnianie do 7 dni wstecz), `habitsForDay`, `habitNeedsReminder`, formularz `habitDraft` / `habitFields` / `habitSaveOps`; `HabitSettings.time` — pora nawyku (przypomnienia względne). `habitRate` liczy okresy względem prawdziwego „dziś” (dzień `to` sprzed dziś bez wpisu = opuszczony). Historie 90-dniowe w `fixtures/habits-90.json`.
 
 ### 7.6. Przypomnienia (`reminders.ts`)
 - `reminderFireTimes(tasks, reminders, window, settings, zone)` → lista `{taskId, reminderId, occurrenceDate, fireAt (instant)}` — z czasu pływającego i bieżącej strefy urządzenia. Używają jej telefon (planowanie lokalne) i `reminders-push` (serwer, strefa z ustawień profilu).
@@ -514,6 +518,7 @@ Recurrence =
 ### 7.8. Przegląd (`review.ts`)
 - `dailyReviewQueue(tasks, today)`, `weeklyReviewSteps(…)` (Inbox, zaległe, projekty bez następnego kroku, „Oczekuje” > 7 dni), `reviewStats`.
 - Zrobione (18.11.2026): `dailyReviewQueue`, `ReviewAction` (Zod), `reschedulePatch` (godzina zostaje, zakres przesuwa się w całości, na później i „Kiedyś” → `postpone_count` + 1; „Kiedyś” niedostępne dla serii), `weeklyReview` (Inbox, zaległe, aktywne projekty bez otwartego zadania z terminem, „Oczekuje” > 7 dni według `statusChangedAt` — z `field_clock.status`, inaczej `created_at` — 7 dni naprzód, nawyki z ostatnich 7 dni, przesuwane ≥ 3 razy), `ReviewStats` + `reviewStats`. `ViewTask` ma `postponeCount` i opcjonalne `statusChangedAt`.
+- Etap 9 (19.11.2026): `reviewBulkAction` (decyzja → `bulkTaskOps`, akcja zbiorcza `someday` = bez terminu i godziny), `reviewStartOp` / `reviewFinishOp` (wiersz `review_sessions` przy wejściu, `finished_at` + `stats` przy końcu), `reviewsDue` (które przeglądy już „na czasie” według `dailyReview` / `weeklyReview` w ustawieniach i ostatniego zakończonego), `dailySummary` (ukończone dziś, plan jutra); `REVIEW_ACTION` (klawisze 1–6) w `labels.ts`.
 
 ### 7.9. Etykiety i formatowanie
 - `labels.ts`: `PRIORITY`, `TASK_STATUS`, `LIST_KIND`, `PROJECT_STATUS`, `REMINDER_KIND`, `WEEKDAY`; `format.ts` (z EP: `plural`, `pluralForm`, `formatMinutes`, `shortDate`) + `relativeDay` („dziś”, „jutro”, „pt 21 lis”, „za 3 dni”, „2 dni temu”). Aplikacje nie definiują własnych etykiet.

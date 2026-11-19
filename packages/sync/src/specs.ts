@@ -71,8 +71,8 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     scope: 'derived',
   },
   profiles: {
-    columns: columns<'profiles'>()(['display_name', 'settings', 'focus']),
-    json: ['settings', 'focus'],
+    columns: columns<'profiles'>()(['display_name', 'settings', 'focus', 'calendar_sync']),
+    json: ['settings', 'focus', 'calendar_sync'],
     scope: 'self',
   },
   devices: {

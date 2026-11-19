@@ -7,6 +7,7 @@
  * dzienniku `reminder_deliveries` (`claim_reminder_deliveries` — jedno urządzenie i wystąpienie raz, także
  * przy równoległych uruchomieniach), potem wysyła i zapisuje wynik. Subskrypcja 404/410 jest czyszczona
  * (`clear_push_subscription`), błąd przejściowy — ponowienie w następnej minucie (najwyżej 5 prób).
+ * Nawyki (Etap 8): wpisy `task_completions` z ostatnich dni — bez przypomnienia o dniu już zaliczonym.
  *
  * `GET …/reminders-push/key` — klucz publiczny VAPID dla przeglądarki.
  *
@@ -14,7 +15,7 @@
  */
 import * as webpush from '@negrel/webpush';
 
-import { planPushes, pushDevices, type DeviceRow, type PlannedPush, type ProfileRow, type ReminderRow } from '../_shared/reminders.ts';
+import { planPushes, pushDevices, type CompletionRow, type DeviceRow, type PlannedPush, type ProfileRow, type ReminderRow } from '../_shared/reminders.ts';
 import { admin, env, HttpError, json, optionalEnv, requireCron, route, serve } from '../_shared/runtime.ts';
 
 let server: webpush.ApplicationServer | null = null;
@@ -33,7 +34,7 @@ const pushTopic = (fireKey: string) => {
   return `${reminder.replaceAll('-', '').slice(0, 24)}${day.replaceAll('-', '')}`.slice(0, 32);
 };
 
-const TASK_COLUMNS = 'id, kind, status, title, due_date, due_time, recurrence, time_zone, deleted_at';
+const TASK_COLUMNS = 'id, kind, status, title, due_date, due_time, recurrence, habit, time_zone, deleted_at';
 
 serve(async (req, url) => {
   // Klucz publiczny VAPID dla przeglądarki (`pushManager.subscribe`) — jawny, bez logowania.
@@ -69,9 +70,28 @@ serve(async (req, url) => {
   ]);
   if (remError) throw remError;
   if (profError) throw profError;
+  const reminders = (reminderRows ?? []) as unknown as ReminderRow[];
+
+  // Nawyki: wpisy od początku bieżącego tygodnia / miesiąca (cel „N razy”) w każdej strefie — z zapasem dnia.
+  const habitIds = [...new Set(reminders.filter((r) => r.tasks?.kind === 'habit').map((r) => r.task_id))];
+  let completions: CompletionRow[] = [];
+  if (habitIds.length) {
+    const dayBefore = new Date(now.getTime() - 86_400_000);
+    const week = new Date(now.getTime() - 8 * 86_400_000).toISOString().slice(0, 10);
+    const month = `${dayBefore.toISOString().slice(0, 8)}01`;
+    const since = month < week ? month : week;
+    const { data, error } = await db
+      .from('task_completions')
+      .select('task_id, occurrence_date, kind, value')
+      .in('task_id', habitIds)
+      .gte('occurrence_date', since)
+      .is('deleted_at', null);
+    if (error) throw error;
+    completions = (data ?? []) as CompletionRow[];
+  }
 
   const plan = planPushes(
-    { devices, reminders: (reminderRows ?? []) as unknown as ReminderRow[], profiles: (profileRows ?? []) as ProfileRow[] },
+    { devices, reminders, profiles: (profileRows ?? []) as ProfileRow[], completions },
     { now, allowHttp },
   );
   const summary = { devices: devices.length, due: plan.length, claimed: 0, sent: 0, retry: 0, gone: 0, failed: 0 };

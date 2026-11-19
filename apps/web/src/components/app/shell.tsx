@@ -4,7 +4,7 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, BOARD_BY, bulkTaskOps, isEmptyFilter, isOpen, plural, selectInbox, selectToday, type BoardBy, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
+import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, plural, selectInbox, selectToday, type BoardBy, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -20,7 +20,10 @@ import { DayPlan } from "./day-plan";
 import { CommandPalette, ShortcutsDialog, type PaletteMode, type PalettePick } from "./command-palette";
 import { FilterBar } from "./filter-bar";
 import { FocusIndicator, FocusProvider, FocusScreen } from "./focus";
+import { DailyReview, ReviewNudge, WeeklyReview } from "./review";
 import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-views";
+import { AttachmentsProvider } from "./attachments";
+import { HabitDetail, HabitNotificationActions, HabitsView } from "./habits";
 import { QuickAddDialog } from "./quick-add";
 import { TaskPanel } from "./task-panel";
 import { TaskActionsProvider, useTaskActions } from "./task-item";
@@ -79,12 +82,15 @@ export function Shell({
   const stored = useSyncExternalStore(subscribeWorkspace, readWorkspace, () => ALL);
   const workspaceId = stored !== ALL && data.workspaces.some((w) => w.id === stored) ? stored : null;
   const [menuOpen, setMenuOpen] = useState(false);
+  // Etap 10: udostępnienie (Web Share Target) i zakładka: `/?share_title=…&share_text=…&share_url=…`.
+  const [shared, setShared] = useState(() => (typeof window !== "undefined" ? readShare(new URLSearchParams(window.location.search)) : null));
   // Skrót „Szybkie dodawanie” z ikony aplikacji: `/?quick=1`.
-  const [quickOpen, setQuickOpen] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("quick"));
+  const [quickOpen, setQuickOpen] = useState(() => typeof window !== "undefined" && (new URLSearchParams(window.location.search).has("quick") || shared !== null));
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (url.searchParams.has("quick")) {
+    if (url.searchParams.has("quick") || SHARE_PARAMS.some((p) => url.searchParams.has(p))) {
       url.searchParams.delete("quick");
+      for (const p of SHARE_PARAMS) url.searchParams.delete(p);
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
     }
     // Powrót z ekranu zgody Google (`lib/calendars.ts`) → ustawienia z listą kalendarzy.
@@ -147,8 +153,9 @@ export function Shell({
       if (!ctx.workspaceId || t.workspaceId === ctx.workspaceId) for (const id of t.tagIds) perTag.set(id, (perTag.get(id) ?? 0) + 1);
     }
     const perFilter = new Map(data.savedFilters.map((f) => [f.id, filterCount(data.tasks, f.query, ctx)]));
-    return { inbox: selectInbox(data.tasks, inboxIds, ctx).length, today: view.overdue.length + view.today.length, overdue: view.overdue.length, perList, perTag, perFilter };
-  }, [data.tasks, data.lists, data.savedFilters, ctx]);
+    const habits = habitsForDay(data.tasks, data.habitCompletions, ctx.today, ctx.today, ctx.workspaceId).filter((h) => !h.settled).length;
+    return { inbox: selectInbox(data.tasks, inboxIds, ctx).length, today: view.overdue.length + view.today.length, overdue: view.overdue.length, habits, perList, perTag, perFilter };
+  }, [data.tasks, data.lists, data.savedFilters, data.habitCompletions, ctx]);
 
   // Kryterium kolumn tablicy `#/board` — per przeglądarka (tablica listy ma je w `view_prefs`).
   const [boardBy, setBoardByState] = useState<BoardBy>(() => {
@@ -185,7 +192,7 @@ export function Shell({
 
   // „Wyjdź” z trybu skupienia wraca do ostatniego innego widoku.
   const [lastRoute, setLastRoute] = useState<Route>(DEFAULT_ROUTE);
-  if (route.view !== "focus" && routeHash(route) !== routeHash(lastRoute)) setLastRoute(route);
+  if (route.view !== "focus" && route.view !== "review" && routeHash(route) !== routeHash(lastRoute)) setLastRoute(route);
 
   // Oś czasu zostaje zamontowana po pierwszym otwarciu — powrót do niej bez ponownego rysowania.
   const [timelineOpened, setTimelineOpened] = useState(false);
@@ -239,8 +246,18 @@ export function Shell({
         <h1 className="sr-only">Kalendarz</h1>
         <CalendarScreen data={data} ctx={ctx} settings={settings} />
       </>
+    ) : route.view === "habits" ? (
+      <HabitsView data={data} ctx={ctx} targetInbox={targetInbox} navigate={navigate} />
+    ) : route.view === "habit" ? (
+      <HabitDetail key={route.id} id={route.id} data={data} ctx={ctx} navigate={navigate} />
     ) : route.view === "timeline" ? null : route.view === "focus" ? (
       <FocusScreen key={route.id ?? ""} taskId={route.id ?? null} ctx={ctx} onExit={() => navigate(lastRoute)} navigate={navigate} />
+    ) : route.view === "review" ? (
+      route.id === "weekly" ? (
+        <WeeklyReview ctx={ctx} onExit={() => navigate(lastRoute)} navigate={navigate} />
+      ) : (
+        <DailyReview ctx={ctx} settings={settings} onExit={() => navigate(lastRoute)} navigate={navigate} />
+      )
     ) : route.view === "manage" ? (
       manage
     ) : route.view === "settings" ? (
@@ -277,10 +294,12 @@ export function Shell({
   return (
     <AppEnvProvider value={{ store, data, userId, timeZone: settings.timeZone, today, workspaceId, openTask: setOpenTaskId, openTaskId, selectedIds, select }}>
       <TaskActionsProvider store={store} timeZone={settings.timeZone} tasks={data.tasks}>
+        <AttachmentsProvider store={store} userId={userId}>
         <FocusProvider store={store} userId={userId} settings={settings}>
         <ReminderToasts />
+        <HabitNotificationActions />
         <Keyboard
-          blocked={quickOpen || palette !== null || shortcutsOpen || route.view === "focus"}
+          blocked={quickOpen || palette !== null || shortcutsOpen || route.view === "focus" || route.view === "review"}
           selected={selected}
           setSelected={setSelected}
           navigate={navigate}
@@ -319,6 +338,7 @@ export function Shell({
               ))}
             </Select>
             <FocusIndicator navigate={navigate} />
+            <ReviewNudge settings={settings} navigate={navigate} />
             <button
               type="button"
               onClick={() => setQuickOpen(true)}
@@ -335,6 +355,7 @@ export function Shell({
               <NavItem route={{ view: "board" }} current={route} navigate={navigate} icon="▦" label="Tablica" />
               <NavItem route={{ view: "calendar" }} current={route} navigate={navigate} icon="🗓" label="Kalendarz" />
               <NavItem route={{ view: "timeline" }} current={route} navigate={navigate} icon="📊" label="Oś czasu" />
+              <NavItem route={{ view: "habits" }} current={route} navigate={navigate} icon="🌱" label="Nawyki" count={counts.habits || undefined} />
             </nav>
             {workspaces.map((w) => (
               <WorkspaceLists key={w.id} name={w.name} color={w.color} lists={data.lists.filter((l) => l.workspaceId === w.id && l.kind !== "inbox")} counts={counts.perList} route={route} navigate={navigate} />
@@ -355,6 +376,8 @@ export function Shell({
             ) : null}
             <nav className="mt-4 flex flex-col gap-0.5 border-t border-[var(--line)] pt-3">
               <NavItem route={{ view: "manage" }} current={route} navigate={navigate} icon="🗂️" label="Przestrzenie i listy" />
+              <NavItem route={{ view: "review", id: "daily" }} current={route} navigate={navigate} icon="🧭" label="Przegląd dnia" />
+              <NavItem route={{ view: "review", id: "weekly" }} current={route} navigate={navigate} icon="🗒️" label="Przegląd tygodnia" />
               <NavItem route={{ view: "trash" }} current={route} navigate={navigate} icon="🗑️" label="Kosz" />
               <NavItem route={{ view: "settings" }} current={route} navigate={navigate} icon="⚙️" label="Ustawienia" />
             </nav>
@@ -364,7 +387,16 @@ export function Shell({
           </main>
           {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>
-        <QuickAddDialog open={quickOpen} onClose={() => setQuickOpen(false)} {...quickDefaults} />
+        <QuickAddDialog
+          key={shared ? "shared" : "quick"}
+          open={quickOpen}
+          onClose={() => {
+            setQuickOpen(false);
+            setShared(null);
+          }}
+          {...quickDefaults}
+          {...(shared && { initialText: shared.text, link: shared.url ? { url: shared.url, shared: true } : undefined, placeholder: "Zadanie z udostępnionego linku" })}
+        />
         {palette ? (
           <PaletteHost
             mode={palette}
@@ -378,6 +410,7 @@ export function Shell({
         ) : null}
         {shortcutsOpen ? <ShortcutsDialog onClose={() => setShortcutsOpen(false)} /> : null}
         </FocusProvider>
+        </AttachmentsProvider>
       </TaskActionsProvider>
     </AppEnvProvider>
   );
@@ -506,7 +539,16 @@ function WorkspaceLists({
 /** Tryb skupienia z zadaniem (zaznaczonym albo otwartym) albo bez. */
 const focusRoute = (taskId: string | null | undefined): Route => (taskId ? { view: "focus", id: taskId } : { view: "focus" });
 
-const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" } };
+/** Parametry udostępnienia (manifest `share_target`, zakładka w „Ustawieniach”). */
+export const SHARE_PARAMS = ["share_title", "share_text", "share_url"] as const;
+
+function readShare(params: URLSearchParams): { text: string; url: string | null } | null {
+  if (!SHARE_PARAMS.some((p) => params.get(p))) return null;
+  const result = sharedText({ title: params.get("share_title"), text: params.get("share_text"), url: params.get("share_url") });
+  return result.text ? result : null;
+}
+
+const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" }, h: { view: "habits" } };
 
 /** Akcja na zaznaczonych z dymkiem „Cofnij”. */
 function useBulk(selected: readonly string[]) {
@@ -692,7 +734,10 @@ function PaletteHost({
       "view.kanban": () => then(() => navigate({ view: "board" })),
       "view.calendar": () => then(() => navigate({ view: "calendar" })),
       "view.timeline": () => then(() => navigate({ view: "timeline" })),
+      "view.habits": () => then(() => navigate({ view: "habits" })),
       "focus.start": () => then(() => navigate(focusRoute(selected.at(-1) ?? null))),
+      "review.daily": () => then(() => navigate({ view: "review", id: "daily" })),
+      "review.weekly": () => then(() => navigate({ view: "review", id: "weekly" })),
       "task.quick_add": () => then(openQuick),
       "task.complete": () => then(() => bulk({ kind: "complete" }, "Ukończono")),
       "task.today": () => then(() => bulk({ kind: "today" }, "Na dziś")),

@@ -37,8 +37,13 @@ export interface CalendarRow {
   external_id: string;
   name: string;
   visible: boolean;
-  /** `noWatch`: Google nie wysyła powiadomień dla tego kalendarza (np. święta) — tylko cron. */
-  sync_state: { syncToken?: string; channel?: Channel; noWatch?: boolean; etag?: string; lastModified?: string; hash?: string };
+  /** Kalendarz „TaskPlanner” (Etap 12) — synchronizowany z zadaniami w `task-calendar.ts`, nie do `calendar_events`. */
+  is_task_target: boolean;
+  /**
+   * `noWatch`: Google nie wysyła powiadomień dla tego kalendarza (np. święta) — tylko cron.
+   * `timeZone`: strefa kalendarza zadań (zadania bez strefy, gdy ustawienia jej nie mają).
+   */
+  sync_state: { syncToken?: string; channel?: Channel; noWatch?: boolean; etag?: string; lastModified?: string; hash?: string; timeZone?: string };
   last_synced_at: string | null;
 }
 
@@ -140,7 +145,8 @@ export async function refreshGoogleCalendars(db: SupabaseClient, cfg: GoogleConf
   const entries = (await listCalendars(cfg, token)).filter((c) => !c.deleted);
   const known = check(await db.from('calendars').select('*').eq('account_id', account.id), 'calendars') as CalendarRow[];
   const byId = new Map(known.map((c) => [c.external_id, c]));
-  const upserts = entries.map((e) => ({
+  // Kalendarz „TaskPlanner” bez wiersza w bazie przejmuje `ensureTaskCalendar` — nie jako zwykły (duplikaty zadań).
+  const upserts = entries.filter((e) => byId.has(e.id) || !e.description?.includes('taskplanner:')).map((e) => ({
     account_id: account.id,
     external_id: e.id,
     name: e.summaryOverride ?? e.summary,
@@ -262,6 +268,7 @@ export async function syncAccount(db: SupabaseClient, account: AccountRow, opts:
         ? await refreshGoogleCalendars(db, cfg, account, token)
         : (check(await db.from('calendars').select('*').eq('account_id', account.id), 'calendars') as CalendarRow[]);
       for (const cal of cals) {
+        if (cal.is_task_target) continue;
         if (!cal.visible) {
           if (cal.sync_state.channel) {
             await unwatchCalendar(cfg, cal, token);
@@ -283,7 +290,9 @@ export async function syncAccount(db: SupabaseClient, account: AccountRow, opts:
         }
       }
     }
-    await markAccount(db, account.id, { status: 'active', last_error: null, last_synced_at: new Date().toISOString() });
+    // Brak zgody na zapis (Etap 12) zostaje widoczny, dopóki konto nie zostanie połączone ponownie.
+    const writeError = typeof account.sync_state?.writeError === 'string' ? account.sync_state.writeError : null;
+    await markAccount(db, account.id, { status: 'active', last_error: writeError, last_synced_at: new Date().toISOString() });
   } catch (error) {
     const revoked = error instanceof GoogleError && error.revoked;
     await markAccount(db, account.id, { status: revoked ? 'revoked' : 'error', last_error: String((error as Error).message ?? error).slice(0, 500) });

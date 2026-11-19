@@ -15,6 +15,7 @@ import {
   flattenTree,
   GROUP_BY,
   groupTasks,
+  habitsForDay,
   isOpen,
   LIST_KIND,
   plural,
@@ -44,6 +45,7 @@ import { useLocalQuery } from "@/lib/local-store";
 
 import { Board } from "./board";
 import { DayDnd, DayDrop, DraggableTaskItem, SortableTaskItem, SortableTaskList } from "./dnd";
+import { HabitTodayItem } from "./habits";
 import { QuickAdd } from "./quick-add";
 import { TaskItem, useTaskActions } from "./task-item";
 import { Button, Select } from "./ui";
@@ -117,6 +119,8 @@ export function InboxView({ data, ctx, targetInbox, toolbar }: ViewProps) {
 /** `aside` — „Plan dnia” obok listy (na szerokim ekranie po prawej, na wąskim pod listą). */
 export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps & { aside?: ReactNode }) {
   const view = useMemo(() => selectToday(data.tasks, ctx), [data.tasks, ctx]);
+  // Etap 8: nawyki dnia ze stanem odhaczenia, postępem i passą (kolejność jak w `selectToday`).
+  const habits = useMemo(() => habitsForDay(view.habits, data.habitCompletions, ctx.today, ctx.today), [view.habits, data.habitCompletions, ctx.today]);
   const names = listNames(data);
   const open = view.overdue.length + view.today.length;
   const empty = !open && !view.ongoing.length && !view.habits.length && !view.done.length;
@@ -147,10 +151,10 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
             ))}
           </Section>
         ) : null}
-        {view.habits.length ? (
-          <Section title={VIEW_SECTION.habits} count={view.habits.length}>
-            {view.habits.map((t) => (
-              <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} habitDone={data.habitsDoneToday.has(t.id)} />
+        {habits.length ? (
+          <Section title={VIEW_SECTION.habits} count={habits.filter((h) => !h.settled).length || undefined}>
+            {habits.map((item) => (
+              <HabitTodayItem key={item.task.id} item={item} />
             ))}
           </Section>
         ) : null}

@@ -5,7 +5,7 @@
  * (klik cofa rozpoznanie), podgląd tytułu i listy docelowej, wiele linii naraz (wklejenie).
  * Ten sam komponent w widokach (pole na górze) i w oknie wywoływanym klawiszem `Q` / `Ctrl+Spacja`.
  */
-import { localDateTimeAt, parseQuickAdd, plural, quickAddChip, quickAddTaskOps, suppressToken, taskTagOps, type LocalDate, type TaskOp, type QuickAddContext, type QuickAddTokenKind } from "@taskplanner/core";
+import { findUrl, linkName, localDateTimeAt, parseQuickAdd, withLinkOps, plural, quickAddChip, quickAddTaskOps, suppressToken, taskTagOps, type LocalDate, type TaskOp, type QuickAddContext, type QuickAddTokenKind } from "@taskplanner/core";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 
 import { lastSortKey, useAppEnv } from "./app-env";
@@ -37,12 +37,16 @@ export interface QuickAddProps {
   /** Po dodaniu (Enter); `more` = Ctrl+Enter — okno zostaje otwarte. */
   onAdded?: (more: boolean) => void;
   onCancel?: () => void;
+  /** Tekst na start (udostępnienie, zakładka). */
+  initialText?: string;
+  /** Adres z udostępnienia / zakładki — załącznik i źródło `link` pierwszego zadania (Etap 10). */
+  link?: { url: string; shared: true };
 }
 
-export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dodaj zadanie", autoFocus, onAdded, onCancel }: QuickAddProps) {
+export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dodaj zadanie", autoFocus, onAdded, onCancel, initialText, link }: QuickAddProps) {
   const { data, userId, timeZone, today, workspaceId } = useAppEnv();
   const { run, notify } = useTaskActions();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText ?? "");
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -96,7 +100,8 @@ export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dod
       keys.set(parent?.id ?? result.listId, result.ops[0]!.patch.sort_key as string);
       if (defaults?.status) Object.assign(result.ops[0]!.patch, { status: defaults.status }, defaults.status === "done" ? { completed_at: new Date().toISOString() } : {});
       if (defaults?.priority && !parsed.fields.priority) result.ops[0]!.patch.priority = defaults.priority;
-      ops.push(...result.ops);
+      // Adres w tytule (wklejony) albo z udostępnienia → załącznik-link; podgląd strony dociągnie tytuł.
+      ops.push(...withLinkOps(result, { title: parsed.title, url: added.length === 0 ? link?.url : null, shared: added.length === 0 && Boolean(link) }));
       if (defaults?.tagNames?.length) ops.push(...taskTagOps({ userId, tags: data.tags }, result.taskId, defaults.tagNames).filter((op) => !ops.some((o) => o.table === op.table && o.id === op.id)));
       added.push(result);
     }
@@ -157,6 +162,11 @@ export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dod
             {result.title.trim() ? <strong className="font-medium text-[var(--foreground)]">{result.title}</strong> : <em>bez tytułu</em>}
             {target ? ` → ${listName(target)}` : ""}
           </span>
+          {findUrl(result.title) || link ? (
+            <span className="rounded-full bg-black/5 px-2 py-0.5 font-medium dark:bg-white/10" title="Link trafi do załączników zadania">
+              🔗 {linkName(link?.url ?? findUrl(result.title)!)}
+            </span>
+          ) : null}
           {result.tokens.map((token) => {
             const label = quickAddChip(token, result, today);
             return (

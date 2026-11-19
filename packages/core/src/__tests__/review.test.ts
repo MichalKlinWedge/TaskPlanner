@@ -3,7 +3,9 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { dailyReviewQueue, reschedulePatch, ReviewStats, reviewStats, weeklyReview, type ReviewList } from '../review.ts';
+import { REVIEW_ACTION } from '../labels.ts';
+import { dailyReviewQueue, dailySummary, reschedulePatch, reviewBulkAction, reviewFinishOp, reviewStartOp, reviewsDue, ReviewStats, reviewStats, weeklyReview, type ReviewAction, type ReviewList } from '../review.ts';
+import { bulkTaskOps } from '../tasks.ts';
 import type { ViewContext, ViewTask } from '../views.ts';
 
 const W1 = '0190a000-0000-7000-8000-000000000001';
@@ -132,5 +134,59 @@ describe('przegląd tygodnia', () => {
 
   it('tryb jednej przestrzeni', () => {
     expect(weeklyReview({ tasks, lists }, { ...ctx, workspaceId: W2 }).projectsWithoutNext.map((l) => l.id)).toEqual(['p-other']);
+  });
+});
+
+describe('asystent przeglądu (Etap 9)', () => {
+  const all = [
+    task({ id: 'late', dueDate: '2026-11-10', dueTime: '09:00', postponeCount: 2 }),
+    task({ id: 'range', startDate: '2026-11-14', dueDate: '2026-11-16' }),
+    task({ id: 'series', dueDate: '2026-11-15', recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY', anchor: '2026-11-01' } }),
+  ];
+  const opts = { today: ctx.today, now: new Date('2026-11-18T19:00:00Z'), timeZone: ctx.timeZone };
+  const run = (id: string, action: ReviewAction) => bulkTaskOps(all.filter((t) => t.id === id), all, reviewBulkAction(action), opts);
+
+  it('decyzje jako akcje zbiorcze: jutro z godziną i licznikiem, zakres w całości, „Kiedyś” bez godziny, cofnięcie', () => {
+    expect(run('late', { kind: 'tomorrow' }).ops).toEqual([{ table: 'tasks', id: 'late', patch: { due_date: '2026-11-19', postpone_count: 3 } }]);
+    expect(run('range', { kind: 'date', date: '2026-11-20' }).ops[0]!.patch).toEqual({ due_date: '2026-11-20', start_date: '2026-11-18', postpone_count: 1 });
+    const someday = run('late', { kind: 'someday' });
+    expect(someday.ops[0]!.patch).toEqual({ due_date: null, due_time: null, start_date: null, postpone_count: 3 });
+    expect(someday.undo[0]!.patch).toEqual({ due_date: '2026-11-10', due_time: '09:00', start_date: null, postpone_count: 2 });
+    expect(run('series', { kind: 'someday' }).ops).toEqual([]);
+    expect(run('late', { kind: 'done' }).ops[0]!.patch).toMatchObject({ status: 'done' });
+    expect(run('late', { kind: 'delete' }).ops[0]!.patch).toHaveProperty('deleted_at');
+  });
+
+  it('sesja: początek i koniec z statystykami', () => {
+    const now = new Date('2026-11-18T19:00:00Z');
+    expect(reviewStartOp('s1', 'daily', now)).toEqual({ table: 'review_sessions', id: 's1', patch: { kind: 'daily', started_at: now.toISOString(), finished_at: null, stats: null } });
+    const stats = reviewStats([{ task: all[0]!, action: { kind: 'tomorrow' } }]);
+    expect(reviewFinishOp('s1', stats, now).patch).toEqual({ finished_at: now.toISOString(), stats });
+    expect(ReviewStats.parse(stats)).toEqual(stats);
+  });
+
+  it('pora przeglądu: po godzinie w strefie, raz dziennie, tygodniowy w swój dzień', () => {
+    const schedule = { dailyReview: { enabled: true, time: '20:00' as const }, weeklyReview: { enabled: true, weekday: 3, time: '18:00' as const } };
+    const zone = { timeZone: 'Europe/Warsaw' };
+    // Środa 18.11: 18:30 w Warszawie = 17:30 UTC.
+    expect(reviewsDue(schedule, new Date('2026-11-18T17:30:00Z'), zone)).toEqual(['weekly']);
+    expect(reviewsDue(schedule, new Date('2026-11-18T19:05:00Z'), zone)).toEqual(['weekly', 'daily']);
+    expect(reviewsDue(schedule, new Date('2026-11-18T19:05:00Z'), { ...zone, last: { daily: '2026-11-18', weekly: '2026-11-18' } })).toEqual([]);
+    expect(reviewsDue(schedule, new Date('2026-11-19T19:05:00Z'), { ...zone, last: { daily: '2026-11-18' } })).toEqual(['daily']);
+    expect(reviewsDue({ ...schedule, dailyReview: { enabled: false, time: '20:00' } }, new Date('2026-11-19T19:05:00Z'), zone)).toEqual([]);
+  });
+
+  it('podsumowanie dnia: ukończone dziś i plan na jutro', () => {
+    const tasks = [
+      task({ id: 'done-today', status: 'done', completedAt: '2026-11-18T10:00:00Z' }),
+      task({ id: 'done-yesterday', status: 'done', completedAt: '2026-11-17T22:30:00Z' }),
+      task({ id: 'tomorrow', dueDate: '2026-11-19' }),
+      task({ id: 'later', dueDate: '2026-11-21' }),
+      task({ id: 'other-ws', workspaceId: W2, dueDate: '2026-11-19' }),
+    ];
+    const summary = dailySummary(tasks, { ...ctx, workspaceId: W1 });
+    expect(summary.doneToday.map((t) => t.id)).toEqual(['done-today']);
+    expect(summary.tomorrow.map((t) => t.id)).toEqual(['tomorrow']);
+    expect(REVIEW_ACTION.someday).toEqual({ key: '5', label: 'Kiedyś' });
   });
 });

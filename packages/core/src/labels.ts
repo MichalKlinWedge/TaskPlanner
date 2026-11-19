@@ -1,6 +1,7 @@
 /**
  * Etykiety wartości ze schematów (SPECYFIKACJA §7.9). Aplikacje nie definiują własnych.
  */
+import type { BackupTable } from './backup.ts';
 import type { FocusPhase } from './focus.ts';
 import type { IsoWeekday, ListKind, Priority, ProjectStatus, ReminderKind, TaskStatus } from './schemas/primitives.ts';
 
@@ -187,4 +188,31 @@ export const FOCUS_PHASE: Record<FocusPhase, string> = {
   long_break: 'Długa przerwa',
   ready: 'Przerwa skończona',
   stopwatch: 'Stoper',
+};
+
+/** Decyzje przeglądu (M16) z klawiszami 1–6 na webie. */
+export const REVIEW_ACTION = {
+  done: { key: '1', label: 'Ukończ' },
+  today: { key: '2', label: 'Dziś' },
+  tomorrow: { key: '3', label: 'Jutro' },
+  date: { key: '4', label: 'Wybierz datę' },
+  someday: { key: '5', label: 'Kiedyś' },
+  delete: { key: '6', label: 'Usuń' },
+} as const;
+
+/** Tabele kopii JSON (Etap 13) — podsumowanie importu w Ustawieniach. */
+export const BACKUP_TABLE: Record<BackupTable, string> = {
+  profiles: 'Profil',
+  workspaces: 'Przestrzenie',
+  lists: 'Listy i projekty',
+  tasks: 'Zadania i nawyki',
+  tags: 'Tagi',
+  task_tags: 'Tagi zadań',
+  task_completions: 'Ukończenia i wpisy nawyków',
+  reminders: 'Przypomnienia',
+  task_dependencies: 'Zależności',
+  time_entries: 'Wpisy czasu',
+  attachments: 'Załączniki (opis)',
+  saved_filters: 'Zapisane filtry',
+  review_sessions: 'Przeglądy',
 };

@@ -23,7 +23,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'view.kanban', kind: 'view', label: 'Kanban', keys: ['G', 'K'], keywords: ['tablica'] },
   { id: 'view.calendar', kind: 'view', label: 'Kalendarz', keys: ['G', 'C'] },
   { id: 'view.timeline', kind: 'view', label: 'Oś czasu', keys: ['G', 'O'], keywords: ['gantt', 'harmonogram'] },
-  { id: 'view.habits', kind: 'view', label: 'Nawyki' },
+  { id: 'view.habits', kind: 'view', label: 'Nawyki', keys: ['G', 'H'], keywords: ['passa', 'statystyki'] },
   { id: 'review.daily', kind: 'action', label: 'Przegląd dnia' },
   { id: 'review.weekly', kind: 'action', label: 'Przegląd tygodnia' },
   { id: 'task.quick_add', kind: 'action', label: 'Szybkie dodawanie', keys: ['Q'], keywords: ['nowe zadanie', 'dodaj'] },

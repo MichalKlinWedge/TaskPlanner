@@ -56,6 +56,17 @@ const monochrome = svg(scaled(glyph("#FFFFFF", "#FFFFFF"), 0.68));
 const markMono = (color) => svg(`
   <rect width="1024" height="1024" rx="232" fill="${color}"/>${glyph(color === COLORS.ink ? COLORS.paper : COLORS.ink, COLORS.amber)}`);
 
+/** Ikony skrótów PWA (M20): ten sam kwadrat, w środku znak skrótu zamiast zaznaczenia. */
+const shortcut = (body) => svg(`${gradient}
+  <rect width="1024" height="1024" rx="232" fill="url(#bg)"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="88" stroke-linecap="round" stroke-linejoin="round">${body}</g>`);
+const SHORTCUTS = {
+  add: `<path d="M512 272 V752 M272 512 H752"/>`,
+  // Słońce — „Dziś”.
+  today: `<circle cx="512" cy="512" r="132"/><path d="M512 196 V236 M512 788 V828 M196 512 H236 M788 512 H828 M289 289 L317 317 M707 707 L735 735 M289 735 L317 707 M707 317 L735 289"/>`,
+  calendar: `<rect x="248" y="296" width="528" height="472" rx="72"/><path d="M248 432 H776 M392 216 V336 M632 216 V336"/>`,
+};
+
 /** Logo poziome: znak + nazwa. Napis jest tekstem (Geist → systemowe), do druku zamień na krzywe. */
 const logo = (text) =>
   svg(
@@ -92,7 +103,9 @@ out("apps/web/src/app/icon.svg", mark);
 await png(fullBleed(0.8), "apps/web/src/app/apple-icon.png", 180);
 await png(mark, "apps/web/public/icons/icon-192.png", 192);
 await png(mark, "apps/web/public/icons/icon-512.png", 512);
+await png(fullBleed(0.72), "apps/web/public/icons/maskable-192.png", 192);
 await png(fullBleed(0.72), "apps/web/public/icons/maskable-512.png", 512);
+for (const [name, body] of Object.entries(SHORTCUTS)) await png(shortcut(body), `apps/web/public/icons/shortcut-${name}.png`, 96);
 
 // Android (Expo app.json).
 await png(fullBleed(0.8), "apps/mobile/assets/images/icon.png", 1024);

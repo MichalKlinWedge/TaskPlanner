@@ -9,7 +9,8 @@ Stan na **18.11.2026** (oficjalna dokumentacja i cenniki). Przed wprowadzeniem n
 | Wstrzymanie | po 7 dniach niskiej aktywności (ostrzeżenie mailem); przywrócenie do roku | W | supabase.com/docs/guides/platform/free-plan-pausing |
 | Baza / Storage / MAU | 500 MB / 1 GB / 50 000 | W | supabase.com/pricing |
 | Edge Functions | 500 000 wywołań; limity funkcji: 150 s wall clock, 2 s CPU, 256 MB | W | supabase.com/docs/guides/functions/limits |
-| Kopie zapasowe | brak (bez PITR) → własny `pg_dump` / eksport | W | supabase.com/docs/guides/platform/backups |
+| Kopie zapasowe | brak (dzienne kopie od Pro, PITR jako dodatek od Pro); dla Free zalecany własny zrzut (`db dump`) poza Supabase → nocny `pg_dump` w GitHub Actions (Etap 13) | W | supabase.com/docs/guides/platform/backups (19.11.2026) |
+| Połączenie do `pg_dump` z GitHub Actions | bezpośrednie tylko IPv6 (Free/Pro bez dodatku IPv4), runnery GitHuba tylko IPv4 → **Session pooler** (port 5432, IPv4 na każdym planie) | W | supabase.com/docs/guides/database/connecting-to-postgres, …/platform/ipv4-address (19.11.2026) |
 | `pg_cron`, `pg_net` na Free | **działają** — projekt TaskPlanner (Free, eu-west-1): zadanie co minutę → `pg_net` → Edge Function, 18.11.2026 (PoC-6) | W | PoC-6 |
 | Uprawnienia nowych tabel (chmura) | nowe projekty nie nadają `anon`/`authenticated`/`service_role` do tabel z migracji — jawne `grant` w migracji (lokalnie nadawane automatycznie) | W | PoC-6 |
 | Edge Runtime lokalnie | 1.77.8 (zgodny z Deno 2.1.4); importy spoza `supabase/functions` (np. `packages/core`) działają, `npm:` i `jsr:` przez mapę importów | W | PoC-6 |
@@ -42,6 +43,9 @@ Stan na **18.11.2026** (oficjalna dokumentacja i cenniki). Przed wprowadzeniem n
 | Stawki (zamiast dawnych mnożników) | Linux 2-core x64 0,006 USD/min (1×), Linux arm64 0,005, Windows 2-core 0,010 (≈ 1,7×), macOS 0,062 (≈ 10×) | W | docs.github.com/en/billing/reference/actions-runner-pricing (18.11.2026) |
 | Po wyczerpaniu | bez metody płatności — **blokada** (nie obciążenie) | W | j.w. |
 | Artefakty | 500 MB (wspólnie z Packages), cache 10 GB na repozytorium | W | j.w. |
+| Retencja artefaktów i logów | domyślnie 90 dni; repozytorium publiczne 1–90, prywatne 1–400 | W | docs.github.com/en/organizations/managing-organization-settings/configuring-the-retention-period-for-github-actions-artifacts-and-logs-in-your-organization (19.11.2026) |
+| Pobieranie artefaktów | wymaga dostępu do odczytu repozytorium — w publicznym = artefakt traktować jak publiczny (kopia bazy tylko zaszyfrowana) | W | docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts (19.11.2026) |
+| Zaplanowane workflow | w repozytorium publicznym wyłączane po 60 dniach bez aktywności w repozytorium | Ś | docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows (19.11.2026) |
 
 **Wniosek:** build APK na `ubuntu-latest` (najtańszy, bez problemu długich ścieżek Windows); szacunkowo 15–25 min na build bez cache Gradle → ok. 80–130 buildów/mies. w limicie. Artefakt z retencją 30 dni, starsze APK w Releases.
 

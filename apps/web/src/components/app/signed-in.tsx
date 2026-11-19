@@ -1,17 +1,19 @@
 "use client";
 
 import { DEFAULT_WORKSPACES, isOnboarded, onboardingOps, type DefaultWorkspace } from "@taskplanner/core";
-import { SYNCED_TABLES, type TabStore } from "@taskplanner/sync";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { STALE_LEADER_MESSAGE, SYNCED_TABLES, type TabStore } from "@taskplanner/sync";
+import { useEffect, useMemo, useState } from "react";
 
 import { parseSettings } from "@/lib/app-data";
-import { closeStore, storeFor, useLocalQuery, useStoreStatus } from "@/lib/local-store";
-import { offlineStatus, subscribeOffline } from "@/lib/service-worker";
+import { closeStore, storeFor, useLocalQuery, useStaleLeader, useStoreStatus } from "@/lib/local-store";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useTheme } from "@/lib/theme";
 
+import { BackupCard } from "./backup-card";
 import { CalendarsCard } from "./calendars-card";
+import { CaptureCard } from "./capture-card";
 import { ProfileForm, type ProfileValues } from "./profile-form";
+import { InstallCard, OfflineCard } from "./pwa-cards";
 import { RemindersCard } from "./reminders-card";
 import { Shell } from "./shell";
 import { Button, Card, Notice, Splash } from "./ui";
@@ -95,6 +97,9 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
             </Card>
             <RemindersCard store={store} userId={userId} />
             <CalendarsCard store={store} timeZone={parseSettings(settings).timeZone} />
+            <BackupCard store={store} userId={userId} timeZone={parseSettings(settings).timeZone} />
+            <CaptureCard />
+            <InstallCard />
             <OfflineCard />
           </>
         }
@@ -157,6 +162,7 @@ function Onboarding({ store, userId, initial }: { store: TabStore; userId: strin
 /** Pasek: stan synchronizacji (sieć, zmiany w kolejce, błąd) i wylogowanie. */
 function AppHeader({ store, email }: { store: TabStore; email: string | null }) {
   const status = useStoreStatus();
+  const stale = useStaleLeader(store);
   const [pending, setPending] = useState(0);
   const [online, setOnline] = useState(true);
 
@@ -220,37 +226,24 @@ function AppHeader({ store, email }: { store: TabStore; email: string | null }) 
   const dot = !online ? "bg-zinc-400" : status.error ? "bg-red-500" : status.syncing || pending ? "bg-amber-500" : "bg-green-500";
 
   return (
-    <header className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-sm">
-      <span className="font-semibold">TaskPlanner</span>
-      <span className="flex items-center gap-1.5 text-xs opacity-80" role="status" title={status.error ?? (status.lastSyncAt ? `Ostatnio: ${new Date(status.lastSyncAt).toLocaleTimeString("pl-PL")}` : undefined)} data-testid="sync-status">
-        <span className={`h-2 w-2 rounded-full ${dot}`} />
-        {label}
-      </span>
-      <span className="flex-1" />
-      {email ? <span className="hidden text-xs opacity-60 sm:inline">{email}</span> : null}
-      <Button kind="ghost" onClick={() => void signOut()}>
-        Wyloguj
-      </Button>
-    </header>
-  );
-}
-
-/** Stan pracy bez sieci w tej przeglądarce (M20): baza, trwała pamięć, Service Worker. */
-function OfflineCard() {
-  const store = useStoreStatus();
-  const offline = useSyncExternalStore(subscribeOffline, offlineStatus, offlineStatus);
-  const sw = { active: "gotowa — aplikacja wystartuje bez sieci", installing: "w trakcie przygotowania (odśwież stronę)", unsupported: "niedostępna w tej przeglądarce", dev: "wyłączona w trybie deweloperskim" }[offline.serviceWorker];
-  return (
-    <Card className="mt-4">
-      <h2 className="mb-2 text-sm font-semibold">Praca bez sieci w tej przeglądarce</h2>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="text-[var(--muted)]">Lokalna baza</dt>
-        <dd>{store.storage}</dd>
-        <dt className="text-[var(--muted)]">Trwała pamięć</dt>
-        <dd>{offline.persisted === null ? "—" : offline.persisted ? "tak — przeglądarka nie usunie danych" : "nie — przeglądarka może usunąć dane przy braku miejsca (zainstaluj aplikację albo dodaj do zakładek)"}</dd>
-        <dt className="text-[var(--muted)]">Wersja offline</dt>
-        <dd data-testid="offline-sw">{sw}</dd>
-      </dl>
-    </Card>
+    <>
+      <header className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-sm">
+        <span className="font-semibold">TaskPlanner</span>
+        <span className="flex items-center gap-1.5 text-xs opacity-80" role="status" title={status.error ?? (status.lastSyncAt ? `Ostatnio: ${new Date(status.lastSyncAt).toLocaleTimeString("pl-PL")}` : undefined)} data-testid="sync-status">
+          <span className={`h-2 w-2 rounded-full ${dot}`} />
+          {label}
+        </span>
+        <span className="flex-1" />
+        {email ? <span className="hidden text-xs opacity-60 sm:inline">{email}</span> : null}
+        <Button kind="ghost" onClick={() => void signOut()}>
+          Wyloguj
+        </Button>
+      </header>
+      {stale ? (
+        <p role="alert" className="border-b border-amber-400 bg-amber-100 px-4 py-2 text-sm text-amber-900 dark:bg-amber-900/40 dark:text-amber-100" data-testid="stale-leader">
+          {STALE_LEADER_MESSAGE}
+        </p>
+      ) : null}
+    </>
   );
 }

@@ -8,15 +8,23 @@
  */
 import { z } from 'zod';
 
-import { addDays, isoWeekday } from './dates.ts';
-import { occurrences, type ScheduleRecurrence } from './recurrence.ts';
-import type { LocalDate } from './schemas/primitives.ts';
+import { addDays, daysBetween, isoWeekday } from './dates.ts';
+import { pluralForm } from './format.ts';
+import { completionId, uuidv7 } from './ids.ts';
+import { WEEKDAY } from './labels.ts';
+import { describeRecurrence, occurrences, parseRrule, WEEKDAY_CODES, type Recurrence, type ScheduleRecurrence } from './recurrence.ts';
+import { LocalTime, type IsoWeekday, type LocalDate } from './schemas/primitives.ts';
+import { keyBetween } from './sort-key.ts';
+import type { TaskOp } from './tasks.ts';
+import { habitDueOn, isOpen, type ViewTask } from './views.ts';
 
 /** Zawartość `tasks.habit` (jsonb). */
 export const HabitSettings = z.object({
   goal: z.object({ period: z.enum(['week', 'month']), times: z.number().int().min(1).max(31) }).optional(),
   target: z.number().positive().optional(),
   unit: z.string().max(20).optional(),
+  /** Pora nawyku (Etap 8): godzina przypomnień względnych; brak = domyślna godzina z ustawień. */
+  time: LocalTime.optional(),
 });
 export type HabitSettings = z.infer<typeof HabitSettings>;
 
@@ -107,7 +115,8 @@ export function habitStreak(habit: Habit, completions: readonly HabitCompletion[
 
 /** Regularność w zakresie: zaliczone / (okresy − wolne − w toku). */
 export function habitRate(habit: Habit, completions: readonly HabitCompletion[], from: LocalDate, to: LocalDate, today: LocalDate) {
-  const periods = habitPeriods(habit, completions, today < to ? today : to).filter((p) => p.end >= from && p.start <= to);
+  // Okresy liczone względem prawdziwego „dziś”: dzień `to` sprzed dziś bez wpisu jest opuszczony, nie „w toku”.
+  const periods = habitPeriods(habit, completions, today).filter((p) => p.end >= from && p.start <= to);
   const done = periods.filter((p) => p.state === 'done').length;
   const possible = periods.filter((p) => p.state === 'done' || p.state === 'missed').length;
   return { done, possible, rate: possible ? done / possible : null };
@@ -131,4 +140,390 @@ export function habitDays(habit: Habit, completions: readonly HabitCompletion[],
     days.push({ date, state });
   }
   return days;
+}
+
+// ── Etap 8: nawyk z zadania, stan dnia, odhaczanie ───────────────────────────────────────────
+
+/** Ile dni wstecz można uzupełnić (M15): dziś i 7 poprzednich dni. */
+export const HABIT_BACKFILL_DAYS = 7;
+
+/** Nawyk z pól zadania; zadanie bez reguły według harmonogramu nie jest nawykiem do liczenia. */
+export function toHabit(task: { recurrence: Recurrence | null; habit: HabitSettings | null }): Habit | null {
+  if (task.recurrence?.mode !== 'schedule') return null;
+  return { ...(task.habit ?? {}), recurrence: task.recurrence };
+}
+
+/** Wiersz lokalnej bazy `task_completions` → `HabitCompletion`. */
+export const toHabitCompletion = (row: { occurrence_date: unknown; kind: unknown; value: unknown }): HabitCompletion => ({
+  date: String(row.occurrence_date) as LocalDate,
+  kind: row.kind === 'skipped' ? 'skipped' : 'done',
+  value: row.value === null || row.value === undefined || row.value === '' ? null : Number(row.value),
+});
+
+/** Najdawniejszy dzień, który można jeszcze uzupełnić (nie wcześniej niż początek nawyku). */
+export const habitBackfillFrom = (habit: Habit, today: LocalDate): LocalDate => {
+  const limit = addDays(today, -HABIT_BACKFILL_DAYS);
+  return habit.recurrence.anchor > limit ? habit.recurrence.anchor : limit;
+};
+
+/** Czy dzień można odhaczyć / zmienić: od `habitBackfillFrom` do dziś. */
+export const canEditHabitDay = (habit: Habit, date: LocalDate, today: LocalDate): boolean => date <= today && date >= habitBackfillFrom(habit, today);
+
+export interface HabitDayStatus {
+  date: LocalDate;
+  state: DayState;
+  /** Wpis dnia (albo brak). */
+  entry: HabitCompletion | null;
+  /** Postęp celu ilościowego: wartość dnia (`done` bez wartości = cel osiągnięty). */
+  value: number | null;
+  /** Okres „N razy w tygodniu/miesiącu”, do którego należy dzień. */
+  period: { start: LocalDate; end: LocalDate; done: number; times: number; state: PeriodState } | null;
+  /** Czy w tym dniu jest wystąpienie reguły (przy celu „N razy” — każdy dzień trwającej serii). */
+  scheduled: boolean;
+}
+
+/** Stan jednego dnia nawyku — wiersz w „Dziś”, pasek 7 dni, powiadomienie. */
+export function habitDayStatus(habit: Habit, completions: readonly HabitCompletion[], date: LocalDate, today: LocalDate): HabitDayStatus {
+  const { byDate } = index(habit, completions);
+  const entry = byDate.get(date) ?? null;
+  const [day] = habitDays(habit, completions, date, date, today);
+  const value = entry?.kind === 'done' ? (entry.value ?? habit.target ?? null) : null;
+  let period: HabitDayStatus['period'] = null;
+  if (habit.goal) {
+    const p = habitPeriods(habit, completions, today).find((x) => x.start <= date && x.end >= date);
+    if (p) period = { start: p.start, end: p.end, done: p.done, times: habit.goal.times, state: p.state };
+  }
+  const next = occurrences(habit.recurrence, { from: date, to: habit.goal ? undefined : date, limit: 1 });
+  return { date, state: day!.state, entry, value, period, scheduled: date >= habit.recurrence.anchor && next.length > 0 };
+}
+
+/**
+ * Czy przypominać o nawyku w danym dniu: nie, gdy dzień jest już zaliczony albo wolny, a przy celu
+ * „N razy” — gdy cel okresu jest już osiągnięty. Częściowa wartość (3 z 8) przypomina dalej.
+ */
+export function habitNeedsReminder(habit: Habit, completions: readonly HabitCompletion[], date: LocalDate): boolean {
+  const { byDate, counts } = index(habit, completions);
+  const c = byDate.get(date);
+  if (counts(c) || c?.kind === 'skipped') return false;
+  if (!habit.goal) return true;
+  let done = 0;
+  for (let d = periodStart(date, habit.goal.period); d <= date; d = addDays(d, 1)) if (counts(byDate.get(d))) done++;
+  return done < habit.goal.times;
+}
+
+/** Wpis dnia do zapisania; `null` = wyczyszczenie dnia. */
+export type HabitEntry = { kind: 'done'; value?: number | null } | { kind: 'skipped' } | null;
+
+export interface HabitEntryOptions {
+  now: Date | string;
+  today: LocalDate;
+  /** Obecny wpis dnia — do „Cofnij”. */
+  previous?: HabitCompletion | null;
+}
+
+/**
+ * Odhaczenie / dzień wolny / wartość / wyczyszczenie dnia nawyku jako operacje `mutate` na
+ * `task_completions`. Id deterministyczne (`completionId`), więc dwa urządzenia piszą ten sam
+ * wiersz (LWW per pole — dwa równoległe „+1” dają jedną wartość). Dzień spoza okna uzupełniania
+ * (`HABIT_BACKFILL_DAYS`), przed początkiem nawyku albo przyszły — błąd.
+ */
+export function habitEntryOps(habit: Habit, taskId: string, date: LocalDate, entry: HabitEntry, { now, today, previous = null }: HabitEntryOptions): { ops: TaskOp[]; undo: TaskOp[] } {
+  if (date > today) throw new Error('Nie można odhaczyć dnia, który jeszcze nie nadszedł.');
+  if (date < habit.recurrence.anchor) throw new Error('Ten dzień jest przed początkiem nawyku.');
+  if (date < addDays(today, -HABIT_BACKFILL_DAYS)) throw new Error(`Można uzupełnić najwyżej ${HABIT_BACKFILL_DAYS} dni wstecz.`);
+  const at = new Date(now).toISOString();
+  const id = completionId(taskId, date);
+  const write = (e: HabitEntry): TaskOp =>
+    e
+      ? { table: 'task_completions', id, patch: { task_id: taskId, occurrence_date: date, kind: e.kind, value: e.kind === 'done' ? (e.value ?? null) : null, completed_at: at, deleted_at: null } }
+      : { table: 'task_completions', id, patch: { deleted_at: at } };
+  return { ops: [write(entry)], undo: [write(previous ? (previous.kind === 'done' ? { kind: 'done', value: previous.value ?? null } : { kind: 'skipped' }) : null)] };
+}
+
+/** Kolejny stan dnia po kliknięciu w pasku dni: brak → zrobione → wolne → brak. */
+export function nextHabitEntry(habit: Habit, current: HabitCompletion | null): HabitEntry {
+  if (!current) return { kind: 'done', value: habit.target ?? null };
+  if (current.kind === 'done') return { kind: 'skipped' };
+  return null;
+}
+
+/** Zmiana wartości celu ilościowego o `delta` (np. +1 szklanka); 0 i mniej czyści dzień. */
+export function addHabitValue(habit: Habit, current: HabitCompletion | null, delta: number): HabitEntry {
+  const base = current?.kind === 'done' ? (current.value ?? habit.target ?? 0) : 0;
+  const value = Math.round((base + delta) * 100) / 100;
+  return value > 0 ? { kind: 'done', value } : null;
+}
+
+// ── Etap 8: statystyki (M15) ─────────────────────────────────────────────────────────────────
+
+export const HABIT_RATE_WINDOWS = [7, 30, 90] as const;
+export type HabitRateWindow = (typeof HABIT_RATE_WINDOWS)[number];
+
+export interface HabitRate {
+  done: number;
+  possible: number;
+  rate: number | null;
+}
+
+export interface HabitStats {
+  streak: HabitStreak;
+  /** Regularność ostatnich 7/30/90 dni (do dziś): zaliczone okresy / okresy bez wolnych i bez „w toku”. */
+  rates: Record<HabitRateWindow, HabitRate>;
+  /** Dni zaliczone od początku nawyku. */
+  totalDone: number;
+  /** Suma wartości celu ilościowego od początku (np. wypite szklanki); bez celu — dni zrobione. */
+  totalValue: number;
+}
+
+/** Ostatni wpis dnia wygrywa (jak `index`). */
+const dedupe = (completions: readonly HabitCompletion[]) => [...new Map(completions.map((c) => [c.date, c])).values()];
+
+export function habitStats(habit: Habit, completions: readonly HabitCompletion[], today: LocalDate): HabitStats {
+  const { counts } = index(habit, completions);
+  const rates = {} as Record<HabitRateWindow, HabitRate>;
+  for (const days of HABIT_RATE_WINDOWS) rates[days] = habitRate(habit, completions, addDays(today, 1 - days), today, today);
+  let totalDone = 0;
+  let totalValue = 0;
+  for (const c of dedupe(completions)) {
+    if (c.date < habit.recurrence.anchor || c.date > today || c.kind !== 'done') continue;
+    if (counts(c)) totalDone++;
+    totalValue += habit.target === undefined ? 1 : (c.value ?? habit.target);
+  }
+  return { streak: habitStreak(habit, completions, today), rates, totalDone, totalValue };
+}
+
+export interface HabitWeek {
+  /** Poniedziałek tygodnia (ISO). */
+  start: LocalDate;
+  end: LocalDate;
+  /** Dni zaliczone w tygodniu. */
+  done: number;
+  /** Cel tygodnia: zaplanowane wystąpienia albo N przy „N razy w tygodniu”; przy celu miesięcznym `null`. */
+  target: number | null;
+  /** Suma wartości celu ilościowego w tygodniu (bez celu ilościowego — liczba dni zrobionych). */
+  value: number;
+}
+
+/** Wykres tygodniowy: ostatnie `count` tygodni (ISO) do bieżącego włącznie, od najstarszego. */
+export function habitWeeks(habit: Habit, completions: readonly HabitCompletion[], today: LocalDate, count = 12): HabitWeek[] {
+  const { byDate, counts } = index(habit, completions);
+  const current = addDays(today, 1 - isoWeekday(today));
+  const weeks: HabitWeek[] = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const start = addDays(current, -7 * i);
+    const end = addDays(start, 6);
+    let done = 0;
+    let value = 0;
+    for (let d = start; d <= end && d <= today; d = addDays(d, 1)) {
+      const c = byDate.get(d);
+      if (d < habit.recurrence.anchor || c?.kind !== 'done') continue;
+      if (counts(c)) done++;
+      value += habit.target === undefined ? 1 : (c.value ?? habit.target);
+    }
+    const from = start < habit.recurrence.anchor ? habit.recurrence.anchor : start;
+    const target = habit.goal ? (habit.goal.period === 'week' ? habit.goal.times : null) : from > end ? 0 : occurrences(habit.recurrence, { from, to: end, limit: 7 }).length;
+    weeks.push({ start, end, done, target, value });
+  }
+  return weeks;
+}
+
+export interface HabitHeatDay {
+  date: LocalDate;
+  state: DayState;
+  value: number | null;
+  /** Dzień po dziś (pusta komórka). */
+  future: boolean;
+}
+
+export interface HabitYear {
+  /** Kolumny = tygodnie (pon–ndz), od najstarszego; 53 kolumny, ostatnia z dziś. */
+  weeks: HabitHeatDay[][];
+  /** Kolumny, w których zaczyna się miesiąc (etykiety nad mapą). */
+  months: { column: number; month: number }[];
+  /** Dni w każdym stanie w ostatnich 365 dniach (do dziś). */
+  counts: Record<DayState, number>;
+}
+
+/** Liczba dni w każdym stanie. */
+export function habitDayCounts(days: readonly { state: DayState }[]): Record<DayState, number> {
+  const counts: Record<DayState, number> = { done: 0, partial: 0, skipped: 0, missed: 0, pending: 0, off: 0 };
+  for (const d of days) counts[d.state]++;
+  return counts;
+}
+
+/** Mapa cieplna roku: 53 tygodnie do bieżącego włącznie. */
+export function habitYear(habit: Habit, completions: readonly HabitCompletion[], today: LocalDate): HabitYear {
+  const { byDate } = index(habit, completions);
+  const end = addDays(today, 7 - isoWeekday(today));
+  const from = addDays(end, -53 * 7 + 1);
+  const days = habitDays(habit, completions, from, end, today);
+  const weeks: HabitHeatDay[][] = [];
+  const months: HabitYear['months'] = [];
+  days.forEach((d, i) => {
+    const column = Math.floor(i / 7);
+    if (i % 7 === 0) weeks.push([]);
+    const c = byDate.get(d.date);
+    weeks[column]!.push({ date: d.date, state: d.state, value: c?.kind === 'done' ? (c.value ?? null) : null, future: d.date > today });
+    if (d.date.endsWith('-01')) months.push({ column, month: Number(d.date.slice(5, 7)) });
+  });
+  const yearAgo = addDays(today, -365);
+  return { weeks, months, counts: habitDayCounts(days.filter((d) => d.date <= today && d.date > yearAgo)) };
+}
+
+// ── Etap 8: formularz nawyku ─────────────────────────────────────────────────────────────────
+
+export type HabitSchedule =
+  | { kind: 'daily' }
+  | { kind: 'days'; days: IsoWeekday[] }
+  | { kind: 'goal'; period: 'week' | 'month'; times: number }
+  /** Reguła spoza formularza (np. z szybkiego dodawania „co 2 dni”) — zostaje bez zmian. */
+  | { kind: 'custom'; rrule: string };
+
+export interface HabitDraft {
+  schedule: HabitSchedule;
+  /** Początek nawyku (kotwica reguły). */
+  start: LocalDate;
+  target: number | null;
+  unit: string | null;
+  time: LocalTime | null;
+}
+
+/** Formularz z pól zadania (nowy nawyk: codziennie od dziś). */
+export function habitDraft(task: { recurrence: Recurrence | null; habit: HabitSettings | null } | null, today: LocalDate): HabitDraft {
+  const habit = task ? toHabit(task) : null;
+  const base: HabitDraft = { schedule: { kind: 'daily' }, start: habit?.recurrence.anchor ?? today, target: habit?.target ?? null, unit: habit?.unit ?? null, time: habit?.time ?? null };
+  if (!habit) return base;
+  if (habit.goal) return { ...base, schedule: { kind: 'goal', ...habit.goal } };
+  const rule = parseRrule(habit.recurrence.rrule);
+  const simple = rule.interval === 1 && rule.count === undefined && rule.until === undefined && !rule.byMonthDay.length && !rule.byMonth.length && !rule.bySetPos.length;
+  if (simple && rule.freq === 'DAILY' && !rule.byDay.length) return base;
+  if (simple && rule.freq === 'WEEKLY' && rule.byDay.length && rule.byDay.every((d) => d.n === undefined)) {
+    const days = rule.byDay.map((d) => (WEEKDAY_CODES.indexOf(d.day) + 1) as IsoWeekday).sort();
+    return { ...base, schedule: days.length === 7 ? { kind: 'daily' } : { kind: 'days', days } };
+  }
+  return { ...base, schedule: { kind: 'custom', rrule: habit.recurrence.rrule } };
+}
+
+/** Formularz → pola zadania `recurrence` i `habit`. Błąd przy pustych dniach albo złym celu. */
+export function habitFields(draft: HabitDraft): { recurrence: ScheduleRecurrence; habit: HabitSettings } {
+  const { schedule } = draft;
+  let rrule = 'FREQ=DAILY';
+  const habit: HabitSettings = {};
+  if (schedule.kind === 'days') {
+    if (!schedule.days.length) throw new Error('Wybierz co najmniej jeden dzień tygodnia.');
+    const days = [...new Set(schedule.days)].sort();
+    if (days.length < 7) rrule = `FREQ=WEEKLY;BYDAY=${days.map((d) => WEEKDAY_CODES[d - 1]).join(',')}`;
+  } else if (schedule.kind === 'custom') rrule = schedule.rrule;
+  else if (schedule.kind === 'goal') {
+    const max = schedule.period === 'week' ? 7 : 31;
+    if (!Number.isInteger(schedule.times) || schedule.times < 1 || schedule.times > max) throw new Error(`Liczba razy: od 1 do ${max}.`);
+    habit.goal = { period: schedule.period, times: schedule.times };
+  }
+  if (draft.target !== null) {
+    if (!(draft.target > 0)) throw new Error('Cel ilościowy musi być większy od zera.');
+    habit.target = draft.target;
+    const unit = draft.unit?.trim();
+    if (unit) habit.unit = unit.slice(0, 20);
+  }
+  if (draft.time) habit.time = draft.time;
+  return { recurrence: { mode: 'schedule', rrule, anchor: draft.start }, habit: HabitSettings.parse(habit) };
+}
+
+const TIMES: readonly [string, string, string] = ['raz', 'razy', 'razy'];
+
+/** „codziennie”, „pon, śr, pt”, „3 razy w tygodniu” + „· cel 8 szklanek”. */
+export function describeHabit(habit: Habit): string {
+  let text: string;
+  if (habit.goal) text = `${habit.goal.times} ${pluralForm(habit.goal.times, TIMES)} w ${habit.goal.period === 'week' ? 'tygodniu' : 'miesiącu'}`;
+  else {
+    const { schedule } = habitDraft({ recurrence: habit.recurrence, habit }, habit.recurrence.anchor);
+    text = schedule.kind === 'days' && schedule.days.length < 5 ? schedule.days.map((d) => WEEKDAY[d].short).join(', ') : describeRecurrence(habit.recurrence);
+  }
+  if (habit.target !== undefined) text += ` · cel ${habit.target}${habit.unit ? ` ${habit.unit}` : ''}`;
+  return text;
+}
+
+/** Postęp dnia / okresu jako tekst: „3 / 8 szklanek”, „2 / 3 w tym tygodniu”. */
+export function habitProgressLabel(habit: Habit, status: HabitDayStatus): string | null {
+  const parts: string[] = [];
+  if (habit.target !== undefined) parts.push(`${status.value ?? 0} / ${habit.target}${habit.unit ? ` ${habit.unit}` : ''}`);
+  if (status.period) parts.push(`${status.period.done} / ${status.period.times} w ${habit.goal?.period === 'week' ? 'tym tygodniu' : 'tym miesiącu'}`);
+  return parts.length ? parts.join(' · ') : null;
+}
+
+/** Dni od początku nawyku (włącznie z dziś). */
+export const habitAgeDays = (habit: Habit, today: LocalDate): number => Math.max(0, daysBetween(habit.recurrence.anchor, today) + 1);
+
+export interface HabitSaveInput {
+  /** Brak = nowy nawyk. */
+  id?: string;
+  title: string;
+  listId: string;
+  draft: HabitDraft;
+  /** Przypomnienie o porze nawyku (względne, 0 min przed). */
+  remind: boolean;
+  /** Obecne przypomnienia nawyku — przy wyłączeniu usuwane, przy włączeniu nie dublowane. */
+  reminderIds?: readonly string[];
+  /** Ostatni klucz kolejności na liście (nowy nawyk trafia na koniec). */
+  lastSortKey?: string;
+  now: Date | string;
+  newId?: () => string;
+}
+
+/** Zapis formularza nawyku jako operacje `mutate`: zadanie `kind = 'habit'` i przypomnienie. */
+export function habitSaveOps(input: HabitSaveInput): { taskId: string; ops: TaskOp[] } {
+  const title = input.title.trim();
+  if (!title) throw new Error('Nawyk musi mieć nazwę.');
+  const newId = input.newId ?? (() => uuidv7());
+  const fields = habitFields(input.draft);
+  const taskId = input.id ?? newId();
+  const ops: TaskOp[] = [
+    {
+      table: 'tasks',
+      id: taskId,
+      patch: input.id
+        ? { title: title.slice(0, 500), list_id: input.listId, ...fields }
+        : {
+            list_id: input.listId, parent_id: null, kind: 'habit', title: title.slice(0, 500), status: 'todo', priority: 4,
+            due_date: null, due_time: null, duration_min: null, ...fields, sort_key: keyBetween(input.lastSortKey), source: { kind: 'manual' },
+          },
+    },
+  ];
+  const existing = input.reminderIds ?? [];
+  if (input.remind && !existing.length) ops.push({ table: 'reminders', id: newId(), patch: { task_id: taskId, kind: 'relative', offset_min: 0, at_date: null, at_time: null } });
+  if (!input.remind) for (const id of existing) ops.push({ table: 'reminders', id, patch: { deleted_at: new Date(input.now).toISOString() } });
+  return { taskId, ops };
+}
+
+export interface HabitForDay {
+  task: ViewTask;
+  habit: Habit;
+  status: HabitDayStatus;
+  streak: HabitStreak;
+  /** Dzień załatwiony: zrobione, wolne albo cel okresu „N razy” już osiągnięty. */
+  settled: boolean;
+}
+
+/**
+ * Nawyki do odhaczenia w dniu `date` (blok „Dziś”, licznik w pasku bocznym) w kolejności `tasks` —
+ * otwarte, z okresem w tym dniu, opcjonalnie z jednej przestrzeni.
+ */
+export function habitsForDay(
+  tasks: readonly ViewTask[],
+  completions: ReadonlyMap<string, readonly HabitCompletion[]>,
+  date: LocalDate,
+  today: LocalDate,
+  workspaceId?: string | null,
+): HabitForDay[] {
+  const out: HabitForDay[] = [];
+  for (const task of tasks) {
+    if (task.kind !== 'habit' || !isOpen(task) || (workspaceId && task.workspaceId !== workspaceId) || !habitDueOn(task, date)) continue;
+    const habit = toHabit(task);
+    if (!habit) continue;
+    const list = completions.get(task.id) ?? [];
+    const status = habitDayStatus(habit, list, date, today);
+    const settled = status.state === 'done' || status.state === 'skipped' || (status.period !== null && status.period.done >= status.period.times);
+    out.push({ task, habit, status, streak: habitStreak(habit, list, today), settled });
+  }
+  return out;
 }

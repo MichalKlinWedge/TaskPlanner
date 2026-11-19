@@ -14,6 +14,9 @@ export type Route =
   | { view: "calendar" }
   | { view: "timeline" }
   | { view: "focus"; id?: string }
+  | { view: "review"; id: "daily" | "weekly" }
+  | { view: "habits" }
+  | { view: "habit"; id: string }
   | { view: "list"; id: string }
   | { view: "tag"; id: string }
   | { view: "filter"; id: string }
@@ -32,6 +35,7 @@ export function parseRoute(hash: string): Route {
     case "board":
     case "calendar":
     case "timeline":
+    case "habits":
     case "manage":
     case "trash":
     case "settings":
@@ -42,6 +46,10 @@ export function parseRoute(hash: string): Route {
       return id ? { view, id } : DEFAULT_ROUTE;
     case "focus":
       return id ? { view, id } : { view };
+    case "review":
+      return { view, id: id === "weekly" ? "weekly" : "daily" };
+    case "habit":
+      return id ? { view, id } : { view: "habits" };
     default:
       return DEFAULT_ROUTE;
   }
