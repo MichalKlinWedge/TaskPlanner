@@ -74,7 +74,8 @@
       ],
       "expo-web-browser",
       "expo-background-task",
-      "./plugins/app-shortcuts"
+      "./plugins/app-shortcuts",
+      "./plugins/local-cleartext"
     ],
     "experiments": {
       "typedRoutes": true,
