@@ -30,6 +30,36 @@ export const PROJECT_STATUS: Record<ProjectStatus, string> = {
   done: 'Zakończony',
 };
 
+/** Motyw (`profiles.settings.theme`). */
+export const THEME: Record<'system' | 'light' | 'dark', string> = {
+  system: 'Jak w systemie',
+  light: 'Jasny',
+  dark: 'Ciemny',
+};
+
+/** Ukończone w widoku (`CompletedMode`), sortowanie (`SortBy`) i grupowanie (`GroupBy`). */
+export const COMPLETED_MODE: Record<'hidden' | 'today' | 'all', string> = {
+  hidden: 'Ukryj ukończone',
+  today: 'Ukończone dziś',
+  all: 'Wszystkie ukończone',
+};
+
+export const SORT_BY: Record<'manual' | 'priority' | 'due' | 'created', string> = {
+  manual: 'Ręcznie',
+  priority: 'Priorytet',
+  due: 'Termin',
+  created: 'Data dodania',
+};
+
+export const GROUP_BY: Record<'none' | 'priority' | 'list' | 'date' | 'tag' | 'status', string> = {
+  none: 'Bez grupowania',
+  priority: 'Priorytet',
+  list: 'Lista',
+  date: 'Termin',
+  tag: 'Tag',
+  status: 'Status',
+};
+
 /** Nazwy sekcji widoków (`views.ts`) i grup bez wartości. */
 export const VIEW_SECTION = {
   overdue: 'Zaległe',

@@ -124,6 +124,8 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 - Paleta poleceń i wyszukiwarka FTS5 (M17), skróty klawiszowe, operacje grupowe.
 - PWA: manifest, Service Worker z powłoką, `storage.persist()`, start offline.
 
+**Stan (19.11.2026):** w toku na `main`. Zrobione: powłoka (`apps/web/src/components/app/shell.tsx`) — pasek boczny z Inbox / Dziś / Nadchodzące i licznikami (zaległe na czerwono), przełącznik przestrzeni z trybem „Wszystkie” (wybór per przeglądarka), listy i projekty przestrzeni, widok w `#` adresu (`lib/route.ts`), tryb ciemny z ustawień (`theme`: system / jasny / ciemny, bez mignięcia przy starcie); widoki Inbox, Dziś (sekcje M9, nawyki odhaczane na dziś), Nadchodzące (14 dni z wirtualnymi wystąpieniami, „+ Dodaj” na dzień, „Później”), lista / projekt (drzewo podzadań ze zwijaniem i postępem, sortowanie / grupowanie / ukończone zapisywane w `view_prefs`); ukończenie z „Cofnij” (`core/tasks.ts`: `completeTaskOps` — seria dostaje wpis w `task_completions` i nowy termin, `toViewTask`); proste dodawanie zadania (sam tytuł). Sprawdzone w przeglądarce na 2 000 zadań z `seed:dev`. Zostało: panel zadania, szybkie dodawanie z parserem (chipy), przeciąganie w Nadchodzących, tagi i zapisane filtry, paleta i skróty, operacje grupowe, kosz, PWA.
+
 **Kryterium odbioru:** tydzień codziennego używania webu: ≥ 80 % zadań dodanych szybkim dodawaniem bez poprawiania pól; każda akcja z listy M17 dostępna z klawiatury; po odłączeniu sieci aplikacja startuje i działa, zmiany wysyłają się po powrocie.
 
 ### MVP-3 — Android: wykonanie offline (≈ 5–7 dni)

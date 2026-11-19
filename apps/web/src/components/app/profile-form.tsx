@@ -1,6 +1,6 @@
 "use client";
 
-import { ProfileSettings, WEEKDAY, type IsoWeekday } from "@taskplanner/core";
+import { ProfileSettings, THEME, WEEKDAY, type IsoWeekday } from "@taskplanner/core";
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 
 import { Button, Field, Input, Notice, Select } from "./ui";
@@ -47,6 +47,7 @@ export function ProfileForm({
   const [workEnd, setWorkEnd] = useState(start.workHours.end);
   const [reminderTime, setReminderTime] = useState(start.defaultReminderTime);
   const [duration, setDuration] = useState(String(start.defaultDurationMin));
+  const [theme, setTheme] = useState(start.theme);
   const [error, setError] = useState<string | null>(null);
   const zones = useMemo(() => timeZones(timeZone), [timeZone]);
 
@@ -59,6 +60,7 @@ export function ProfileForm({
       workHours: { days: [...days].sort(), start: workStart, end: workEnd },
       defaultReminderTime: reminderTime,
       defaultDurationMin: Number(duration),
+      theme,
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? "Niepoprawne ustawienia.");
@@ -121,6 +123,15 @@ export function ProfileForm({
           <Input type="number" min={5} max={480} step={5} value={duration} onChange={(e) => setDuration(e.target.value)} />
         </Field>
       </div>
+      <Field label="Motyw">
+        <Select value={theme} onChange={(e) => setTheme(e.target.value as keyof typeof THEME)} className="sm:w-60">
+          {(Object.keys(THEME) as (keyof typeof THEME)[]).map((key) => (
+            <option key={key} value={key}>
+              {THEME[key]}
+            </option>
+          ))}
+        </Select>
+      </Field>
       {extra}
       {error ? <Notice tone="error">{error}</Notice> : null}
       <div>

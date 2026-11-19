@@ -15,4 +15,5 @@ export * from './schemas/model.ts';
 export * from './schemas/primitives.ts';
 export * from './search.ts';
 export * from './sort-key.ts';
+export * from './tasks.ts';
 export * from './views.ts';

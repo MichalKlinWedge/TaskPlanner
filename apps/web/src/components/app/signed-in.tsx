@@ -4,10 +4,13 @@ import { DEFAULT_WORKSPACES, isOnboarded, onboardingOps, type DefaultWorkspace }
 import { SYNCED_TABLES, type TabStore } from "@taskplanner/sync";
 import { useEffect, useMemo, useState } from "react";
 
+import { parseSettings } from "@/lib/app-data";
 import { closeStore, storeFor, useLocalQuery, useStoreStatus } from "@/lib/local-store";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { useTheme } from "@/lib/theme";
 
 import { ProfileForm, type ProfileValues } from "./profile-form";
+import { Shell } from "./shell";
 import { Button, Card, Notice, Splash } from "./ui";
 import { WorkspacesScreen } from "./workspaces-screen";
 
@@ -41,7 +44,9 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
     return () => clearTimeout(timer);
   }, []);
   const syncTried = status.lastSyncAt !== null || status.error !== null || waited;
-  const [tab, setTab] = useState<"workspaces" | "settings">("workspaces");
+
+  const theme = parseSettings(parseJson(profile?.settings ?? null)).theme;
+  useTheme(theme);
 
   const header = <AppHeader store={store} email={email} />;
   if (ms === null || (!profile && !syncTried)) {
@@ -63,44 +68,31 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
     );
   }
 
+  // Na wysokość okna: pasek boczny i treść przewijają się osobno, nagłówek zostaje na miejscu.
   return (
-    <>
+    <div className="flex h-dvh flex-col">
       {header}
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4 sm:p-6">
-        <nav className="flex gap-1 border-b border-[var(--line)]" aria-label="Sekcje">
-          {(
-            [
-              ["workspaces", "Przestrzenie i listy"],
-              ["settings", "Ustawienia"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              aria-current={tab === key ? "page" : undefined}
-              onClick={() => setTab(key)}
-              className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === key ? "border-[var(--accent)] font-medium" : "border-transparent opacity-70 hover:opacity-100"}`}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
-        {tab === "workspaces" ? (
-          <WorkspacesScreen store={store} />
-        ) : (
-          <Card>
-            <ProfileForm
-              key={profile?.settings ?? ""}
-              initial={{ displayName: profile?.display_name ?? null, settings }}
-              submitLabel="Zapisz ustawienia"
-              onSubmit={async ({ displayName, settings: next }: ProfileValues) => {
-                await store.mutate("profiles", userId, { display_name: displayName || null, settings: { ...next, onboarded: true } });
-              }}
-            />
-          </Card>
-        )}
-      </main>
-    </>
+      <Shell
+        store={store}
+        settings={parseSettings(settings)}
+        manage={<WorkspacesScreen store={store} />}
+        settingsView={
+          <>
+            <h1 className="mb-4 text-xl font-semibold">Ustawienia</h1>
+            <Card>
+              <ProfileForm
+                key={profile?.settings ?? ""}
+                initial={{ displayName: profile?.display_name ?? null, settings }}
+                submitLabel="Zapisz ustawienia"
+                onSubmit={async ({ displayName, settings: next }: ProfileValues) => {
+                  await store.mutate("profiles", userId, { display_name: displayName || null, settings: { ...next, onboarded: true } });
+                }}
+              />
+            </Card>
+          </>
+        }
+      />
+    </div>
   );
 }
 

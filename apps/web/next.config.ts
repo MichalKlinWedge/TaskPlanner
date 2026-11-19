@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Drugi `next dev` w tym samym katalogu (np. równoległa sesja na innym porcie) potrzebuje
+  // własnego katalogu wyników — `.next/dev/lock` blokuje współdzielenie.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   // Pakiety z monorepo są publikowane jako źródła TypeScript — Next musi je skompilować sam.
   transpilePackages: ["@taskplanner/core", "@taskplanner/sync", "@taskplanner/db"],
   turbopack: {
