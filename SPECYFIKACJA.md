@@ -394,7 +394,7 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 | `calendar_events` | `id`, `calendar_id`, `external_id`, `title`, `start_at`, `end_at`, `all_day`, `location`, `etag`, `task_id` | okno −30…+180 dni; zakres osobisty |
 | `inbound_messages` | `id`, `user_id`, `received_at`, `from_addr`, `subject`, `status` (`created`/`rejected`), `task_id`, `reason` | dziennik, bez treści; unikalny Message-ID |
 | `oauth_states` | jednorazowy `state` OAuth (15 min) | PoC-6 |
-| `inbound_addresses`, `push_subscriptions` | token i nadawcy adresu e-mail; subskrypcje Web Push | **tymczasowe z PoC-6** — w MVP-1 przechodzą do `profiles` / `devices` |
+| `inbound_addresses`, `push_subscriptions` | token i nadawcy adresu e-mail; subskrypcje Web Push | **tymczasowe z PoC-6** — `push_subscriptions` przechodzi do `devices` w MVP-4, `inbound_addresses` do `profiles` w v1.x razem z e-mailem (D9; decyzja 2026-11-19) |
 | `push_queue` | kolejka wysyłek Web Push | tymczasowa — w MVP-4 zastąpi ją `core/reminders.ts` z dziennikiem wysyłek per urządzenie |
 | `activity_log` | `id` (identity), `scope_id`, `table_name`, `row_id`, `changes jsonb`, `device_id` (węzeł HLC zmiany), `actor_id`, `at` | historia zmian zadań (M3) z triggera; tylko odczyt, poza strumieniem synchronizacji (MVP-1) |
 
