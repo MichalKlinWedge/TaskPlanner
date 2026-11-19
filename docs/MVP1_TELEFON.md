@@ -89,7 +89,7 @@ Na telefonie (do wykonania; telefon nie był podłączony w czasie implementacji
 
 | Scenariusz | Data | Wynik |
 |---|---|---|
-| M1 link z maila | 19.11.2026 | **OK** (Galaxy S22 Ultra, dev build, `adb reverse` przez Wi-Fi, aplikacja w tle). Link „Sign in” w Mailpit w Chrome → aplikacja; serwer: `/verify` 303 i w tej samej sekundzie `/token` (`grant_type=pkce`) 200, potem `pull_changes` 200; ekran „Witaj w TaskPlanner” ze strefą `Europe/Warsaw`. Drugie kliknięcie tego samego linku: ekran „Nie udało się zalogować” z przyciskiem „Konto i serwer” — po poprawce (`AUTH_ERROR` / `authErrorMessage` w core) komunikat po polsku: „Link albo kod z maila wygasł lub został już użyty — wyślij nowy.”. Zimny start z linku — nie sprawdzony. |
+| M1 link z maila | 19.11.2026 | **OK** (Galaxy S22 Ultra, dev build, `adb reverse` przez Wi-Fi, aplikacja w tle). Link „Sign in” w Mailpit w Chrome → aplikacja; serwer: `/verify` 303 i w tej samej sekundzie `/token` (`grant_type=pkce`) 200, potem `pull_changes` 200; ekran „Witaj w TaskPlanner” ze strefą `Europe/Warsaw`. Drugie kliknięcie tego samego linku: ekran „Nie udało się zalogować” z przyciskiem „Konto i serwer” — po poprawce (`AUTH_ERROR` / `authErrorMessage` w core) komunikat po polsku: „Link albo kod z maila wygasł lub został już użyty — wyślij nowy.”. PKCE: najpierw `code_challenge_method = plain` (Hermes bez `crypto.subtle`; ostrzeżenie „WebCrypto API is not supported” w Metro), po dodaniu `crypto.subtle.digest` w `src/lib/polyfills.ts` — `s256` w `auth.flow_state` i logowanie nowym kontem OK. Zimny start z linku — nie sprawdzony. |
 | M2 kod z maila | | |
 | M3 Google | | |
 | M4 zmiana konta | | |
