@@ -8,15 +8,13 @@ import {
   defaultWorkspaceId,
   keyBetween,
   nextDue,
-  parseQuickAdd,
   uuidv7,
-  type QuickAddResult,
   type Recurrence,
 } from '@taskplanner/core';
 import { decodeRow, type SqlRow } from '@taskplanner/sync';
 
 import { localEngine, mutate } from './sync';
-import { localNow, localToday, startOfDayIso } from './time';
+import { localToday, startOfDayIso } from './time';
 
 export const DEMO_LIST = 'PoC-4';
 /** Zadania z serii przypomnień (pomiar opóźnień) — poza widokiem „Dziś”, żeby go nie zaśmiecać. */
@@ -136,59 +134,4 @@ export async function seedDemoTasks(): Promise<number> {
   ];
   for (const fields of demo) await createTask({ list_id: listId, title: fields.title!, ...fields });
   return demo.length;
-}
-
-// ── Szybkie dodawanie (udostępnianie z innej aplikacji) ───────────────────────────────────────
-
-async function quickAddContext() {
-  const engine = await localEngine();
-  const workspaces = await engine.db.all<{ id: string; name: string }>('select id, name from workspaces where deleted_at is null');
-  const lists = await engine.db.all<{ id: string; name: string; kind: string; scope_id: string }>('select id, name, kind, scope_id from lists where deleted_at is null');
-  const tags = await engine.db.all<{ name: string }>('select name from tags where deleted_at is null');
-  const wsName = (scope: string) => workspaces.find((w) => w.id === scope)?.name ?? 'Osobiste';
-  return {
-    ctx: {
-      now: localNow(),
-      workspaces: workspaces.length ? workspaces.map((w) => w.name) : ['Osobiste'],
-      lists: lists.map((l) => ({ workspace: wsName(l.scope_id), name: l.name, kind: l.kind })),
-      tags: tags.map((t) => t.name),
-    },
-    lists,
-    userId: engine.userId,
-    wsName,
-  };
-}
-
-export async function previewQuickAdd(text: string): Promise<QuickAddResult> {
-  const { ctx } = await quickAddContext();
-  return parseQuickAdd(text, ctx);
-}
-
-/** Zadanie z udostępnionego tekstu: pola z parsera, link w opisie, `source` = link. */
-export async function createFromQuickAdd(text: string, link: { url: string | null; title?: string | null }): Promise<{ id: string; listName: string; result: QuickAddResult }> {
-  const { ctx, lists, userId, wsName } = await quickAddContext();
-  const result = parseQuickAdd(text, ctx);
-  const { fields } = result;
-  const target = fields.target
-    ? lists.find((l) =>
-        fields.target!.kind === 'list'
-          ? l.name === fields.target!.name && wsName(l.scope_id) === fields.target!.workspace
-          : l.kind === 'inbox' && wsName(l.scope_id) === fields.target!.name,
-      )
-    : undefined;
-  const inbox = lists.find((l) => l.kind === 'inbox' && l.scope_id === userId);
-  const listId = target?.id ?? inbox?.id ?? (await demoListId());
-  const id = await createTask({
-    list_id: listId,
-    title: result.title || link.title || link.url || 'Udostępniony link',
-    due_date: fields.dueDate ?? null,
-    due_time: fields.dueTime ?? null,
-    duration_min: fields.durationMin ?? null,
-    recurrence: (fields.recurrence as Recurrence | undefined) ?? null,
-    description_md: link.url ? `[${link.title || link.url}](${link.url})` : null,
-    source: link.url ? { kind: 'link', url: link.url, title: link.title ?? null } : { kind: 'quick_add' },
-    ...(fields.priority && { priority: fields.priority }),
-  } as Parameters<typeof createTask>[0]);
-  const listName = lists.find((l) => l.id === listId)?.name ?? DEMO_LIST;
-  return { id, listName, result };
 }

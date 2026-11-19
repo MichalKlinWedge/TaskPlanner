@@ -254,6 +254,15 @@ export function matchesFilter(query: FilterQuery, today: LocalDate): (task: View
 
 export const applyFilter = (tasks: readonly ViewTask[], query: FilterQuery, today: LocalDate): ViewTask[] => tasks.filter(matchesFilter(query, today));
 
+/**
+ * Widok tagu / zapisanego filtra (M4): zadania (bez nawyków) bieżącej przestrzeni pasujące do filtra;
+ * bez warunku statusu — tylko otwarte. Te same wyniki liczą liczniki paska bocznego.
+ */
+export function selectFiltered(tasks: readonly ViewTask[], query: FilterQuery, ctx: ViewContext): ViewTask[] {
+  const scoped = tasks.filter((t) => t.kind === 'task' && inWorkspace(ctx)(t));
+  return applyFilter(query.statuses ? scoped : scoped.filter(isOpen), query, ctx.today);
+}
+
 /** Gotowe zakresy terminu w chipie „Termin” (daty względne — filtr zapisany działa każdego dnia). */
 export const DUE_PRESETS = {
   overdue: { label: 'Zaległe', due: { kind: 'range', to: { offsetDays: -1 } } },

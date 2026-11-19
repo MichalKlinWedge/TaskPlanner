@@ -8,9 +8,7 @@ import { serverConfig, sessionUser } from '@/lib/config';
 import { onSessionChange } from '@/lib/sync';
 
 const ITEMS: { href: Href; title: string; hint: string }[] = [
-  { href: '/workspaces', title: 'Przestrzenie i listy', hint: 'MVP-1: przestrzenie, listy i projekty, kolejność, archiwizacja, szybkie zadanie do Inboxu' },
-  { href: '/settings', title: 'Konto i serwer', hint: 'Logowanie linkiem z maila albo Google, adres Supabase, wylogowanie' },
-  { href: '/today', title: 'Dziś i widżet', hint: 'Lista „Dziś” z lokalnej bazy, dane przykładowe, dodanie widżetu' },
+  { href: '/widget', title: 'Dziś i widżet', hint: 'Lista „Dziś” z lokalnej bazy, dane przykładowe, dodanie widżetu' },
   { href: '/reminders', title: 'Przypomnienia', hint: '50 przypomnień / 3 dni, dokładne alarmy, akcje, pomiar opóźnień' },
   { href: '/share', title: 'Szybkie dodawanie', hint: 'Cel udostępniania z Chrome (Udostępnij → TaskPlanner)' },
   { href: '/calendar', title: 'Kalendarz', hint: 'expo-calendar + @howljs/calendar-kit, przeciąganie bloku' },
@@ -18,7 +16,8 @@ const ITEMS: { href: Href; title: string; hint: string }[] = [
   { href: '/selftest', title: 'Samosprawdzenie', hint: 'PoC-1/2/3 w Hermes: sync, cykliczność, nawyki, parser' },
 ];
 
-export default function Home() {
+/** Ekrany PoC-4 i samosprawdzenia (poza właściwą aplikacją). */
+export default function DevTools() {
   const p = usePalette();
   const [user, setUser] = useState(sessionUser());
   useEffect(() => onSessionChange(() => setUser(sessionUser())), []);

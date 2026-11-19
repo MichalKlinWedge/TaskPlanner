@@ -6,6 +6,7 @@ import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 import { registerWidgetTaskHandler } from 'react-native-android-widget';
 
+import { defineBackgroundSync } from '../lib/background-sync';
 import { handleResponse, NOTIFICATION_TASK } from '../lib/reminders';
 import { widgetTaskHandler } from '../widget/task-handler';
 
@@ -16,3 +17,4 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(NOTIFICATION_TASK,
 });
 
 registerWidgetTaskHandler(widgetTaskHandler);
+defineBackgroundSync();

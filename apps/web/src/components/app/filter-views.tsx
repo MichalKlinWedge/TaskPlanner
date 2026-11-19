@@ -4,7 +4,7 @@
  * Widok tagu i zapisanego filtra (M4) oraz „Zapisz jako filtr” z chipów dowolnego widoku. Wynik
  * liczy `applyFilter` z `core`; bez warunku statusu widać tylko otwarte zadania.
  */
-import { applyFilter, COLORS, filterChips, isEmptyFilter, isOpen, keyBetween, plural, sortTasks, uuidv7, type FilterQuery, type ViewContext, type ViewTask } from "@taskplanner/core";
+import { COLORS, filterChips, isEmptyFilter, keyBetween, plural, selectFiltered, sortTasks, uuidv7, type FilterQuery, type ViewContext, type ViewTask } from "@taskplanner/core";
 import { useState, type FormEvent } from "react";
 
 import type { AppData, SavedFilter, Tag } from "@/lib/app-data";
@@ -16,10 +16,7 @@ import { TaskItem, useTaskActions } from "./task-item";
 import { Button, Input } from "./ui";
 
 /** Zadania pasujące do filtra; bez warunku statusu — tylko otwarte. */
-export function filtered(tasks: readonly ViewTask[], query: FilterQuery, ctx: ViewContext): ViewTask[] {
-  const scoped = tasks.filter((t) => t.kind === "task" && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId));
-  return applyFilter(query.statuses ? scoped : scoped.filter(isOpen), query, ctx.today);
-}
+export const filtered = (tasks: readonly ViewTask[], query: FilterQuery, ctx: ViewContext): ViewTask[] => selectFiltered(tasks, query, ctx);
 
 /** Liczniki paska bocznego: otwarte zadania tagu / pasujące do filtra. */
 export function filterCount(tasks: readonly ViewTask[], query: FilterQuery, ctx: ViewContext): number {

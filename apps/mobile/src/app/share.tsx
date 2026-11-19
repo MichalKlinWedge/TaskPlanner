@@ -1,23 +1,15 @@
-import type { QuickAddResult } from '@taskplanner/core';
+/**
+ * Udostępnianie z innej aplikacji (Chrome: ⋮ → Udostępnij → TaskPlanner): pole szybkiego dodawania
+ * z tekstem lub tytułem strony, link trafia do opisu (`[tytuł](url)`) i do `source`. Bez tytułu —
+ * tytuł strony albo sam adres.
+ */
 import { router } from 'expo-router';
 import { useShareIntentContext } from 'expo-share-intent';
-import { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Button, Field, P, Row, Screen, Section, usePalette } from '@/components/ui';
-import { createFromQuickAdd, previewQuickAdd } from '@/lib/tasks';
-import { refreshTodayWidget } from '@/widget/refresh';
-
-const TOKEN_LABEL: Record<string, string> = {
-  date: 'data',
-  time: 'godzina',
-  duration: 'czas',
-  priority: 'priorytet',
-  target: 'lista',
-  tag: 'tag',
-  recurrence: 'cykl',
-  reminder: 'przypomnienie',
-};
+import { QuickAddField } from '@/components/quick-add-field';
+import { Button, usePalette } from '@/components/ui';
 
 interface Shared {
   url: string | null;
@@ -25,81 +17,53 @@ interface Shared {
   text: string;
 }
 
-/** Formularz z udostępnionej treści; nowy udostępniony link = nowy formularz (`key`). */
-function QuickAddForm({ shared, onSaved }: { shared: Shared | null; onSaved: (message: string) => void }) {
-  const p = usePalette();
-  const [text, setText] = useState(() => {
-    if (!shared) return '';
-    return shared.url ? (shared.title ?? shared.text.replace(shared.url, '').trim()) || '' : shared.text;
-  });
-  const [link, setLink] = useState({ url: shared?.url ?? null, title: shared?.title ?? null });
-  const [preview, setPreview] = useState<QuickAddResult | null>(null);
-  const [receivedAt] = useState(() => (shared ? Date.now() : null));
-
-  useEffect(() => {
-    let live = true;
-    void previewQuickAdd(text).then((r) => live && setPreview(r));
-    return () => {
-      live = false;
-    };
-  }, [text]);
-
-  const save = async () => {
-    const { listName, result } = await createFromQuickAdd(text, link);
-    const message = `Dodano „${result.title || link.title || link.url}” do listy ${listName}${receivedAt ? ` (${Date.now() - receivedAt} ms od odebrania)` : ''}.`;
-    setText('');
-    setLink({ url: null, title: null });
-    onSaved(message);
-    await refreshTodayWidget().catch(() => undefined);
-  };
-
-  return (
-    <>
-      {link.url ? (
-        <Section title="Udostępniony link">
-          <P mono>{link.url}</P>
-          {link.title ? <P muted>{link.title}</P> : null}
-        </Section>
-      ) : (
-        <Section>
-          <P muted>W Chrome: menu ⋮ → Udostępnij → TaskPlanner. Albo wpisz zadanie ręcznie.</P>
-        </Section>
-      )}
-      <Field label="Zadanie (gramatyka szybkiego dodawania)" value={text} onChangeText={setText} placeholder="np. Przeczytać artykuł jutro o 20 !2" autoFocus multiline />
-      {preview ? (
-        <Section title={`Tytuł: ${preview.title || '—'}`}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {preview.tokens.map((t) => (
-              <Text key={`${t.start}-${t.kind}`} style={{ borderWidth: 1, borderColor: p.accent, color: p.accent, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, fontSize: 12 }}>
-                {TOKEN_LABEL[t.kind] ?? t.kind}: {t.text}
-              </Text>
-            ))}
-          </View>
-          <P mono>{JSON.stringify(preview.fields)}</P>
-        </Section>
-      ) : null}
-      <Row>
-        <Button title="Dodaj zadanie" disabled={!text.trim() && !link.url} onPress={() => void save()} />
-        <Button kind="secondary" title="Dziś" onPress={() => router.push('/today')} />
-      </Row>
-    </>
-  );
-}
+const linkTitle = (shared: Shared) => shared.title || shared.url || 'Udostępniony link';
 
 export default function ShareScreen() {
+  const p = usePalette();
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
-  // Komunikat poza formularzem: reset udostępnienia zmienia `key` i montuje formularz od nowa.
+  // Komunikat poza polem: reset udostępnienia zmienia `key` i montuje pole od nowa.
   const [saved, setSaved] = useState<string | null>(null);
   // Chrome wysyła sam URL (czasem tytuł strony w `meta.title`).
   const shared: Shared | null = hasShareIntent ? { url: shareIntent.webUrl ?? null, title: shareIntent.meta?.title ?? null, text: shareIntent.text ?? '' } : null;
+  const initialText = !shared ? '' : shared.url ? shared.title ?? shared.text.replace(shared.url, '').trim() : shared.text;
+  const extra = shared?.url
+    ? { description_md: `[${linkTitle(shared)}](${shared.url})`, source: { kind: 'link', url: shared.url, title: shared.title }, fallbackTitle: linkTitle(shared) }
+    : undefined;
+
   return (
-    <Screen>
-      <QuickAddForm key={shared ? `${shared.url}|${shared.text}` : 'pusty'} shared={shared} onSaved={(message) => {
-          setSaved(message);
+    <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
+      {shared?.url ? (
+        <View style={[styles.link, { borderColor: p.border, backgroundColor: p.card }]}>
+          <Text style={{ color: p.fg, fontWeight: '600' }} numberOfLines={2}>
+            {shared.title ?? 'Udostępniony link'}
+          </Text>
+          <Text style={{ color: p.muted, fontSize: 12 }} numberOfLines={2}>
+            {shared.url}
+          </Text>
+        </View>
+      ) : (
+        <Text style={{ color: p.muted }}>W Chrome: menu ⋮ → Udostępnij → TaskPlanner. Albo wpisz zadanie tutaj.</Text>
+      )}
+      <QuickAddField
+        key={shared ? `${shared.url}|${shared.text}` : 'pusty'}
+        autoFocus
+        initialText={initialText}
+        extra={extra}
+        placeholder="np. Przeczytać artykuł jutro o 20 !2"
+        submitLabel="Dodaj"
+        onAdded={() => {
+          setSaved(shared?.url ? `Dodano „${initialText || linkTitle(shared)}”.` : 'Dodano.');
           resetShareIntent();
         }}
       />
-      {saved ? <P tone="ok">{saved}</P> : null}
-    </Screen>
+      {saved ? <Text style={{ color: p.ok }}>{saved}</Text> : null}
+      <Button kind="secondary" title="Dziś" onPress={() => router.replace('/')} />
+    </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  wrap: { padding: 16, gap: 12 },
+  link: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 4 },
+});

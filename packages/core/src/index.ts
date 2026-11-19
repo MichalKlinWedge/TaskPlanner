@@ -8,6 +8,7 @@ export * from './hlc.ts';
 export * from './ids.ts';
 export * from './kanban.ts';
 export * from './labels.ts';
+export * from './markdown.ts';
 export * from './onboarding.ts';
 export * from './quick-add.ts';
 export * from './recurrence.ts';

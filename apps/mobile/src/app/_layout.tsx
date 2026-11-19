@@ -2,19 +2,37 @@ import * as Notifications from 'expo-notifications';
 import { router, Stack, useSegments } from 'expo-router';
 import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
 import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { TaskActionsProvider } from '@/components/actions';
+import { PickerHost } from '@/components/pickers';
+import { usePalette } from '@/components/ui';
+
+import { onAppData, type AppData } from '@/lib/app-data';
+import { registerBackgroundSync } from '@/lib/background-sync';
 import { sessionUser } from '@/lib/config';
 import { loadProfile, onboardingGateHeld, onOnboardingGateRelease } from '@/lib/profile';
 import { handleResponse, setupNotifications } from '@/lib/reminders';
+import { scheduleReminders } from '@/lib/scheduler';
 import { localEngine, onSessionChange, startOnlineSync } from '@/lib/sync';
 import { refreshTodayWidget } from '@/widget/refresh';
+
+/** Głęboki link (skrót aplikacji, powiadomienie) do ekranu nad zakładkami — pod spodem zawsze zakładki. */
+export const unstable_settings = { anchor: '(tabs)' };
 
 /** Udostępnienie z innej aplikacji (Chrome → „Udostępnij”) → ekran szybkiego dodawania. */
 function ShareRedirect() {
   const { hasShareIntent } = useShareIntentContext();
+  const segments = useSegments();
+  // Tylko odczyt w efekcie: wyjście z ekranu bez dodania nie może go otworzyć ponownie.
+  const onShare = useRef(false);
   useEffect(() => {
-    if (hasShareIntent) router.push('/share');
+    onShare.current = segments[0] === 'share';
+  }, [segments]);
+  useEffect(() => {
+    // Ekran już otwarty pokazuje nowe udostępnienie sam — kolejny na stosie wracałby „Wstecz” do starego.
+    if (hasShareIntent && !onShare.current) router.push('/share');
   }, [hasShareIntent]);
   return null;
 }
@@ -71,9 +89,51 @@ function OnboardingGate() {
   return null;
 }
 
+/**
+ * Po zmianie danych (zapis na ekranie, synchronizacja) i po powrocie aplikacji na wierzch:
+ * przeplanowanie przypomnień M8 i odświeżenie widżetu — seria zmian = jedno przeliczenie.
+ */
+/**
+ * Przeplanowanie przypomnień i widżet po zmianie danych (debounce 1,5 s). Timery JS i render Reacta
+ * stoją, gdy aplikacja jest w tle, więc nasłuch jest poza Reactem, zmiana wczytana w tle idzie od
+ * razu, a przy wyjściu z aplikacji — zaległa. Inaczej przypomnienie zadania dodanego tuż przed
+ * wyjściem czekałoby do następnego otwarcia.
+ */
+function BackgroundWork() {
+  useEffect(() => {
+    let pending: { data: AppData; timer: ReturnType<typeof setTimeout> } | null = null;
+    const run = (data: AppData) => {
+      if (pending) clearTimeout(pending.timer);
+      pending = null;
+      void scheduleReminders(data);
+      void refreshTodayWidget(data).catch(() => undefined);
+    };
+    const offData = onAppData((data) => {
+      if (!data.loaded) return;
+      if (AppState.currentState !== 'active') return run(data);
+      if (pending) clearTimeout(pending.timer);
+      pending = { data, timer: setTimeout(() => run(data), 1500) };
+    });
+    const sub = AppState.addEventListener('change', (next) => {
+      // Uprawnienia mogły się zmienić w ustawieniach systemu.
+      if (next === 'active') void scheduleReminders();
+      else if (pending) run(pending.data);
+    });
+    return () => {
+      offData();
+      sub.remove();
+      if (pending) clearTimeout(pending.timer);
+    };
+  }, []);
+  return null;
+}
+
 function useAppStart() {
   useEffect(() => {
-    setupNotifications().catch((error) => console.warn('powiadomienia', error));
+    setupNotifications()
+      .then(() => scheduleReminders())
+      .catch((error) => console.warn('powiadomienia', error));
+    registerBackgroundSync().catch((error) => console.warn('synchronizacja w tle', error));
     startOnlineSync().catch((error) => console.warn('synchronizacja', error));
     refreshTodayWidget().catch(() => undefined);
     // Akcja z powiadomienia, gdy aplikacja jest na wierzchu (w tle obsługuje ją zadanie z index.ts).
@@ -86,25 +146,38 @@ function useAppStart() {
 
 export default function RootLayout() {
   useAppStart();
+  const p = usePalette();
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ShareIntentProvider>
-        <ShareRedirect />
-        <OnboardingGate />
-        <Stack>
-          <Stack.Screen name="index" options={{ title: 'TaskPlanner' }} />
-          <Stack.Screen name="workspaces" options={{ title: 'Przestrzenie i listy' }} />
-          <Stack.Screen name="workspace/[id]" options={{ title: 'Przestrzeń' }} />
-          <Stack.Screen name="onboarding" options={{ title: 'Witaj w TaskPlanner', headerBackVisible: false, gestureEnabled: false }} />
-          <Stack.Screen name="auth-callback" options={{ title: 'Logowanie' }} />
-          <Stack.Screen name="today" options={{ title: 'Dziś i widżet' }} />
-          <Stack.Screen name="reminders" options={{ title: 'Przypomnienia' }} />
-          <Stack.Screen name="share" options={{ title: 'Szybkie dodawanie' }} />
-          <Stack.Screen name="calendar" options={{ title: 'Kalendarz (calendar-kit)' }} />
-          <Stack.Screen name="timeline" options={{ title: 'Oś dnia (własna)' }} />
-          <Stack.Screen name="selftest" options={{ title: 'Samosprawdzenie (Hermes)' }} />
-          <Stack.Screen name="settings" options={{ title: 'Konto i serwer' }} />
-        </Stack>
+        <TaskActionsProvider>
+          <ShareRedirect />
+          <OnboardingGate />
+          <BackgroundWork />
+          <Stack screenOptions={{ headerStyle: { backgroundColor: p.card }, headerTintColor: p.fg, contentStyle: { backgroundColor: p.bg } }}>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'TaskPlanner' }} />
+            <Stack.Screen name="task/[id]" options={{ title: 'Zadanie' }} />
+            <Stack.Screen name="quick-add" options={{ title: 'Szybkie dodawanie', presentation: 'formSheet', sheetAllowedDetents: 'fitToContents', headerShown: false }} />
+            <Stack.Screen name="list/[id]" options={{ title: 'Lista' }} />
+            <Stack.Screen name="tag/[id]" options={{ title: 'Tag' }} />
+            <Stack.Screen name="filter/[id]" options={{ title: 'Filtr' }} />
+            <Stack.Screen name="search" options={{ title: 'Szukaj' }} />
+            <Stack.Screen name="trash" options={{ title: 'Kosz' }} />
+            <Stack.Screen name="workspaces" options={{ title: 'Przestrzenie i listy' }} />
+            <Stack.Screen name="workspace/[id]" options={{ title: 'Przestrzeń' }} />
+            <Stack.Screen name="onboarding" options={{ title: 'Witaj w TaskPlanner', headerBackVisible: false, gestureEnabled: false }} />
+            <Stack.Screen name="auth-callback" options={{ title: 'Logowanie' }} />
+            <Stack.Screen name="settings" options={{ title: 'Konto i synchronizacja' }} />
+            <Stack.Screen name="dev" options={{ title: 'Narzędzia PoC' }} />
+            <Stack.Screen name="widget" options={{ title: 'Dziś i widżet (PoC-4)' }} />
+            <Stack.Screen name="reminders" options={{ title: 'Przypomnienia (PoC-4)' }} />
+            <Stack.Screen name="share" options={{ title: 'Udostępnione' }} />
+            <Stack.Screen name="calendar" options={{ title: 'Kalendarz (calendar-kit)' }} />
+            <Stack.Screen name="timeline" options={{ title: 'Oś dnia (własna)' }} />
+            <Stack.Screen name="selftest" options={{ title: 'Samosprawdzenie (Hermes)' }} />
+          </Stack>
+          <PickerHost />
+        </TaskActionsProvider>
       </ShareIntentProvider>
     </GestureHandlerRootView>
   );

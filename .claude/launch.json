@@ -21,6 +21,12 @@
       "port": 3011
     },
     {
+      "name": "mobile-metro-8082",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start", "--workspace", "apps/mobile", "--", "--port", "8082"],
+      "port": 8082
+    },
+    {
       "name": "web-local",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "web:local"],

@@ -1,10 +1,12 @@
 /**
- * PoC-4: przypomnienia lokalne (`expo-notifications`) — seria testowa, akcje „Ukończ” / „Odłóż”
- * przy zamkniętej aplikacji i pomiar opóźnień.
+ * Powiadomienia: konfiguracja kanału i akcji, uprawnienia, obsługa akcji „Ukończ” / „Odłóż 10 min” /
+ * „Jutro” (reguły core przez `headless.ts`) oraz seria testowa PoC-4 z pomiarem opóźnień.
+ * Planowanie przypomnień M8 — `scheduler.ts`.
  *
  * Akcje: przyciski z `opensAppToForeground: false`. Gdy aplikacja nie jest na wierzchu, Android
  * uruchamia zadanie z `registerTaskAsync` (bundel bez ekranu); na wierzchu — słuchacz odpowiedzi.
- * W tle (proces żyje) wywołują się oba, więc obsługa jest idempotentna (klucz powiadomienie+akcja).
+ * W tle (proces żyje) wywołują się oba, więc obsługa jest idempotentna (klucz powiadomienie+akcja,
+ * a operacje same sprawdzają, czy jest jeszcze co zrobić).
  *
  * Pomiar: `date` powiadomienia z zasobnika = `postTime` z Androida (chwila pokazania), w treści
  * zapisany planowany czas. Wyniki trzymane w kv-store — przeżywają zamknięcie aplikacji.
@@ -16,24 +18,16 @@ import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 
 import { readJson, writeJson } from './config';
-import { completeTask, createTask, getTask, postponeToTomorrow, reminderListId } from './tasks';
+import { completeTaskById, postponeTaskById, pushNow } from './headless';
+import { ACTION, CATEGORY_ID, CHANNEL_ID, scheduleReminders, snoozeNotification, type ReminderData } from './scheduler';
+import { createTask, reminderListId } from './tasks';
 import { toLocalDate, toLocalTime } from './time';
 import { refreshTodayWidget } from '../widget/refresh';
 
 export const NOTIFICATION_TASK = 'taskplanner-notification-response';
-export const CHANNEL_ID = 'reminders';
-/** Bez „:” i „-” (wymóg `setNotificationCategoryAsync`). */
-export const CATEGORY_ID = 'task_reminder';
-export const ACTION = { complete: 'complete', snooze: 'snooze10', tomorrow: 'tomorrow' } as const;
+export { ACTION, CATEGORY_ID, CHANNEL_ID, type ReminderData };
 
 export type Delivery = 'bestEffort' | 'alarmClock';
-
-export interface ReminderData extends Record<string, unknown> {
-  taskId: string;
-  /** Planowany czas (ms). */
-  at: number;
-  batch?: string;
-}
 
 export interface Batch {
   id: string;
@@ -61,6 +55,8 @@ export interface ActionLog {
   notificationId: string;
   appState: 'background-task' | 'foreground';
   ok: boolean;
+  /** Od akcji do zapisu lokalnego (ms). */
+  ms?: number;
   error?: string;
 }
 
@@ -261,22 +257,23 @@ export async function handleResponse(response: Notifications.NotificationRespons
   try {
     if (data) recordDelivery(notificationId, data, r.notification?.date ?? Date.now(), 'action');
     if (!data?.taskId) throw new Error('brak taskId w powiadomieniu');
-    if (action === ACTION.complete) await completeTask(data.taskId);
-    else if (action === ACTION.tomorrow) await postponeToTomorrow(data.taskId);
-    else if (action === ACTION.snooze) {
-      const task = await getTask(data.taskId);
-      const at = Date.now() + 10 * 60_000;
-      await Notifications.scheduleNotificationAsync({
-        identifier: `${notificationId}_s`,
-        content: { title: `Odłożone: ${task?.title ?? 'zadanie'}`, body: `Ponownie o ${toLocalTime(new Date(at))}`, data: { taskId: data.taskId, at }, categoryIdentifier: CATEGORY_ID },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at, channelId: CHANNEL_ID },
-      });
-    }
+    // Zamknięcie od razu: zapis w tle (wczytanie danych, kolejka bazy) potrafi trwać kilkanaście
+    // sekund, a powiadomienie wiszące po „Ukończ” wygląda jak nieudana akcja. Powtórzenie
+    // blokuje `handled` / `inFlight`, więc nie ma po co go zostawiać.
     if (notificationId)
       await Notifications.dismissNotificationAsync(notificationId).catch((e: unknown) => {
         entry.error = `dismiss: ${e instanceof Error ? e.message : String(e)}`;
       });
+    if (action === ACTION.complete) await completeTaskById(data.taskId, data.occurrenceDate);
+    else if (action === ACTION.tomorrow) await postponeTaskById(data.taskId, data.occurrenceDate);
+    else if (action === ACTION.snooze) await snoozeNotification(notificationId, data as ReminderData);
+    entry.ms = Date.now() - entry.at;
     writeJson(K.handled, [...handled.slice(-499), key]);
+    // Najpierw wysyłka: przeplanowanie i widżet wczytują dane od nowa, a w tle to kilka sekund.
+    if (action !== ACTION.snooze) {
+      await pushNow();
+      await scheduleReminders().catch(() => undefined);
+    }
     await refreshTodayWidget().catch(() => undefined);
   } catch (error) {
     entry.ok = false;

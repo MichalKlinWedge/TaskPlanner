@@ -9,14 +9,14 @@
  * po błędzie (kryterium MVP-1: zmiana z trybu samolotowego na serwerze < 5 s po włączeniu sieci).
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { supabaseRemote, SYNCED_TABLES, SyncEngine, type LocalDb, type Remote, type SyncedTable } from '@taskplanner/sync';
+import { supabaseRemote, SYNCED_TABLES, SyncEngine, type LocalDb, type PullProgress, type Remote, type SyncedTable } from '@taskplanner/sync';
 import { openExpoDb } from '@taskplanner/sync/expo';
 import * as Network from 'expo-network';
 import { openDatabaseAsync } from 'expo-sqlite';
 import Storage from 'expo-sqlite/kv-store';
 import { AppState } from 'react-native';
 
-import { serverConfig, sessionUser } from './config';
+import { readJson, serverConfig, sessionUser, writeJson } from './config';
 
 export const DB_NAME = 'taskplanner.db';
 
@@ -56,15 +56,55 @@ export interface SyncStatus {
   pull: { page: number; done: boolean } | null;
   /** Jeszcze żadna synchronizacja tego konta się nie udała (pierwsza pełna migawka). */
   firstSync: boolean;
+  /** Pomiar ostatniego pobrania z wierszami (zapamiętany): ile trwało zapytanie, a ile zapis do SQLite. */
+  pullPerf: PullPerf | null;
+}
+
+/** Suma stron jednego pobrania: `fetchMs` = `pull_changes` (sieć + serwer + JSON), `writeMs` = transakcja w expo-sqlite. */
+export interface PullPerf {
+  at: number;
+  pages: number;
+  rows: number;
+  fetchMs: number;
+  writeMs: number;
+  /** Czekanie na kolejkę bazy przed zapisem strony. */
+  waitMs: number;
+  /** Część zapisu: scalenie w JS. */
+  mergeMs: number;
+  totalMs: number;
+  /** Najwolniejsza strona (ms zapytania / zapisu). */
+  slowest: { fetchMs: number; writeMs: number };
 }
 
 type Listener = () => void;
 const statusListeners = new Set<Listener>();
 const lastAtKey = (userId: string) => `sync.lastAt.${userId}`;
+const PULL_PERF_KEY = 'sync.pullPerf';
 
 function initialStatus(): SyncStatus {
   const lastAt = Number(Storage.getItemSync(lastAtKey(sessionUser().id))) || null;
-  return { syncing: false, lastAt, error: null, pull: null, firstSync: lastAt === null };
+  return { syncing: false, lastAt, error: null, pull: null, firstSync: lastAt === null, pullPerf: readJson<PullPerf | null>(PULL_PERF_KEY, null) };
+}
+
+/** Bieżące pobranie (strony jednej synchronizacji); zapisywane od 100 wierszy. */
+let perf: PullPerf | null = null;
+
+function recordPullPage(page: PullProgress) {
+  if (page.page === 1 || !perf) perf = { at: Date.now(), pages: 0, rows: 0, fetchMs: 0, writeMs: 0, waitMs: 0, mergeMs: 0, totalMs: 0, slowest: { fetchMs: 0, writeMs: 0 } };
+  perf.pages = page.page;
+  perf.rows += page.rows;
+  perf.fetchMs += page.fetchMs;
+  perf.writeMs += page.writeMs;
+  perf.waitMs += page.waitMs;
+  perf.mergeMs += page.mergeMs;
+  perf.totalMs = Date.now() - perf.at;
+  if (page.fetchMs + page.writeMs > perf.slowest.fetchMs + perf.slowest.writeMs) perf.slowest = { fetchMs: page.fetchMs, writeMs: page.writeMs };
+  if (__DEV__ && page.done) console.info('pull', JSON.stringify(perf));
+  // Drobne pobrania (pojedyncza zmiana z webu) nie nadpisują pomiaru dużego.
+  if (page.done && perf.rows >= 100) {
+    writeJson(PULL_PERF_KEY, perf);
+    setStatus({ pullPerf: { ...perf } });
+  }
 }
 
 let status: SyncStatus = initialStatus();
@@ -143,7 +183,10 @@ export function localEngine(): Promise<SyncEngine> {
         autoSync: false,
         onError: (error) => setStatus({ error: errorText(error) }),
         onRejected: (rejected) => setStatus({ error: `odrzucone: ${rejected.map((r) => r.code).join(', ')}` }),
-        onPullProgress: (pull) => setStatus({ pull }),
+        onPullProgress: (pull) => {
+          recordPullPage(pull);
+          setStatus({ pull: { page: pull.page, done: pull.done } });
+        },
         onSyncState: (state) => {
           if (state.syncing) return setStatus({ syncing: true });
           if (state.ok) {

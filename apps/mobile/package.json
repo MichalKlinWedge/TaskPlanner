@@ -9,6 +9,7 @@
     "@taskplanner/db": "*",
     "@taskplanner/sync": "*",
     "expo": "~58.0.22",
+    "expo-background-task": "~58.0.13",
     "expo-calendar": "~58.0.8",
     "expo-constants": "~58.0.14",
     "expo-crypto": "~58.0.8",
@@ -48,7 +49,7 @@
     "start": "expo start",
     "android": "expo run:android",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "node scripts/typed-routes.cjs && tsc --noEmit"
   },
   "private": true
 }

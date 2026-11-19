@@ -72,7 +72,9 @@
           "disableIOS": true
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-background-task",
+      "./plugins/app-shortcuts"
     ],
     "experiments": {
       "typedRoutes": true,

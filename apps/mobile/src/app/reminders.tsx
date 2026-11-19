@@ -130,7 +130,7 @@ export default function Reminders() {
         {actions.length === 0 ? <P muted>Brak — użyj „Ukończ” / „Odłóż 10 min” / „Jutro” na powiadomieniu przy zamkniętej aplikacji.</P> : null}
         {actions.map((a) => (
           <P key={`${a.at}-${a.notificationId}`} mono tone={a.ok ? undefined : 'bad'}>
-            {formatClock(a.at)} {a.action} [{a.appState}] {a.ok ? 'OK' : a.error}
+            {formatClock(a.at)} {a.action} [{a.appState}] {a.ok ? 'OK' : a.error}{a.ms != null ? ` · ${a.ms} ms` : ''}
           </P>
         ))}
       </Section>

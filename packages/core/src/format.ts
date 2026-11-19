@@ -57,6 +57,9 @@ export const dayMonth = (date: string): string => localDate(date, { day: 'numeri
 /** „5 gru”. */
 export const shortDate = (date: string): string => localDate(date, { day: 'numeric', month: 'short' });
 
+/** „listopad 2026”: nagłówek miesiąca w kalendarzu wyboru dnia. */
+export const monthLabel = (date: string): string => localDate(date, { month: 'long', year: 'numeric' });
+
 const DAYS = ['dzień', 'dni', 'dni'] as const;
 const WEEKS = ['tydzień', 'tygodnie', 'tygodni'] as const;
 const MONTHS = ['miesiąc', 'miesiące', 'miesięcy'] as const;
