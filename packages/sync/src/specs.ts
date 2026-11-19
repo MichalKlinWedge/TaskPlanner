@@ -165,7 +165,10 @@ export function localSchema(): string[] {
     statements.push(`create index if not exists ${table}_scope on ${table} (scope_id)`);
   }
   statements.push('create index if not exists tasks_list on tasks (list_id, parent_id)');
-  for (const table of ['reminders', 'attachments', 'time_entries'] as const) {
+  // Etap 13 (10 000 zadań): tagi zadania w zapytaniu widoków (`app-data.ts`) i podzadania bez listy
+  // — bez indeksu każde zadanie przeglądało całe `task_tags` (start weba ~13 s).
+  statements.push('create index if not exists tasks_parent on tasks (parent_id)');
+  for (const table of ['reminders', 'attachments', 'time_entries', 'task_tags', 'task_completions'] as const) {
     statements.push(`create index if not exists ${table}_task on ${table} (task_id)`);
   }
   statements.push('create index if not exists task_dependencies_predecessor on task_dependencies (predecessor_id)');

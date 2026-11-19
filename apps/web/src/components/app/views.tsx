@@ -83,6 +83,28 @@ function Section({ title, count, tone, highlight, children }: { title: string; c
   );
 }
 
+/**
+ * Ile wierszy sekcja rysuje od razu — reszta po „Pokaż więcej”. Etap 13 (10 000 zadań): ~700
+ * zaległych w „Dziś” i ~1 500 dni „Nadchodzących” rysowało się 250–700 ms (§9: < 100 ms).
+ */
+const PAGE = 50;
+
+function Paged<T>({ items, children }: { items: readonly T[]; children: (item: T) => ReactNode }) {
+  const [shown, setShown] = useState(PAGE);
+  return (
+    <>
+      {items.slice(0, shown).map((item) => children(item))}
+      {items.length > shown ? (
+        <li className="py-1.5">
+          <button type="button" className="text-xs text-[var(--accent)] hover:underline" onClick={() => setShown((n) => n + PAGE * 4)}>
+            Pokaż więcej ({items.length - shown})
+          </button>
+        </li>
+      ) : null}
+    </>
+  );
+}
+
 function Empty({ children }: { children: ReactNode }) {
   return <p className="py-6 text-center text-sm text-[var(--muted)]">{children}</p>;
 }
@@ -103,9 +125,7 @@ export function InboxView({ data, ctx, targetInbox, toolbar }: ViewProps) {
       <QuickAdd listId={targetInbox?.id} placeholder={targetInbox && all ? `Dodaj do Inboxu („${workspaceName.get(targetInbox.workspaceId)}”)` : "Dodaj do Inboxu"} />
       {tasks.length ? (
         <ul className="divide-y divide-[var(--line)]">
-          {tasks.map((t) => (
-            <TaskItem key={t.id} task={t} today={ctx.today} listName={all ? workspaceName.get(t.workspaceId) : undefined} />
-          ))}
+          <Paged items={tasks}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={all ? workspaceName.get(t.workspaceId) : undefined} />}</Paged>
         </ul>
       ) : (
         <Empty>Inbox jest pusty.</Empty>
@@ -132,23 +152,17 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
         <QuickAdd listId={targetInbox?.id} dueDate={ctx.today} placeholder="Dodaj zadanie na dziś" />
         {view.overdue.length ? (
           <Section title={VIEW_SECTION.overdue} count={view.overdue.length} tone="danger">
-            {view.overdue.map((t) => (
-              <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />
-            ))}
+            <Paged items={view.overdue}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />}</Paged>
           </Section>
         ) : null}
         {view.today.length ? (
           <Section title={VIEW_SECTION.today} count={view.today.length}>
-            {view.today.map((t) => (
-              <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />
-            ))}
+            <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />}</Paged>
           </Section>
         ) : null}
         {view.ongoing.length ? (
           <Section title={VIEW_SECTION.ongoing} count={view.ongoing.length}>
-            {view.ongoing.map((t) => (
-              <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />
-            ))}
+            <Paged items={view.ongoing}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />}</Paged>
           </Section>
         ) : null}
         {habits.length ? (
@@ -160,9 +174,7 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
         ) : null}
         {view.done.length ? (
           <Section title={VIEW_SECTION.done} count={view.done.length}>
-            {view.done.map((t) => (
-              <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />
-            ))}
+            <Paged items={view.done}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />}</Paged>
           </Section>
         ) : null}
         {empty ? <Empty>Na dziś nic nie ma.</Empty> : null}
@@ -186,13 +198,15 @@ export function UpcomingView({ data, ctx, targetInbox, toolbar }: ViewProps) {
           <DayDrop key={date} date={date}>
             {(over) => (
               <Section title={`${capitalized(relativeDay(date, ctx.today))}${date === ctx.today || date === addDays(ctx.today, 1) ? ` · ${dayLabel(date)}` : ""}`} count={items.length || undefined} highlight={over}>
-                {items.map((item) =>
-                  item.virtual ? (
-                    <TaskItem key={`${item.task.id}:${item.date}`} task={item.task} today={ctx.today} showDate={false} listName={names.get(item.task.listId)} virtualDate={item.date} />
-                  ) : (
-                    <DraggableTaskItem key={`${item.task.id}:${item.date}`} dragKey={`${item.task.id}:${item.date}`} task={item.task} today={ctx.today} showDate={false} listName={names.get(item.task.listId)} />
-                  ),
-                )}
+                <Paged items={items}>
+                  {(item) =>
+                    item.virtual ? (
+                      <TaskItem key={`${item.task.id}:${item.date}`} task={item.task} today={ctx.today} showDate={false} listName={names.get(item.task.listId)} virtualDate={item.date} />
+                    ) : (
+                      <DraggableTaskItem key={`${item.task.id}:${item.date}`} dragKey={`${item.task.id}:${item.date}`} task={item.task} today={ctx.today} showDate={false} listName={names.get(item.task.listId)} />
+                    )
+                  }
+                </Paged>
                 {targetInbox ? <AddInline date={date} listId={targetInbox.id} /> : null}
               </Section>
             )}
@@ -204,9 +218,7 @@ export function UpcomingView({ data, ctx, targetInbox, toolbar }: ViewProps) {
           <h2 className="mt-6 text-sm font-semibold">{VIEW_SECTION.later}</h2>
           {view.later.map(({ weekStart, items }) => (
             <Section key={weekStart} title={`Tydzień od ${relativeDay(weekStart, ctx.today)}`} count={items.length}>
-              {items.map((item) => (
-                <TaskItem key={item.task.id} task={item.task} today={ctx.today} listName={names.get(item.task.listId)} />
-              ))}
+              <Paged items={items}>{(item) => <TaskItem key={item.task.id} task={item.task} today={ctx.today} listName={names.get(item.task.listId)} />}</Paged>
             </Section>
           ))}
         </>

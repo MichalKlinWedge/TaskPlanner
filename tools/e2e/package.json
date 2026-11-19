@@ -1,0 +1,21 @@
+{
+  "name": "@taskplanner/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "browsers": "playwright install chromium",
+    "test:e2e": "playwright test",
+    "perf": "playwright test --config playwright.perf.config.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "@taskplanner/core": "*"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@types/node": "^24",
+    "typescript": "~6.0.3"
+  }
+}

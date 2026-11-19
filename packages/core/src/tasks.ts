@@ -59,8 +59,9 @@ function fieldChangedAt(fieldClock: unknown, field: string): string | null {
  * wersji aplikacji) dają `null` — zadanie zostaje widoczne jako zwykłe.
  */
 export function toViewTask(row: LocalTaskRow, tagIds: readonly string[] = []): ViewTask {
-  const recurrence = Recurrence.safeParse(json(row.recurrence));
-  const habit = HabitSettings.safeParse(json(row.habit));
+  // Puste pola bez Zod: nieudany `safeParse(null)` buduje błąd — przy 10 000 zadań ~30 ms na odświeżenie widoków.
+  const recurrence = row.recurrence === null || row.recurrence === undefined ? null : Recurrence.safeParse(json(row.recurrence));
+  const habit = row.habit === null || row.habit === undefined ? null : HabitSettings.safeParse(json(row.habit));
   return {
     id: row.id,
     workspaceId: row.scope_id ?? '',
@@ -74,8 +75,8 @@ export function toViewTask(row: LocalTaskRow, tagIds: readonly string[] = []): V
     dueDate: row.due_date as LocalDate | null,
     dueTime: row.due_time as LocalTime | null,
     durationMin: row.duration_min === null ? null : Number(row.duration_min),
-    recurrence: recurrence.success && row.recurrence !== null ? recurrence.data : null,
-    habit: habit.success && row.habit !== null ? habit.data : null,
+    recurrence: recurrence?.success ? recurrence.data : null,
+    habit: habit?.success ? habit.data : null,
     completedAt: row.completed_at,
     // Wiersz utworzony offline nie ma jeszcze `created_at` z serwera.
     createdAt: row.created_at ?? new Date(0).toISOString(),
