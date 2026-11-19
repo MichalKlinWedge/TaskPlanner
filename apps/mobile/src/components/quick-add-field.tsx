@@ -1,7 +1,8 @@
 /**
  * Szybkie dodawanie (M13) na telefonie: pole z parserem z `core/quick-add.ts`, rozpoznane fragmenty
  * jako chipy (dotknięcie cofa rozpoznanie), podgląd tytułu i listy docelowej, wklejenie wielu linii
- * = wiele zadań (z pytaniem). Zapis przez `quickAddTaskOps` (core) — te same reguły co na webie.
+ * = wiele zadań (z pytaniem). Zapis przez `quickAddTaskOps` (core) — te same reguły co na webie; adres
+ * w tytule albo udostępniony link → załącznik-link (`withLinkOps`), tytuł strony uzupełni `link-preview`.
  */
 import {
   localDateTimeAt,
@@ -10,6 +11,7 @@ import {
   quickAddChip,
   quickAddTaskOps,
   suppressToken,
+  withLinkOps,
   type LocalDate,
   type QuickAddContext,
   type QuickAddTokenKind,
@@ -43,15 +45,15 @@ export interface QuickAddFieldProps {
   autoFocus?: boolean;
   /** Tekst na start (udostępniony z innej aplikacji). */
   initialText?: string;
-  /** Dodatkowe pola pierwszego zadania (opis i źródło z udostępnionego linku). */
-  extra?: { description_md?: string | null; source?: unknown; fallbackTitle?: string };
+  /** Udostępniony link (Chrome → „Udostępnij”): załącznik i `source` pierwszego zadania. */
+  link?: string | null;
   /** Po dodaniu; `ids` — nowe zadania. */
   onAdded?: (ids: string[]) => void;
   /** Przycisk „Dodaj” obok pola (okno „+”), bez niego Enter na klawiaturze. */
   submitLabel?: string;
 }
 
-export function QuickAddField({ listId, dueDate, parent, placeholder = 'Dodaj zadanie', autoFocus, initialText = '', extra, onAdded, submitLabel }: QuickAddFieldProps) {
+export function QuickAddField({ listId, dueDate, parent, placeholder = 'Dodaj zadanie', autoFocus, initialText = '', link, onAdded, submitLabel }: QuickAddFieldProps) {
   const p = usePalette();
   const data = useAppData();
   const workspaceId = useWorkspace(data);
@@ -92,18 +94,13 @@ export function QuickAddField({ listId, dueDate, parent, placeholder = 'Dodaj za
     const ops: TaskOp[] = [];
     const added: { taskId: string; listId: string }[] = [];
     const keys = new Map<string, string>();
-    for (const [i, line] of lines.entries()) {
-      let parsed = parse(line);
-      if (!parsed.title.trim() && i === 0 && extra?.fallbackTitle) parsed = { ...parsed, title: extra.fallbackTitle };
+    for (const line of lines) {
+      const parsed = parse(line);
       if (!parsed.title.trim()) continue;
       const base = scope(defaultListId);
       const r = quickAddTaskOps(parsed, line, { ...base, lastSortKey: (id) => keys.get(id) ?? base.lastSortKey(id) });
       keys.set(parent?.id ?? r.listId, r.ops[0]!.patch.sort_key as string);
-      if (i === 0 && extra) {
-        if (extra.description_md !== undefined) r.ops[0]!.patch.description_md = extra.description_md;
-        if (extra.source !== undefined) r.ops[0]!.patch.source = extra.source;
-      }
-      ops.push(...r.ops);
+      ops.push(...withLinkOps(r, { title: parsed.title, url: added.length === 0 ? link : null, shared: added.length === 0 && !!link }));
       added.push(r);
     }
     if (!added.length) return notify('Zadanie musi mieć tytuł.');
@@ -121,16 +118,16 @@ export function QuickAddField({ listId, dueDate, parent, placeholder = 'Dodaj za
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean);
-    if (!lines.length && !extra?.fallbackTitle) return;
+    if (!lines.length) return;
     if (lines.length > 1 && !(await confirm('Kilka linii', `Dodać ${plural(lines.length, ['zadanie', 'zadania', 'zadań'])} (każda linia osobno)?`, 'Osobno', 'Jedno'))) {
       return add([lines.join(' ')]);
     }
-    await add(lines.length ? lines : ['']);
+    await add(lines);
   };
 
   let target: string | null = null;
   if (text.trim() && defaultListId && result.title.trim()) target = quickAddTaskOps(result, text, { ...scope(defaultListId), newId: () => 'podglad' }).listId;
-  const canAdd = !!defaultListId && (!!text.trim() || !!extra?.fallbackTitle);
+  const canAdd = !!defaultListId && !!text.trim();
 
   return (
     <View style={styles.wrap}>

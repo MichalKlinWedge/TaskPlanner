@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 
 import { BackgroundStatus } from '@/components/background-status';
+import { ErrorsSection } from '@/components/errors-section';
 import { SyncIndicator } from '@/components/sync-indicator';
 import { Button, Field, P, Row, Screen, Section } from '@/components/ui';
 import { sendMagicLink, signInWithGoogle, signOut, verifyEmailCode } from '@/lib/auth';
@@ -138,6 +139,8 @@ export default function Settings() {
       </Section>
 
       <BackgroundStatus />
+
+      <ErrorsSection />
 
       <Section title="Serwer Supabase">
         <P muted>

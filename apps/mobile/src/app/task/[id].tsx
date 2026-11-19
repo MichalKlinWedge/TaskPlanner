@@ -32,6 +32,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
+import { AttachmentsField } from '@/components/attachments-field';
 import { MarkdownView } from '@/components/markdown-view';
 import { pickDate, pickOption, pickTime } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
@@ -213,6 +214,8 @@ export default function TaskScreen() {
         <Block title="Opis">
           <DescriptionField taskId={task.id} />
         </Block>
+
+        <AttachmentsField taskId={task.id} />
 
         <Block title={`Podzadania${children.length ? ` · ${children.filter((c) => c.status === 'done').length}/${children.filter((c) => c.status !== 'cancelled').length}` : ''}`}>
           <View style={{ marginHorizontal: -12 }}>

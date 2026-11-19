@@ -17,6 +17,7 @@ import Storage from 'expo-sqlite/kv-store';
 import { AppState } from 'react-native';
 
 import { readJson, serverConfig, sessionUser, writeJson } from './config';
+import { reportError } from './error-log';
 
 export const DB_NAME = 'taskplanner.db';
 
@@ -138,6 +139,17 @@ export function notifySessionChange() {
   sessionListeners.forEach((l) => l());
 }
 
+/**
+ * Po każdej udanej synchronizacji (zadania są już na serwerze): kolejka plików, podglądy linków,
+ * dziennik błędów.
+ */
+const syncedListeners = new Set<Listener>();
+
+export function onSynced(listener: Listener): () => void {
+  syncedListeners.add(listener);
+  return () => syncedListeners.delete(listener);
+}
+
 // ── Silnik ──────────────────────────────────────────────────────────────────────────────────
 
 let dbPromise: Promise<LocalDb> | null = null;
@@ -181,8 +193,15 @@ export function localEngine(): Promise<SyncEngine> {
         remote: lazyRemote,
         userId: user.id,
         autoSync: false,
-        onError: (error) => setStatus({ error: errorText(error) }),
-        onRejected: (rejected) => setStatus({ error: `odrzucone: ${rejected.map((r) => r.code).join(', ')}` }),
+        onError: (error) => {
+          setStatus({ error: errorText(error) });
+          reportError('sync', error);
+        },
+        onRejected: (rejected) => {
+          setStatus({ error: `odrzucone: ${rejected.map((r) => r.code).join(', ')}` });
+          // Jak na webie: każdy kod osobno, bez danych zadań.
+          for (const op of rejected) reportError('rejected', { code: op.code, message: op.message });
+        },
         onPullProgress: (pull) => {
           recordPullPage(pull);
           setStatus({ pull: { page: pull.page, done: pull.done } });
@@ -194,6 +213,7 @@ export function localEngine(): Promise<SyncEngine> {
             clearRetry();
             Storage.setItemSync(lastAtKey(user.id), String(state.at));
             setStatus({ syncing: false, lastAt: state.at, error: null, firstSync: false });
+            syncedListeners.forEach((l) => l());
           } else {
             failures++;
             setStatus({ syncing: false, error: errorText(state.error) });
