@@ -1,5 +1,6 @@
 /**
- * PoC-6 — Web Push: `push_queue` → `reminders-push` (jsr:@negrel/webpush w Edge Runtime) → usługa push.
+ * MVP-4 — Web Push z przypomnień: `devices.push_subscription` + `reminders` → `reminders-push` (liczy
+ * `core/reminders.ts`, dziennik `reminder_deliveries`) → usługa push (jsr:@negrel/webpush w Edge Runtime).
  * Fałszywa usługa push sprawdza podpis VAPID (ES256) i odszyfrowuje treść (RFC 8291, aes128gcm) kluczem
  * „przeglądarki” wygenerowanym w teście. Ostatni test: bez ręcznego wywołania — `pg_cron` co minutę.
  */
@@ -70,124 +71,139 @@ async function verifyVapid(req: PushRequest, endpoint: string) {
 }
 
 let user: TestUser;
+let inbox: string;
 let b1: Browser;
 let b2: Browser;
+let tick = 0;
+const hlc = () => `${String(Date.now()).padStart(15, '0')}:${String(++tick % 100000).padStart(5, '0')}:test`;
 
-async function subscribe(u: TestUser, b: Browser) {
-  const { error } = await u.client.rpc('save_push_subscription', {
-    p_subscription: { endpoint: fake.pushEndpoint(b.id), keys: { p256dh: b64u(b.publicRaw), auth: b64u(b.auth) } },
-    p_user_agent: 'vitest',
+async function push(table: string, id: string, set: Record<string, unknown>) {
+  const { data, error } = await user.client.rpc('push_changes', { p_ops: [{ op: uuidv7(), table, id, set, hlc: hlc() }] });
+  if (error) throw error;
+  expect(data.rejected, JSON.stringify(data.rejected)).toEqual([]);
+}
+
+/** Przeglądarka jako urządzenie użytkownika: wiersz `devices` przez `push_changes`, jak web. */
+async function device(b: Browser, patch: Record<string, unknown> = {}) {
+  await push('devices', b.id, {
+    name: `Chrome ${b.id.slice(0, 4)}`,
+    platform: 'web',
+    reminder_channel: 'enabled',
+    push_subscription: { endpoint: fake.pushEndpoint(b.id), keys: { p256dh: b64u(b.publicRaw), auth: b64u(b.auth) } },
+    ...patch,
   });
-  if (error) throw error;
 }
 
-async function enqueue(row: Record<string, unknown>) {
-  const { data, error } = await db.from('push_queue').insert({ user_id: user.id, title: 'Przypomnienie', ...row }).select().single();
-  if (error) throw error;
-  return data;
+/** Zadanie z terminem w bieżącej minucie (UTC) i przypomnieniem „w chwili terminu” — należne teraz. */
+async function dueNow(title: string, { minutesAhead = 0, status = 'todo' } = {}) {
+  const at = new Date(Date.now() + minutesAhead * 60_000).toISOString();
+  const taskId = uuidv7();
+  const reminderId = uuidv7();
+  await push('tasks', taskId, { list_id: inbox, title, status, due_date: at.slice(0, 10), due_time: at.slice(11, 16) });
+  await push('reminders', reminderId, { task_id: taskId, kind: 'relative', offset_min: 0 });
+  return { taskId, reminderId, topic: `${reminderId.replaceAll('-', '').slice(0, 24)}${at.slice(0, 10).replaceAll('-', '')}` };
 }
 
-const received = (b: Browser, after = 0) => fake.push.filter((r) => r.id === b.id && r.at >= after);
+const received = (b: Browser, topic: string, after = 0) => fake.push.filter((r) => r.id === b.id && r.at >= after && r.headers.topic === topic);
+const deliveries = async (taskId: string) => (await db.from('reminder_deliveries').select('*').eq('task_id', taskId)).data ?? [];
 
 beforeAll(async () => {
   await fake.start();
   user = await createUser('push');
+  ({ inbox } = await createWorkspace(user, 'Push'));
+  // Strefa profilu = UTC, żeby „bieżąca minuta” zadania była jednoznaczna.
+  await push('profiles', user.id, { settings: { onboarded: true, timeZone: 'UTC' } });
   b1 = await browser();
   b2 = await browser();
-  await subscribe(user, b1);
-  await subscribe(user, b2);
+  await device(b1);
+  await device(b2);
 });
 
 afterAll(() => fake.stop());
 
-describe('Web Push', () => {
-  it('wysyłka na wszystkie subskrypcje: VAPID poprawny, treść odszyfrowana, nagłówki aes128gcm', async () => {
-    const item = await enqueue({ title: 'Zapłacić rachunek', body: 'Dziś 10:00', url: '/zadania/1' });
+describe('Web Push z przypomnień', () => {
+  it('przypomnienie → każde wybrane urządzenie raz: VAPID poprawny, treść odszyfrowana, dziennik', async () => {
+    const r = await dueNow('Zapłacić rachunek');
     const t0 = performance.now();
     const res = await fn('reminders-push', { cron: true });
     const summary = await res.json();
     expect(res.status, JSON.stringify(summary)).toBe(200);
-    measure('push: reminders-push (claim + 2 subskrypcje)', performance.now() - t0);
+    measure('push: reminders-push (plan + claim + 2 urządzenia)', performance.now() - t0);
 
     for (const b of [b1, b2]) {
-      const reqs = received(b).filter((r) => r.headers.topic === item.id.replaceAll('-', '').slice(0, 32));
-      expect(reqs).toHaveLength(1);
-      const r = reqs[0]!;
-      expect(r.headers['content-encoding']).toBe('aes128gcm');
-      expect(r.headers.urgency).toBe('high');
-      expect(r.headers.ttl).toBe('600');
-      const k = await verifyVapid(r, fake.pushEndpoint(b.id));
-      expect(k.length).toBeGreaterThan(80);
-      expect(JSON.parse(await decrypt(b, r.body))).toMatchObject({ id: item.id, title: 'Zapłacić rachunek', body: 'Dziś 10:00', url: '/zadania/1' });
+      const reqs = received(b, r.topic);
+      expect(reqs, JSON.stringify(summary)).toHaveLength(1);
+      const req = reqs[0]!;
+      expect(req.headers['content-encoding']).toBe('aes128gcm');
+      expect(req.headers.urgency).toBe('high');
+      expect(req.headers.ttl).toBe('600');
+      expect((await verifyVapid(req, fake.pushEndpoint(b.id))).length).toBeGreaterThan(80);
+      expect(JSON.parse(await decrypt(b, req.body))).toMatchObject({ title: 'Zapłacić rachunek', url: `/?task=${r.taskId}`, taskId: r.taskId });
     }
-    const { data: row } = await db.from('push_queue').select('*').eq('id', item.id).single();
-    expect(row).toMatchObject({ delivered: 2, error: null, attempts: 1 });
-    expect(row.sent_at).not.toBeNull();
+    const rows = await deliveries(r.taskId);
+    expect(rows.map((d) => d.status)).toEqual(['sent', 'sent']);
+    expect(new Set(rows.map((d) => d.device_id))).toEqual(new Set([b1.id, b2.id]));
   });
 
-  it('dwa równoległe uruchomienia → każde powiadomienie raz (skip locked)', async () => {
-    const items = await Promise.all(Array.from({ length: 5 }, (_, i) => enqueue({ title: `Równolegle ${i}` })));
+  it('kolejne i równoległe uruchomienia → bez duplikatów', async () => {
+    const r = await dueNow('Równolegle');
     const since = Date.now();
     await Promise.all([fn('reminders-push', { cron: true }), fn('reminders-push', { cron: true }), fn('reminders-push', { cron: true })]);
-    for (const it of items) {
-      const topic = it.id.replaceAll('-', '').slice(0, 32);
-      expect(received(b1, since).filter((r) => r.headers.topic === topic)).toHaveLength(1);
-    }
-  });
-
-  it('ukończone zadanie → bez powiadomienia; przyszłe → jeszcze nie', async () => {
-    const ws = await createWorkspace(user, 'Push');
-    const taskId = uuidv7();
-    const hlc = `${String(Date.now()).padStart(15, '0')}:00000:test`;
-    const { data: pushed } = await user.client.rpc('push_changes', {
-      p_ops: [{ op: uuidv7(), table: 'tasks', id: taskId, set: { list_id: ws.inbox, title: 'Zrobione', status: 'done' }, hlc }],
-    });
-    expect(pushed.rejected).toEqual([]);
-    const done = await enqueue({ task_id: taskId, title: 'Zrobione' });
-    const later = await enqueue({ title: 'Jutro', send_at: new Date(Date.now() + 86_400_000).toISOString() });
     await fn('reminders-push', { cron: true });
-    const { data: rows } = await db.from('push_queue').select('id, sent_at, delivered, error').in('id', [done.id, later.id]);
-    expect(rows!.find((r) => r.id === done.id)).toMatchObject({ delivered: 0, error: 'zadanie zamknięte' });
-    expect(rows!.find((r) => r.id === later.id)!.sent_at).toBeNull();
-    await db.from('push_queue').delete().eq('id', later.id);
+    expect(received(b1, r.topic, since)).toHaveLength(1);
+    expect(received(b2, r.topic, since)).toHaveLength(1);
   });
 
-  it('410 Gone → subskrypcja usunięta; 500 → ponowienie przy następnym uruchomieniu', async () => {
+  it('tylko wybrane urządzenia; zamknięte zadanie i przyszły termin — bez wysyłki', async () => {
+    await device(b2, { reminder_channel: 'disabled' });
+    const r = await dueNow('Tylko pierwsza');
+    const done = await dueNow('Zrobione', { status: 'done' });
+    const later = await dueNow('Za godzinę', { minutesAhead: 60 });
+    await fn('reminders-push', { cron: true });
+    expect(received(b1, r.topic)).toHaveLength(1);
+    expect(received(b2, r.topic)).toHaveLength(0);
+    expect(await deliveries(done.taskId)).toEqual([]);
+    expect(await deliveries(later.taskId)).toEqual([]);
+    await device(b2, { reminder_channel: 'enabled' });
+  });
+
+  it('410 Gone → subskrypcja urządzenia wyczyszczona; 500 → ponowienie przy następnym uruchomieniu', async () => {
     fake.pushStatus.set(b2.id, 410);
-    await enqueue({ title: 'Gone' });
-    await fn('reminders-push', { cron: true });
-    const { data: subs } = await db.from('push_subscriptions').select('endpoint').eq('user_id', user.id);
-    expect(subs!.map((s) => s.endpoint)).toEqual([fake.pushEndpoint(b1.id)]);
-
     fake.pushStatus.set(b1.id, 500);
-    const flaky = await enqueue({ title: 'Niestabilna usługa' });
+    const r = await dueNow('Niestabilna usługa');
     await fn('reminders-push', { cron: true });
-    let { data: row } = await db.from('push_queue').select('*').eq('id', flaky.id).single();
-    expect(row).toMatchObject({ sent_at: null, attempts: 1, claimed_at: null });
+    const { data: dev } = await db.from('devices').select('push_subscription, field_clock').eq('id', b2.id).single();
+    expect(dev!.push_subscription).toBeNull();
+    expect(String((dev!.field_clock as Record<string, string>).push_subscription)).toMatch(/:server$/);
+    let rows = await deliveries(r.taskId);
+    expect(rows.find((d) => d.device_id === b1.id)).toMatchObject({ status: 'failed', attempts: 1 });
     fake.pushStatus.delete(b1.id);
+    fake.pushStatus.delete(b2.id);
     await fn('reminders-push', { cron: true });
-    ({ data: row } = await db.from('push_queue').select('*').eq('id', flaky.id).single());
-    expect(row).toMatchObject({ delivered: 1, attempts: 2 });
+    rows = await deliveries(r.taskId);
+    expect(rows.find((d) => d.device_id === b1.id)).toMatchObject({ status: 'sent', attempts: 2 });
+    expect(received(b1, r.topic)).toHaveLength(2); // 500 + udane ponowienie
+    await device(b2);
   });
 
-  it('klient: widzi swoje subskrypcje bez kluczy, nie widzi kolejki, nie pisze', async () => {
-    expect((await user.client.from('push_subscriptions').select('endpoint')).data).toHaveLength(1);
-    expect((await user.client.from('push_subscriptions').select('auth')).error?.message).toMatch(/permission denied/);
-    expect((await user.client.from('push_queue').select('id')).error?.message).toMatch(/permission denied/);
-    expect((await user.client.rpc('claim_push_queue', { p_limit: 1 })).error).not.toBeNull();
+  it('klient: widzi swój dziennik, nie pisze go, nie zajmuje wysyłek; funkcja wymaga sekretu crona', async () => {
+    expect(((await user.client.from('reminder_deliveries').select('id')).data ?? []).length).toBeGreaterThan(0);
+    const { error } = await user.client.from('reminder_deliveries').insert({ user_id: user.id, device_id: b1.id, fire_key: 'x', task_id: uuidv7(), fire_at: new Date().toISOString() });
+    expect(error?.message).toMatch(/permission denied/);
+    expect((await user.client.rpc('claim_reminder_deliveries', { p_items: [] })).error).not.toBeNull();
     expect((await fn('reminders-push')).status).toBe(401);
   });
 
   it('pg_cron co minutę → pg_net → reminders-push → usługa push (bez ręcznego wywołania)', async () => {
     expect(sql(`select schedule || ' ' || active from cron.job where jobname = 'taskplanner-reminders-push'`)).toBe('* * * * * true');
-    const item = await enqueue({ title: 'Z crona' });
-    const topic = item.id.replaceAll('-', '').slice(0, 32);
+    // Termin w następnej minucie — wyśle dopiero cron, gdy przypomnienie stanie się należne.
+    const r = await dueNow('Z crona', { minutesAhead: 1 });
     const t0 = Date.now();
-    const req = await waitFor(async () => received(b1, t0).find((r) => r.headers.topic === topic), 90_000, 'push z crona', 200);
-    measure('push: wpis w kolejce → dostarczenie przez pg_cron (≤ 60 s + wysyłka)', req.at - t0);
+    const req = await waitFor(async () => received(b1, r.topic, t0)[0], 150_000, 'push z crona', 200);
+    measure('push: przypomnienie należne → dostarczenie przez pg_cron (≤ 60 s + wysyłka)', req.at - t0);
     expect(JSON.parse(await decrypt(b1, req.body)).title).toBe('Z crona');
     const runs = sql(`select count(*) from cron.job_run_details d join cron.job j using (jobid)
-      where j.jobname = 'taskplanner-reminders-push' and d.status = 'succeeded' and d.start_time > now() - interval '2 minutes'`);
+      where j.jobname = 'taskplanner-reminders-push' and d.status = 'succeeded' and d.start_time > now() - interval '3 minutes'`);
     expect(Number(runs)).toBeGreaterThan(0);
-  }, 120_000);
+  }, 180_000);
 });

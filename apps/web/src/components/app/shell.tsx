@@ -79,7 +79,21 @@ export function Shell({
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
     }
   }, []);
-  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  // Klik w przypomnienie przy zamkniętej karcie: `/?task=<id>` (Service Worker, M8).
+  const [openTaskId, setOpenTaskId] = useState<string | null>(() => (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("task") : null));
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("task")) {
+      url.searchParams.delete("task");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === "open-task" && typeof event.data.taskId === "string") setOpenTaskId(event.data.taskId);
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, []);
 
   const [palette, setPalette] = useState<PaletteMode | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -218,6 +232,7 @@ export function Shell({
   return (
     <AppEnvProvider value={{ store, data, userId, timeZone: settings.timeZone, today, workspaceId, openTask: setOpenTaskId, openTaskId, selectedIds, select }}>
       <TaskActionsProvider store={store} timeZone={settings.timeZone} tasks={data.tasks}>
+        <ReminderToasts />
         <Keyboard
           blocked={quickOpen || palette !== null || shortcutsOpen}
           selected={selected}
@@ -455,6 +470,20 @@ function useBulk(selected: readonly string[]) {
 }
 
 /** Skróty klawiszowe (M17); jednoklawiszowe nie działają w polach tekstowych ani przy otwartym oknie. */
+/** Przypomnienie push przy otwartej karcie — także dymek w aplikacji (M8). */
+function ReminderToasts() {
+  const { notify } = useTaskActions();
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === "reminder") notify(`🔔 ${event.data.title ?? "Przypomnienie"}${event.data.body ? ` — ${event.data.body}` : ""}`);
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [notify]);
+  return null;
+}
+
 function Keyboard({
   blocked,
   selected,

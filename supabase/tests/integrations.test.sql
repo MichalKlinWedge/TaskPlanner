@@ -1,8 +1,8 @@
--- PoC-6: tabele integracji — RLS i uprawnienia kolumn, Vault, zadanie z integracji, kolejka push, cron.
+-- PoC-6 / MVP-4: tabele integracji — RLS i uprawnienia kolumn, Vault, zadanie z integracji, dziennik Web Push, cron.
 -- Uruchomienie: npm run test:db
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(32);
+select plan(35);
 
 insert into auth.users (id, email) values
   ('00000000-0000-4000-8000-0000000000b1', 'wlasciciel-int@test.local'),
@@ -26,6 +26,8 @@ $$;
 \set L  '''e2000000-0000-4000-8000-000000000001'''
 \set A  '''e3000000-0000-4000-8000-000000000001'''
 \set C  '''e4000000-0000-4000-8000-000000000001'''
+\set D  '''e6000000-0000-4000-8000-000000000001'''
+\set T  '''e7000000-0000-4000-8000-000000000001'''
 
 -- Przestrzeń i Inbox właściciela (jak klient).
 select pg_temp.login(:U);
@@ -33,15 +35,21 @@ select is((public.push_changes(jsonb_build_array(
   jsonb_build_object('op', gen_random_uuid(), 'table', 'workspaces', 'id', :W, 'set', '{"name":"Dom"}'::jsonb, 'hlc', pg_temp.h()),
   jsonb_build_object('op', gen_random_uuid(), 'table', 'lists', 'id', :L, 'set', jsonb_build_object('scope_id', :W, 'kind', 'inbox', 'name', 'Inbox'), 'hlc', pg_temp.h())
 )) -> 'rejected'), '[]'::jsonb, 'przestrzeń i Inbox przez push_changes');
+select is((public.push_changes(jsonb_build_array(
+  jsonb_build_object('op', gen_random_uuid(), 'table', 'devices', 'id', :D, 'hlc', pg_temp.h(), 'set',
+    '{"name":"Chrome","platform":"web","reminder_channel":"enabled","push_subscription":{"endpoint":"https://push.example/1","keys":{"p256dh":"p","auth":"a"}}}'::jsonb),
+  jsonb_build_object('op', gen_random_uuid(), 'table', 'tasks', 'id', :T, 'set', jsonb_build_object('list_id', :L, 'title', 'Przypomnij'), 'hlc', pg_temp.h())
+)) -> 'rejected'), '[]'::jsonb, 'urządzenie z subskrypcją i zadanie przez push_changes');
 
 -- ── Klient nie pisze tabel integracji ────────────────────────────────────────────────────────
 select throws_ok($$ insert into public.calendar_accounts (user_id, provider, label, external_id) values (auth.uid(), 'ics', 'x', 'x') $$,
   '42501', null, 'klient nie zakłada konta kalendarza');
 select throws_ok($$ insert into public.inbound_messages (user_id, status) values (auth.uid(), 'created') $$, '42501', null, 'klient nie pisze dziennika maili');
-select throws_ok($$ insert into public.push_queue (user_id, title) values (auth.uid(), 'x') $$, '42501', null, 'klient nie pisze kolejki push');
+select throws_ok(format($$ insert into public.reminder_deliveries (user_id, device_id, fire_key, task_id, fire_at) values (auth.uid(), %L, 'x', %L, now()) $$, :D, :T),
+  '42501', null, 'klient nie pisze dziennika wysyłek');
 select throws_ok($$ select public.account_secret_get(gen_random_uuid()) $$, '42501', null, 'klient nie czyta Vault');
 select throws_ok($$ select public.create_integration_task(auth.uid(), '{}', '[]') $$, '42501', null, 'klient nie woła create_integration_task');
-select throws_ok($$ select * from public.claim_push_queue(1) $$, '42501', null, 'klient nie pobiera kolejki');
+select throws_ok($$ select * from public.claim_reminder_deliveries('[]') $$, '42501', null, 'klient nie zajmuje wysyłek');
 
 -- ── service_role: konto, kalendarz, wydarzenie, sekret ───────────────────────────────────────
 select pg_temp.service();
@@ -87,10 +95,16 @@ select ok((select field_clock ?& array['list_id', 'title', 'priority'] and field
 select throws_ok(format($$ select public.create_integration_task(%L, jsonb_build_object('list_id', %L, 'title', 'Obce')) $$, :X, :L),
   'TP003', null, 'zadanie do cudzej listy odrzucone');
 
--- ── Kolejka push ─────────────────────────────────────────────────────────────────────────────
-insert into public.push_queue (user_id, title, send_at) values (:U, 'teraz', now() - interval '1 second'), (:U, 'później', now() + interval '1 hour');
-select is((select array_agg(title) from public.claim_push_queue(10)), array['teraz'], 'pobiera tylko należne');
-select is((select count(*)::int from public.claim_push_queue(10)), 0, 'pobrane nie wraca od razu drugi raz');
+-- ── Dziennik Web Push (MVP-4) ────────────────────────────────────────────────────────────────
+create temp table claim_items as select jsonb_build_array(jsonb_build_object('user_id', :U, 'device_id', :D, 'fire_key', 'r1:2026-11-19', 'task_id', :T, 'fire_at', now())) as items;
+grant select on claim_items to service_role;
+select is((select count(*)::int from public.claim_reminder_deliveries((select items from claim_items))), 1, 'wysyłka zajęta');
+select is((select count(*)::int from public.claim_reminder_deliveries((select items from claim_items))), 0, 'to samo urządzenie i wystąpienie drugi raz — nie');
+update public.reminder_deliveries set status = 'failed' where device_id = :D;
+select is((select attempts from public.claim_reminder_deliveries((select items from claim_items))), 2, 'po błędzie przejściowym — ponowienie');
+select public.clear_push_subscription(:D, 'https://push.example/1');
+select ok((select push_subscription is null and field_clock ->> 'push_subscription' like '%:server' from public.devices where id = :D),
+  'wygasła subskrypcja wyczyszczona z HLC serwera');
 
 -- ── Odłączenie konta i cron ──────────────────────────────────────────────────────────────────
 delete from public.calendar_accounts where id = :A;

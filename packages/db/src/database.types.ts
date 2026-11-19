@@ -219,39 +219,31 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
-                },"push_queue": {
+                },"reminder_deliveries": {
                   Row: {
-                    "attempts": number,"body": string | null,"claimed_at": string | null,"created_at": string,"delivered": number | null,"error": string | null,"id": string,"send_at": string,"sent_at": string | null,"task_id": string | null,"title": string,"url": string | null,"user_id": string
+                    "attempts": number,"claimed_at": string,"device_id": string,"error": string | null,"fire_at": string,"fire_key": string,"id": number,"sent_at": string | null,"status": string,"task_id": string,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "attempts"?: number,"body"?: string | null,"claimed_at"?: string | null,"created_at"?: string,"delivered"?: number | null,"error"?: string | null,"id"?: string,"send_at"?: string,"sent_at"?: string | null,"task_id"?: string | null,"title": string,"url"?: string | null,"user_id": string
+                    "attempts"?: number,"claimed_at"?: string,"device_id": string,"error"?: string | null,"fire_at": string,"fire_key": string,"id"?: never,"sent_at"?: string | null,"status"?: string,"task_id": string,"user_id": string
                   }
                   Update: {
-                    "attempts"?: number,"body"?: string | null,"claimed_at"?: string | null,"created_at"?: string,"delivered"?: number | null,"error"?: string | null,"id"?: string,"send_at"?: string,"sent_at"?: string | null,"task_id"?: string | null,"title"?: string,"url"?: string | null,"user_id"?: string
+                    "attempts"?: number,"claimed_at"?: string,"device_id"?: string,"error"?: string | null,"fire_at"?: string,"fire_key"?: string,"id"?: never,"sent_at"?: string | null,"status"?: string,"task_id"?: string,"user_id"?: string
                   }
                   Relationships: [
                     {
-      foreignKeyName: "push_queue_task_id_fkey"
+      foreignKeyName: "reminder_deliveries_device_id_fkey"
+      columns: ["device_id"]
+isOneToOne: false
+      referencedRelation: "devices"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "reminder_deliveries_task_id_fkey"
       columns: ["task_id"]
 isOneToOne: false
       referencedRelation: "tasks"
       referencedColumns: ["id"]
     }
-                  ]
-                },"push_subscriptions": {
-                  Row: {
-                    "auth": string,"created_at": string,"endpoint": string,"failures": number,"id": string,"last_success_at": string | null,"p256dh": string,"user_agent": string | null,"user_id": string
-                  }
-                  ComputedFields: never
-                  Insert: {
-                    "auth": string,"created_at"?: string,"endpoint": string,"failures"?: number,"id"?: string,"last_success_at"?: string | null,"p256dh": string,"user_agent"?: string | null,"user_id": string
-                  }
-                  Update: {
-                    "auth"?: string,"created_at"?: string,"endpoint"?: string,"failures"?: number,"id"?: string,"last_success_at"?: string | null,"p256dh"?: string,"user_agent"?: string | null,"user_id"?: string
-                  }
-                  Relationships: [
-                    
                   ]
                 },"reminders": {
                   Row: {
@@ -559,33 +551,31 @@ isOneToOne: false
 "can_write_scope":
 { Args: { "p_scope": string }; Returns: boolean
                            },
-"claim_push_queue":
-{ Args: { "p_limit"?: number }; Returns: {
+"claim_reminder_deliveries":
+{ Args: { "p_items": Json }; Returns: {
               "attempts": number,
-"body": string | null,
-"claimed_at": string | null,
-"created_at": string,
-"delivered": number | null,
+"claimed_at": string,
+"device_id": string,
 "error": string | null,
-"id": string,
-"send_at": string,
+"fire_at": string,
+"fire_key": string,
+"id": number,
 "sent_at": string | null,
-"task_id": string | null,
-"title": string,
-"url": string | null,
+"status": string,
+"task_id": string,
 "user_id": string
             }[]
                           SetofOptions: {
         from: "*"
-        to: "push_queue"
+        to: "reminder_deliveries"
         isOneToOne: false
         isSetofReturn: true
       } },
+"clear_push_subscription":
+{ Args: { "p_device": string,"p_endpoint": string }; Returns: undefined
+                           },
 "create_integration_task":
 { Args: { "p_tags"?: Json,"p_task": Json,"p_user": string }; Returns: string
-                           },
-"delete_push_subscription":
-{ Args: { "p_endpoint": string }; Returns: undefined
                            },
 "has_scope_access":
 { Args: { "p_scope": string }; Returns: boolean
@@ -604,9 +594,6 @@ isOneToOne: false
                            },
 "rotate_inbound_token":
 { Args: Record<PropertyKey, never>; Returns: string
-                           },
-"save_push_subscription":
-{ Args: { "p_subscription": Json,"p_user_agent"?: string }; Returns: string
                            },
 "server_hlc":
 { Args: Record<PropertyKey, never>; Returns: string

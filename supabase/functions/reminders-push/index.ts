@@ -1,36 +1,21 @@
 /**
- * `reminders-push` — Web Push (VAPID, aes128gcm) z `pg_cron` co minutę (SPECYFIKACJA M8 web, PoC-6).
+ * `reminders-push` — Web Push (VAPID, aes128gcm) z `pg_cron` co minutę (SPECYFIKACJA M8 web).
  *
- * Pobiera należne wpisy `push_queue` (`claim_push_queue`: `skip locked`, bez podwójnej wysyłki), wysyła
- * na wszystkie subskrypcje użytkownika i zapisuje wynik. Ukończone / usunięte zadanie — bez powiadomienia
- * (status sprawdzany w chwili wysyłki). Subskrypcja 404/410 jest usuwana. W MVP-4 kolejkę zasila
- * `core/reminders.ts` (`reminderFireTimes`) z dziennikiem wysyłek per urządzenie.
+ * Liczy należne przypomnienia z bazy tak samo jak telefon (`_shared/reminders.ts` → `core/reminders.ts`):
+ * urządzenia `devices` (przeglądarka, `reminder_channel = 'enabled'`, `push_subscription`), przypomnienia
+ * ich właścicieli i ustawienia profilu (strefa, domyślna godzina). Każdą wysyłkę najpierw zajmuje w
+ * dzienniku `reminder_deliveries` (`claim_reminder_deliveries` — jedno urządzenie i wystąpienie raz, także
+ * przy równoległych uruchomieniach), potem wysyła i zapisuje wynik. Subskrypcja 404/410 jest czyszczona
+ * (`clear_push_subscription`), błąd przejściowy — ponowienie w następnej minucie (najwyżej 5 prób).
  *
- * Sekrety: `VAPID_KEYS` (JSON z `exportVapidKeys`, `npm run vapid --workspace tools/edge-tests`),
- * `VAPID_SUBJECT` (`mailto:` albo `https:`), `CRON_SECRET`.
+ * `GET …/reminders-push/key` — klucz publiczny VAPID dla przeglądarki.
+ *
+ * Sekrety: `VAPID_KEYS` (JSON z `exportVapidKeys`), `VAPID_PUBLIC_KEY`, `VAPID_SUBJECT` (`mailto:` albo `https:`), `CRON_SECRET`.
  */
 import * as webpush from '@negrel/webpush';
 
-import { admin, env, HttpError, json, optionalEnv, requireCron, serve } from '../_shared/runtime.ts';
-
-interface QueueRow {
-  id: string;
-  user_id: string;
-  task_id: string | null;
-  title: string;
-  body: string | null;
-  url: string | null;
-  attempts: number;
-}
-
-interface SubscriptionRow {
-  id: string;
-  user_id: string;
-  endpoint: string;
-  p256dh: string;
-  auth: string;
-  failures: number;
-}
+import { planPushes, pushDevices, type DeviceRow, type PlannedPush, type ProfileRow, type ReminderRow } from '../_shared/reminders.ts';
+import { admin, env, HttpError, json, optionalEnv, requireCron, route, serve } from '../_shared/runtime.ts';
 
 let server: webpush.ApplicationServer | null = null;
 
@@ -42,77 +27,93 @@ async function appServer(): Promise<webpush.ApplicationServer> {
   return server;
 }
 
-serve(async (req) => {
+/** `Topic` (≤ 32 znaki base64url): ta sama wysyłka zastępuje niedostarczoną kopię, różne dni się nie mieszają. */
+const pushTopic = (fireKey: string) => {
+  const [reminder = '', day = ''] = fireKey.split(':');
+  return `${reminder.replaceAll('-', '').slice(0, 24)}${day.replaceAll('-', '')}`.slice(0, 32);
+};
+
+const TASK_COLUMNS = 'id, kind, status, title, due_date, due_time, recurrence, time_zone, deleted_at';
+
+serve(async (req, url) => {
+  // Klucz publiczny VAPID dla przeglądarki (`pushManager.subscribe`) — jawny, bez logowania.
+  if (req.method === 'GET' && route(url, 'reminders-push') === 'key') return json({ publicKey: env('VAPID_PUBLIC_KEY') });
   if (req.method !== 'POST') throw new HttpError(405, 'Tylko POST');
   requireCron(req);
   const started = Date.now();
+  const now = new Date();
   const db = admin();
-  const { data: due, error } = await db.rpc('claim_push_queue', { p_limit: 200 });
-  if (error) throw error;
-  const items = (due ?? []) as QueueRow[];
-  if (!items.length) return json({ items: 0, ms: Date.now() - started });
+  const allowHttp = optionalEnv('PUSH_ALLOW_HTTP') === '1';
 
-  const users = [...new Set(items.map((i) => i.user_id))];
-  const { data: subs, error: subsError } = await db.from('push_subscriptions').select('*').in('user_id', users);
-  if (subsError) throw subsError;
-  const taskIds = items.map((i) => i.task_id).filter((id): id is string => !!id);
-  const { data: tasks } = taskIds.length
-    ? await db.from('tasks').select('id, status, deleted_at').in('id', taskIds)
-    : { data: [] as { id: string; status: string; deleted_at: string | null }[] };
-  const closed = new Set((tasks ?? []).filter((t) => t.deleted_at || t.status === 'done' || t.status === 'cancelled').map((t) => t.id));
+  const { data: deviceRows, error: devError } = await db
+    .from('devices')
+    .select('id, scope_id, platform, reminder_channel, push_subscription, deleted_at')
+    .eq('platform', 'web')
+    .eq('reminder_channel', 'enabled')
+    .is('deleted_at', null)
+    .not('push_subscription', 'is', null);
+  if (devError) throw devError;
+  const devices = pushDevices((deviceRows ?? []) as DeviceRow[], { allowHttp });
+  if (!devices.length) return json({ devices: 0, sent: 0, ms: Date.now() - started });
+  const users = [...new Set(devices.map((d) => d.scope_id))];
+
+  const [{ data: reminderRows, error: remError }, { data: profileRows, error: profError }] = await Promise.all([
+    db
+      .from('reminders')
+      .select(`id, task_id, kind, offset_min, at_date, at_time, created_by, tasks!inner(${TASK_COLUMNS})`)
+      .in('created_by', users)
+      .is('deleted_at', null)
+      .is('tasks.deleted_at', null)
+      .not('tasks.status', 'in', '(done,cancelled)'),
+    db.from('profiles').select('id, settings').in('id', users),
+  ]);
+  if (remError) throw remError;
+  if (profError) throw profError;
+
+  const plan = planPushes(
+    { devices, reminders: (reminderRows ?? []) as unknown as ReminderRow[], profiles: (profileRows ?? []) as ProfileRow[] },
+    { now, allowHttp },
+  );
+  const summary = { devices: devices.length, due: plan.length, claimed: 0, sent: 0, retry: 0, gone: 0, failed: 0 };
+  if (!plan.length) return json({ ...summary, ms: Date.now() - started });
+
+  const { data: claimed, error: claimError } = await db.rpc('claim_reminder_deliveries', {
+    p_items: plan.map((p) => ({ user_id: p.userId, device_id: p.deviceId, fire_key: p.fireKey, task_id: p.taskId, fire_at: p.fireAt })),
+  });
+  if (claimError) throw claimError;
+  const mine = new Map(((claimed ?? []) as { id: number; device_id: string; fire_key: string; attempts: number }[]).map((c) => [`${c.device_id}|${c.fire_key}`, c]));
+  summary.claimed = mine.size;
 
   const as = await appServer();
-  const allowHttp = optionalEnv('PUSH_ALLOW_HTTP') === '1';
-  const gone = new Set<string>();
-  const failed = new Map<string, number>();
-  const succeeded = new Set<string>();
-  const summary = { items: items.length, sent: 0, skipped: 0, retry: 0, gone: 0 };
-
-  await Promise.all(items.map(async (item) => {
-    const finish = (patch: Record<string, unknown>) => db.from('push_queue').update(patch).eq('id', item.id);
-    if (item.task_id && closed.has(item.task_id)) {
-      summary.skipped++;
-      return finish({ sent_at: new Date().toISOString(), delivered: 0, error: 'zadanie zamknięte' });
-    }
-    const targets = ((subs ?? []) as SubscriptionRow[]).filter((s) => s.user_id === item.user_id && (allowHttp || s.endpoint.startsWith('https://')));
-    if (!targets.length) {
-      summary.skipped++;
-      return finish({ sent_at: new Date().toISOString(), delivered: 0, error: 'brak subskrypcji' });
-    }
-    const payload = JSON.stringify({ id: item.id, title: item.title, body: item.body, url: item.url, taskId: item.task_id, sentAt: new Date().toISOString() });
-    let delivered = 0;
-    const errors: string[] = [];
-    let transient = false;
-    for (const sub of targets) {
-      try {
-        await as.subscribe({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } })
-          .pushTextMessage(payload, { ttl: 600, urgency: webpush.Urgency.High, topic: item.id.replaceAll('-', '').slice(0, 32) });
-        delivered++;
-        succeeded.add(sub.id);
-      } catch (e) {
-        const status = e instanceof webpush.PushMessageError ? e.response.status : 0;
-        if (status === 404 || status === 410) gone.add(sub.id);
-        else {
-          transient = true;
-          failed.set(sub.id, sub.failures + 1);
-        }
-        errors.push(`${status || 'sieć'}: ${(e as Error).message}`.slice(0, 200));
+  await Promise.all(plan.map(async (item: PlannedPush) => {
+    const row = mine.get(`${item.deviceId}|${item.fireKey}`);
+    if (!row) return;
+    const finish = (patch: Record<string, unknown>) => db.from('reminder_deliveries').update(patch).eq('id', row.id);
+    try {
+      await as
+        .subscribe({ endpoint: item.subscription.endpoint, keys: item.subscription.keys })
+        .pushTextMessage(JSON.stringify({ ...item.payload, sentAt: new Date().toISOString() }), {
+          ttl: 600,
+          urgency: webpush.Urgency.High,
+          topic: pushTopic(item.fireKey),
+        });
+      summary.sent++;
+      await finish({ status: 'sent', sent_at: new Date().toISOString(), error: null });
+    } catch (e) {
+      const status = e instanceof webpush.PushMessageError ? e.response.status : 0;
+      const error = `${status || 'sieć'}: ${(e as Error).message}`.slice(0, 300);
+      if (status === 404 || status === 410) {
+        summary.gone++;
+        await db.rpc('clear_push_subscription', { p_device: item.deviceId, p_endpoint: item.subscription.endpoint });
+        await finish({ status: 'skipped', error });
+      } else if (row.attempts < 5) {
+        summary.retry++;
+        await finish({ status: 'failed', error });
+      } else {
+        summary.failed++;
+        await finish({ status: 'skipped', error });
       }
     }
-    // Nic nie doszło z przyczyn przejściowych → ponowienie w następnej minucie (najwyżej 5 prób).
-    if (!delivered && transient && item.attempts < 5) {
-      summary.retry++;
-      return finish({ claimed_at: null, error: errors.join('; ') });
-    }
-    summary.sent += delivered ? 1 : 0;
-    return finish({ sent_at: new Date().toISOString(), delivered, error: errors.length ? errors.join('; ') : null });
   }));
-
-  if (gone.size) {
-    summary.gone = gone.size;
-    await db.from('push_subscriptions').delete().in('id', [...gone]);
-  }
-  for (const [id, failures] of failed) await db.from('push_subscriptions').update({ failures }).eq('id', id);
-  if (succeeded.size) await db.from('push_subscriptions').update({ last_success_at: new Date().toISOString(), failures: 0 }).in('id', [...succeeded]);
   return json({ ...summary, ms: Date.now() - started });
 });

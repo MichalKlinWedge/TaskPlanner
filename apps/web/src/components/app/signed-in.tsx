@@ -11,6 +11,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useTheme } from "@/lib/theme";
 
 import { ProfileForm, type ProfileValues } from "./profile-form";
+import { RemindersCard } from "./reminders-card";
 import { Shell } from "./shell";
 import { Button, Card, Notice, Splash } from "./ui";
 import { WorkspacesScreen } from "./workspaces-screen";
@@ -91,6 +92,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
                 }}
               />
             </Card>
+            <RemindersCard store={store} userId={userId} />
             <OfflineCard />
           </>
         }
