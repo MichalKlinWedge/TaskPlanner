@@ -158,6 +158,8 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 - Kalendarze zewnętrzne — odczyt: ICS, Google Calendar API (wybór kalendarzy, `syncToken`, `watch`), tabele `calendar_*`, ekran „Połączone kalendarze”.
 - „Dziś” z planem dnia (wydarzenia + bloki) i listą konfliktów.
 
+**Stan (19.11.2026):** kalendarz na webie zrobiony: `#/calendar` (`G C`, w palecie, pasek boczny), `components/app/calendar.tsx` — FullCalendar dzień / tydzień / miesiąc (widok pamiętany w przeglądarce), czas pływający (kalendarz w „UTC” jako zegar ścienny, „teraz” ze strefy z ustawień), pozycje z `core` `calendarEntries` (bloki zadań z godziną, wiersz „cały dzień”, przyszłe wystąpienia serii przerywaną linią, ukończone wyszarzone, nakładanie się — obramowanie, ⚠ i licznik), wolne okna w godzinach pracy w widoku dnia (`freeSlotTimes`), godziny pracy z ustawień. Panel zadań bez godziny (Dziś i zaległe / Inbox / Bez terminu / zapisane filtry) → przeciągnięcie na godzinę (`scheduleBlockPatch`) albo na „cały dzień”; przesuwanie i rozciąganie bloków, blok upuszczony na panel traci godzinę; każda zmiana z „Cofnij”. `Intl.DateTimeFormat` w `core/dates.ts` z pamięci podręcznej (miesiąc z ~600 pozycjami: 80 → 7 ms w core). Przełączenie miesiąca na `next dev` ~300–450 ms (FullCalendar rysuje ~600 zadań) — do zmierzenia na buildzie produkcyjnym. Zostało: wydarzenia z kalendarzy zewnętrznych (synchronizacja `calendar_events` do lokalnej bazy, ekran „Połączone kalendarze”), „Dziś” z planem dnia i konfliktami, telefon.
+
 **Kryterium odbioru:** plan dnia ułożony przeciąganiem na webie, spotkania z kalendarza firmowego widoczne obok, konflikt oznaczony; telefon pokazuje ten sam plan offline.
 
 ### Etap 6 — Oś czasu i zależności (≈ 4–5 dni)

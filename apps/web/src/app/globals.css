@@ -37,3 +37,50 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
 }
+
+/* Kalendarz (FullCalendar, `components/app/calendar.tsx`): kolory z motywu, typy pozycji. */
+.tp-calendar {
+  --fc-border-color: var(--line);
+  --fc-page-bg-color: var(--surface);
+  --fc-neutral-bg-color: var(--hover);
+  --fc-list-event-hover-bg-color: var(--hover);
+  --fc-today-bg-color: color-mix(in srgb, var(--accent) 8%, transparent);
+  --fc-event-bg-color: color-mix(in srgb, var(--accent) 85%, var(--surface));
+  --fc-event-border-color: var(--accent);
+  --fc-non-business-color: color-mix(in srgb, var(--muted) 10%, transparent);
+  --fc-now-indicator-color: var(--danger);
+  --fc-button-bg-color: var(--surface);
+  --fc-button-border-color: var(--line);
+  --fc-button-text-color: var(--foreground);
+  --fc-button-hover-bg-color: var(--hover);
+  --fc-button-hover-border-color: var(--line);
+  --fc-button-active-bg-color: var(--accent);
+  --fc-button-active-border-color: var(--accent);
+  font-size: 0.8125rem;
+}
+.tp-calendar .fc .fc-button-primary:not(:disabled).fc-button-active {
+  color: #fff;
+}
+.tp-calendar .fc .fc-toolbar-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.tp-calendar .fc-event.tp-task {
+  border-left-width: 4px;
+}
+.tp-calendar .fc-event.tp-passive {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+.tp-calendar .fc-event.tp-virtual {
+  opacity: 0.65;
+  border-style: dashed;
+}
+.tp-calendar .fc-event.tp-conflict {
+  outline: 2px solid var(--danger);
+  outline-offset: -1px;
+}
+.tp-calendar .fc-bg-event.tp-free {
+  background: color-mix(in srgb, #16a34a 14%, transparent);
+  opacity: 1;
+}

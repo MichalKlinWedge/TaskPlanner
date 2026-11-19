@@ -4,7 +4,7 @@
  * okna w godzinach pracy oraz łatki zadania przy przeciąganiu na godzinę. Czas zadań jest pływający —
  * blok liczy się w strefie urządzenia (albo strefie przypiętej do zadania), wydarzenia są chwilami.
  */
-import { addDays, isoWeekday, zonedInstant } from './dates.ts';
+import { addDays, isoWeekday, localDateTimeAt, zonedInstant } from './dates.ts';
 import { occurrences, type Recurrence } from './recurrence.ts';
 import type { LocalDate, LocalTime } from './schemas/primitives.ts';
 import type { ViewTask } from './views.ts';
@@ -174,6 +174,94 @@ export function freeSlots(plan: Pick<DayPlan, 'date' | 'timed'>, work: WorkHours
   }
   if (to - cursor >= minMinutes) slots.push({ startMin: cursor, endMin: to });
   return slots;
+}
+
+/** Zegar ścienny `RRRR-MM-DDTGG:MM` + minuty (czas pływający — bez stref). */
+export function addWallMinutes(wall: string, minutes: number): string {
+  const ms = Date.parse(`${wall.slice(0, 16)}:00Z`) + Math.round(minutes) * 60_000;
+  return new Date(ms).toISOString().slice(0, 16);
+}
+
+/** Pozycja kalendarza (FullCalendar na webie, oś dnia na telefonie) — czas jako zegar ścienny. */
+export interface CalendarEntry {
+  /** Unikalne w zakresie: `task:<id>:<dzień>` / `event:<id>`. */
+  key: string;
+  kind: 'task' | 'event';
+  id: string;
+  title: string;
+  /** Dzień wystąpienia (wydarzenie — pierwszy dzień w zakresie). */
+  date: LocalDate;
+  allDay: boolean;
+  /** `RRRR-MM-DDTGG:MM` (z godziną) albo data (całodniowe; `end` bez włączenia). */
+  start: string;
+  end: string;
+  passive: boolean;
+  virtual: boolean;
+  /** Nakłada się z innym aktywnym blokiem (zadanie ↔ zadanie / wydarzenie). */
+  conflict: boolean;
+}
+
+const notCancelled = (t: BlockTask) => t.status !== 'cancelled';
+
+/**
+ * Pozycje kalendarza dla dni `[from, to)`: zadania z godziną jako bloki (zegar ścienny z `due_time`
+ * i `duration_min`), zadania z datą bez godziny i wydarzenia całodniowe w wierszu „cały dzień”,
+ * przyszłe wystąpienia serii jako wirtualne, konflikty z `conflicts` liczone per dzień. Wydarzenie
+ * wielodniowe — jedna pozycja (od pierwszego dnia w zakresie). Anulowane zadania pomijane.
+ */
+export function calendarEntries(
+  tasks: readonly BlockTask[],
+  events: readonly CalendarEventLike[],
+  from: LocalDate,
+  to: LocalDate,
+  { timeZone, defaultDurationMin = DEFAULT_BLOCK_MIN }: { timeZone?: string; defaultDurationMin?: number } = {},
+): CalendarEntry[] {
+  const candidates = tasks.filter((t) => notCancelled(t) && t.dueDate && t.dueDate < to && (t.dueDate >= from || (t.recurrence?.mode === 'schedule' && !closed(t))));
+  const byId = new Map(candidates.map((t) => [t.id, t]));
+  const out: CalendarEntry[] = [];
+  const eventEntries = new Map<string, CalendarEntry>();
+
+  for (let date = from; date < to; date = addDays(date, 1)) {
+    const plan = blocksForDay(candidates, events, date, { timeZone, defaultDurationMin });
+    const hot = conflictIds(conflicts(plan.timed));
+    for (const item of plan.allDay) {
+      if (item.kind === 'task') {
+        const task = byId.get(item.id)!;
+        out.push({ key: `task:${item.id}:${date}`, kind: 'task', id: item.id, title: item.title, date, allDay: true, start: date, end: addDays(date, 1), passive: closed(task), virtual: task.dueDate !== date, conflict: false });
+      } else if (!eventEntries.has(item.id)) {
+        const event = events.find((e) => e.id === item.id)!;
+        eventEntries.set(item.id, { key: `event:${item.id}`, kind: 'event', id: item.id, title: item.title, date, allDay: true, start: event.startDate!, end: event.endDate ?? addDays(event.startDate!, 1), passive: event.busy === false, virtual: false, conflict: false });
+      }
+    }
+    for (const block of plan.timed) {
+      if (block.kind === 'task') {
+        const task = byId.get(block.id)!;
+        const start = `${date}T${task.dueTime}`;
+        out.push({ key: `task:${block.id}:${date}`, kind: 'task', id: block.id, title: block.title, date, allDay: false, start, end: addWallMinutes(start, block.endMin - block.startMin), passive: block.passive, virtual: block.virtual === true, conflict: hot.has(block.id) });
+        continue;
+      }
+      const seen = eventEntries.get(block.id);
+      if (seen) seen.conflict ||= hot.has(block.id);
+      else eventEntries.set(block.id, { key: `event:${block.id}`, kind: 'event', id: block.id, title: block.title, date, allDay: false, start: localDateTimeAt(block.startAt, timeZone), end: localDateTimeAt(block.endAt, timeZone), passive: block.passive, virtual: false, conflict: hot.has(block.id) });
+    }
+  }
+  return [...out, ...eventEntries.values()];
+}
+
+/**
+ * Wolne okna dnia (`freeSlots`) jako zegar ścienny — do podświetlenia w widoku dnia kalendarza.
+ */
+export function freeSlotTimes(
+  tasks: readonly BlockTask[],
+  events: readonly CalendarEventLike[],
+  date: LocalDate,
+  work: WorkHours,
+  { timeZone, defaultDurationMin, minMinutes }: { timeZone?: string; defaultDurationMin?: number; minMinutes?: number } = {},
+): { start: string; end: string }[] {
+  const plan = blocksForDay(tasks.filter(notCancelled), events, date, { timeZone, defaultDurationMin });
+  const dayStart = zonedInstant(date, '00:00', timeZone).getTime();
+  const wall = (min: number) => localDateTimeAt(new Date(dayStart + min * 60_000), timeZone);
+  return freeSlots(plan, work, { timeZone, minMinutes }).map((s) => ({ start: wall(s.startMin), end: wall(s.endMin) }));
 }
 
 /** Zaokrąglenie minut do siatki (przeciąganie w kalendarzu; domyślnie co 15 min). */

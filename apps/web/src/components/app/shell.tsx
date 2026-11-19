@@ -13,6 +13,7 @@ import { routeHash, useRoute, type Route } from "@/lib/route";
 
 import { AppEnvProvider, useAppEnv, visibleTaskIds } from "./app-env";
 import { Board } from "./board";
+import { CalendarScreen } from "./calendar";
 import { CommandPalette, ShortcutsDialog, type PaletteMode, type PalettePick } from "./command-palette";
 import { FilterBar } from "./filter-bar";
 import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-views";
@@ -172,7 +173,7 @@ export function Shell({
   const tag = route.view === "tag" ? data.tags.find((t) => t.id === route.id) : undefined;
   const savedFilter = route.view === "filter" ? data.savedFilters.find((f) => f.id === route.id) : undefined;
   const filterable = ["inbox", "today", "upcoming", "list", "board"].includes(route.view);
-  const wide = route.view === "board" || list?.prefs.view === "kanban";
+  const wide = route.view === "board" || route.view === "calendar" || list?.prefs.view === "kanban";
   // Widoki dostają zadania po filtrze doraźnym; liczniki paska bocznego liczą się z pełnych danych.
   const viewData = filterable && !isEmptyFilter(adhoc) ? { ...data, tasks: applyFilter(data.tasks, adhoc, today) } : data;
   const toolbar = filterable ? (
@@ -204,6 +205,11 @@ export function Shell({
           listId={targetInbox?.id}
           showList
         />
+      </>
+    ) : route.view === "calendar" ? (
+      <>
+        <h1 className="sr-only">Kalendarz</h1>
+        <CalendarScreen data={data} ctx={ctx} settings={settings} />
       </>
     ) : route.view === "manage" ? (
       manage
@@ -284,6 +290,7 @@ export function Shell({
               <NavItem route={{ view: "today" }} current={route} navigate={navigate} icon="☀️" label="Dziś" count={counts.today} alert={counts.overdue > 0} />
               <NavItem route={{ view: "upcoming" }} current={route} navigate={navigate} icon="📅" label="Nadchodzące" />
               <NavItem route={{ view: "board" }} current={route} navigate={navigate} icon="▦" label="Tablica" />
+              <NavItem route={{ view: "calendar" }} current={route} navigate={navigate} icon="🗓" label="Kalendarz" />
             </nav>
             {workspaces.map((w) => (
               <WorkspaceLists key={w.id} name={w.name} color={w.color} lists={data.lists.filter((l) => l.workspaceId === w.id && l.kind !== "inbox")} counts={counts.perList} route={route} navigate={navigate} />
@@ -451,7 +458,7 @@ function WorkspaceLists({
 
 // ── Klawiatura i polecenia ───────────────────────────────────────────────────────────────────
 
-const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" }, k: { view: "board" } };
+const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" } };
 
 /** Akcja na zaznaczonych z dymkiem „Cofnij”. */
 function useBulk(selected: readonly string[]) {
@@ -634,6 +641,7 @@ function PaletteHost({
       "view.today": () => then(() => navigate({ view: "today" })),
       "view.upcoming": () => then(() => navigate({ view: "upcoming" })),
       "view.kanban": () => then(() => navigate({ view: "board" })),
+      "view.calendar": () => then(() => navigate({ view: "calendar" })),
       "task.quick_add": () => then(openQuick),
       "task.complete": () => then(() => bulk({ kind: "complete" }, "Ukończono")),
       "task.today": () => then(() => bulk({ kind: "today" }, "Na dziś")),
