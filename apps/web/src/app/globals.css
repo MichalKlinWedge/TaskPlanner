@@ -93,3 +93,8 @@ body {
 .tp-calendar .fc-event.tp-event .fc-event-main {
   color: var(--foreground);
 }
+/* Spotkanie z kalendarza w „Planie dnia” (`day-plan.tsx`) — jak w kalendarzu: kreskowane, tylko do odczytu. */
+.tp-plan-event {
+  background-color: var(--surface);
+  background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--muted) 14%, transparent) 6px 12px);
+}

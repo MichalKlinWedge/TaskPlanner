@@ -264,6 +264,35 @@ export function freeSlotTimes(
   return freeSlots(plan, work, { timeZone, minMinutes }).map((s) => ({ start: wall(s.startMin), end: wall(s.endMin) }));
 }
 
+/**
+ * Układ osi dnia (plan dnia na webie, oś dnia na telefonie): nakładające się bloki obok siebie.
+ * Grupa = ciąg bloków połączonych nakładaniem; w grupie każdy blok dostaje pierwszą wolną kolumnę,
+ * `lanes` — liczba kolumn grupy (szerokość bloku = 1 / `lanes`).
+ */
+export function blockLanes(blocks: readonly Pick<Block, 'id' | 'kind' | 'startMin' | 'endMin'>[]): Map<string, { lane: number; lanes: number }> {
+  const out = new Map<string, { lane: number; lanes: number }>();
+  const sorted = [...blocks].sort((a, b) => a.startMin - b.startMin || b.endMin - a.endMin);
+  let group: { key: string; lane: number }[] = [];
+  let laneEnds: number[] = [];
+  let groupEnd = -Infinity;
+  const flush = () => {
+    for (const g of group) out.set(g.key, { lane: g.lane, lanes: laneEnds.length });
+    group = [];
+    laneEnds = [];
+    groupEnd = -Infinity;
+  };
+  for (const block of sorted) {
+    if (block.startMin >= groupEnd) flush();
+    let lane = laneEnds.findIndex((end) => end <= block.startMin);
+    if (lane < 0) lane = laneEnds.push(0) - 1;
+    laneEnds[lane] = block.endMin;
+    groupEnd = Math.max(groupEnd, block.endMin);
+    group.push({ key: `${block.kind}:${block.id}`, lane });
+  }
+  flush();
+  return out;
+}
+
 /** Zaokrąglenie minut do siatki (przeciąganie w kalendarzu; domyślnie co 15 min). */
 export const snapMinutes = (minutes: number, step = 15): number => Math.round(minutes / step) * step;
 

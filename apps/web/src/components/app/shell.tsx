@@ -15,6 +15,7 @@ import { routeHash, useRoute, type Route } from "@/lib/route";
 import { AppEnvProvider, useAppEnv, visibleTaskIds } from "./app-env";
 import { Board } from "./board";
 import { CalendarScreen } from "./calendar";
+import { DayPlan } from "./day-plan";
 import { CommandPalette, ShortcutsDialog, type PaletteMode, type PalettePick } from "./command-palette";
 import { FilterBar } from "./filter-bar";
 import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-views";
@@ -195,7 +196,7 @@ export function Shell({
     route.view === "inbox" ? (
       <InboxView {...props} />
     ) : route.view === "today" ? (
-      <TodayView {...props} />
+      <TodayView {...props} aside={<DayPlan data={data} ctx={ctx} settings={settings} />} />
     ) : route.view === "upcoming" ? (
       <UpcomingView {...props} />
     ) : route.view === "board" ? (
@@ -325,7 +326,7 @@ export function Shell({
             </nav>
           </aside>
           <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
-            <div className={`mx-auto w-full p-4 pb-20 sm:p-6 ${wide ? "" : "max-w-3xl"}`}>{content}</div>
+            <div className={`mx-auto w-full p-4 pb-20 sm:p-6 ${wide ? "" : route.view === "today" ? "max-w-5xl" : "max-w-3xl"}`}>{content}</div>
           </main>
           {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>

@@ -114,53 +114,57 @@ export function InboxView({ data, ctx, targetInbox, toolbar }: ViewProps) {
 
 // ── Dziś ─────────────────────────────────────────────────────────────────────────────────────
 
-export function TodayView({ data, ctx, targetInbox, toolbar }: ViewProps) {
+/** `aside` — „Plan dnia” obok listy (na szerokim ekranie po prawej, na wąskim pod listą). */
+export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps & { aside?: ReactNode }) {
   const view = useMemo(() => selectToday(data.tasks, ctx), [data.tasks, ctx]);
   const names = listNames(data);
   const open = view.overdue.length + view.today.length;
   const empty = !open && !view.ongoing.length && !view.habits.length && !view.done.length;
   return (
-    <>
-      <Header title="Dziś" subtitle={`${capitalized(dayLabel(ctx.today))} · ${plural(open, ["zadanie", "zadania", "zadań"])}`} />
-      {toolbar}
-      <QuickAdd listId={targetInbox?.id} dueDate={ctx.today} placeholder="Dodaj zadanie na dziś" />
-      {view.overdue.length ? (
-        <Section title={VIEW_SECTION.overdue} count={view.overdue.length} tone="danger">
-          {view.overdue.map((t) => (
-            <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />
-          ))}
-        </Section>
-      ) : null}
-      {view.today.length ? (
-        <Section title={VIEW_SECTION.today} count={view.today.length}>
-          {view.today.map((t) => (
-            <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />
-          ))}
-        </Section>
-      ) : null}
-      {view.ongoing.length ? (
-        <Section title={VIEW_SECTION.ongoing} count={view.ongoing.length}>
-          {view.ongoing.map((t) => (
-            <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />
-          ))}
-        </Section>
-      ) : null}
-      {view.habits.length ? (
-        <Section title={VIEW_SECTION.habits} count={view.habits.length}>
-          {view.habits.map((t) => (
-            <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} habitDone={data.habitsDoneToday.has(t.id)} />
-          ))}
-        </Section>
-      ) : null}
-      {view.done.length ? (
-        <Section title={VIEW_SECTION.done} count={view.done.length}>
-          {view.done.map((t) => (
-            <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />
-          ))}
-        </Section>
-      ) : null}
-      {empty ? <Empty>Na dziś nic nie ma.</Empty> : null}
-    </>
+    <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-8">
+      <div className="min-w-0">
+        <Header title="Dziś" subtitle={`${capitalized(dayLabel(ctx.today))} · ${plural(open, ["zadanie", "zadania", "zadań"])}`} />
+        {toolbar}
+        <QuickAdd listId={targetInbox?.id} dueDate={ctx.today} placeholder="Dodaj zadanie na dziś" />
+        {view.overdue.length ? (
+          <Section title={VIEW_SECTION.overdue} count={view.overdue.length} tone="danger">
+            {view.overdue.map((t) => (
+              <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />
+            ))}
+          </Section>
+        ) : null}
+        {view.today.length ? (
+          <Section title={VIEW_SECTION.today} count={view.today.length}>
+            {view.today.map((t) => (
+              <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />
+            ))}
+          </Section>
+        ) : null}
+        {view.ongoing.length ? (
+          <Section title={VIEW_SECTION.ongoing} count={view.ongoing.length}>
+            {view.ongoing.map((t) => (
+              <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />
+            ))}
+          </Section>
+        ) : null}
+        {view.habits.length ? (
+          <Section title={VIEW_SECTION.habits} count={view.habits.length}>
+            {view.habits.map((t) => (
+              <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} habitDone={data.habitsDoneToday.has(t.id)} />
+            ))}
+          </Section>
+        ) : null}
+        {view.done.length ? (
+          <Section title={VIEW_SECTION.done} count={view.done.length}>
+            {view.done.map((t) => (
+              <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />
+            ))}
+          </Section>
+        ) : null}
+        {empty ? <Empty>Na dziś nic nie ma.</Empty> : null}
+      </div>
+      {aside}
+    </div>
   );
 }
 

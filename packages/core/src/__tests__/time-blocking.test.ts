@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   addWallMinutes,
+  blockLanes,
   blocksForDay,
   calendarEntries,
   freeSlotTimes,
@@ -98,6 +99,19 @@ describe('kalendarz (zakres dni)', () => {
   it('wolne okna dnia jako zegar ścienny', () => {
     const work = { days: [1, 2, 3, 4, 5], start: '09:00' as const, end: '12:00' as const };
     expect(freeSlotTimes([task('a', { dueTime: '09:00' })], events, DAY, work, { timeZone: WAW })).toEqual([{ start: '2026-11-19T11:00', end: '2026-11-19T12:00' }]);
+  });
+});
+
+describe('układ osi dnia', () => {
+  it('nakładające się obok siebie, rozłączne grupy osobno', () => {
+    const b = (id: string, startMin: number, endMin: number) => ({ id, kind: 'task' as const, startMin, endMin });
+    const lanes = blockLanes([b('a', 540, 600), b('b', 570, 630), b('c', 600, 660), b('d', 720, 750)]);
+    expect(Object.fromEntries(lanes)).toEqual({
+      'task:a': { lane: 0, lanes: 2 },
+      'task:b': { lane: 1, lanes: 2 },
+      'task:c': { lane: 0, lanes: 2 },
+      'task:d': { lane: 0, lanes: 1 },
+    });
   });
 });
 

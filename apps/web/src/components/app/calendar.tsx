@@ -28,10 +28,8 @@ import {
   resizeBlockPatch,
   scheduleBlockPatch,
   selectInbox,
-  zonedInstant,
   selectToday,
   unscheduleBlockPatch,
-  type CalendarEventLike,
   type LocalDate,
   type ProfileSettings,
   type TaskOp,
@@ -41,7 +39,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { AppData } from "@/lib/app-data";
-import { useLocalQuery } from "@/lib/local-store";
+import { useCalendarEvents } from "@/lib/calendar-events";
 
 import { useAppEnv } from "./app-env";
 import { useTaskActions } from "./task-item";
@@ -49,18 +47,6 @@ import { Select } from "./ui";
 
 type CalendarView = "timeGridDay" | "timeGridWeek" | "dayGridMonth";
 
-interface ExternalRow extends Record<string, string | number | null> {
-  id: string;
-  title: string;
-  all_day: number;
-  start_at: string | null;
-  end_at: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  location: string | null;
-  color: string | null;
-  calendar: string;
-}
 const VIEWS: readonly CalendarView[] = ["timeGridDay", "timeGridWeek", "dayGridMonth"];
 const VIEW_KEY = "tp-calendar-view";
 /** Ile zadań panel rysuje (reszta — zawęź źródło albo filtr). */
@@ -111,23 +97,7 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
   const byId = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
 
   // Wydarzenia z kalendarzy zewnętrznych (widoczne kalendarze) nachodzące na zakres widoku.
-  const bounds = range ? [zonedInstant(range.from, "00:00", timeZone).toISOString(), zonedInstant(range.to, "00:00", timeZone).toISOString()] : ["", ""];
-  const external = useLocalQuery<ExternalRow>(
-    store,
-    `select e.id, e.title, e.all_day, e.start_at, e.end_at, e.start_date, e.end_date, e.location, c.color, c.name as calendar
-       from calendar_events e join calendars c on c.id = e.calendar_id
-      where c.visible = 1 and ((e.all_day = 0 and e.start_at < ? and e.end_at > ?) or (e.all_day = 1 and e.start_date < ? and e.end_date > ?))`,
-    [bounds[1]!, bounds[0]!, range?.to ?? "", range?.from ?? ""],
-    ["calendar_events", "calendars"],
-  ).rows;
-  const calendarEvents = useMemo(() => {
-    const info = new Map<string, ExternalRow>();
-    const list: CalendarEventLike[] = external.map((r) => {
-      info.set(r.id, r);
-      return { id: r.id, title: r.title || "(bez tytułu)", allDay: !!r.all_day, startAt: r.start_at, endAt: r.end_at, startDate: r.start_date, endDate: r.end_date };
-    });
-    return { list, info };
-  }, [external]);
+  const calendarEvents = useCalendarEvents(store, range, timeZone);
 
   const events = useMemo<EventInput[]>(() => {
     if (!range) return [];
