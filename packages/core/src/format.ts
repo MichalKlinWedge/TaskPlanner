@@ -21,6 +21,15 @@ export function pluralForm(count: number, [one, few, many]: readonly [string, st
 /** Liczba z odmienionym rzeczownikiem: `plural(2, ["zadanie", "zadania", "zadań"])` → „2 zadania”. */
 export const plural = (count: number, forms: readonly [string, string, string]): string => `${count} ${pluralForm(count, forms)}`;
 
+/** Tarcza timera: „24:59”, „1:02:03” (zaokrąglenie w górę — 0:00 dopiero na końcu). */
+export function formatTimer(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const mm = String(Math.floor((total % 3600) / 60)).padStart(h ? 2 : 1, '0');
+  const ss = String(total % 60).padStart(2, '0');
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
 /** „45 min”, „2 h”, „1 h 24 min”. */
 export function formatMinutes(minutes: number): string {
   const total = Math.round(minutes);

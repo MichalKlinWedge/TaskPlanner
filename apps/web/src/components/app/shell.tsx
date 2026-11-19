@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { useAppData, useToday, type List } from "@/lib/app-data";
 import { GOOGLE_RETURN_PARAM } from "@/lib/calendars";
-import { routeHash, useRoute, type Route } from "@/lib/route";
+import { DEFAULT_ROUTE, routeHash, useRoute, type Route } from "@/lib/route";
 
 import { AppEnvProvider, useAppEnv, visibleTaskIds } from "./app-env";
 import { Board } from "./board";
@@ -19,6 +19,7 @@ import { CalendarScreen } from "./calendar";
 import { DayPlan } from "./day-plan";
 import { CommandPalette, ShortcutsDialog, type PaletteMode, type PalettePick } from "./command-palette";
 import { FilterBar } from "./filter-bar";
+import { FocusIndicator, FocusProvider, FocusScreen } from "./focus";
 import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-views";
 import { QuickAddDialog } from "./quick-add";
 import { TaskPanel } from "./task-panel";
@@ -182,6 +183,10 @@ export function Shell({
     });
   }, [hash]);
 
+  // „Wyjdź” z trybu skupienia wraca do ostatniego innego widoku.
+  const [lastRoute, setLastRoute] = useState<Route>(DEFAULT_ROUTE);
+  if (route.view !== "focus" && routeHash(route) !== routeHash(lastRoute)) setLastRoute(route);
+
   // Oś czasu zostaje zamontowana po pierwszym otwarciu — powrót do niej bez ponownego rysowania.
   const [timelineOpened, setTimelineOpened] = useState(false);
   if (route.view === "timeline" && !timelineOpened) setTimelineOpened(true);
@@ -234,7 +239,9 @@ export function Shell({
         <h1 className="sr-only">Kalendarz</h1>
         <CalendarScreen data={data} ctx={ctx} settings={settings} />
       </>
-    ) : route.view === "timeline" ? null : route.view === "manage" ? (
+    ) : route.view === "timeline" ? null : route.view === "focus" ? (
+      <FocusScreen key={route.id ?? ""} taskId={route.id ?? null} ctx={ctx} onExit={() => navigate(lastRoute)} navigate={navigate} />
+    ) : route.view === "manage" ? (
       manage
     ) : route.view === "settings" ? (
       settingsView
@@ -270,9 +277,10 @@ export function Shell({
   return (
     <AppEnvProvider value={{ store, data, userId, timeZone: settings.timeZone, today, workspaceId, openTask: setOpenTaskId, openTaskId, selectedIds, select }}>
       <TaskActionsProvider store={store} timeZone={settings.timeZone} tasks={data.tasks}>
+        <FocusProvider store={store} userId={userId} settings={settings}>
         <ReminderToasts />
         <Keyboard
-          blocked={quickOpen || palette !== null || shortcutsOpen}
+          blocked={quickOpen || palette !== null || shortcutsOpen || route.view === "focus"}
           selected={selected}
           setSelected={setSelected}
           navigate={navigate}
@@ -281,6 +289,7 @@ export function Shell({
           openShortcuts={() => setShortcutsOpen(true)}
         />
         <div className="flex min-h-0 flex-1">
+          {route.view === "focus" ? null : (
           <button
             type="button"
             className="fixed right-4 bottom-4 z-20 rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white shadow-lg md:hidden"
@@ -290,10 +299,11 @@ export function Shell({
           >
             {menuOpen ? "Zamknij" : "Menu"}
           </button>
+          )}
           <aside
             id="sidebar"
             aria-label="Nawigacja"
-            className={`${menuOpen ? "fixed inset-0 z-10 block" : "hidden"} w-full shrink-0 overflow-y-auto border-r border-[var(--line)] bg-[var(--surface)] p-3 text-sm md:static md:block md:w-64`}
+            className={`${menuOpen ? "fixed inset-0 z-10 block" : "hidden"} w-full shrink-0 overflow-y-auto border-r border-[var(--line)] bg-[var(--surface)] p-3 text-sm md:static md:w-64 ${route.view === "focus" ? "md:hidden" : "md:block"}`}
           >
             <Select
               aria-label="Przestrzeń"
@@ -308,6 +318,7 @@ export function Shell({
                 </option>
               ))}
             </Select>
+            <FocusIndicator navigate={navigate} />
             <button
               type="button"
               onClick={() => setQuickOpen(true)}
@@ -366,6 +377,7 @@ export function Shell({
           />
         ) : null}
         {shortcutsOpen ? <ShortcutsDialog onClose={() => setShortcutsOpen(false)} /> : null}
+        </FocusProvider>
       </TaskActionsProvider>
     </AppEnvProvider>
   );
@@ -491,6 +503,9 @@ function WorkspaceLists({
 
 // ── Klawiatura i polecenia ───────────────────────────────────────────────────────────────────
 
+/** Tryb skupienia z zadaniem (zaznaczonym albo otwartym) albo bez. */
+const focusRoute = (taskId: string | null | undefined): Route => (taskId ? { view: "focus", id: taskId } : { view: "focus" });
+
 const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" } };
 
 /** Akcja na zaznaczonych z dymkiem „Cofnij”. */
@@ -603,6 +618,7 @@ function Keyboard({
         "2": () => bulk({ kind: "priority", priority: 2 }, "Priorytet wysoki"),
         "3": () => bulk({ kind: "priority", priority: 3 }, "Priorytet średni"),
         "4": () => bulk({ kind: "priority", priority: 4 }, "Priorytet niski"),
+        f: () => navigate(focusRoute(selected.at(-1) ?? openTaskId)),
       };
       const handler = handlers[key];
       // Enter bez zaznaczenia zostaje przyciskom i linkom.
@@ -676,6 +692,7 @@ function PaletteHost({
       "view.kanban": () => then(() => navigate({ view: "board" })),
       "view.calendar": () => then(() => navigate({ view: "calendar" })),
       "view.timeline": () => then(() => navigate({ view: "timeline" })),
+      "focus.start": () => then(() => navigate(focusRoute(selected.at(-1) ?? null))),
       "task.quick_add": () => then(openQuick),
       "task.complete": () => then(() => bulk({ kind: "complete" }, "Ukończono")),
       "task.today": () => then(() => bulk({ kind: "today" }, "Na dziś")),

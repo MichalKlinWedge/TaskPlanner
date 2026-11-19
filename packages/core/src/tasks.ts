@@ -88,7 +88,7 @@ export function toViewTask(row: LocalTaskRow, tagIds: readonly string[] = []): V
 }
 
 export interface TaskOp {
-  table: 'tasks' | 'task_completions' | 'tags' | 'task_tags' | 'reminders' | 'saved_filters' | 'task_dependencies' | 'lists';
+  table: 'tasks' | 'task_completions' | 'tags' | 'task_tags' | 'reminders' | 'saved_filters' | 'task_dependencies' | 'lists' | 'time_entries' | 'profiles';
   id: string;
   patch: Record<string, unknown>;
 }

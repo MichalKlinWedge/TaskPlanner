@@ -9,7 +9,7 @@
  */
 import { z } from 'zod';
 
-import { FocusSettings } from '../focus.ts';
+import { FocusSettings, FocusState } from '../focus.ts';
 import { HabitSettings } from '../habits.ts';
 import { Recurrence } from '../recurrence.ts';
 import { ReviewStats } from '../review.ts';
@@ -109,6 +109,8 @@ export const ProfileRow = z.object({
   id: Id,
   display_name: z.string().trim().max(100).nullable(),
   settings: ProfileSettings,
+  /** Timer skupienia (Etap 7); `null` = brak. */
+  focus: FocusState.nullable(),
 });
 
 export const DeviceRow = z.object({

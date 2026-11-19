@@ -215,14 +215,14 @@ isOneToOne: false
                   ]
                 },"profiles": {
                   Row: {
-                    "created_at": string,"created_by": string | null,"deleted_at": string | null,"display_name": string | null,"field_clock": NonNullable<Json>,"id": string,"row_version": number,"scope_id": string,"settings": NonNullable<Json>,"updated_at": string
+                    "created_at": string,"created_by": string | null,"deleted_at": string | null,"display_name": string | null,"field_clock": NonNullable<Json>,"focus": Json | null,"id": string,"row_version": number,"scope_id": string,"settings": NonNullable<Json>,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"display_name"?: string | null,"field_clock"?: NonNullable<Json>,"id": string,"row_version"?: number,"scope_id": string,"settings"?: NonNullable<Json>,"updated_at"?: string
+                    "created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"display_name"?: string | null,"field_clock"?: NonNullable<Json>,"focus"?: Json | null,"id": string,"row_version"?: number,"scope_id": string,"settings"?: NonNullable<Json>,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"display_name"?: string | null,"field_clock"?: NonNullable<Json>,"id"?: string,"row_version"?: number,"scope_id"?: string,"settings"?: NonNullable<Json>,"updated_at"?: string
+                    "created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"display_name"?: string | null,"field_clock"?: NonNullable<Json>,"focus"?: Json | null,"id"?: string,"row_version"?: number,"scope_id"?: string,"settings"?: NonNullable<Json>,"updated_at"?: string
                   }
                   Relationships: [
                     {

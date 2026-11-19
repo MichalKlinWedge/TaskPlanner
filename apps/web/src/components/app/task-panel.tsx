@@ -2,7 +2,7 @@
 
 /**
  * Panel zadania (MVP-2): wszystkie pola zadania, opis w Markdown (TipTap), tagi, przypomnienia,
- * podzadania (do 4 poziomów), zależności (poprzednicy / następnicy, M12), historia zmian (online, z `activity_log`) i kosz. Każda zmiana to
+ * podzadania (do 4 poziomów), czas pracy (M14), zależności (poprzednicy / następnicy, M12), historia zmian (online, z `activity_log`) i kosz. Każda zmiana to
  * `store.mutate` jednego pola — synchronizacja scala zmiany pól z innych urządzeń (§6).
  */
 import {
@@ -51,6 +51,7 @@ import { useLocalQuery } from "@/lib/local-store";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 import { useAppEnv } from "./app-env";
+import { TaskTimeField } from "./focus";
 import { QuickAdd } from "./quick-add";
 import { RecurrenceEditor } from "./recurrence-editor";
 import { TaskItem, useTaskActions } from "./task-item";
@@ -80,7 +81,7 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
 }
 
 export function TaskPanel({ taskId }: { taskId: string }) {
-  const { store, data, userId, today, timeZone, openTask } = useAppEnv();
+  const { data, userId, today, timeZone, openTask } = useAppEnv();
   const { run, toggle } = useTaskActions();
   const task = data.tasks.find((t) => t.id === taskId);
 
@@ -208,7 +209,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
       <RemindersField key={`rem:${task.id}`} task={task} />
 
       <Block title="Opis">
-        <DescriptionEditor key={task.id} taskId={task.id} store={store} />
+        <DescriptionEditor key={task.id} taskId={task.id} />
       </Block>
 
       <Block title={`Podzadania${children.length ? ` · ${children.filter((c) => c.status === "done").length}/${children.filter((c) => c.status !== "cancelled").length}` : ""}`}>
@@ -225,6 +226,8 @@ export function TaskPanel({ taskId }: { taskId: string }) {
           <p className="text-xs text-[var(--muted)]">Najwyżej 4 poziomy zadań — tu nie można dodać kolejnego.</p>
         )}
       </Block>
+
+      <TaskTimeField task={task} />
 
       <DependenciesField key={`dep:${task.id}`} task={task} />
 
@@ -575,7 +578,9 @@ function RemindersField({ task }: { task: ViewTask }) {
   );
 }
 
-function DescriptionEditor({ taskId, store }: { taskId: string; store: ReturnType<typeof useAppEnv>["store"] }) {
+/** Opis zadania w Markdown — w panelu i w trybie skupienia. */
+export function DescriptionEditor({ taskId }: { taskId: string }) {
+  const { store } = useAppEnv();
   const { run } = useTaskActions();
   const { rows, ms } = useLocalQuery<Row>(store, "select description_md from tasks where id = ?", [taskId], ["tasks"]);
   const saved = (rows[0]?.description_md as string | null) ?? "";

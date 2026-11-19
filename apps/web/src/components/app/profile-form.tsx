@@ -12,6 +12,13 @@ export interface ProfileValues {
 
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const satisfies readonly IsoWeekday[];
 
+const FOCUS_FIELDS = [
+  ["focusMin", "Praca (min)", 1, 180],
+  ["shortBreakMin", "Krótka przerwa (min)", 1, 60],
+  ["longBreakMin", "Długa przerwa (min)", 1, 90],
+  ["longBreakEvery", "Długa co (etapów)", 1, 12],
+] as const;
+
 const deviceZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 /** Strefy IANA znane przeglądarce; bieżąca zawsze na liście. */
@@ -48,6 +55,12 @@ export function ProfileForm({
   const [reminderTime, setReminderTime] = useState(start.defaultReminderTime);
   const [duration, setDuration] = useState(String(start.defaultDurationMin));
   const [theme, setTheme] = useState(start.theme);
+  const [focus, setFocus] = useState(() => ({
+    focusMin: String(start.focus.focusMin),
+    shortBreakMin: String(start.focus.shortBreakMin),
+    longBreakMin: String(start.focus.longBreakMin),
+    longBreakEvery: String(start.focus.longBreakEvery),
+  }));
   const [error, setError] = useState<string | null>(null);
   const zones = useMemo(() => timeZones(timeZone), [timeZone]);
 
@@ -61,6 +74,12 @@ export function ProfileForm({
       defaultReminderTime: reminderTime,
       defaultDurationMin: Number(duration),
       theme,
+      focus: {
+        focusMin: Number(focus.focusMin),
+        shortBreakMin: Number(focus.shortBreakMin),
+        longBreakMin: Number(focus.longBreakMin),
+        longBreakEvery: Number(focus.longBreakEvery),
+      },
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? "Niepoprawne ustawienia.");
@@ -123,6 +142,16 @@ export function ProfileForm({
           <Input type="number" min={5} max={480} step={5} value={duration} onChange={(e) => setDuration(e.target.value)} />
         </Field>
       </div>
+      <fieldset className="flex flex-col gap-2 text-sm">
+        <legend className="mb-1 font-medium">Tryb skupienia (Pomodoro)</legend>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {FOCUS_FIELDS.map(([key, label, min, max]) => (
+            <Field key={key} label={label}>
+              <Input type="number" min={min} max={max} value={focus[key]} onChange={(e) => setFocus({ ...focus, [key]: e.target.value })} />
+            </Field>
+          ))}
+        </div>
+      </fieldset>
       <Field label="Motyw">
         <Select value={theme} onChange={(e) => setTheme(e.target.value as keyof typeof THEME)} className="sm:w-60">
           {(Object.keys(THEME) as (keyof typeof THEME)[]).map((key) => (

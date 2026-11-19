@@ -31,6 +31,7 @@ export const AVAILABLE_COMMANDS = new Set([
   "view.kanban",
   "view.calendar",
   "view.timeline",
+  "focus.start",
   "task.quick_add",
   "task.complete",
   "task.priority",

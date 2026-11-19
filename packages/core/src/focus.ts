@@ -10,7 +10,10 @@
  */
 import { z } from 'zod';
 
-import { uuidv7 } from './ids.ts';
+import { addDays, weekStart, zonedInstant } from './dates.ts';
+import { uuidv5, uuidv7 } from './ids.ts';
+import type { LocalDate } from './schemas/primitives.ts';
+import type { TaskOp } from './tasks.ts';
 
 /** Część `profiles.settings`: długości etapów. */
 export const FocusSettings = z.object({
@@ -53,7 +56,8 @@ export interface FocusStep {
   entries: EntryOp[];
 }
 
-type NewId = () => string;
+/** Id nowego wpisu; dostaje etap i początek — `focusEntryId` liczy z nich id deterministyczne. */
+type NewId = (phase: FocusPhase, startedAt: string) => string;
 const iso = (ms: number) => new Date(ms).toISOString();
 const isBreak = (phase: FocusPhase) => phase === 'short_break' || phase === 'long_break';
 const isRunning = (s: FocusState) => s.phase === 'focus' || s.phase === 'stopwatch' || isBreak(s.phase);
@@ -82,7 +86,7 @@ export function phaseEndsAt(state: FocusState, settings: FocusSettings = DEFAULT
 }
 
 const open = (state: FocusState, phase: FocusPhase, at: number, newId: NewId): FocusStep => {
-  const id = newId();
+  const id = newId(phase, iso(at));
   const focus = phase === 'focus' || phase === 'stopwatch';
   return {
     state: { ...state, phase, segmentStartedAt: iso(at), elapsedMs: 0, paused: false, entryId: id },
@@ -105,7 +109,7 @@ const close = (state: FocusState, at: number): EntryOp[] => (state.entryId ? [{ 
  * Start pracy nad zadaniem (albo bez zadania). Z `ready` seria trwa dalej (licznik do długiej
  * przerwy zostaje); trwający etap jest najpierw zamykany.
  */
-export function startFocus(state: FocusState, { taskId, mode = 'pomodoro', now, newId = uuidv7 }: { taskId: string | null; mode?: 'pomodoro' | 'stopwatch'; now: Date; newId?: NewId }): FocusStep {
+export function startFocus(state: FocusState, { taskId, mode = 'pomodoro', now, newId = () => uuidv7() }: { taskId: string | null; mode?: 'pomodoro' | 'stopwatch'; now: Date; newId?: NewId }): FocusStep {
   const at = now.getTime();
   const entries = close(state, at);
   const base: FocusState = { ...FOCUS_IDLE, taskId, completedFocus: state.phase === 'ready' || isBreak(state.phase) ? state.completedFocus : 0 };
@@ -118,7 +122,7 @@ export function pauseFocus(state: FocusState, now: Date): FocusStep {
   return { state: { ...state, elapsedMs: focusElapsed(state, now), segmentStartedAt: null, paused: true, entryId: null }, entries: close(state, now.getTime()) };
 }
 
-export function resumeFocus(state: FocusState, now: Date, newId: NewId = uuidv7): FocusStep {
+export function resumeFocus(state: FocusState, now: Date, newId: NewId = () => uuidv7()): FocusStep {
   if (!state.paused) return { state, entries: [] };
   const { state: next, entries } = open(state, state.phase, now.getTime(), newId);
   return { state: { ...next, elapsedMs: state.elapsedMs }, entries };
@@ -143,7 +147,7 @@ function finish(state: FocusState, at: number, settings: FocusSettings, newId: N
  * Doliczenie upływu czasu (przy starcie aplikacji, po synchronizacji, co sekundę na ekranie):
  * etap, który się skończył, zamyka się w chwili swojego końca, nie „teraz”.
  */
-export function advanceFocus(state: FocusState, now: Date, { settings = DEFAULT_FOCUS, newId = uuidv7 }: { settings?: FocusSettings; newId?: NewId } = {}): FocusStep {
+export function advanceFocus(state: FocusState, now: Date, { settings = DEFAULT_FOCUS, newId = () => uuidv7() }: { settings?: FocusSettings; newId?: NewId } = {}): FocusStep {
   let current: FocusStep = { state, entries: [] };
   for (let end = phaseEndsAt(current.state, settings); end && end.getTime() <= now.getTime(); end = phaseEndsAt(current.state, settings)) {
     const step = finish(current.state, end.getTime(), settings, newId);
@@ -153,7 +157,7 @@ export function advanceFocus(state: FocusState, now: Date, { settings = DEFAULT_
 }
 
 /** „Pomiń”: koniec etapu teraz (praca liczy się jako ukończona, przerwa przechodzi w `ready`). */
-export function skipPhase(state: FocusState, now: Date, { settings = DEFAULT_FOCUS, newId = uuidv7 }: { settings?: FocusSettings; newId?: NewId } = {}): FocusStep {
+export function skipPhase(state: FocusState, now: Date, { settings = DEFAULT_FOCUS, newId = () => uuidv7() }: { settings?: FocusSettings; newId?: NewId } = {}): FocusStep {
   if (!isRunning(state) || state.phase === 'stopwatch') return { state, entries: [] };
   return finish(state.paused ? { ...state, entryId: null } : state, now.getTime(), settings, newId);
 }
@@ -178,4 +182,141 @@ export function focusMinutes(entries: readonly TimeEntryLike[], now: Date, { tas
     if (end > start) ms += end - start;
   }
   return Math.round(ms / 60_000);
+}
+
+// ── Zapis i stan w aplikacji (Etap 7) ────────────────────────────────────────────────────────
+
+/**
+ * Id wpisu deterministyczne (UUIDv5 z użytkownika, etapu i początku): dwa urządzenia (albo karty),
+ * które naraz doliczają koniec etapu w `advanceFocus`, otwierają ten sam wpis przerwy, a nie dwa.
+ */
+export const focusEntryId =
+  (userId: string): NewId =>
+  (phase, startedAt) =>
+    uuidv5(`focus:${userId}:${phase}:${startedAt}`);
+
+/** Stan z kolumny `profiles.focus` (tekst JSON albo obiekt); brak albo błąd = `idle`. */
+export function parseFocusState(value: unknown): FocusState {
+  let raw = value;
+  if (typeof value === 'string') {
+    try {
+      raw = JSON.parse(value);
+    } catch {
+      return FOCUS_IDLE;
+    }
+  }
+  const parsed = FocusState.safeParse(raw ?? undefined);
+  return parsed.success ? parsed.data : FOCUS_IDLE;
+}
+
+export const isFocusActive = (state: FocusState): boolean => state.phase !== 'idle';
+
+/** Przejście → operacje do `mutateMany`: wpisy `time_entries` i stan w profilu (jedna transakcja). */
+export function focusStepOps(userId: string, step: FocusStep): TaskOp[] {
+  const ops: TaskOp[] = step.entries.map((e) =>
+    e.op === 'open'
+      ? { table: 'time_entries', id: e.id, patch: { task_id: e.taskId, kind: e.kind, started_at: e.startedAt, ended_at: null, pomodoro_index: e.pomodoroIndex } }
+      : { table: 'time_entries', id: e.id, patch: { ended_at: e.endedAt } },
+  );
+  ops.push({ table: 'profiles', id: userId, patch: { focus: step.state.phase === 'idle' ? null : step.state } });
+  return ops;
+}
+
+export interface TimeEntryRecord extends TimeEntryLike {
+  id: string;
+  pomodoroIndex: number | null;
+}
+
+/** Po tylu ms otwarty wpis spoza stanu uznaje się za porzucony (synchronizacja dowozi stan i wpis razem). */
+const ORPHAN_GRACE_MS = 2 * 60_000;
+
+/**
+ * Otwarte wpisy, których nie wskazuje stan timera — zostają, gdy dwa urządzenia naraz zmieniły
+ * timer (stan wygrywa ostatni, wpis przegranego zostaje otwarty i liczyłby się bez końca).
+ * Zamknięcie: w chwili startu wygrywającego odcinka, jeśli był później, inaczej po długości etapu
+ * (stoper — teraz), nigdy po `now`.
+ */
+export function orphanEntryOps(entries: readonly TimeEntryRecord[], state: FocusState, now: Date, settings: FocusSettings = DEFAULT_FOCUS): TaskOp[] {
+  const ops: TaskOp[] = [];
+  const current = state.segmentStartedAt ? Date.parse(state.segmentStartedAt) : null;
+  for (const e of entries) {
+    if (e.endedAt || e.kind === 'manual' || e.id === state.entryId) continue;
+    const start = Date.parse(e.startedAt);
+    if (now.getTime() - start < ORPHAN_GRACE_MS) continue;
+    const length = e.kind === 'break' ? settings.longBreakMin * 60_000 : e.pomodoroIndex === null ? null : settings.focusMin * 60_000;
+    const end = current !== null && current > start ? current : length === null ? now.getTime() : start + length;
+    ops.push({ table: 'time_entries', id: e.id, patch: { ended_at: iso(Math.min(end, now.getTime())) } });
+  }
+  return ops;
+}
+
+/** Ręczny wpis pracy kończący się teraz („Dodaj czas”); poza 1–1440 min — nic. */
+export function manualEntryOps(taskId: string, minutes: number, now: Date, newId: () => string = uuidv7): TaskOp[] {
+  const min = Math.round(minutes);
+  if (!Number.isFinite(min) || min < 1 || min > 24 * 60) return [];
+  return [{ table: 'time_entries', id: newId(), patch: { task_id: taskId, kind: 'manual', started_at: iso(now.getTime() - min * 60_000), ended_at: iso(now.getTime()), pomodoro_index: null } }];
+}
+
+export interface FocusTaskInfo {
+  id: string;
+  listId: string;
+  workspaceId: string;
+}
+
+export interface FocusBucket {
+  /** `null` = wpisy bez zadania. */
+  id: string | null;
+  minutes: number;
+}
+
+export interface FocusWeek {
+  /** Pierwszy dzień tygodnia. */
+  from: LocalDate;
+  days: { date: LocalDate; minutes: number }[];
+  total: number;
+  /** Etapy pracy Pomodoro, po których zaczęła się przerwa (koniec etapu albo „Pomiń”). */
+  pomodoros: number;
+  /** Malejąco po minutach (przy remisie „bez zadania” na końcu). */
+  byWorkspace: FocusBucket[];
+  byList: FocusBucket[];
+  byTask: FocusBucket[];
+}
+
+/**
+ * Statystyki tygodnia (M14): minuty pracy (wpisy `focus` i `manual`) na dzień, przestrzeń, listę /
+ * projekt i zadanie. Dni w strefie użytkownika; wpis przez północ dzieli się między dni.
+ */
+export function focusWeek(
+  entries: readonly TimeEntryRecord[],
+  tasks: readonly FocusTaskInfo[],
+  { today, firstDayOfWeek = 1, timeZone, now }: { today: LocalDate; firstDayOfWeek?: number; timeZone?: string; now: Date },
+): FocusWeek {
+  const from = weekStart(today, firstDayOfWeek);
+  const dates = Array.from({ length: 7 }, (_, i) => addDays(from, i));
+  const bounds = [...dates, addDays(from, 7)].map((d) => zonedInstant(d, '00:00', timeZone));
+  const start = bounds[0]!;
+  const end = bounds[7]!;
+  const work = entries.filter((e) => e.kind !== 'break');
+  const days = dates.map((date, i) => ({ date, minutes: focusMinutes(work, now, { from: bounds[i], to: bounds[i + 1] }) }));
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const sums = { workspace: new Map<string | null, number>(), list: new Map<string | null, number>(), task: new Map<string | null, number>() };
+  const add = (map: Map<string | null, number>, key: string | null, min: number) => map.set(key, (map.get(key) ?? 0) + min);
+  for (const e of work) {
+    const min = focusMinutes([e], now, { from: start, to: end });
+    if (min <= 0) continue;
+    const task = e.taskId ? byId.get(e.taskId) : undefined;
+    add(sums.workspace, task?.workspaceId ?? null, min);
+    add(sums.list, task?.listId ?? null, min);
+    add(sums.task, e.taskId ?? null, min);
+  }
+  // Etap dzielony pauzami = kilka wpisów; liczy się ten, po którym (w tej samej chwili) zaczęła się przerwa.
+  const breaks = new Set(entries.filter((e) => e.kind === 'break').map((e) => `${e.taskId}|${Date.parse(e.startedAt)}`));
+  let pomodoros = 0;
+  for (const e of work) {
+    if (e.kind !== 'focus' || e.pomodoroIndex === null || !e.endedAt) continue;
+    const ended = Date.parse(e.endedAt);
+    if (ended >= start.getTime() && ended < end.getTime() && breaks.has(`${e.taskId}|${ended}`)) pomodoros++;
+  }
+  const sorted = (map: Map<string | null, number>): FocusBucket[] => [...map].map(([id, minutes]) => ({ id, minutes })).sort((a, b) => b.minutes - a.minutes || Number(a.id === null) - Number(b.id === null));
+  return { from, days, total: days.reduce((n, d) => n + d.minutes, 0), pomodoros, byWorkspace: sorted(sums.workspace), byList: sorted(sums.list), byTask: sorted(sums.task) };
 }

@@ -13,6 +13,7 @@ export type Route =
   | { view: "board" }
   | { view: "calendar" }
   | { view: "timeline" }
+  | { view: "focus"; id?: string }
   | { view: "list"; id: string }
   | { view: "tag"; id: string }
   | { view: "filter"; id: string }
@@ -39,12 +40,14 @@ export function parseRoute(hash: string): Route {
     case "tag":
     case "filter":
       return id ? { view, id } : DEFAULT_ROUTE;
+    case "focus":
+      return id ? { view, id } : { view };
     default:
       return DEFAULT_ROUTE;
   }
 }
 
-export const routeHash = (route: Route): string => ("id" in route ? `#/${route.view}/${route.id}` : `#/${route.view}`);
+export const routeHash = (route: Route): string => ("id" in route && route.id ? `#/${route.view}/${route.id}` : `#/${route.view}`);
 
 const subscribe = (listener: () => void) => {
   window.addEventListener("hashchange", listener);

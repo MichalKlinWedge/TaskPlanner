@@ -365,7 +365,7 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 ### Tabele — konto i struktura
 | Tabela | Najważniejsze kolumny | Uwagi |
 |---|---|---|
-| `profiles` | `id` (= id użytkownika), `display_name`, `settings jsonb` (`ProfileSettings`, z flagą `onboarded`); `inbox_token`, `inbound_senders text[]` dojdą razem z e-mailem (v1.x, D9) | zakres osobisty; powstaje triggerem razem z kontem (MVP-1) |
+| `profiles` | `id` (= id użytkownika), `display_name`, `settings jsonb` (`ProfileSettings`, z flagą `onboarded`), `focus jsonb` (`FocusState` — aktywny timer skupienia, `null` = brak; Etap 7); `inbox_token`, `inbound_senders text[]` dojdą razem z e-mailem (v1.x, D9) | zakres osobisty; powstaje triggerem razem z kontem (MVP-1) |
 | `devices` | `id`, `user_id`, `name`, `platform` (`web`/`android`), `reminder_channel`, `push_subscription jsonb`, `last_sync_at` | |
 | `sync_scopes` | `id`, `kind` (`workspace`/`personal`), `owner_id`, `sync_version bigint` | licznik zakresu; Realtime subskrybuje te wiersze |
 | `workspaces` | `id` (= `scope_id`), `name`, `color`, `icon`, `sort_key`, `archived_at` | jedna przestrzeń = jeden zakres |
@@ -509,6 +509,7 @@ Recurrence =
 ### 7.7. Pomodoro (`focus.ts`)
 - Maszyna stanów: `idle → focus → short_break/long_break → focus …`, stan = etap + `started_at` + pauzy; `remaining(state, now)`; przejście etapu zamyka i otwiera `time_entries`.
 - Zrobione (18.11.2026): `FocusSettings`, `FocusState` (Zod), `startFocus`/`pauseFocus`/`resumeFocus`/`stopFocus`/`skipPhase`/`advanceFocus` → `{ state, entries }` (operacje open/close na `time_entries`), `focusRemaining`, `phaseEndsAt` (do powiadomienia), `focusMinutes`. Pauza zamyka wpis, wznowienie otwiera nowy. Koniec pracy sam zaczyna przerwę, koniec przerwy przechodzi w `ready` (czeka na użytkownika) — uśpione urządzenie nie dopisuje fikcyjnych cykli; etap zamyka się w chwili swojego końca, nie przy następnym otwarciu aplikacji.
+- Etap 7 (19.11.2026): stan w `profiles.focus` (osobne pole — timer nie nadpisuje ustawień), `focusStepOps` (przejście → wpisy + stan, jedna transakcja), `focusEntryId` (UUIDv5 z użytkownika, etapu i początku — równoległe doliczenie końca etapu na dwóch urządzeniach daje ten sam wpis), `parseFocusState`, `orphanEntryOps` (wpis porzucony przez równoległą zmianę timera zamyka się po 2 min: w chwili startu wygrywającego odcinka albo po długości etapu), `manualEntryOps` (ręczny wpis `manual`), `focusWeek` (statystyki tygodnia: dni w strefie użytkownika, przestrzeń, lista / projekt, zadanie, ukończone Pomodoro).
 
 ### 7.8. Przegląd (`review.ts`)
 - `dailyReviewQueue(tasks, today)`, `weeklyReviewSteps(…)` (Inbox, zaległe, projekty bez następnego kroku, „Oczekuje” > 7 dni), `reviewStats`.
