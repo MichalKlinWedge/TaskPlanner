@@ -18,7 +18,7 @@ import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 
 import { readJson, writeJson } from './config';
-import { completeTaskById, postponeTaskById } from './headless';
+import { completeTaskById, postponeTaskById, pushNow } from './headless';
 import { ACTION, CATEGORY_ID, CHANNEL_ID, scheduleReminders, snoozeNotification, type ReminderData } from './scheduler';
 import { createTask, reminderListId } from './tasks';
 import { toLocalDate, toLocalTime } from './time';
@@ -55,6 +55,8 @@ export interface ActionLog {
   notificationId: string;
   appState: 'background-task' | 'foreground';
   ok: boolean;
+  /** Od akcji do zapisu lokalnego (ms). */
+  ms?: number;
   error?: string;
 }
 
@@ -255,15 +257,23 @@ export async function handleResponse(response: Notifications.NotificationRespons
   try {
     if (data) recordDelivery(notificationId, data, r.notification?.date ?? Date.now(), 'action');
     if (!data?.taskId) throw new Error('brak taskId w powiadomieniu');
-    if (action === ACTION.complete) await completeTaskById(data.taskId, data.occurrenceDate);
-    else if (action === ACTION.tomorrow) await postponeTaskById(data.taskId, data.occurrenceDate);
-    else if (action === ACTION.snooze) await snoozeNotification(notificationId, data as ReminderData);
+    // Zamknięcie od razu: zapis w tle (wczytanie danych, kolejka bazy) potrafi trwać kilkanaście
+    // sekund, a powiadomienie wiszące po „Ukończ” wygląda jak nieudana akcja. Powtórzenie
+    // blokuje `handled` / `inFlight`, więc nie ma po co go zostawiać.
     if (notificationId)
       await Notifications.dismissNotificationAsync(notificationId).catch((e: unknown) => {
         entry.error = `dismiss: ${e instanceof Error ? e.message : String(e)}`;
       });
+    if (action === ACTION.complete) await completeTaskById(data.taskId, data.occurrenceDate);
+    else if (action === ACTION.tomorrow) await postponeTaskById(data.taskId, data.occurrenceDate);
+    else if (action === ACTION.snooze) await snoozeNotification(notificationId, data as ReminderData);
+    entry.ms = Date.now() - entry.at;
     writeJson(K.handled, [...handled.slice(-499), key]);
-    if (action !== ACTION.snooze) await scheduleReminders().catch(() => undefined);
+    // Najpierw wysyłka: przeplanowanie i widżet wczytują dane od nowa, a w tle to kilka sekund.
+    if (action !== ACTION.snooze) {
+      await pushNow();
+      await scheduleReminders().catch(() => undefined);
+    }
     await refreshTodayWidget().catch(() => undefined);
   } catch (error) {
     entry.ok = false;

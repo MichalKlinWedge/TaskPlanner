@@ -70,10 +70,10 @@ Część telefoniczna MVP-3 w `apps/mobile`: zakładki `src/app/(tabs)/`, szczeg
 | --- | --- | --- | --- |
 | T1 | 19.11.2026 | OK | dev build, 5 767 wierszy / 6 stron: przed poprawką 22,9–23,5 s (zapis 4,9 s, **kolejka 15,9 s** — odświeżanie widoków po każdej stronie), po poprawce **3,4 s** (zapytanie 1,5 s, zapis 2,6 s, scalenie 0,2 s, kolejka 0,06 s); MVP-1: ~27 s |
 | T2 | | | |
-| T3 | | | |
-| T4 | | | |
+| T3 | 19.11.2026 | OK | pola, termin, godzina, przypomnienia; drobiazg: przy „Początek” zbędna podpowiedź „dziś” |
+| T4 | 19.11.2026 | częściowo | chipy (godzina, priorytet, tag, przypomnienie) i zapis na serwerze OK; skróty i udostępnianie — do sprawdzenia |
 | T5 | 19.11.2026 | w toku | przesunięcie w prawo = ukończ + „Cofnij” (po poprawce kierunku), odświeżenie widoku 0,27 s (zapytania 0,22 s po zastąpieniu podzapytania tagów; wcześniej 0,9 s) |
-| T6 | | | |
+| T6 | 19.11.2026 | OK (po poprawkach) | przypomnienie o czasie co do sekundy, treść „Za 5 min (14:16)”; „Odłóż 10 min” przy zabitym procesie — wraca po 10 min; „Ukończ” w tle i z ekranu blokady: powiadomienie znika, zadanie na serwerze po ~9 s (dev build). Znalezione i poprawione: przypomnienie zadania dodanego tuż przed wyjściem z aplikacji nie było planowane do jej otwarcia (timery i render Reacta stoją w tle); „Ukończ” w tle czytało wszystkie dane (35 s) i czekało z wysyłką do otwarcia aplikacji, powiadomienie wisiało do końca zapisu. Uwaga do testów: ponowne połączenie debugowania bezprzewodowego kasuje `adb reverse` — zmiany zostają w outboksie i idą po otwarciu (sprawdzone) |
 | T7 | | | |
 | T8 | | | |
 | T9 | | | |

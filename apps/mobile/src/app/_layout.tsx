@@ -9,7 +9,7 @@ import { TaskActionsProvider } from '@/components/actions';
 import { PickerHost } from '@/components/pickers';
 import { usePalette } from '@/components/ui';
 
-import { useAppData } from '@/lib/app-data';
+import { onAppData, type AppData } from '@/lib/app-data';
 import { registerBackgroundSync } from '@/lib/background-sync';
 import { sessionUser } from '@/lib/config';
 import { loadProfile, onboardingGateHeld, onOnboardingGateRelease } from '@/lib/profile';
@@ -86,22 +86,37 @@ function OnboardingGate() {
  * Po zmianie danych (zapis na ekranie, synchronizacja) i po powrocie aplikacji na wierzch:
  * przeplanowanie przypomnień M8 i odświeżenie widżetu — seria zmian = jedno przeliczenie.
  */
+/**
+ * Przeplanowanie przypomnień i widżet po zmianie danych (debounce 1,5 s). Timery JS i render Reacta
+ * stoją, gdy aplikacja jest w tle, więc nasłuch jest poza Reactem, zmiana wczytana w tle idzie od
+ * razu, a przy wyjściu z aplikacji — zaległa. Inaczej przypomnienie zadania dodanego tuż przed
+ * wyjściem czekałoby do następnego otwarcia.
+ */
 function BackgroundWork() {
-  const data = useAppData();
   useEffect(() => {
-    if (!data.loaded) return;
-    const timer = setTimeout(() => {
+    let pending: { data: AppData; timer: ReturnType<typeof setTimeout> } | null = null;
+    const run = (data: AppData) => {
+      if (pending) clearTimeout(pending.timer);
+      pending = null;
       void scheduleReminders(data);
       void refreshTodayWidget(data).catch(() => undefined);
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [data]);
-  useEffect(() => {
-    // Uprawnienia mogły się zmienić w ustawieniach systemu.
-    const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'active') void scheduleReminders();
+    };
+    const offData = onAppData((data) => {
+      if (!data.loaded) return;
+      if (AppState.currentState !== 'active') return run(data);
+      if (pending) clearTimeout(pending.timer);
+      pending = { data, timer: setTimeout(() => run(data), 1500) };
     });
-    return () => sub.remove();
+    const sub = AppState.addEventListener('change', (next) => {
+      // Uprawnienia mogły się zmienić w ustawieniach systemu.
+      if (next === 'active') void scheduleReminders();
+      else if (pending) run(pending.data);
+    });
+    return () => {
+      offData();
+      sub.remove();
+      if (pending) clearTimeout(pending.timer);
+    };
   }, []);
   return null;
 }

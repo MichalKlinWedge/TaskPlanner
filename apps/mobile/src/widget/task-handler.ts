@@ -5,7 +5,7 @@
 import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
 
 import { readJson, writeJson } from '../lib/config';
-import { toggleTaskById } from '../lib/headless';
+import { pushNow, toggleTaskById } from '../lib/headless';
 import { renderTodayWidget } from './refresh';
 import { TODAY_WIDGET, TOGGLE_ACTION } from './today-widget';
 
@@ -34,4 +34,5 @@ export async function widgetTaskHandler({ widgetInfo, widgetAction, clickAction,
   renderWidget(await renderTodayWidget());
   entry.ms = Date.now() - start;
   writeJson('poc4.widget', [...widgetLog().slice(-99), entry]);
+  if (widgetAction === 'WIDGET_CLICK' && entry.ok) await pushNow();
 }

@@ -85,11 +85,30 @@ const EMPTY: AppData = {
   loaded: false,
 };
 
-/** Wszystko naraz z lokalnej bazy — także bez ekranu (widżet, przypomnienia, zadanie w tle). */
+const TASK_COLUMNS = `t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
+  t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.postpone_count, t.field_clock`;
+
+const loadSettings = async (engine: SyncEngine): Promise<ProfileSettings> =>
+  parseSettings((await engine.db.all<SqlRow>('select settings from profiles where id = ?', [engine.userId]))[0]?.settings);
+
+/**
+ * Jedno zadanie i ustawienia — dla akcji bez ekranu (powiadomienie, widżet). Pełne `loadAppData`
+ * to w tle nawet kilkadziesiąt sekund, a Android zamraża proces wkrótce po odebraniu akcji.
+ */
+export async function loadTask(engine: SyncEngine, id: string): Promise<{ task: ViewTask | null; settings: ProfileSettings }> {
+  const [settings, rows, tags] = await Promise.all([
+    loadSettings(engine),
+    engine.db.all<SqlRow>(`select ${TASK_COLUMNS} from tasks t where t.id = ? and t.deleted_at is null`, [id]),
+    engine.db.all<SqlRow>('select tag_id from task_tags where task_id = ? and deleted_at is null order by rowid', [id]),
+  ]);
+  const row = rows[0];
+  return { task: row ? toViewTask(row as unknown as LocalTaskRow, tags.map((r) => String(r.tag_id))) : null, settings };
+}
+
+/** Wszystko naraz z lokalnej bazy — ekrany, przeplanowanie przypomnień, widżet, zadanie w tle. */
 export async function loadAppData(engine: SyncEngine): Promise<AppData> {
   const { db } = engine;
-  const profile = (await db.all<SqlRow>('select settings from profiles where id = ?', [engine.userId]))[0];
-  const settings = parseSettings(profile?.settings);
+  const settings = await loadSettings(engine);
   const today = localDateAt(new Date(), settings.timeZone);
   const queried = Date.now();
   const [workspaces, lists, tags, filters, tasks, taskTags, habits] = await Promise.all([
@@ -97,11 +116,7 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
     db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs from lists where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, name, color, sort_key from tags where deleted_at is null'),
     db.all<SqlRow>('select id, name, icon, query, sort_key from saved_filters where deleted_at is null'),
-    db.all<SqlRow>(
-      `select t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
-              t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.postpone_count, t.field_clock
-         from tasks t where t.deleted_at is null`,
-    ),
+    db.all<SqlRow>(`select ${TASK_COLUMNS} from tasks t where t.deleted_at is null`),
     // Osobno i pogrupowane w JS: podzapytanie na każde zadanie było najdroższą częścią odczytu na telefonie.
     db.all<SqlRow>('select task_id, tag_id from task_tags where deleted_at is null order by rowid'),
     db.all<SqlRow>("select task_id from task_completions where occurrence_date = ? and kind = 'done' and deleted_at is null", [today]),
@@ -216,6 +231,14 @@ function subscribe(listener: () => void) {
 }
 
 export const useAppData = (): AppData => useSyncExternalStore(subscribe, () => data);
+
+/**
+ * Zmiany danych poza Reactem — dla pracy, która musi ruszyć także w tle (przypomnienia, widżet):
+ * gdy aplikacja jest w tle, render Reacta (a z nim efekty) czeka do powrotu na ekran.
+ */
+export function onAppData(listener: (data: AppData) => void): () => void {
+  return subscribe(() => listener(data));
+}
 
 // ── Bieżąca przestrzeń i dzień ──────────────────────────────────────────────────────────────
 

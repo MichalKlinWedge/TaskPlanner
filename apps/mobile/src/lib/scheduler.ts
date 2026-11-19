@@ -12,7 +12,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { readJson, writeJson } from './config';
-import type { AppData } from './app-data';
+import { loadTask, type AppData } from './app-data';
 import { headlessData } from './headless';
 import { localEngine } from './sync';
 
@@ -143,6 +143,7 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
     }
     const result: ScheduleResult = { at: now, scheduled: wanted.size, added, removed, next: fires[0] ? new Date(fires[0].fireAt).getTime() : null, exact: exact.granted };
     writeJson(LAST_KEY, result);
+    if (__DEV__) console.info('przypomnienia', given ? 'z danych ekranu' : 'z bazy', JSON.stringify(result));
     return result;
   } catch (error) {
     const result: ScheduleResult = { at: now, scheduled: 0, added: 0, removed: 0, next: null, exact: false, error: error instanceof Error ? error.message : String(error) };
@@ -154,7 +155,7 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
 /** Odłożenie powiadomienia o 10 min (stały identyfikator — powtórzona akcja go nie dubluje). */
 export async function snoozeNotification(notificationId: string, data: ReminderData, minutes = 10) {
   const at = Date.now() + minutes * 60_000;
-  const task = (await headlessData()).tasks.find((t) => t.id === data.taskId);
+  const { task } = await loadTask(await localEngine(), data.taskId);
   const content = task ? reminderBody(task, { occurrenceDate: data.occurrenceDate ?? null, dueAt: data.dueAt ?? null }, new Date(at)) : { title: 'Przypomnienie', body: 'Odłożone' };
   await Notifications.scheduleNotificationAsync({
     identifier: notificationId.startsWith(SNOOZE_PREFIX) ? notificationId : SNOOZE_PREFIX + notificationId,
