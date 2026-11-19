@@ -1,4 +1,4 @@
-/** Minimalne klocki ekranów PoC i MVP-1 (właściwy system komponentów — MVP-3). */
+/** Klocki ekranów: kolory (jasny / ciemny), ekran, sekcja, tekst, przyciski, pola, chipy, kolory. */
 import { COLORS } from '@taskplanner/core';
 import type { ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, useColorScheme, View, type TextInputProps } from 'react-native';
@@ -7,8 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export function usePalette() {
   const dark = useColorScheme() === 'dark';
   return dark
-    ? { bg: '#09090b', card: '#18181b', fg: '#fafafa', muted: '#a1a1aa', border: '#3f3f46', accent: '#60a5fa', ok: '#4ade80', bad: '#f87171' }
-    : { bg: '#fafafa', card: '#ffffff', fg: '#18181b', muted: '#71717a', border: '#e4e4e7', accent: '#2563eb', ok: '#16a34a', bad: '#dc2626' };
+    ? { bg: '#09090b', card: '#18181b', fg: '#fafafa', muted: '#a1a1aa', border: '#3f3f46', accent: '#60a5fa', ok: '#4ade80', bad: '#f87171', selected: '#1e293b' }
+    : { bg: '#fafafa', card: '#ffffff', fg: '#18181b', muted: '#71717a', border: '#e4e4e7', accent: '#2563eb', ok: '#16a34a', bad: '#dc2626', selected: '#e0e7ff' };
 }
 
 export function Screen({ children, scroll = true }: { children: ReactNode; scroll?: boolean }) {

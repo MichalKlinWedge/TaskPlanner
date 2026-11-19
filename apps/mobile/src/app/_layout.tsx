@@ -4,6 +4,10 @@ import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
 import { useEffect, useRef } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { TaskActionsProvider } from '@/components/actions';
+import { PickerHost } from '@/components/pickers';
+import { usePalette } from '@/components/ui';
+
 import { sessionUser } from '@/lib/config';
 import { loadProfile, onboardingGateHeld, onOnboardingGateRelease } from '@/lib/profile';
 import { handleResponse, setupNotifications } from '@/lib/reminders';
@@ -86,25 +90,37 @@ function useAppStart() {
 
 export default function RootLayout() {
   useAppStart();
+  const p = usePalette();
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ShareIntentProvider>
-        <ShareRedirect />
-        <OnboardingGate />
-        <Stack>
-          <Stack.Screen name="index" options={{ title: 'TaskPlanner' }} />
-          <Stack.Screen name="workspaces" options={{ title: 'Przestrzenie i listy' }} />
-          <Stack.Screen name="workspace/[id]" options={{ title: 'Przestrzeń' }} />
-          <Stack.Screen name="onboarding" options={{ title: 'Witaj w TaskPlanner', headerBackVisible: false, gestureEnabled: false }} />
-          <Stack.Screen name="auth-callback" options={{ title: 'Logowanie' }} />
-          <Stack.Screen name="today" options={{ title: 'Dziś i widżet' }} />
-          <Stack.Screen name="reminders" options={{ title: 'Przypomnienia' }} />
-          <Stack.Screen name="share" options={{ title: 'Szybkie dodawanie' }} />
-          <Stack.Screen name="calendar" options={{ title: 'Kalendarz (calendar-kit)' }} />
-          <Stack.Screen name="timeline" options={{ title: 'Oś dnia (własna)' }} />
-          <Stack.Screen name="selftest" options={{ title: 'Samosprawdzenie (Hermes)' }} />
-          <Stack.Screen name="settings" options={{ title: 'Konto i serwer' }} />
-        </Stack>
+        <TaskActionsProvider>
+          <ShareRedirect />
+          <OnboardingGate />
+          <Stack screenOptions={{ headerStyle: { backgroundColor: p.card }, headerTintColor: p.fg, contentStyle: { backgroundColor: p.bg } }}>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'TaskPlanner' }} />
+            <Stack.Screen name="task/[id]" options={{ title: 'Zadanie' }} />
+            <Stack.Screen name="quick-add" options={{ title: 'Szybkie dodawanie', presentation: 'formSheet', sheetAllowedDetents: 'fitToContents', headerShown: false }} />
+            <Stack.Screen name="list/[id]" options={{ title: 'Lista' }} />
+            <Stack.Screen name="tag/[id]" options={{ title: 'Tag' }} />
+            <Stack.Screen name="filter/[id]" options={{ title: 'Filtr' }} />
+            <Stack.Screen name="search" options={{ title: 'Szukaj' }} />
+            <Stack.Screen name="trash" options={{ title: 'Kosz' }} />
+            <Stack.Screen name="workspaces" options={{ title: 'Przestrzenie i listy' }} />
+            <Stack.Screen name="workspace/[id]" options={{ title: 'Przestrzeń' }} />
+            <Stack.Screen name="onboarding" options={{ title: 'Witaj w TaskPlanner', headerBackVisible: false, gestureEnabled: false }} />
+            <Stack.Screen name="auth-callback" options={{ title: 'Logowanie' }} />
+            <Stack.Screen name="settings" options={{ title: 'Konto i synchronizacja' }} />
+            <Stack.Screen name="dev" options={{ title: 'Narzędzia PoC' }} />
+            <Stack.Screen name="widget" options={{ title: 'Dziś i widżet (PoC-4)' }} />
+            <Stack.Screen name="reminders" options={{ title: 'Przypomnienia (PoC-4)' }} />
+            <Stack.Screen name="share" options={{ title: 'Udostępnione' }} />
+            <Stack.Screen name="calendar" options={{ title: 'Kalendarz (calendar-kit)' }} />
+            <Stack.Screen name="timeline" options={{ title: 'Oś dnia (własna)' }} />
+            <Stack.Screen name="selftest" options={{ title: 'Samosprawdzenie (Hermes)' }} />
+          </Stack>
+          <PickerHost />
+        </TaskActionsProvider>
       </ShareIntentProvider>
     </GestureHandlerRootView>
   );

@@ -80,7 +80,7 @@ function QuickAddForm({ shared, onSaved }: { shared: Shared | null; onSaved: (me
       ) : null}
       <Row>
         <Button title="Dodaj zadanie" disabled={!text.trim() && !link.url} onPress={() => void save()} />
-        <Button kind="secondary" title="Dziś" onPress={() => router.push('/today')} />
+        <Button kind="secondary" title="Dziś" onPress={() => router.push('/')} />
       </Row>
     </>
   );

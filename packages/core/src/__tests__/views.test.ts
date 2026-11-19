@@ -15,6 +15,7 @@ import {
   groupTasks,
   isEmptyFilter,
   progress,
+  selectFiltered,
   selectInbox,
   selectToday,
   selectUpcoming,
@@ -230,6 +231,19 @@ describe('filtry', () => {
     expect(run({ lists: [INBOX] })).toEqual(['none']);
     expect(run({ statuses: ['waiting'] })).toEqual(['b']);
     expect(run({})).toHaveLength(4);
+  });
+
+  it('widok filtra: tylko zadania otwarte z bieżącej przestrzeni, ukończone tylko z warunkiem statusu', () => {
+    const all = [
+      ...tasks,
+      task({ id: 'done', status: 'done', completedAt: '2026-11-17T10:00:00Z' }),
+      task({ id: 'habit', kind: 'habit' }),
+      task({ id: 'w2', workspaceId: W2 }),
+    ];
+    const view = (q: FilterQuery, workspaceId?: string) => ids(selectFiltered(all, FilterQuery.parse(q), { ...ctx, workspaceId }));
+    expect(view({}, W1)).toEqual(['a', 'ab', 'b', 'none']);
+    expect(view({})).toEqual(['a', 'ab', 'b', 'none', 'w2']);
+    expect(view({ statuses: ['done'] }, W1)).toEqual(['done']);
   });
 
   it('schemat odrzuca puste listy i obce wartości', () => {
