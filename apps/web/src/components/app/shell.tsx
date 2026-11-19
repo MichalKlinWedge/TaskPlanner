@@ -20,6 +20,7 @@ import { DayPlan } from "./day-plan";
 import { CommandPalette, ShortcutsDialog, type PaletteMode, type PalettePick } from "./command-palette";
 import { FilterBar } from "./filter-bar";
 import { FocusIndicator, FocusProvider, FocusScreen } from "./focus";
+import { DailyReview, ReviewNudge, WeeklyReview } from "./review";
 import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-views";
 import { QuickAddDialog } from "./quick-add";
 import { TaskPanel } from "./task-panel";
@@ -185,7 +186,7 @@ export function Shell({
 
   // „Wyjdź” z trybu skupienia wraca do ostatniego innego widoku.
   const [lastRoute, setLastRoute] = useState<Route>(DEFAULT_ROUTE);
-  if (route.view !== "focus" && routeHash(route) !== routeHash(lastRoute)) setLastRoute(route);
+  if (route.view !== "focus" && route.view !== "review" && routeHash(route) !== routeHash(lastRoute)) setLastRoute(route);
 
   // Oś czasu zostaje zamontowana po pierwszym otwarciu — powrót do niej bez ponownego rysowania.
   const [timelineOpened, setTimelineOpened] = useState(false);
@@ -241,6 +242,12 @@ export function Shell({
       </>
     ) : route.view === "timeline" ? null : route.view === "focus" ? (
       <FocusScreen key={route.id ?? ""} taskId={route.id ?? null} ctx={ctx} onExit={() => navigate(lastRoute)} navigate={navigate} />
+    ) : route.view === "review" ? (
+      route.id === "weekly" ? (
+        <WeeklyReview ctx={ctx} onExit={() => navigate(lastRoute)} navigate={navigate} />
+      ) : (
+        <DailyReview ctx={ctx} settings={settings} onExit={() => navigate(lastRoute)} navigate={navigate} />
+      )
     ) : route.view === "manage" ? (
       manage
     ) : route.view === "settings" ? (
@@ -280,7 +287,7 @@ export function Shell({
         <FocusProvider store={store} userId={userId} settings={settings}>
         <ReminderToasts />
         <Keyboard
-          blocked={quickOpen || palette !== null || shortcutsOpen || route.view === "focus"}
+          blocked={quickOpen || palette !== null || shortcutsOpen || route.view === "focus" || route.view === "review"}
           selected={selected}
           setSelected={setSelected}
           navigate={navigate}
@@ -319,6 +326,7 @@ export function Shell({
               ))}
             </Select>
             <FocusIndicator navigate={navigate} />
+            <ReviewNudge settings={settings} navigate={navigate} />
             <button
               type="button"
               onClick={() => setQuickOpen(true)}
@@ -355,6 +363,8 @@ export function Shell({
             ) : null}
             <nav className="mt-4 flex flex-col gap-0.5 border-t border-[var(--line)] pt-3">
               <NavItem route={{ view: "manage" }} current={route} navigate={navigate} icon="🗂️" label="Przestrzenie i listy" />
+              <NavItem route={{ view: "review", id: "daily" }} current={route} navigate={navigate} icon="🧭" label="Przegląd dnia" />
+              <NavItem route={{ view: "review", id: "weekly" }} current={route} navigate={navigate} icon="🗒️" label="Przegląd tygodnia" />
               <NavItem route={{ view: "trash" }} current={route} navigate={navigate} icon="🗑️" label="Kosz" />
               <NavItem route={{ view: "settings" }} current={route} navigate={navigate} icon="⚙️" label="Ustawienia" />
             </nav>
@@ -693,6 +703,8 @@ function PaletteHost({
       "view.calendar": () => then(() => navigate({ view: "calendar" })),
       "view.timeline": () => then(() => navigate({ view: "timeline" })),
       "focus.start": () => then(() => navigate(focusRoute(selected.at(-1) ?? null))),
+      "review.daily": () => then(() => navigate({ view: "review", id: "daily" })),
+      "review.weekly": () => then(() => navigate({ view: "review", id: "weekly" })),
       "task.quick_add": () => then(openQuick),
       "task.complete": () => then(() => bulk({ kind: "complete" }, "Ukończono")),
       "task.today": () => then(() => bulk({ kind: "today" }, "Na dziś")),

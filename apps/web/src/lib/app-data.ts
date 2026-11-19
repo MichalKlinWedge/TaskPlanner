@@ -5,7 +5,7 @@
  * (z tagami) i dzisiejsze wykonania nawyków. Zapytania odświeżają się po każdej zmianie tabel
  * (także z innej karty i z synchronizacji); reguły widoków liczy `@taskplanner/core`.
  */
-import { FilterQuery, localDateAt, ProfileSettings, toViewTask, ViewPrefs, type LocalDate, type LocalTaskRow, type ListKind, type ViewTask } from "@taskplanner/core";
+import { FilterQuery, localDateAt, ProfileSettings, toViewTask, ViewPrefs, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ViewTask } from "@taskplanner/core";
 import type { SqlRow, TabStore } from "@taskplanner/sync";
 import { useEffect, useMemo, useState } from "react";
 
@@ -29,6 +29,8 @@ export interface List {
   /** Daty projektu (oś czasu); inne listy — `null`. */
   startDate: LocalDate | null;
   endDate: LocalDate | null;
+  /** Status projektu (przegląd tygodnia: aktywne bez następnego kroku); inne listy — `null`. */
+  projectStatus: ProjectStatus | null;
 }
 
 export interface Tag {
@@ -91,7 +93,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
   const workspaces = useLocalQuery<Row>(store, "select id, name, color, sort_key from workspaces where deleted_at is null and archived_at is null", [], ["workspaces"]);
   const lists = useLocalQuery<Row>(
     store,
-    "select id, scope_id, kind, name, color, sort_key, view_prefs, start_date, end_date from lists where deleted_at is null and archived_at is null",
+    "select id, scope_id, kind, name, color, sort_key, view_prefs, start_date, end_date, project_status from lists where deleted_at is null and archived_at is null",
     [],
     ["lists"],
   );
@@ -128,6 +130,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
           prefs: prefs.success ? prefs.data : {},
           startDate: (r.start_date as LocalDate | null) ?? null,
           endDate: (r.end_date as LocalDate | null) ?? null,
+          projectStatus: (r.project_status as ProjectStatus | null) ?? null,
         };
       })
       .sort(byKey);

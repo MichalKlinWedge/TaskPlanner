@@ -55,6 +55,8 @@ export function ProfileForm({
   const [reminderTime, setReminderTime] = useState(start.defaultReminderTime);
   const [duration, setDuration] = useState(String(start.defaultDurationMin));
   const [theme, setTheme] = useState(start.theme);
+  const [dailyReview, setDailyReview] = useState(start.dailyReview);
+  const [weeklyReview, setWeeklyReview] = useState(start.weeklyReview);
   const [focus, setFocus] = useState(() => ({
     focusMin: String(start.focus.focusMin),
     shortBreakMin: String(start.focus.shortBreakMin),
@@ -74,6 +76,8 @@ export function ProfileForm({
       defaultReminderTime: reminderTime,
       defaultDurationMin: Number(duration),
       theme,
+      dailyReview,
+      weeklyReview,
       focus: {
         focusMin: Number(focus.focusMin),
         shortBreakMin: Number(focus.shortBreakMin),
@@ -142,6 +146,32 @@ export function ProfileForm({
           <Input type="number" min={5} max={480} step={5} value={duration} onChange={(e) => setDuration(e.target.value)} />
         </Field>
       </div>
+      <fieldset className="flex flex-col gap-2 text-sm">
+        <legend className="mb-1 font-medium">Przeglądy</legend>
+        <p className="text-xs opacity-60">O tej porze w pasku bocznym pojawia się link do przeglądu, a gdy karta jest w tle — powiadomienie (jeśli przeglądarka na nie pozwala).</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={dailyReview.enabled} onChange={(e) => setDailyReview({ ...dailyReview, enabled: e.target.checked })} />
+            Przegląd dnia o
+          </label>
+          <Input type="time" aria-label="Godzina przeglądu dnia" value={dailyReview.time} disabled={!dailyReview.enabled} onChange={(e) => setDailyReview({ ...dailyReview, time: e.target.value as typeof dailyReview.time })} className="w-32" />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={weeklyReview.enabled} onChange={(e) => setWeeklyReview({ ...weeklyReview, enabled: e.target.checked })} />
+            Przegląd tygodnia w
+          </label>
+          <Select aria-label="Dzień przeglądu tygodnia" value={weeklyReview.weekday} disabled={!weeklyReview.enabled} onChange={(e) => setWeeklyReview({ ...weeklyReview, weekday: Number(e.target.value) as IsoWeekday })}>
+            {WEEKDAYS.map((day) => (
+              <option key={day} value={day}>
+                {WEEKDAY[day].label}
+              </option>
+            ))}
+          </Select>
+          <span>o</span>
+          <Input type="time" aria-label="Godzina przeglądu tygodnia" value={weeklyReview.time} disabled={!weeklyReview.enabled} onChange={(e) => setWeeklyReview({ ...weeklyReview, time: e.target.value as typeof weeklyReview.time })} className="w-32" />
+        </div>
+      </fieldset>
       <fieldset className="flex flex-col gap-2 text-sm">
         <legend className="mb-1 font-medium">Tryb skupienia (Pomodoro)</legend>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

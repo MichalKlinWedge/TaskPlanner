@@ -32,6 +32,8 @@ export const AVAILABLE_COMMANDS = new Set([
   "view.calendar",
   "view.timeline",
   "focus.start",
+  "review.daily",
+  "review.weekly",
   "task.quick_add",
   "task.complete",
   "task.priority",

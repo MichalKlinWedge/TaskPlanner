@@ -19,4 +19,4 @@ export {
   type SyncedTable,
   type TableSpec,
 } from './specs.ts';
-export { connectTabs, type TabStore, type TabStoreOptions } from './tabs.ts';
+export { connectTabs, STALE_LEADER_MESSAGE, TAB_PROTOCOL, type TabStore, type TabStoreOptions } from './tabs.ts';

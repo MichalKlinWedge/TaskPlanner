@@ -5,10 +5,11 @@
  */
 import { z } from 'zod';
 
-import { addDays, daysBetween, localDateAt } from './dates.ts';
+import { addDays, daysBetween, isoWeekday, localDateAt, localDateTimeAt } from './dates.ts';
 import { habitDays, type DayState, type HabitCompletion } from './habits.ts';
 import type { ScheduleRecurrence } from './recurrence.ts';
-import { LocalDate, type ListKind, type ProjectStatus } from './schemas/primitives.ts';
+import { LocalDate, type ListKind, type LocalTime, type ProjectStatus } from './schemas/primitives.ts';
+import type { BulkAction, TaskOp } from './tasks.ts';
 import { isOpen, selectInbox, selectToday, selectUpcoming, type UpcomingView, type ViewContext, type ViewTask } from './views.ts';
 
 /** Od tylu przesunięć zadanie jest oznaczane do decyzji (zrób, zmniejsz, usuń). */
@@ -155,4 +156,55 @@ export function reviewStats(log: readonly { task: ViewTask; action: ReviewAction
     if (needsDecision(task)) stats.needsDecision++;
   }
   return stats;
+}
+
+// ── Asystent przeglądu w aplikacji (Etap 9) ──────────────────────────────────────────────────
+
+/** Decyzja przeglądu jako akcja zbiorcza (`bulkTaskOps` — te same reguły i „Cofnij” co w widokach). */
+export const reviewBulkAction = (action: ReviewAction): BulkAction => (action.kind === 'done' ? { kind: 'complete' } : action);
+
+export type ReviewKind = 'daily' | 'weekly';
+
+/** Początek sesji (`review_sessions`, zakres osobisty); koniec dopisuje `reviewFinishOp`. */
+export const reviewStartOp = (id: string, kind: ReviewKind, now: Date): TaskOp => ({
+  table: 'review_sessions',
+  id,
+  patch: { kind, started_at: now.toISOString(), finished_at: null, stats: null },
+});
+
+export const reviewFinishOp = (id: string, stats: ReviewStats, now: Date): TaskOp => ({ table: 'review_sessions', id, patch: { finished_at: now.toISOString(), stats } });
+
+export interface ReviewSchedule {
+  dailyReview: { enabled: boolean; time: LocalTime };
+  weeklyReview: { enabled: boolean; weekday: number; time: LocalTime };
+}
+
+/**
+ * Przeglądy, o których pora przypomnieć: włączone, godzina (w strefie użytkownika) minęła, a dziś
+ * nie było jeszcze przypomnienia ani skończonej sesji tego rodzaju (`last` — daty lokalne).
+ * Przegląd tygodnia tylko w swój dzień tygodnia.
+ */
+export function reviewsDue(schedule: ReviewSchedule, now: Date, { timeZone, last = {} }: { timeZone?: string; last?: Partial<Record<ReviewKind, LocalDate | null>> }): ReviewKind[] {
+  const local = localDateTimeAt(now, timeZone);
+  const today = local.slice(0, 10) as LocalDate;
+  const time = local.slice(11, 16);
+  const due: ReviewKind[] = [];
+  if (schedule.weeklyReview.enabled && isoWeekday(today) === schedule.weeklyReview.weekday && time >= schedule.weeklyReview.time && last.weekly !== today) due.push('weekly');
+  if (schedule.dailyReview.enabled && time >= schedule.dailyReview.time && last.daily !== today) due.push('daily');
+  return due;
+}
+
+export interface DailySummary {
+  /** Ukończone dziś (zadania, bez nawyków). */
+  doneToday: ViewTask[];
+  /** Plan na jutro: zadania z terminem jutro (z serii — bieżące wystąpienie). */
+  tomorrow: ViewTask[];
+}
+
+/** Koniec przeglądu dnia (M16): podsumowanie i plan na jutro. */
+export function dailySummary(tasks: readonly ViewTask[], ctx: ViewContext): DailySummary {
+  const inWorkspace = (t: ViewTask) => !ctx.workspaceId || t.workspaceId === ctx.workspaceId;
+  const doneToday = tasks.filter((t) => inWorkspace(t) && t.kind === 'task' && t.status === 'done' && t.completedAt && localDateAt(t.completedAt, ctx.timeZone) === ctx.today);
+  const tomorrow = selectToday(tasks, { ...ctx, today: addDays(ctx.today, 1) }, { completed: 'hidden' }).today.filter((t) => t.kind === 'task');
+  return { doneToday, tomorrow };
 }

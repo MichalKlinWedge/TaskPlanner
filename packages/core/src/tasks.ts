@@ -88,7 +88,7 @@ export function toViewTask(row: LocalTaskRow, tagIds: readonly string[] = []): V
 }
 
 export interface TaskOp {
-  table: 'tasks' | 'task_completions' | 'tags' | 'task_tags' | 'reminders' | 'saved_filters' | 'task_dependencies' | 'lists' | 'time_entries' | 'profiles';
+  table: 'tasks' | 'task_completions' | 'tags' | 'task_tags' | 'reminders' | 'saved_filters' | 'task_dependencies' | 'lists' | 'time_entries' | 'profiles' | 'review_sessions';
   id: string;
   patch: Record<string, unknown>;
 }
@@ -402,6 +402,8 @@ export type BulkAction =
   | { kind: 'today' }
   | { kind: 'tomorrow' }
   | { kind: 'date'; date: LocalDate }
+  /** Bez terminu (przegląd: „Kiedyś”); seria zostaje bez zmian. */
+  | { kind: 'someday' }
   | { kind: 'move'; listId: string }
   | { kind: 'delete' };
 
@@ -468,10 +470,12 @@ export function bulkTaskOps(
         break;
       case 'today':
       case 'tomorrow':
-      case 'date': {
+      case 'date':
+      case 'someday': {
         const patch = reschedulePatch(task, action, { today });
         if (!patch) break;
         const snake: Record<string, unknown> = { due_date: patch.dueDate };
+        if (patch.dueTime !== undefined) snake.due_time = patch.dueTime;
         if (patch.startDate !== undefined) snake.start_date = patch.startDate;
         if (patch.postponeCount !== undefined) snake.postpone_count = patch.postponeCount;
         push([{ table: 'tasks', id: task.id, patch: snake }]);

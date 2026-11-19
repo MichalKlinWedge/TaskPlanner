@@ -447,6 +447,7 @@ Ustalenia z PoC-6: tabele integracji mają `user_id` (= zakres osobisty) i `row_
 
 ### Web — lokalna baza w przeglądarce
 - `sqlite-wasm` w Web Workerze, VFS `opfs-sahpool` (nie wymaga nagłówków COOP/COEP). VFS daje dostęp wyłączny, więc **jedna karta jest liderem** (Web Locks API) i trzyma bazę oraz synchronizację; pozostałe karty wysyłają zapytania i zmiany przez BroadcastChannel. Zamknięcie lidera → kolejna karta przejmuje blokadę.
+- Wersja protokołu kart (Etap 9): żądania i odpowiedzi niosą `TAB_PROTOCOL` (podbijany przy nowej operacji kart albo kolumnie / tabeli lokalnej, której starszy lider nie ma). Lider odrzuca nieznane operacje; karta, której lider ma starszą wersję (np. otwarty przed wdrożeniem), dostaje `staleLeader` — UI prosi o odświeżenie tamtej karty, a `mutateMany` kończy się błędem zamiast zgubić zmiany.
 - Brak OPFS (np. tryb prywatny) → tryb online: baza w pamięci, pełna migawka przy starcie, ostrzeżenie w UI.
 - `navigator.storage.persist()` przy pierwszym uruchomieniu; eksport kopii bazy w ustawieniach.
 
@@ -515,6 +516,7 @@ Recurrence =
 ### 7.8. Przegląd (`review.ts`)
 - `dailyReviewQueue(tasks, today)`, `weeklyReviewSteps(…)` (Inbox, zaległe, projekty bez następnego kroku, „Oczekuje” > 7 dni), `reviewStats`.
 - Zrobione (18.11.2026): `dailyReviewQueue`, `ReviewAction` (Zod), `reschedulePatch` (godzina zostaje, zakres przesuwa się w całości, na później i „Kiedyś” → `postpone_count` + 1; „Kiedyś” niedostępne dla serii), `weeklyReview` (Inbox, zaległe, aktywne projekty bez otwartego zadania z terminem, „Oczekuje” > 7 dni według `statusChangedAt` — z `field_clock.status`, inaczej `created_at` — 7 dni naprzód, nawyki z ostatnich 7 dni, przesuwane ≥ 3 razy), `ReviewStats` + `reviewStats`. `ViewTask` ma `postponeCount` i opcjonalne `statusChangedAt`.
+- Etap 9 (19.11.2026): `reviewBulkAction` (decyzja → `bulkTaskOps`, akcja zbiorcza `someday` = bez terminu i godziny), `reviewStartOp` / `reviewFinishOp` (wiersz `review_sessions` przy wejściu, `finished_at` + `stats` przy końcu), `reviewsDue` (które przeglądy już „na czasie” według `dailyReview` / `weeklyReview` w ustawieniach i ostatniego zakończonego), `dailySummary` (ukończone dziś, plan jutra); `REVIEW_ACTION` (klawisze 1–6) w `labels.ts`.
 
 ### 7.9. Etykiety i formatowanie
 - `labels.ts`: `PRIORITY`, `TASK_STATUS`, `LIST_KIND`, `PROJECT_STATUS`, `REMINDER_KIND`, `WEEKDAY`; `format.ts` (z EP: `plural`, `pluralForm`, `formatMinutes`, `shortDate`) + `relativeDay` („dziś”, „jutro”, „pt 21 lis”, „za 3 dni”, „2 dni temu”). Aplikacje nie definiują własnych etykiet.

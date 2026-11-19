@@ -1,11 +1,11 @@
 "use client";
 
 import { DEFAULT_WORKSPACES, isOnboarded, onboardingOps, type DefaultWorkspace } from "@taskplanner/core";
-import { SYNCED_TABLES, type TabStore } from "@taskplanner/sync";
+import { STALE_LEADER_MESSAGE, SYNCED_TABLES, type TabStore } from "@taskplanner/sync";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { parseSettings } from "@/lib/app-data";
-import { closeStore, storeFor, useLocalQuery, useStoreStatus } from "@/lib/local-store";
+import { closeStore, storeFor, useLocalQuery, useStaleLeader, useStoreStatus } from "@/lib/local-store";
 import { offlineStatus, subscribeOffline } from "@/lib/service-worker";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useTheme } from "@/lib/theme";
@@ -157,6 +157,7 @@ function Onboarding({ store, userId, initial }: { store: TabStore; userId: strin
 /** Pasek: stan synchronizacji (sieć, zmiany w kolejce, błąd) i wylogowanie. */
 function AppHeader({ store, email }: { store: TabStore; email: string | null }) {
   const status = useStoreStatus();
+  const stale = useStaleLeader(store);
   const [pending, setPending] = useState(0);
   const [online, setOnline] = useState(true);
 
@@ -220,18 +221,25 @@ function AppHeader({ store, email }: { store: TabStore; email: string | null }) 
   const dot = !online ? "bg-zinc-400" : status.error ? "bg-red-500" : status.syncing || pending ? "bg-amber-500" : "bg-green-500";
 
   return (
-    <header className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-sm">
-      <span className="font-semibold">TaskPlanner</span>
-      <span className="flex items-center gap-1.5 text-xs opacity-80" role="status" title={status.error ?? (status.lastSyncAt ? `Ostatnio: ${new Date(status.lastSyncAt).toLocaleTimeString("pl-PL")}` : undefined)} data-testid="sync-status">
-        <span className={`h-2 w-2 rounded-full ${dot}`} />
-        {label}
-      </span>
-      <span className="flex-1" />
-      {email ? <span className="hidden text-xs opacity-60 sm:inline">{email}</span> : null}
-      <Button kind="ghost" onClick={() => void signOut()}>
-        Wyloguj
-      </Button>
-    </header>
+    <>
+      <header className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-sm">
+        <span className="font-semibold">TaskPlanner</span>
+        <span className="flex items-center gap-1.5 text-xs opacity-80" role="status" title={status.error ?? (status.lastSyncAt ? `Ostatnio: ${new Date(status.lastSyncAt).toLocaleTimeString("pl-PL")}` : undefined)} data-testid="sync-status">
+          <span className={`h-2 w-2 rounded-full ${dot}`} />
+          {label}
+        </span>
+        <span className="flex-1" />
+        {email ? <span className="hidden text-xs opacity-60 sm:inline">{email}</span> : null}
+        <Button kind="ghost" onClick={() => void signOut()}>
+          Wyloguj
+        </Button>
+      </header>
+      {stale ? (
+        <p role="alert" className="border-b border-amber-400 bg-amber-100 px-4 py-2 text-sm text-amber-900 dark:bg-amber-900/40 dark:text-amber-100" data-testid="stale-leader">
+          {STALE_LEADER_MESSAGE}
+        </p>
+      ) : null}
+    </>
   );
 }
 

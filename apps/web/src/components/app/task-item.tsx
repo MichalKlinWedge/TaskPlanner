@@ -4,7 +4,7 @@
  * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
  * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -212,6 +212,11 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           {showDate && date ? <span className={overdue ? "font-medium text-[var(--danger)]" : ""}>{relativeDay(date, today)}</span> : null}
           {task.dueTime ? <span>{task.dueTime}</span> : null}
           {task.recurrence ? <span title={describeRecurrence(task.recurrence)}>↻ {describeRecurrence(task.recurrence)}</span> : null}
+          {needsDecision(task) && !closed ? (
+            <span className="text-amber-700 dark:text-amber-300" title="Przesuwane 3 razy lub więcej — zrób, zmniejsz albo usuń">
+              ⇥ {task.postponeCount}×
+            </span>
+          ) : null}
           {progress && progress.total > 0 ? (
             <span title="Ukończone podzadania">
               {progress.done}/{progress.total}

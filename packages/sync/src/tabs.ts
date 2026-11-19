@@ -3,6 +3,12 @@
  * daje dostęp wyłączny, więc bazę i silnik synchronizacji trzyma **jedna karta-lider**
  * (Web Locks API). Pozostałe karty wysyłają zapytania i zmiany przez BroadcastChannel i dostają
  * powiadomienia o zmianach. Zamknięcie lidera zwalnia blokadę — kolejna karta przejmuje rolę.
+ *
+ * Po wdrożeniu nowej wersji liderem może zostać karta otwarta wcześniej (stary kod, starsza baza).
+ * Odpowiedzi niosą wersję protokołu (`TAB_PROTOCOL`): lider starszy od karty — albo sprzed
+ * wersjonowania, który nieznaną operację „wykonywał” bez błędu — oznacza kartę jako
+ * `staleLeader` (UI prosi o odświeżenie tamtej karty), a zapis zbiorczy kończy się błędem zamiast
+ * zgubić zmiany. Lider odrzuca operacje, których nie zna.
  */
 import type { SyncEngine } from './engine.ts';
 import type { SqlRow, SqlValue } from './local-db.ts';
@@ -13,6 +19,9 @@ const WATCHED = [...SYNCED_TABLES, ...READONLY_TABLES];
 
 export interface TabStore {
   readonly isLeader: boolean;
+  /** Lider ma starszą wersję aplikacji (zapisy mogą się nie udać) — UI prosi o odświeżenie tamtej karty. */
+  readonly staleLeader: boolean;
+  onStale(listener: (stale: boolean) => void): () => void;
   query<Row extends SqlRow = SqlRow>(sql: string, params?: readonly SqlValue[]): Promise<Row[]>;
   mutate(table: SyncedTable, id: string, patch: Record<string, unknown>): Promise<void>;
   /** Kilka zmian w jednej transakcji, z jednym odświeżeniem widoków (`SyncEngine.mutateMany`). */
@@ -33,9 +42,19 @@ type Operation =
   | { op: 'sync' }
   | { op: 'pending' };
 
+/**
+ * Wersja protokołu kart — podbić, gdy dochodzi operacja albo zmienia się schemat lokalnej bazy
+ * (nowa kolumna / tabela, której starszy lider nie ma). 1 = brak pola (do Etapu 7), 2 = `mutateMany`,
+ * `profiles.focus`, `review_sessions` w przeglądzie.
+ */
+export const TAB_PROTOCOL = 2;
+
+/** Błąd zapisu przez lidera ze starszą wersją aplikacji. */
+export const STALE_LEADER_MESSAGE = 'Aplikacja jest otwarta w innej karcie w starszej wersji — odśwież albo zamknij tamtą kartę i spróbuj ponownie.';
+
 type Message =
-  | { kind: 'request'; id: string; from: string; body: Operation }
-  | { kind: 'reply'; id: string; to: string; result?: unknown; error?: string }
+  | { kind: 'request'; id: string; from: string; body: Operation; v?: number }
+  | { kind: 'reply'; id: string; to: string; result?: unknown; error?: string; v?: number }
   | { kind: 'changed'; tables: string[] }
   | { kind: 'leader'; tab: string };
 
@@ -53,11 +72,18 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
   const channel = new BroadcastChannel(name);
   const listeners = new Map<string, Set<() => void>>();
   const roleListeners = new Set<(isLeader: boolean) => void>();
-  const waiting = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
+  const waiting = new Map<string, { op: Operation['op']; resolve: (value: unknown) => void; reject: (error: Error) => void }>();
   let engine: SyncEngine | null = null;
   let ready: Promise<SyncEngine> | null = null;
   let release: (() => void) | null = null;
   let closed = false;
+  let stale = false;
+  const staleListeners = new Set<(stale: boolean) => void>();
+  const setStale = (value: boolean) => {
+    if (stale === value) return;
+    stale = value;
+    staleListeners.forEach((listener) => listener(value));
+  };
 
   const notify = (tables: Iterable<string>) => {
     const called = new Set<() => void>();
@@ -79,6 +105,8 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
         return current.sync();
       case 'pending':
         return current.pendingCount();
+      default:
+        throw new Error(`Nieznana operacja kart: ${(body as { op?: string }).op}`);
     }
   };
 
@@ -87,6 +115,7 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
     if (closed) return;
     ready = createEngine().then((created) => {
       engine = created;
+      setStale(false);
       for (const table of WATCHED) {
         created.watch([table], () => {
           notify([table]);
@@ -105,19 +134,26 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
   channel.onmessage = async (event: MessageEvent<Message>) => {
     const message = event.data;
     if (message.kind === 'changed') notify(message.tables);
-    else if (message.kind === 'leader' && message.tab !== tab) notify(WATCHED);
+    else if (message.kind === 'leader' && message.tab !== tab) {
+      // Nowy lider — wersję sprawdzi pierwsza odpowiedź.
+      setStale(false);
+      notify(WATCHED);
+    }
     else if (message.kind === 'request' && ready) {
       try {
         const result = await execute(message.body);
-        channel.postMessage({ kind: 'reply', id: message.id, to: message.from, result } satisfies Message);
+        channel.postMessage({ kind: 'reply', id: message.id, to: message.from, result, v: TAB_PROTOCOL } satisfies Message);
       } catch (error) {
-        channel.postMessage({ kind: 'reply', id: message.id, to: message.from, error: String(error) } satisfies Message);
+        channel.postMessage({ kind: 'reply', id: message.id, to: message.from, error: String(error), v: TAB_PROTOCOL } satisfies Message);
       }
     } else if (message.kind === 'reply' && message.to === tab) {
       const call = waiting.get(message.id);
       if (!call) return;
       waiting.delete(message.id);
-      if (message.error !== undefined) call.reject(new Error(message.error));
+      const older = (message.v ?? 1) < TAB_PROTOCOL;
+      setStale(older);
+      if (message.error !== undefined) call.reject(new Error(older ? `${STALE_LEADER_MESSAGE} (${message.error})` : message.error));
+      else if (older && call.op === 'mutateMany') call.reject(new Error(STALE_LEADER_MESSAGE));
       else call.resolve(message.result);
     }
   };
@@ -127,12 +163,12 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
       if (ready) return execute(body);
       const id = crypto.randomUUID();
       const reply = new Promise<unknown>((resolve, reject) => {
-        waiting.set(id, { resolve, reject });
+        waiting.set(id, { op: body.op, resolve, reject });
         setTimeout(() => {
           if (waiting.delete(id)) reject(new Error('timeout'));
         }, timeoutMs);
       });
-      channel.postMessage({ kind: 'request', id, from: tab, body } satisfies Message);
+      channel.postMessage({ kind: 'request', id, from: tab, body, v: TAB_PROTOCOL } satisfies Message);
       try {
         return await reply;
       } catch (error) {
@@ -145,6 +181,13 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
   return {
     get isLeader() {
       return engine !== null;
+    },
+    get staleLeader() {
+      return stale;
+    },
+    onStale(listener) {
+      staleListeners.add(listener);
+      return () => staleListeners.delete(listener);
     },
     query: (sql, params = []) => request({ op: 'query', sql, params: [...params] }) as Promise<never>,
     mutate: async (table, id, patch) => {

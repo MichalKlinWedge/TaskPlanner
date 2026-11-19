@@ -6,7 +6,7 @@
  */
 import { connectTabs, supabaseRemote, SyncEngine, type SqlRow, type SqlValue, type TabStore } from "@taskplanner/sync";
 import { openWasmDb } from "@taskplanner/sync/wasm";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { supabaseBrowser } from "./supabase-browser";
 
@@ -71,6 +71,15 @@ export function storeFor(userId: string): TabStore {
 export function closeStore() {
   current?.store.close();
   current = null;
+}
+
+/** Liderem jest karta ze starszą wersją aplikacji (`connectTabs`) — prośba o odświeżenie tamtej karty. */
+export function useStaleLeader(store: TabStore): boolean {
+  return useSyncExternalStore(
+    (listener) => store.onStale(listener),
+    () => store.staleLeader,
+    () => false,
+  );
 }
 
 /** Stan bazy (rodzaj pamięci, ostatni błąd) — odświeża komponent przy zmianie. */
