@@ -40,6 +40,14 @@ export async function createUser(label: string): Promise<TestUser> {
   return { id: data.user.id, email, password };
 }
 
+/** Usunięcie konta (kaskadą znikają jego zakresy i wszystkie wiersze) — utrata danych na serwerze. */
+export async function deleteUser(id: string): Promise<void> {
+  const { url, serviceKey } = config();
+  const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error } = await admin.auth.admin.deleteUser(id);
+  if (error) throw new Error(`deleteUser: ${error.message}`);
+}
+
 export async function createDevice(user: TestUser, name: string, options: { pullPageSize?: number; onPullProgress?: (p: PullProgress) => void } = {}): Promise<Device> {
   const { url, anonKey } = config();
   const client = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });

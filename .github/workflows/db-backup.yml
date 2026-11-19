@@ -1,0 +1,95 @@
+# Nocna kopia bazy z chmury (Etap 13): `pg_dump` przez `scripts/backup.mjs dump`, archiwum
+# szyfrowane symetrycznie (GPG, AES-256) i zapisane jako artefakt z retencją.
+# Repozytorium jest publiczne — artefakt może pobrać każdy zalogowany w GitHubie, więc bez hasła
+# jest bezużyteczny; do logów nie trafia nic z danych (sumy kontrolne są w archiwum).
+# Sekrety (Settings → Secrets and variables → Actions): SUPABASE_DB_URL, BACKUP_PASSPHRASE;
+# zmienna (opcjonalna): BACKUP_RETENTION_DAYS. Instrukcja i odtwarzanie: docs/KOPIE_ZAPASOWE.md.
+name: Kopia bazy
+
+on:
+  schedule:
+    # 02:17 UTC (03:17 / 04:17 w Polsce) — poza pełną godziną, kiedy GitHub opóźnia zadania.
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Sekrety ustawione?
+        id: config
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$DB_URL" ] && [ -z "$PASSPHRASE" ]; then
+            echo "::warning::Kopia nie jest skonfigurowana (brak SUPABASE_DB_URL i BACKUP_PASSPHRASE) — pomijam. Zobacz docs/KOPIE_ZAPASOWE.md."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$DB_URL" ] || [ -z "$PASSPHRASE" ]; then
+            echo "::error::Ustawiony tylko jeden z sekretów SUPABASE_DB_URL / BACKUP_PASSPHRASE."
+            exit 1
+          elif [ ${#PASSPHRASE} -lt 20 ]; then
+            echo "::error::BACKUP_PASSPHRASE ma mniej niż 20 znaków."
+            exit 1
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.config.outputs.ready == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.config.outputs.ready == 'true'
+        with:
+          node-version: 24
+
+      - name: Klient PostgreSQL 17 (pg_dump ≥ wersja serwera)
+        if: steps.config.outputs.ready == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - name: pg_dump
+        if: steps.config.outputs.ready == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          pg_dump --version
+          node scripts/backup.mjs dump --out "$RUNNER_TEMP/dump"
+
+      - name: Archiwum szyfrowane
+        if: steps.config.outputs.ready == 'true'
+        id: archive
+        env:
+          PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          name="taskplanner-db-$(date -u +%Y%m%d-%H%M)"
+          mkdir -p "$RUNNER_TEMP/out"
+          tar -C "$RUNNER_TEMP" -czf - dump \
+            | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 \
+                  --symmetric --cipher-algo AES256 --s2k-digest-algo SHA512 --s2k-count 65011712 \
+                  --output "$RUNNER_TEMP/out/$name.tar.gz.gpg" 3<<<"$PASSPHRASE"
+          rm -rf "$RUNNER_TEMP/dump"
+          ls -l "$RUNNER_TEMP/out"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.config.outputs.ready == 'true'
+        with:
+          name: ${{ steps.archive.outputs.name }}
+          path: ${{ runner.temp }}/out/${{ steps.archive.outputs.name }}.tar.gz.gpg
+          # Już skompresowane i zaszyfrowane.
+          compression-level: 0
+          retention-days: ${{ vars.BACKUP_RETENTION_DAYS || 30 }}
+          if-no-files-found: error
