@@ -1,4 +1,5 @@
-/** Minimalne klocki ekranów PoC (właściwy system komponentów — MVP-3). */
+/** Minimalne klocki ekranów PoC i MVP-1 (właściwy system komponentów — MVP-3). */
+import { COLORS } from '@taskplanner/core';
 import type { ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, useColorScheme, View, type TextInputProps } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -67,6 +68,49 @@ export function Row({ children }: { children: ReactNode }) {
   return <View style={styles.row}>{children}</View>;
 }
 
+/** Wybór z kilku wartości (dzień tygodnia, rodzaj listy, czas trwania). */
+export function Chip({ label, selected, onPress, disabled }: { label: string; selected?: boolean; onPress: () => void; disabled?: boolean }) {
+  const p = usePalette();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: !!selected, disabled: !!disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.chip,
+        { borderColor: selected ? p.accent : p.border, backgroundColor: selected ? p.accent : 'transparent', opacity: disabled ? 0.4 : pressed ? 0.7 : 1 },
+      ]}
+    >
+      <Text style={[styles.chipText, { color: selected ? '#ffffff' : p.fg }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+export function ColorDot({ color, size = 12 }: { color: string | null; size?: number }) {
+  const p = usePalette();
+  return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color ?? 'transparent', borderWidth: 1, borderColor: color ?? p.border }} />;
+}
+
+/** Paleta kolorów z `@taskplanner/core` (`COLORS`). */
+export function ColorPicker({ value, onChange }: { value: string | null; onChange: (color: string) => void }) {
+  const p = usePalette();
+  return (
+    <View style={styles.row}>
+      {COLORS.map((c) => (
+        <Pressable
+          key={c.value}
+          accessibilityRole="button"
+          accessibilityLabel={c.label}
+          accessibilityState={{ selected: value?.toUpperCase() === c.value }}
+          onPress={() => onChange(c.value)}
+          style={[styles.swatch, { backgroundColor: c.value, borderColor: value?.toUpperCase() === c.value ? p.fg : 'transparent' }]}
+        />
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   scroll: { paddingBottom: 32 },
@@ -81,4 +125,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 12 },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 15 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { borderWidth: 1, borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 },
+  chipText: { fontSize: 14 },
+  swatch: { width: 30, height: 30, borderRadius: 15, borderWidth: 3 },
 });

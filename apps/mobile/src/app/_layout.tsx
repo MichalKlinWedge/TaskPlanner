@@ -1,11 +1,13 @@
 import * as Notifications from 'expo-notifications';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useSegments } from 'expo-router';
 import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { sessionUser } from '@/lib/config';
+import { loadProfile } from '@/lib/profile';
 import { handleResponse, setupNotifications } from '@/lib/reminders';
-import { startOnlineSync } from '@/lib/sync';
+import { localEngine, onSessionChange, startOnlineSync } from '@/lib/sync';
 import { refreshTodayWidget } from '@/widget/refresh';
 
 /** Udostępnienie z innej aplikacji (Chrome → „Udostępnij”) → ekran szybkiego dodawania. */
@@ -14,6 +16,54 @@ function ShareRedirect() {
   useEffect(() => {
     if (hasShareIntent) router.push('/share');
   }, [hasShareIntent]);
+  return null;
+}
+
+/**
+ * Bramka onboardingu: zalogowany użytkownik, którego profil (z serwera albo lokalny) nie ma
+ * `settings.onboarded`, trafia na kreator. Profil przychodzi z pierwszą synchronizacją, więc
+ * sprawdzenie powtarza się po każdej zmianie tabeli `profiles` i po zmianie konta.
+ */
+function OnboardingGate() {
+  const segments = useSegments();
+  const current = useRef(segments[0] as string | undefined);
+  useEffect(() => {
+    current.current = segments[0];
+  }, [segments]);
+
+  useEffect(() => {
+    let unwatch: (() => void) | undefined;
+    let alive = true;
+    let pushedAt = 0;
+    const check = async () => {
+      const user = sessionUser();
+      if (!user.online) return;
+      const engine = await localEngine();
+      const profile = await loadProfile(engine, user.id);
+      // Kilka zmian `profiles` tuż po sobie (strony pierwszej synchronizacji) = jedno przejście.
+      if (alive && profile && !profile.onboarded && current.current !== 'onboarding' && current.current !== 'auth-callback' && Date.now() - pushedAt > 2000) {
+        pushedAt = Date.now();
+        router.push('/onboarding');
+      }
+    };
+    const attach = () => {
+      unwatch?.();
+      localEngine()
+        .then((engine) => {
+          if (!alive) return;
+          unwatch = engine.watch(['profiles'], () => void check());
+          void check();
+        })
+        .catch(() => undefined);
+    };
+    attach();
+    const offSession = onSessionChange(attach);
+    return () => {
+      alive = false;
+      unwatch?.();
+      offSession();
+    };
+  }, []);
   return null;
 }
 
@@ -36,15 +86,20 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ShareIntentProvider>
         <ShareRedirect />
+        <OnboardingGate />
         <Stack>
-          <Stack.Screen name="index" options={{ title: 'TaskPlanner · PoC-4' }} />
+          <Stack.Screen name="index" options={{ title: 'TaskPlanner' }} />
+          <Stack.Screen name="workspaces" options={{ title: 'Przestrzenie i listy' }} />
+          <Stack.Screen name="workspace/[id]" options={{ title: 'Przestrzeń' }} />
+          <Stack.Screen name="onboarding" options={{ title: 'Witaj w TaskPlanner', headerBackVisible: false, gestureEnabled: false }} />
+          <Stack.Screen name="auth-callback" options={{ title: 'Logowanie' }} />
           <Stack.Screen name="today" options={{ title: 'Dziś i widżet' }} />
           <Stack.Screen name="reminders" options={{ title: 'Przypomnienia' }} />
           <Stack.Screen name="share" options={{ title: 'Szybkie dodawanie' }} />
           <Stack.Screen name="calendar" options={{ title: 'Kalendarz (calendar-kit)' }} />
           <Stack.Screen name="timeline" options={{ title: 'Oś dnia (własna)' }} />
           <Stack.Screen name="selftest" options={{ title: 'Samosprawdzenie (Hermes)' }} />
-          <Stack.Screen name="settings" options={{ title: 'Serwer i konto' }} />
+          <Stack.Screen name="settings" options={{ title: 'Konto i serwer' }} />
         </Stack>
       </ShareIntentProvider>
     </GestureHandlerRootView>
