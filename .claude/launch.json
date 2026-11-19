@@ -15,6 +15,12 @@
       "port": 3010
     },
     {
+      "name": "web-local-prod-3011",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/dev-alt.mjs", "--local", "--port", "3011", "--prod"],
+      "port": 3011
+    },
+    {
       "name": "web-local",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "web:local"],

@@ -2,10 +2,11 @@
 
 import { DEFAULT_WORKSPACES, isOnboarded, onboardingOps, type DefaultWorkspace } from "@taskplanner/core";
 import { SYNCED_TABLES, type TabStore } from "@taskplanner/sync";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { parseSettings } from "@/lib/app-data";
 import { closeStore, storeFor, useLocalQuery, useStoreStatus } from "@/lib/local-store";
+import { offlineStatus, subscribeOffline } from "@/lib/service-worker";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useTheme } from "@/lib/theme";
 
@@ -90,6 +91,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
                 }}
               />
             </Card>
+            <OfflineCard />
           </>
         }
       />
@@ -226,5 +228,25 @@ function AppHeader({ store, email }: { store: TabStore; email: string | null }) 
         Wyloguj
       </Button>
     </header>
+  );
+}
+
+/** Stan pracy bez sieci w tej przeglądarce (M20): baza, trwała pamięć, Service Worker. */
+function OfflineCard() {
+  const store = useStoreStatus();
+  const offline = useSyncExternalStore(subscribeOffline, offlineStatus, offlineStatus);
+  const sw = { active: "gotowa — aplikacja wystartuje bez sieci", installing: "w trakcie przygotowania (odśwież stronę)", unsupported: "niedostępna w tej przeglądarce", dev: "wyłączona w trybie deweloperskim" }[offline.serviceWorker];
+  return (
+    <Card className="mt-4">
+      <h2 className="mb-2 text-sm font-semibold">Praca bez sieci w tej przeglądarce</h2>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+        <dt className="text-[var(--muted)]">Lokalna baza</dt>
+        <dd>{store.storage}</dd>
+        <dt className="text-[var(--muted)]">Trwała pamięć</dt>
+        <dd>{offline.persisted === null ? "—" : offline.persisted ? "tak — przeglądarka nie usunie danych" : "nie — przeglądarka może usunąć dane przy braku miejsca (zainstaluj aplikację albo dodaj do zakładek)"}</dd>
+        <dt className="text-[var(--muted)]">Wersja offline</dt>
+        <dd data-testid="offline-sw">{sw}</dd>
+      </dl>
+    </Card>
   );
 }

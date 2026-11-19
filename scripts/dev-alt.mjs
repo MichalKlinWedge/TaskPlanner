@@ -8,6 +8,7 @@
  * plik, gdy tylko to zrobi (sprawdza tylko przy starcie, więc nie dopisze ponownie).
  *
  *   node scripts/dev-alt.mjs --local --port 3010
+ *   node scripts/dev-alt.mjs --local --port 3011 --prod   — `next build` + `next start` (Service Worker działa tylko tu)
  */
 import { execSync, spawn } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -27,10 +28,21 @@ if (args.includes('--local')) {
 
 const tsconfig = `${root}apps/web/tsconfig.json`;
 const original = readFileSync(tsconfig);
-const guard = setInterval(() => {
+// Przez cały czas działania (build też dopisuje ścieżki typów).
+setInterval(() => {
   if (!readFileSync(tsconfig).equals(original)) writeFileSync(tsconfig, original);
 }, 1000);
-setTimeout(() => clearInterval(guard), 180_000).unref();
 
-const child = spawn('npm', ['run', 'dev', '--workspace', 'apps/web', '--', '-p', port], { cwd: root, env, stdio: 'inherit', shell: true });
-child.on('exit', (code) => process.exit(code ?? 0));
+const run = (script, extra) =>
+  new Promise((resolve) => {
+    const child = spawn('npm', ['run', script, '--workspace', 'apps/web', '--', ...extra], { cwd: root, env, stdio: 'inherit', shell: true });
+    child.on('exit', (code) => resolve(code ?? 0));
+  });
+
+if (args.includes('--prod')) {
+  const built = await run('build', []);
+  if (built !== 0) process.exit(built);
+  process.exit(await run('start', ['-p', port]));
+} else {
+  process.exit(await run('dev', ['-p', port]));
+}

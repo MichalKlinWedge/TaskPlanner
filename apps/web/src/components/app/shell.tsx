@@ -69,7 +69,15 @@ export function Shell({
   const stored = useSyncExternalStore(subscribeWorkspace, readWorkspace, () => ALL);
   const workspaceId = stored !== ALL && data.workspaces.some((w) => w.id === stored) ? stored : null;
   const [menuOpen, setMenuOpen] = useState(false);
-  const [quickOpen, setQuickOpen] = useState(false);
+  // Skrót „Szybkie dodawanie” z ikony aplikacji: `/?quick=1`.
+  const [quickOpen, setQuickOpen] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("quick"));
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("quick")) {
+      url.searchParams.delete("quick");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+  }, []);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   const [palette, setPalette] = useState<PaletteMode | null>(null);
