@@ -105,7 +105,7 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 ### MVP-1 — Fundament danych i konto (≈ 4–5 dni)
 - Pełny schemat §5 (bez tabel integracji), triggery (`row_version`, `field_clock`, `activity_log`, głębokość podzadań, cykle), RLS + testy pgTAP z macierzy uprawnień, `push_changes`/`pull_changes` z PoC-1 dla wszystkich tabel.
 - Typy → `packages/db`; schematy Zod całego modelu → `packages/core/src/schemas`.
-- `packages/sync` produkcyjnie: wszystkie tabele w `SPECS`, odrzucone operacje, kolejka plików (pod Etap 10), wskaźnik stanu synchronizacji.
+- `packages/sync` produkcyjnie: wszystkie tabele w `SPECS`, odrzucone operacje, wskaźnik stanu synchronizacji (kolejka plików przeniesiona do Etapu 10, decyzja 19.11.2026).
 - Logowanie Google + magic link na webie i w aplikacji (deep link); onboarding: przestrzenie „Osobiste” i „Praca” z Inbox, ustawienia (strefa, tydzień, godziny pracy, domyślne godziny i czasy).
 - Prosty ekran przestrzeni i list (tworzenie, zmiana nazwy, kolor, kolejność, archiwizacja) [W+A].
 - `seed:dev` ładuje dane z `tools/seed-dev` do lokalnej bazy.
@@ -181,7 +181,7 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 **Kryterium odbioru:** przegląd 20 zaległych zadań w < 3 min klawiaturą na webie i gestami na telefonie; po przeglądzie tygodnia Inbox jest pusty, a każdy aktywny projekt ma następny krok.
 
 ### Etap 10 — Przechwytywanie i załączniki (≈ 4–5 dni)
-- Załączniki M5: Storage, kolejka plików offline, podgląd obrazów i PDF, aparat na telefonie.
+- Załączniki M5: Storage, kolejka plików offline w `packages/sync` (przeniesiona z MVP-1), podgląd obrazów i PDF, aparat na telefonie.
 - Link → zadanie: `expo-share-intent`, Web Share Target, bookmarklet, `link-preview` (z ochroną SSRF), wklejenie URL.
 
 **Kryterium odbioru:** zdjęcie z aparatu dodane offline staje się załącznikiem zadania po synchronizacji; link udostępniony z Chrome na Androidzie daje zadanie z tytułem strony (offline — po synchronizacji).
