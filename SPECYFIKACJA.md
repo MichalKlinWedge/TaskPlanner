@@ -502,6 +502,7 @@ Recurrence =
 
 ### 7.6. Przypomnienia (`reminders.ts`)
 - `reminderFireTimes(tasks, reminders, window, settings, zone)` → lista `{taskId, reminderId, occurrenceDate, fireAt (instant)}` — z czasu pływającego i bieżącej strefy urządzenia. Używają jej telefon (planowanie lokalne) i `reminders-push` (serwer, strefa z ustawień profilu).
+- Zrobione (19.11.2026): `reminderFireTimes(tasks, rules, { from, to?, timeZone, defaultTime, limit })` → `{ key, taskId, reminderId, occurrenceDate, fireAt, dueAt }` od najwcześniejszego (klucz `reminderId:dzień` — przeplanowanie bez duplikatów); względne przed `due_time` albo domyślną godziną, seria według harmonogramu — każde wystąpienie w oknie (także zaległa seria), „po ukończeniu” — tylko bieżące, bezwzględne raz; strefa przypięta do zadania (`time_zone`) wygrywa; zamknięte bez przypomnień. W `dates.ts` `zonedInstant` (czas pływający → chwila; luka wiosną → godzinę później, podwójna godzina jesienią → pierwsza). Też `reminderBody` (treść: „Za 30 min (10:00)”, „Termin: jutro 10:00”), `toReminderRule`, `snoozeUntil`, `REMINDER_WINDOW_DAYS` = 7, `MAX_SCHEDULED_REMINDERS` = 50.
 
 ### 7.7. Pomodoro (`focus.ts`)
 - Maszyna stanów: `idle → focus → short_break/long_break → focus …`, stan = etap + `started_at` + pauzy; `remaining(state, now)`; przejście etapu zamyka i otwiera `time_entries`.

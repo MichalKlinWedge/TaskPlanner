@@ -10,6 +10,7 @@ export * from './labels.ts';
 export * from './onboarding.ts';
 export * from './quick-add.ts';
 export * from './recurrence.ts';
+export * from './reminders.ts';
 export * from './review.ts';
 export * from './schemas/model.ts';
 export * from './schemas/primitives.ts';

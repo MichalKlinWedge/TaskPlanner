@@ -24,6 +24,32 @@ export function localDateTimeAt(instant: Date | string, timeZone?: string): stri
   return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
 }
 
+/** Przesunięcie strefy w chwili `ms` (minuty; Warszawa zimą = 60). */
+function zoneOffsetMin(ms: number, timeZone?: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(new Date(ms));
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  const asUtc = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+  return Math.round((asUtc - Math.floor(ms / 1000) * 1000) / 60_000);
+}
+
+/**
+ * Chwila, w której zegar ścienny strefy `timeZone` pokazuje `date` `time` (czas pływający → instant).
+ * Przy zmianie czasu: godzina, której nie ma (wiosną 2:30), przesuwa się o godzinę do przodu
+ * (3:30); godzina podwójna (jesienią 2:30) — pierwsze wystąpienie (jeszcze czas letni).
+ */
+export function zonedInstant(date: LocalDate, time: LocalTime, timeZone?: string): Date {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number];
+  const [hh, mm] = time.split(':').map(Number) as [number, number];
+  const wall = Date.UTC(y, m - 1, d, hh, mm);
+  // Przesunięcia dobę przed i dobę po — obejmują obie strony ewentualnej zmiany czasu.
+  const before = zoneOffsetMin(wall - 86_400_000, timeZone);
+  const after = zoneOffsetMin(wall + 86_400_000, timeZone);
+  const candidates = [wall - before * 60_000, wall - after * 60_000].sort((a, b) => a - b);
+  for (const c of candidates) if (c + zoneOffsetMin(c, timeZone) * 60_000 === wall) return new Date(c);
+  // Godzina w luce: przesunięcie sprzed luki (wynik o tyle później, ile luka trwa).
+  return new Date(wall - Math.min(before, after) * 60_000);
+}
+
 /** Dni między datami (`to` − `from`); ujemne, gdy `to` jest wcześniej. */
 export const daysBetween = (from: LocalDate, to: LocalDate): number => Math.round((toDate(to).getTime() - toDate(from).getTime()) / 86_400_000);
 
