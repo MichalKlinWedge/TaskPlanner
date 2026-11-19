@@ -254,4 +254,28 @@ describe('MVP-1: pełny model i stronicowanie', () => {
     const keys = await laptop.engine.db.all<{ k: string }>('select distinct board_sort_key as k from tasks where list_id = ?', [L]);
     expect(keys.map((r) => r.k)).toEqual(['n']);
   });
+
+  it('hurtowy zapis strony: wiele porcji poleceń, niewysłana zmiana lokalna zostaje', async () => {
+    const ids = Array.from({ length: 120 }, () => uuidv7());
+    for (const [i, id] of ids.entries()) await phone.engine.mutate('tasks', id, { list_id: L, title: `Hurt ${i}`, priority: 2 });
+    await phone.engine.sync();
+    // Web zmienia offline tytuł jednego zadania; telefon w tym czasie zmienia mu priorytet.
+    web.net.online = false;
+    await web.engine.mutate('tasks', ids[5]!, { title: 'Zmiana z webu' });
+    await phone.engine.mutate('tasks', ids[5]!, { priority: 4 });
+    await phone.engine.sync();
+    web.net.online = true;
+    const pages: { rows: number; fetchMs: number; writeMs: number }[] = [];
+    const laptop = await open(user, 'laptop2', { onPullProgress: (p) => pages.push(p) });
+    await laptop.engine.sync();
+    expect(pages.reduce((n, p) => n + p.rows, 0)).toBeGreaterThanOrEqual(122);
+    expect(pages.every((p) => p.fetchMs >= 0 && p.writeMs >= 0)).toBe(true);
+    const count = (await laptop.engine.db.all<{ n: number }>('select count(*) as n from tasks where list_id = ?', [L]))[0]?.n;
+    expect(count).toBe(120);
+    await web.engine.pull();
+    const merged = await web.engine.get('tasks', ids[5]!);
+    expect(merged).toMatchObject({ title: 'Zmiana z webu', priority: 4, scope_id: W });
+    await web.engine.sync();
+    expect(await serverTask(web, ids[5]!)).toMatchObject({ title: 'Zmiana z webu', priority: 4 });
+  });
 });

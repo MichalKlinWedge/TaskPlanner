@@ -6,7 +6,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { inject } from 'vitest';
 
 import { openNodeDb } from '../../adapters/node.ts';
-import { SyncEngine } from '../../engine.ts';
+import { SyncEngine, type PullProgress } from '../../engine.ts';
 import { supabaseRemote, type RejectedOp, type Remote } from '../../remote.ts';
 
 export interface TestUser {
@@ -40,7 +40,7 @@ export async function createUser(label: string): Promise<TestUser> {
   return { id: data.user.id, email, password };
 }
 
-export async function createDevice(user: TestUser, name: string, options: { pullPageSize?: number; onPullProgress?: (p: { page: number; done: boolean }) => void } = {}): Promise<Device> {
+export async function createDevice(user: TestUser, name: string, options: { pullPageSize?: number; onPullProgress?: (p: PullProgress) => void } = {}): Promise<Device> {
   const { url, anonKey } = config();
   const client = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const { error } = await client.auth.signInWithPassword({ email: user.email, password: user.password });

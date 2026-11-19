@@ -137,6 +137,8 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 - Synchronizacja w tle (`expo-background-task`), wskaźnik stanu; aktualizacje = nowy APK z GitHub Actions (`.github/workflows/android.yml`), bez EAS Update (decyzja z PoC-4).
 - Odłożone z PoC-4: 3-dobowy pomiar przypomnień w Doze (≥ 95 % ±1 min z `USE_EXACT_ALARM`), tytuł strony przy udostępnianiu z prawdziwego Chrome (`EXTRA_SUBJECT`), czas od akcji w powiadomieniu do zapisu w release, płynność własnej osi dnia palcem (D16).
 
+**Stan (19.11.2026):** w toku na gałęzi. Zrobione: pierwsza synchronizacja — pomiar strony `pull_changes` w silniku (`onPullProgress`: `rows`, `fetchMs` = zapytanie, `writeMs` = transakcja zapisu), suma ostatniego pobrania w „Konto i serwer” (`pullPerf` w `apps/mobile/src/lib/sync.ts`); zapis strony hurtowo w `packages/sync` (jedno `select … where id in (…)` na tabelę, scalenie w JS, `insert … values (…), (…)` porcjami po ≤ 999 parametrów; wiersze z niewysłaną zmianą lokalną po kolei z zakresem z rodzica) — na telefonie ~30 wywołań na 1 000 zadań zamiast ~2 000; `test:sync` zielony (nowy scenariusz hurtowego zapisu). Pomiar na telefonie przed i po — do zrobienia.
+
 **Kryterium odbioru:** cały dzień w trybie samolotowym: dodawanie, edycja, odhaczanie, przypomnienia (także „Odłóż” z powiadomienia przy zamkniętej aplikacji) działają; po włączeniu sieci wszystkie zmiany są na webie, a zmiany z webu na telefonie. Pomiar 3 dób w Doze: ≥ 95 % przypomnień ±1 min.
 
 ### MVP-4 — Cykliczność, przypomnienia w przeglądarce, kanban (≈ 4–6 dni)

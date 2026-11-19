@@ -6,7 +6,24 @@ import { SyncIndicator } from '@/components/sync-indicator';
 import { Button, Field, P, Row, Screen, Section } from '@/components/ui';
 import { sendMagicLink, signInWithGoogle, signOut, verifyEmailCode } from '@/lib/auth';
 import { saveServerConfig, serverConfig, sessionUser } from '@/lib/config';
-import { onSessionChange } from '@/lib/sync';
+import { useSyncStatus } from '@/lib/local-query';
+import { onSessionChange, type PullPerf } from '@/lib/sync';
+
+const seconds = (ms: number) => `${(ms / 1000).toLocaleString('pl-PL', { maximumFractionDigits: 1, minimumFractionDigits: 1 })} s`;
+
+/** Pomiar ostatniego pobrania: czas zapytania `pull_changes` kontra zapis do lokalnej bazy. */
+function PullPerfInfo({ perf }: { perf: PullPerf }) {
+  const when = new Date(perf.at).toLocaleString('pl-PL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return (
+    <P muted mono>
+      {`Ostatnie pobranie (${when}): ${perf.rows} wierszy, ${perf.pages} str., razem ${seconds(perf.totalMs)}
+` +
+        `zapytanie pull_changes ${seconds(perf.fetchMs)} · zapis SQLite ${seconds(perf.writeMs)}
+` +
+        `najwolniejsza strona: ${seconds(perf.slowest.fetchMs)} + ${seconds(perf.slowest.writeMs)}`}
+    </P>
+  );
+}
 
 export default function Settings() {
   const config = serverConfig();
@@ -18,6 +35,7 @@ export default function Settings() {
   const [busy, setBusy] = useState(false);
   const [user, setUser] = useState(sessionUser());
   const [info, setInfo] = useState<string | null>(null);
+  const { pullPerf } = useSyncStatus();
 
   // Logowanie może się skończyć poza tym ekranem (link z maila → ekran `auth-callback`).
   useEffect(() => onSessionChange(() => setUser(sessionUser())), []);
@@ -47,6 +65,7 @@ export default function Settings() {
         {user.online ? (
           <>
             <SyncIndicator />
+            {pullPerf ? <PullPerfInfo perf={pullPerf} /> : null}
             <Row>
               <Button disabled={busy} title="Przestrzenie i listy" kind="secondary" onPress={() => router.push('/workspaces')} />
               <Button

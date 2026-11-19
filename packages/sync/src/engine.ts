@@ -24,16 +24,36 @@ export interface SyncEngineOptions {
   autoSync?: boolean;
   /** Wierszy na stronę `pull_changes` (domyślnie 1 000). */
   pullPageSize?: number;
-  /** Postęp pobierania (wskaźnik pierwszej synchronizacji). */
-  onPullProgress?: (progress: { page: number; done: boolean }) => void;
+  /** Postęp pobierania (wskaźnik pierwszej synchronizacji) z pomiarem strony. */
+  onPullProgress?: (progress: PullProgress) => void;
   /** Początek i koniec każdej synchronizacji (wskaźnik stanu): `ok` po udanej, `error` po nieudanej. */
   onSyncState?: (state: { syncing: true } | { syncing: false; ok: boolean; error?: unknown; at: number }) => void;
+}
+
+/** Strona `pull_changes`: numer, `done` po ostatniej, liczba wierszy, czas zapytania i czas zapisu do lokalnej bazy (ms). */
+export interface PullProgress {
+  page: number;
+  done: boolean;
+  rows: number;
+  fetchMs: number;
+  writeMs: number;
 }
 
 type Listener = () => void;
 
 const PUSH_BATCH = 200;
 const PULL_PAGE = 1000;
+/**
+ * Parametrów na jedno polecenie przy zapisie hurtowym. 999 = najniższy limit SQLite
+ * (`SQLITE_MAX_VARIABLE_NUMBER` w starszych buildach); przy ~25 kolumnach to ~40 wierszy na polecenie.
+ */
+const MAX_PARAMS = 999;
+
+const chunks = <T>(items: readonly T[], size: number): T[][] => {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+};
 
 export class SyncEngine {
   readonly db: LocalDb;
@@ -185,13 +205,36 @@ export class SyncEngine {
     }
   }
 
-  private async upsert(tx: LocalDb, table: SyncedTable, row: SqlRow) {
+  private upsert(tx: LocalDb, table: SyncedTable, row: SqlRow) {
+    return this.upsertMany(tx, table, [row]);
+  }
+
+  /**
+   * Wiele wierszy jednym poleceniem `insert … values (…), (…)` (porcje do `MAX_PARAMS`).
+   * Na telefonie każde wywołanie to przejście przez most JS ↔ natywny — zapis po wierszu
+   * był głównym kosztem pierwszej synchronizacji (MVP-1, M8).
+   */
+  private async upsertMany(tx: LocalDb, table: SyncedTable, rows: readonly SqlRow[]) {
+    if (!rows.length) return;
     const columns = localColumns(table);
-    await tx.run(
-      `insert into ${table} (${columns.join(', ')}) values (${columns.map(() => '?').join(', ')})
-       on conflict (id) do update set ${columns.filter((c) => c !== 'id').map((c) => `${c} = excluded.${c}`).join(', ')}`,
-      columns.map((c) => row[c] ?? null),
-    );
+    const placeholders = `(${columns.map(() => '?').join(', ')})`;
+    const update = columns.filter((c) => c !== 'id').map((c) => `${c} = excluded.${c}`).join(', ');
+    for (const part of chunks(rows, Math.max(1, Math.floor(MAX_PARAMS / columns.length)))) {
+      await tx.run(
+        `insert into ${table} (${columns.join(', ')}) values ${part.map(() => placeholders).join(', ')}
+         on conflict (id) do update set ${update}`,
+        part.flatMap((row) => columns.map((c) => row[c] ?? null)),
+      );
+    }
+  }
+
+  /** Lokalne wiersze o podanych id (porcjami). */
+  private async loadMany(tx: LocalDb, table: SyncedTable, ids: readonly string[]): Promise<Map<string, SqlRow>> {
+    const out = new Map<string, SqlRow>();
+    for (const part of chunks(ids, MAX_PARAMS)) {
+      for (const row of await tx.all(`select * from ${table} where id in (${part.map(() => '?').join(', ')})`, part)) out.set(row.id as string, row);
+    }
+    return out;
   }
 
   // ── Synchronizacja ─────────────────────────────────────────────────────────────────────────
@@ -281,23 +324,38 @@ export class SyncEngine {
   /** Pobranie wszystkich zmian stronami (`pull_changes` z limitem; pierwsza pełna migawka też w porcjach). */
   async pull(): Promise<void> {
     for (let page = 0; ; page++) {
-      const more = await this.pullPage();
-      this.options.onPullProgress?.({ page: page + 1, done: !more });
+      const { more, ...timing } = await this.pullPage();
+      this.options.onPullProgress?.({ page: page + 1, done: !more, ...timing });
       if (!more) return;
     }
   }
 
-  private async pullPage(): Promise<boolean> {
+  private async pullPage(): Promise<{ more: boolean; rows: number; fetchMs: number; writeMs: number }> {
+    const started = Date.now();
     const result: PullResult = await this.remote.pull(this.since, this.options.pullPageSize ?? PULL_PAGE);
+    const fetched = Date.now();
     const touched = new Set<string>();
+    let count = 0;
     await this.db.transaction(async (tx) => {
+      // Tabela po tabeli (rodzice przed dziećmi): jedno zapytanie o lokalne wiersze, scalenie w JS,
+      // zapis hurtowy. Wiersze, w których coś zostało lokalne (niewysłana zmiana), dostają zakres
+      // liczony z rodzica już zapisanego w tej transakcji — po kolei, po zapisie hurtowym reszty.
       for (const table of SYNCED_TABLES) {
-        for (const remote of (result.tables[table] ?? []) as RemoteRow[]) {
-          const local = (await tx.all(`select * from ${table} where id = ?`, [remote.id as string]))[0];
-          const { row, localWon } = mergeRemote(table, local, remote);
-          if (localWon) await this.deriveScope(tx, table, row);
+        const remotes = (result.tables[table] ?? []) as RemoteRow[];
+        if (!remotes.length) continue;
+        count += remotes.length;
+        touched.add(table);
+        const locals = await this.loadMany(tx, table, remotes.map((r) => r.id as string));
+        const plain: SqlRow[] = [];
+        const won: SqlRow[] = [];
+        for (const remote of remotes) {
+          const { row, localWon } = mergeRemote(table, locals.get(remote.id as string), remote);
+          (localWon ? won : plain).push(row);
+        }
+        await this.upsertMany(tx, table, plain);
+        for (const row of won) {
+          await this.deriveScope(tx, table, row);
           await this.upsert(tx, table, row);
-          touched.add(table);
         }
       }
       // Zakres, do którego użytkownik stracił dostęp: jego wiersze znikają z urządzenia.
@@ -311,8 +369,9 @@ export class SyncEngine {
       this.clock.receive(result.serverHlc);
       await this.setMeta(tx, 'clock', this.clock.last);
     });
+    const written = Date.now();
     if (touched.size) this.notify(touched);
-    return result.more === true;
+    return { more: result.more === true, rows: count, fetchMs: fetched - started, writeMs: written - fetched };
   }
 }
 
