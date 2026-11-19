@@ -1,9 +1,9 @@
-# TaskPlanner — specyfikacja v0.1
+# TaskPlanner — specyfikacja v0.2
 
 Źródła: wstępna specyfikacja (18.11.2026) oraz architektura i doświadczenia z ExpeditionPlan (`D:\AI\ExpeditionPlan`: `CLAUDE.md`, `SPECYFIKACJA.md` §2 i §6, `PLAN_ETAPOWY.md`).
 Plan realizacji: [PLAN_ETAPOWY.md](PLAN_ETAPOWY.md). Repozytorium: `github.com/MichalKlinWedge/TaskPlanner`.
 
-Status: projekt do zatwierdzenia. Decyzje otwarte są w §12 (z rekomendacją; brak uwag = rekomendacja przyjęta).
+Status: **v0.2 po bramce decyzyjnej (19.11.2026)** — wszystkie PoC zakończone (wyniki: `docs/POC_WYNIKI.md`), decyzje w §12, zmiany względem v0.1 w §13.
 
 ---
 
@@ -15,7 +15,7 @@ Status: projekt do zatwierdzenia. Decyzje otwarte są w §12 (z rekomendacją; b
 - **Zod jako jedyne źródło prawdy** dla formularzy, pól `jsonb` i API. Zawartość `jsonb` w camelCase, kolumny tabel w snake_case.
 - **Supabase** (Postgres + RLS + Realtime + Storage), migracje SQL, testy RLS w pgTAP, przypięta wersja CLI (`npx --yes supabase@2.122.0`), typy w `packages/db`.
 - **Wzorzec synchronizacji z PoC-4 ExpeditionPlan**: `row_version` nadawany w triggerze z licznika zakresu (blokada wiersza zakresu = kolejność zatwierdzania), pobieranie przyrostowe jednym RPC `pull_changes` (jedna migawka), outbox w SQLite, UUIDv7 z klienta, miękkie usunięcia (`deleted_at`), Realtime tylko jako sygnał do pobrania i dodatkowe pobranie po gotowości subskrypcji.
-- **Expo**: dev build (nie Expo Go), `eas.json` z profilami `development` / `preview` / `production`, aktualizacje OTA na kanale `preview`, `npx expo install` dla zależności, `AGENTS.md` w aplikacjach.
+- **Expo**: dev build (nie Expo Go), `npx expo install` dla zależności, `AGENTS.md` w aplikacjach. Zmiana w v0.2: bez `eas.json` i OTA — APK budowany lokalnie i w GitHub Actions (D17).
 - `scripts/sync-env.mjs` (główny `.env.local` → `apps/*/.env.local`), `.gitattributes` i `.editorconfig` z LF, etykiety i formatowanie w `packages/core` (`labels.ts`, `format.ts`, `sort-key.ts`).
 - Dokumentacja, napisy w UI i komentarze po polsku, identyfikatory po angielsku.
 
@@ -35,7 +35,7 @@ Status: projekt do zatwierdzenia. Decyzje otwarte są w §12 (z rekomendacją; b
 
 **Cel:** osobisty system zadań codziennych, w którym listy, kanban, kalendarz i oś czasu są widokami tych samych danych; działa w przeglądarce i na Androidzie, w pełni offline.
 
-**Użytkownik:** jedna osoba (właściciel) na kilku urządzeniach. Schemat od początku ma członków przestrzeni (`workspace_members`), więc współdzielenie przestrzeni da się dodać bez migracji danych (v1.x).
+**Użytkownik:** jedna osoba (właściciel) na kilku urządzeniach. Schemat od początku ma członków zakresów (`scope_members`), więc współdzielenie przestrzeni da się dodać bez migracji danych (v1.x).
 
 **Role urządzeń** (oba mają pełną edycję):
 - **Web (laptop)** — planowanie: kanban, oś czasu, kalendarz z time-blockingiem, przegląd tygodnia, paleta poleceń i skróty klawiszowe.
@@ -99,7 +99,7 @@ Status: projekt do zatwierdzenia. Decyzje otwarte są w §12 (z rekomendacją; b
      calendar-sync    ↔ Google Calendar API (watch + syncToken), ICS
      inbound-email    ← Cloudflare Email Routing + Email Worker (v1.x, D9)
      link-preview     → pobranie tytułu strony (ochrona przed SSRF)
-   Web hostowany na Vercel; APK przez EAS, aktualizacje JS przez OTA.
+   Web hostowany na Vercel; APK budowany lokalnie i w GitHub Actions (bez EAS), aktualizacja = nowy APK.
 ```
 
 Zasada: **UI czyta i pisze wyłącznie lokalną bazę**. Sieć to sprawa `packages/sync` w tle. Dzięki temu każdy widok działa tak samo online i offline, a UI nie ma osobnej ścieżki „bez sieci”.
@@ -107,28 +107,28 @@ Zasada: **UI czyta i pisze wyłącznie lokalną bazę**. Sieć to sprawa `packag
 ### Stos i decyzje
 | Obszar | Wybór | Dlaczego | Odrzucone |
 |---|---|---|---|
-| Mobile | **Expo SDK 58 + Expo Router + TS** (New Architecture), dev build, EAS, OTA | jak w ExpeditionPlan (sprawdzone kanały i OTA) | Flutter, Kotlin: brak współdzielenia kodu |
+| Mobile | **Expo SDK 58 + Expo Router + TS** (New Architecture), dev build; APK budowany lokalnie (`npx expo run:android`) i w GitHub Actions (`.github/workflows/android.yml`), poza Google Play (D17) | jak w ExpeditionPlan; bez EAS, bo darmowy limit EAS Build wyczerpał się w PoC-4 | Flutter, Kotlin: brak współdzielenia kodu; EAS Build/Update: limit buildów, OTA niepotrzebne przy jednym użytkowniku |
 | Web | **Next.js 16 + React 19 + Tailwind 4**, PWA (Service Worker) | jak w ExpeditionPlan | Vite SPA: tracimy wspólne ustawienia z EP; zysk mały |
 | Backend | **Supabase** (osobny projekt), Edge Functions + `pg_cron` + `pg_net` | RLS, Realtime, Storage, zadania okresowe bez własnego serwera | Firebase: NoSQL utrudnia zapytania i RLS |
 | Lokalna baza — telefon | `expo-sqlite` (FTS5) | jak w EP | WatermelonDB: inny paradygmat |
 | Lokalna baza — web | **`@sqlite.org/sqlite-wasm`** w Web Workerze, VFS `opfs-sahpool`, jedna karta-lider (Web Locks) + BroadcastChannel | ten sam SQL i FTS5 co na telefonie, jeden kod `packages/sync` | IndexedDB (Dexie): drugi model zapytań; PowerSync/ElectricSQL: zależność od usługi, EP wybrał wariant własny |
 | Reaktywność UI | `LocalDb.watch(tabele, zapytanie)` w `packages/sync` + cienkie hooki React w aplikacjach; Zustand dla stanu UI (zaznaczenie, panel, timer) | jedno źródło danych, unieważnianie po tabeli | TanStack Query: dubluje lokalną bazę |
 | Walidacja | **Zod 4** w `packages/core` | jak w EP | — |
-| Opis zadania | **Markdown (podzbiór GFM)** w kolumnie `text`; web: **TipTap 3** + `@tiptap/markdown`; telefon: edytor Markdown z paskiem narzędzi i podglądem (albo TenTap, PoC-5) | tekst łatwo scalać, szukać (FTS5) i tworzyć z maila | JSON ProseMirror: trudny do wyszukiwania i edycji na telefonie |
+| Opis zadania | **Markdown (podzbiór GFM)** w kolumnie `text`; web: **TipTap 3** + `@tiptap/markdown`; telefon: edytor Markdown z paskiem narzędzi i podglądem (albo TenTap — wybór w MVP-3); web sprawdzony w PoC-5: 100/100 opisów stabilnych, 0 strat (`apps/web/src/lib/editor.ts`) | tekst łatwo scalać, szukać (FTS5) i tworzyć z maila | JSON ProseMirror: trudny do wyszukiwania i edycji na telefonie |
 | Daty | własne funkcje dat „pływających” w `packages/core` (`YYYY-MM-DD`, `HH:MM`), bez bibliotek stref | zadania osobiste są w czasie lokalnym (§5) | Temporal: brak w Hermes |
-| Cykliczność | **RRULE (RFC 5545)** + tryb „po ukończeniu”; `rrule` (rrule.js) na datach pływających albo własny podzbiór — rozstrzyga PoC-3 | standard, zgodny z Google Calendar | własny format reguł: brak zgodności z kalendarzami |
+| Cykliczność | **własny podzbiór RRULE (RFC 5545)** w `core/recurrence.ts` + tryb „po ukończeniu” (D19, PoC-3); rrule.js tylko jako wyrocznia w testach | standard zgodny z Google Calendar, liczony na datach pływających bez zależności | rrule.js w produkcie: obiekty `Date` w strefie, liczy reguły spoza podzbioru inaczej niż Google; własny format reguł: brak zgodności z kalendarzami |
 | Kalendarz — web | **FullCalendar 6** (daygrid, timegrid, interaction — licencja MIT) | widok D/T/M, przeciąganie z zewnątrz (`Draggable`), zmiana długości | wersja Premium: niepotrzebna (zasoby, oś czasu) |
-| Oś czasu — web | **SVAR React Gantt** (MIT) albo własny komponent SVG — rozstrzyga PoC-5 | przesuwanie, rozciąganie krawędzi, strzałki zależności | DHTMLX/Bryntum: licencje płatne lub GPL |
-| Kanban i sortowanie — web | **dnd-kit** | sprawdzony, dostępny z klawiatury | react-beautiful-dnd: porzucony |
+| Oś czasu — web | **SVAR React Gantt 2.8** (MIT, D18, PoC-5); polskie napisy z `@svar-ui/gantt-locales`, cykle blokuje `core/dependencies.ts` (SVAR je przyjmuje) | przesuwanie, rozciąganie krawędzi, strzałki zależności | własny SVG: niepotrzebny; DHTMLX/Bryntum: licencje płatne lub GPL |
+| Kanban i sortowanie — web | **dnd-kit**; tylko widoczne karty jako `useSortable` (porcje albo wirtualizacja — PoC-5: 1 800 kart naraz = 1 s przełączenia) | sprawdzony, dostępny z klawiatury | react-beautiful-dnd: porzucony |
 | Paleta poleceń | **cmdk** | standard w React | — |
-| Kalendarz — telefon | `@howljs/calendar-kit` (dzień/tydzień z przeciąganiem) albo własna oś dnia na Reanimated + Gesture Handler — rozstrzyga PoC-4 (calendar-kit: ostatnie wydanie 10.2025, zgłoszone problemy z Reanimated 4.7, `docs/USLUGI.md`) | MIT | react-native-calendars: tylko miesiąc/agenda |
+| Kalendarz — telefon | **własna oś dnia** na Reanimated + Gesture Handler 3 (D16, PoC-4: przesunięcie bloku zapisane w 46 ms) | pełna kontrola gestów, bez zależności | `@howljs/calendar-kit`: w PoC-4 przeciągnięcie przewijało widok zamiast przesuwać blok; react-native-calendars: tylko miesiąc/agenda |
 | Kolejność ręczna | klucze ułamkowe (`sort_key` tekstowy, `core/sort-key.ts` z EP) | zmiana kolejności offline bez przenumerowania | liczby całkowite: konflikty |
-| Powiadomienia | telefon: `expo-notifications` (lokalne, offline); web: **Web Push (VAPID)** z Edge Function | przypomnienie bez sieci na telefonie | FCM dla telefonu: nie działa offline |
-| Widżety Android | `react-native-android-widget` (plugin Expo) — weryfikacja w PoC-4 | widżet w JSX, zadania w tle (headless JS) | natywny Kotlin: drugi język |
+| Powiadomienia | telefon: `expo-notifications` (lokalne, offline) z dokładnymi alarmami `USE_EXACT_ALARM` (D17); web: **Web Push (VAPID)** z Edge Function, `jsr:@negrel/webpush` 0.5.0 (PoC-6) | przypomnienie bez sieci na telefonie; bez dokładnych alarmów Android daje okno ≈ 75 % czasu do terminu (PoC-4) | FCM dla telefonu: nie działa offline |
+| Widżety Android | `react-native-android-widget` (plugin Expo) — potwierdzone w PoC-4 (odhaczanie przy zamkniętej aplikacji i bez sieci, ≈ 2 s); pliki widżetu z `'use no memo'` | widżet w JSX, zadania w tle (headless JS) | natywny Kotlin: drugi język |
 | Udostępnianie do aplikacji | `expo-share-intent` (Android), Web Share Target (PWA), bookmarklet | link → zadanie | — |
 | Poczta przychodząca (v1.x, D9) | **Cloudflare Email Routing + Email Worker** → Edge Function | darmowe, własna domena | Postmark/Mailgun inbound: płatne |
 | Testy | Vitest (pakiety, web), pgTAP (RLS, RPC), testy integracyjne `packages/sync` na lokalnym Supabase, Playwright (web), Maestro (Android) | jak w EP | — |
-| Hosting | Supabase, Vercel (web), EAS (APK + OTA), Cloudflare (poczta) | — | — |
+| Hosting | Supabase, Vercel (web), GitHub Actions (APK), Cloudflare (poczta, v1.x) | — | — |
 
 ### Struktura repozytorium (monorepo, npm workspaces)
 ```
@@ -143,13 +143,17 @@ packages/sync/       LocalDb (interfejs) + implementacje (expo-sqlite, sqlite-wa
 packages/db/         typy wygenerowane z Supabase
 supabase/
   migrations/        tabele, RLS, triggery (row_version, field_clock), RPC push/pull
-  functions/         Edge Functions: reminders-push, calendar-sync, inbound-email, link-preview
-  tests/             pgTAP: RLS, push_changes, pull_changes
-workers/email/       Cloudflare Email Worker (przekazanie maila do inbound-email; v1.x)
-tools/seed-dev/      dane deweloperskie (5 przestrzeni, 2 000 zadań)
+  functions/         Edge Functions: reminders-push, calendar-sync, inbound-email, link-preview;
+                     _shared/ (czysta logika, testowana też w Node), deno.json (mapa importów)
+  tests/             pgTAP: RLS, push_changes, pull_changes, integracje
+tools/email-worker/  Cloudflare Email Worker (przekazanie surowego maila do inbound-email; v1.x)
+tools/edge-tests/    testy funkcji, fałszywe usługi (Google, ICS, push), sekrety lokalne
+tools/seed-dev/      dane deweloperskie (5 przestrzeni, 2 000 zadań), `--load` do lokalnego Supabase
 fixtures/            quick-add.jsonl (korpus parsera), recurrence.json, historie nawyków
 scripts/             sync-env.mjs
-docs/                USLUGI.md (zweryfikowane warunki usług), POC_WYNIKI.md
+docs/                USLUGI.md (zweryfikowane warunki usług), POC_WYNIKI.md, ANDROID_BUILD.md,
+                     POC4_TELEFON.md, POC6_KONFIGURACJA.md
+.github/workflows/   android.yml (APK)
 ```
 
 ---
@@ -333,6 +337,17 @@ Zasady:
 - Korpus testowy `fixtures/quick-add.jsonl` (≥ 150 przypadków, w tym pułapki) jest testem regresji (Vitest) — kryterium PoC-2.
 - Ten sam moduł opisuje reguły po polsku (`describeRecurrence`) — opis musi dać się z powrotem sparsować do tej samej reguły (test „tam i z powrotem”).
 
+Ustalenia z PoC-2 i PoC-3 (v0.2):
+- Seria z godziną zaczyna się od pierwszego wystąpienia, którego godzina jeszcze nie minęła („Trening codziennie o 7 rano” o 12:00 → jutro).
+- `o N` przed słowem w miejscowniku liczby mnogiej (`-ach`, `-ych`, `-ich`) to nie godzina („Ankieta o 15 pytaniach”).
+- Data `D.M` wymaga dwucyfrowego miesiąca albo roku: „5.01” i „2.3.2027” są datami, „wersja 2.3” nie.
+- Pełna nazwa dnia tylko z „w/we” albo „w przyszły/przyszłą”; bez przyimka tylko skróty (`pon`, `wt`, `śr`, `czw`, `pt`, `sob`, `nd`).
+- Dodatkowe formy: „do końca tygodnia/miesiąca”, „na koniec …”, „ostatni piątek miesiąca” (`BYDAY=-1FR`), „co 3 miesiące” (`INTERVAL`), „każdego 10. dnia miesiąca”, „15. i ostatniego dnia miesiąca”, „co 3 miesiące, 30. dnia”.
+- „co miesiąc” bez daty → dzień miesiąca z dzisiejszej daty, „co tydzień” bez dnia → dzisiejszy dzień tygodnia.
+- Przyimek („w”, „we”, „o”, „na”) i myślnik na początku albo końcu tytułu są usuwane.
+- Cofnięte rozpoznania trzymane w stanie pola (MVP-2), a nie jako `\` w tekście.
+- Korpus (99 przypadków, 100 %) pisany ręcznie; przed MVP-2 dopisać prawdziwe zadania użytkownika (D13).
+
 ---
 
 ## 5. Model danych (Postgres)
@@ -341,7 +356,9 @@ Zasady:
 - `id uuid` — UUIDv7 generowany przez klienta (zapis offline, idempotentny).
 - Wspólne kolumny każdej synchronizowanej tabeli: `scope_id` (zakres synchronizacji), `created_at`, `updated_at` (serwer), `created_by`, `deleted_at` (miękkie usunięcie), `row_version bigint` (trigger), `field_clock jsonb` (HLC ostatniej zmiany każdego pola, §6). Dodawane pętlą w jednej migracji (jak `mvp1_access.sql` w EP); nowa tabela trafia do tablicy tabel synchronizowanych i do `synced_tables()`.
 - **Czas zadań = data i godzina pływające** (`date`, `time` — czas ścienny użytkownika), bo „o 10:00” znaczy 10:00 tam, gdzie akurat jestem. Opcjonalna `time_zone` przy zadaniu przypina je do strefy (np. telekonferencja z innym krajem). Zdarzenia rzeczywiste (ukończenie, czas pracy, wydarzenia z kalendarzy) to `timestamptz`.
-- Kolejność ręczna: `sort_key text` (klucze ułamkowe) w obrębie rodzica i listy.
+- Kolejność ręczna: `sort_key text` (klucze ułamkowe) w obrębie rodzica i listy; na tablicy kanbanu z kilku list `board_sort_key` (D15).
+- `due_time` jako tekst `GG:MM` (typ `time` w JSON daje `GG:MM:SS`).
+- **Zakres = przestrzeń albo zakres osobisty** (PoC-1): tabele przestrzeni nie mają kolumny `workspace_id` — `scope_id` = id przestrzeni. Zakres osobisty ma id = id użytkownika i powstaje triggerem na `auth.users`. `scope_id` zadań, tagów zadań i ukończeń jest **wyliczany** na serwerze (z listy / zadania) i klient go nie wysyła; lista podzadania wynika z rodzica.
 - `jsonb` walidowane schematami Zod z `packages/core/src/schemas` (camelCase).
 - Schematy wierszy i `jsonb` (19.11.2026): `packages/core/src/schemas/model.ts` — `MODEL` (wiersz po nazwie tabeli, kolumny snake_case z ograniczeniami migracji i regułami między polami), `ProfileSettings` (`parse({})` = domyślne), `ViewPrefs`, `TaskSource`, `AttachmentPreview`, `PushSubscriptionJson`. Test w `packages/sync` pilnuje, że wiersze tabel synchronizowanych mają dokładnie kolumny `TABLES` + `id`. `devices.reminder_channel` = `enabled`/`disabled` (czy urządzenie dostaje przypomnienia).
 
@@ -352,14 +369,14 @@ Zasady:
 | `devices` | `id`, `user_id`, `name`, `platform` (`web`/`android`), `reminder_channel`, `push_subscription jsonb`, `last_sync_at` | |
 | `sync_scopes` | `id`, `kind` (`workspace`/`personal`), `owner_id`, `sync_version bigint` | licznik zakresu; Realtime subskrybuje te wiersze |
 | `workspaces` | `id` (= `scope_id`), `name`, `color`, `icon`, `sort_key`, `archived_at` | jedna przestrzeń = jeden zakres |
-| `workspace_members` | `workspace_id`, `user_id`, `role` (`owner`; `editor`/`viewer` w v1.x) | podstawa RLS |
-| `lists` | `id`, `workspace_id`, `kind` (`inbox`/`project`/`list`), `name`, `color`, `icon`, `description_md`, `start_date`, `end_date`, `project_status`, `sort_key`, `view_prefs jsonb` | unikalny `inbox` na przestrzeń |
+| `scope_members` | `scope_id`, `user_id`, `role` (`owner`; `editor`/`viewer` w v1.x) | podstawa RLS; także zakres osobisty |
+| `lists` | `id`, `scope_id` (= przestrzeń), `kind` (`inbox`/`project`/`list`), `name`, `color`, `icon`, `description_md`, `start_date`, `end_date`, `project_status`, `sort_key`, `view_prefs jsonb` | unikalny `inbox` na przestrzeń |
 
 ### Tabele — zadania
 | Tabela | Najważniejsze kolumny | Uwagi |
 |---|---|---|
-| `tasks` | `id`, `workspace_id`, `list_id`, `parent_id`, `kind` (`task`/`habit`), `title`, `description_md`, `status`, `priority smallint 1–4`, `start_date`, `due_date`, `due_time`, `duration_min`, `time_zone`, `recurrence jsonb` (`Recurrence`), `habit jsonb` (`HabitGoal`), `completed_at`, `sort_key`, `source jsonb` (`TaskSource`: ręcznie / szybkie dodawanie / e-mail / link / kalendarz), `postpone_count` | trigger: głębokość ≤ 4, brak cyklu `parent_id`, `workspace_id` zgodny z listą i rodzicem |
-| `tags` | `id`, `name`, `color`, `sort_key` | zakres osobisty; unikalny `lower(unaccent(name))` |
+| `tasks` | `id`, `scope_id` (wyliczany), `list_id`, `parent_id`, `kind` (`task`/`habit`), `title`, `description_md`, `status`, `priority smallint 1–4`, `start_date`, `due_date`, `due_time`, `duration_min`, `time_zone`, `recurrence jsonb` (`Recurrence`), `habit jsonb` (`HabitGoal`), `completed_at`, `sort_key`, `board_sort_key` (D15), `source jsonb` (`TaskSource`: ręcznie / szybkie dodawanie / e-mail / link / kalendarz), `postpone_count` | trigger: głębokość ≤ 4, brak cyklu `parent_id`, zakres zgodny z listą i rodzicem |
+| `tags` | `id`, `name`, `color`, `sort_key` | zakres osobisty; unikalny `lower(name)`; id = UUIDv5 z nazwy bez polskich znaków (`tagId`), więc ten sam tag z dwóch urządzeń to jeden wiersz |
 | `task_tags` | `id` (UUIDv5 z `task_id`+`tag_id`), `task_id`, `tag_id` | wiersz łączący z `deleted_at` — dodanie tagu na dwóch urządzeniach nie gubi żadnego |
 | `reminders` | `id`, `task_id`, `kind` (`relative`/`absolute`), `offset_min`, `at_date`, `at_time` | |
 | `task_dependencies` | `id`, `predecessor_id`, `successor_id`, `kind` (`finish_to_start`), `lag_days` | trigger: brak cyklu, ta sama przestrzeń |
@@ -375,13 +392,19 @@ Zasady:
 | `calendar_accounts` | `id`, `user_id`, `provider` (`google`/`microsoft`/`ics`), `label`, `secret_id` (Vault), `sync_state jsonb`, `status` | tokeny i adres ICS w Vault; kolumny sekretów niewidoczne dla klientów |
 | `calendars` | `id`, `account_id`, `external_id`, `name`, `color`, `visible`, `is_task_target` | |
 | `calendar_events` | `id`, `calendar_id`, `external_id`, `title`, `start_at`, `end_at`, `all_day`, `location`, `etag`, `task_id` | okno −30…+180 dni; zakres osobisty |
-| `inbound_messages` | `id`, `user_id`, `received_at`, `from_addr`, `subject`, `status` (`created`/`rejected`), `task_id`, `reason` | dziennik, bez treści |
+| `inbound_messages` | `id`, `user_id`, `received_at`, `from_addr`, `subject`, `status` (`created`/`rejected`), `task_id`, `reason` | dziennik, bez treści; unikalny Message-ID |
+| `oauth_states` | jednorazowy `state` OAuth (15 min) | PoC-6 |
+| `inbound_addresses`, `push_subscriptions` | token i nadawcy adresu e-mail; subskrypcje Web Push | **tymczasowe z PoC-6** — w MVP-1 przechodzą do `profiles` / `devices` |
+| `push_queue` | kolejka wysyłek Web Push | tymczasowa — w MVP-4 zastąpi ją `core/reminders.ts` z dziennikiem wysyłek per urządzenie |
 | `activity_log` | `id`, `scope_id`, `table_name`, `row_id`, `changes jsonb`, `device_id`, `at` | historia zmian (M3), jak w EP |
 
+Ustalenia z PoC-6: tabele integracji mają `user_id` (= zakres osobisty) i `row_version`; każdy zapis podbija `sync_scopes.sync_version` (sygnał Realtime), a w `pull_changes` dochodzą w Etapie 5 jako tylko do odczytu. Wydarzenie całodniowe ma daty pływające `start_date`/`end_date` (koniec bez włączenia, jak w iCalendar); `start_at`/`end_at` tylko dla wydarzeń z godziną. Zadanie z integracji dostaje HLC serwera w `field_clock` każdego pola (`create_integration_task`).
+
 ### Uprawnienia (RLS)
-- Dostęp do wiersza: `scope_id` należy do zakresu, w którym użytkownik jest członkiem (`workspace_members`) albo właścicielem zakresu osobistego. Jedna funkcja `has_scope_access(scope_id)` (SECURITY DEFINER, stabilna) w politykach wszystkich tabel.
+- Dostęp do wiersza: `scope_id` należy do zakresu, w którym użytkownik jest członkiem (`scope_members`, także zakres osobisty). Jedna funkcja `has_scope_access(scope_id)` (SECURITY DEFINER, stabilna) w politykach wszystkich tabel.
 - Zapisy synchronizowanych tabel **tylko przez RPC `push_changes`** (bez bezpośrednich `insert/update` z klienta) — jedno miejsce walidacji i scalania. Odczyt przez `pull_changes`; bezpośredni `select` dozwolony (np. narzędzia), zgodny z RLS.
 - Integracje (`calendar_*`, `inbound_messages`) pisze tylko `service_role` w Edge Functions.
+- **Jawne granty w migracjach** (PoC-6): nowy projekt w chmurze nie nadaje ról API do tabel z migracji (lokalny stack nadaje), więc każda migracja z tabelą zawiera `grant` dla `authenticated` / `service_role`. Uprawnienia kolumn (sekrety, `sync_state`) sprawiają, że klient wymienia kolumny zamiast `select('*')`.
 - Storage: bucket `attachments` prywatny, polityka po pierwszym segmencie ścieżki (`user_id`) i dostępie do zadania.
 - Testy pgTAP: macierz (właściciel / obcy użytkownik / anonim) × (odczyt / `push_changes` / `pull_changes`) dla każdej tabeli + próby zapisu do cudzego `scope_id`.
 
@@ -405,14 +428,16 @@ Zasady:
 - Outbox wysyłany w kolejności, paczkami do 200 operacji, jedno wywołanie RPC = jedna transakcja.
 - Serwer dla każdego pola: zapis tylko wtedy, gdy `hlc_operacji > field_clock[pole]` (albo pola jeszcze nie ma). Wstawienie, gdy wiersza nie ma. To daje **idempotencję bez tabeli przetworzonych operacji** (powtórka tej samej operacji niczego nie zmienia) i wynik niezależny od kolejności dotarcia operacji z różnych urządzeń.
 - Ochrona przed złym zegarem: HLC późniejszy niż czas serwera + 5 min jest obcinany do czasu serwera (urządzenie dostaje skorygowany zegar w odpowiedzi).
-- Operacja naruszająca reguły (np. podzadanie przeniesione w cykl na dwóch urządzeniach, piąty poziom) jest **odrzucana** z powodem; klient oznacza ją w outboxie jako odrzuconą, pobiera wersję serwera i pokazuje komunikat („Zmiana odrzucona: …”). Odrzucone operacje widoczne w ustawieniach synchronizacji.
+- Operacja naruszająca reguły (np. podzadanie przeniesione w cykl na dwóch urządzeniach, piąty poziom) jest **odrzucana** z kodem (`TP001` głębokość, `TP002` cykl, `TP003` brak dostępu, `TP004` zły zakres, `TP005` nieznana tabela/pole, `TP006` zły HLC); dostęp sprawdzany jawnie, także gdy zmiana i tak przegrałaby LWW; klient oznacza ją w outboxie jako odrzuconą, pobiera wersję serwera i pokazuje komunikat („Zmiana odrzucona: …”). Odrzucone operacje widoczne w ustawieniach synchronizacji.
 
 ### Pobieranie (`pull_changes`)
 - Jak w EP: trigger podbija `sync_scopes.sync_version` (blokada wiersza zakresu do końca transakcji) i nadaje wierszowi `row_version`. Klient wysyła mapę `{scope_id: ostatnia_wersja}`, dostaje wiersze z `row_version` większym (z usuniętymi) w jednej migawce bazy.
-- Pierwsza synchronizacja: pełna migawka stronicowana po tabelach.
+- Pierwsza synchronizacja: pełna migawka **stronicowana** po tabelach ze wskaźnikiem postępu (MVP-1; w PoC 2 017 zadań bez stronicowania = ~4,2 s do pierwszego zapytania w przeglądarce, ~1 MB).
 - Kolejność cyklu: wyślij outbox → pobierz zmiany → przelicz zależne stany (`due_date` serii, powiadomienia, widżety, liczniki).
 - Online: Realtime na wierszach `sync_scopes` użytkownika = sygnał do pobrania; dodatkowe pobranie po gotowości subskrypcji (zimny start Realtime, wniosek z EP). Offline → online: natychmiastowy cykl. Telefon w tle: `expo-background-task` (co ok. 15 min, zależnie od systemu).
 - Usunięte wiersze (`deleted_at`) trwale usuwane po 90 dniach. Klient, którego ostatnia synchronizacja jest starsza niż ten horyzont, robi pełną migawkę.
+
+- Kaskady (usunięcie rodzica, przeniesienie listy) liczy serwer; do synchronizacji widoki ukrywają dzieci usuniętego rodzica albo `mutate` powtarza kaskadę lokalnie (MVP-2).
 
 ### Seria cykliczna po synchronizacji
 - Ukończenie wystąpienia na dwóch urządzeniach offline daje ten sam `task_completions.id` (UUIDv5 z `task_id` + `occurrence_date`) — jeden wpis.
@@ -424,7 +449,7 @@ Zasady:
 - `navigator.storage.persist()` przy pierwszym uruchomieniu; eksport kopii bazy w ustawieniach.
 
 ### Telefon — dodatkowo
-- Powiadomienia (M8) i widżety (M20) czytają tę samą bazę; zmiany z akcji powiadomień i widżetów idą przez `mutate` (outbox).
+- Powiadomienia (M8) i widżety (M20) czytają tę samą bazę; zmiany z akcji powiadomień i widżetów idą przez `mutate` (outbox). Zadania w tle (Headless JS) rejestrowane przed `expo-router/entry`; obsługa akcji z powiadomień idempotentna, bo ta sama odpowiedź może przyjść z zadania w tle i z listenera (PoC-4).
 - Załączniki do wysłania w osobnej kolejce plików; wiersz `attachments` trafia do outboxu dopiero po udanym wysłaniu pliku.
 
 ### Testy (kryterium PoC-1, potem `npm run test:sync`)
@@ -451,7 +476,10 @@ Recurrence =
   | { mode: 'schedule'; rrule: string; anchor: LocalDate; until?: LocalDate; count?: number }
   | { mode: 'after_completion'; every: { unit: 'day' | 'week' | 'month' | 'year'; n: number } }
 ```
-- `nextOccurrence(rule, after)`, `occurrencesBetween(rule, from, to, limit)`, `describeRecurrence(rule)` (PL), `parseRecurrence(text)` (z `quick-add.ts`).
+- API (PoC-3): `parseRrule`, `formatRrule`, `occurrences`, `nextOccurrence`, `nextDue`, `describeRecurrence` (PL), schemat `Recurrence`; rozpoznawanie z tekstu w `quick-add.ts`.
+- Podzbiór (D19): `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY`, `INTERVAL`, `BYDAY` (z pozycją tylko w MONTHLY/YEARLY), `BYMONTHDAY` (także ujemne), `BYMONTH`, `BYSETPOS`, `COUNT`, `UNTIL` (data), `WKST=MO`. Odrzucane: HOURLY i mniejsze, `BYHOUR`/`BYWEEKNO`/`BYYEARDAY`, YEARLY+BYDAY bez BYMONTH, `COUNT` razem z `UNTIL`.
+- Kotwica, która nie pasuje do reguły, nie jest wystąpieniem (jak rrule.js / dateutil; inaczej niż DTSTART w RFC — ICS w PoC-6 traktuje DTSTART zgodnie z RFC). Szybkie dodawanie ustawia kotwicę na pierwszym pasującym dniu.
+- „Po ukończeniu” co miesiąc z 31. → ostatni dzień krótszego miesiąca; „według harmonogramu” 31. dnia pomija krótsze miesiące (RFC).
 - Daty pływające — brak problemów ze zmianą czasu (DST); godzina wystąpienia = `due_time` serii.
 - Przypadki testowe (kryterium PoC-3): co drugi wtorek (`FREQ=WEEKLY;INTERVAL=2;BYDAY=TU`), drugi wtorek miesiąca (`FREQ=MONTHLY;BYDAY=2TU`), ostatni dzień miesiąca (`BYMONTHDAY=-1`), ostatni dzień roboczy (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`), 31. dzień (miesiące krótsze pomijane — zgodnie z RFC; opcja „ostatni dzień, jeśli brak” — v1.x), 29 lutego, `COUNT`/`UNTIL`, „3 dni po ukończeniu” ukończone z opóźnieniem i przed terminem, ukończenie zaległego wystąpienia (następne = pierwsze przyszłe, nie zaległe).
 - Ukończenie serii „według harmonogramu” po terminie: następny termin = najbliższe wystąpienie **po dziś** (bez zalewu zaległych wystąpień).
@@ -459,6 +487,7 @@ Recurrence =
 ### 7.3. Zależności i oś czasu (`dependencies.ts`)
 - `detectCycle(deps, newDep)`, `violations(tasks, deps)` (B.start < A.end + lag), `shiftSuccessors(tasks, deps, taskId, deltaDays)` (kaskadowo, zachowując odstępy; opcja dni roboczych z ustawień), `projectSpan(list, tasks)`.
 - Koniec zadania = `due_date` (+ `due_time` + `duration_min`, gdy jest godzina); początek = `start_date ?? due_date`.
+- SVAR Gantt przyjmuje cykle zależności — zapis zależności z osi zawsze przez `detectCycle` (PoC-5).
 - Zrobione (18.11.2026): `taskSpan`, `detectCycle` (zwraca ścieżkę cyklu), `violations`, `shiftSuccessors` (`cascade: false` = „Tylko to zadanie”, `workdays` = dni robocze), `projectSpan`; w `dates.ts` `daysBetween`, `addWorkdays`. Granulacja dni: przy `lag_days` = 0 następnik może zacząć się w dniu końca poprzednika.
 
 ### 7.4. Time-blocking (`time-blocking.ts`)
@@ -466,8 +495,9 @@ Recurrence =
 
 ### 7.5. Nawyki (`habits.ts`)
 - Okres nawyku: dzień (reguła dzienna/w wybrane dni) albo tydzień/miesiąc (cel „N razy”). Passa = liczba kolejnych zaliczonych okresów, w których nawyk był zaplanowany; `skipped` nie przerywa i nie zalicza; bieżący niezakończony okres nie przerywa passy.
-- `streak(habit, completions, today)`, `bestStreak`, `completionRate(range)`, `heatmap(year)`, `weekSummary`.
-- Test na 90-dniowych historiach w `fixtures/habits/` (wartości policzone ręcznie).
+- API (PoC-3): `habitPeriods`, `habitStreak` (passa i najdłuższa passa), `habitRate`, `habitDays` (mapa cieplna), schemat `HabitSettings`.
+- Cel „N razy w tygodniu/miesiącu”: okres z dniami wolnymi, w którym zrobione + wolne ≥ N, nie przerywa passy i nie zalicza. Dzień z wartością poniżej celu ilościowego to „częściowo” (mapa cieplna), a w passie — niezaliczony.
+- Test na historiach w `fixtures/habits.json` (wartości policzone ręcznie).
 
 ### 7.6. Przypomnienia (`reminders.ts`)
 - `reminderFireTimes(tasks, reminders, window, settings, zone)` → lista `{taskId, reminderId, occurrenceDate, fireAt (instant)}` — z czasu pływającego i bieżącej strefy urządzenia. Używają jej telefon (planowanie lokalne) i `reminders-push` (serwer, strefa z ustawień profilu).
@@ -503,7 +533,7 @@ Recurrence =
 | Wydajność | 10 000 zadań: „Dziś” i lista projektu < 100 ms z lokalnej bazy; parser < 5 ms; przeciąganie w kanbanie/kalendarzu 60 kl./s przy 2 000 zadań; zimny start telefonu do „Dziś” < 2 s |
 | Synchronizacja | zmiana widoczna na drugim urządzeniu online < 3 s; 500 operacji offline wysłane < 10 s |
 | Offline | wszystko poza wyjątkami z M20 |
-| Przypomnienia | telefon: ±1 min (z pozwoleniem na dokładne alarmy), web: ±1 min (cron co minutę) |
+| Przypomnienia | telefon: ±1 min z `USE_EXACT_ALARM` (50 alarmów przyjętych jako dokładne w PoC-4; 3-dobowy pomiar w Doze w MVP-3), web: ±1 min (cron co minutę; w PoC-6 dostarczenie 14–54 s) |
 | Dostępność | pełna obsługa klawiaturą na webie, etykiety ARIA, kontrast WCAG AA, tryb ciemny, skalowanie czcionki na Androidzie |
 | Język i format | UI po polsku, tydzień od poniedziałku, format dat `pt 21 lis`, 24 h |
 | Przeglądarki | Chrome i Edge (desktop i Android) — pełne wsparcie; Firefox — bez OPFS w trybie prywatnym (tryb online); Safari — najlepszy wysiłek |
@@ -517,12 +547,12 @@ Do zweryfikowania w Etapie 0 i zapisania z datą w `docs/USLUGI.md` (jak w EP �
 
 | Usługa | Plan | Na co uważać |
 |---|---|---|
-| Supabase | Free (osobny projekt) | limit 2 aktywnych projektów **na konto** (we wszystkich organizacjach — sprawdzić projekty EP); wstrzymanie po 7 dniach niskiej aktywności (codzienne użycie temu zapobiega); brak kopii zapasowych → własny `pg_dump`; 500 MB bazy, 1 GB Storage; `pg_cron`/`pg_net` na Free — potwierdzić w PoC-6 |
+| Supabase | Free (osobny projekt na osobnym koncie, D10) | wstrzymanie po 7 dniach niskiej aktywności (codzienne użycie temu zapobiega); brak kopii zapasowych → własny `pg_dump`; 500 MB bazy, 1 GB Storage; `pg_cron`/`pg_net` na Free działają (PoC-6); nowy projekt nie nadaje ról API do tabel z migracji → jawne granty |
 | Vercel | Hobby | tylko użytek niekomercyjny; Cron Jobs raz dziennie, Vercel Schedules (beta) co 15 min → zadania co minutę w `pg_cron` |
-| Expo EAS | Free | limit buildów w miesiącu; OTA wystarczy przy jednym użytkowniku |
-| Google Cloud (OAuth, Calendar API) | bezpłatny | zakres kalendarza jest „wrażliwy”: w stanie *Testing* tokeny odświeżania wygasają po 7 dniach → aplikacja w stanie *In production* bez weryfikacji (ekran ostrzeżenia, limit 100 użytkowników) — sprawdzić w PoC-6 |
+| GitHub Actions | Free | build APK (`.github/workflows/android.yml`); limit minut dla prywatnego repozytorium w `docs/USLUGI.md`. EAS nieużywany (D17) |
+| Google Cloud (OAuth, Calendar API) | bezpłatny | zakres kalendarza jest „wrażliwy”: w stanie *Testing* tokeny odświeżania wygasają po 7 dniach → aplikacja w stanie *In production* bez weryfikacji (ekran ostrzeżenia, limit 100 użytkowników) — działa (PoC-6), klient OAuth w osobnym projekcie Google Cloud; token odświeżania > 7 dni do sprawdzenia w trakcie MVP |
 | Cloudflare Email Routing + Workers | Free | wymaga domeny z DNS w Cloudflare (D9) |
-| Web Push | bezpłatny | klucze VAPID; biblioteka działająca w Deno (PoC-6) |
+| Web Push | bezpłatny | klucze VAPID; `jsr:@negrel/webpush` 0.5.0 działa w Edge Runtime (PoC-6) |
 | Microsoft Graph (v1.x) | bezpłatny | rejestracja aplikacji w Entra ID; dla konta firmowego może być potrzebna zgoda administratora |
 
 Szacowany koszt v1.0: 0 zł miesięcznie (+ domena, jeśli trzeba kupić). Supabase Pro (25 USD/mies.) tylko wtedy, gdy limity Free okażą się za małe albo będą potrzebne kopie PITR.
@@ -534,32 +564,53 @@ Szacowany koszt v1.0: 0 zł miesięcznie (+ domena, jeśli trzeba kupić). Supab
 |---|---|---|---|
 | R1 | Błąd w scalaniu per pole albo w drzewie podzadań | utrata lub zdublowanie danych | PoC-1 jako pierwszy, scenariusze z §6 w `test:sync`, `activity_log` do przywracania |
 | R2 | sqlite-wasm/OPFS: wiele kart, wyczyszczenie danych przez przeglądarkę | web nie działa offline albo traci niewysłane zmiany | lider kart (Web Locks), `storage.persist()`, tryb online jako wyjście awaryjne, outbox wysyłany od razu po zapisie |
-| R3 | Android 14+: `SCHEDULE_EXACT_ALARM` domyślnie odmówione, `USE_EXACT_ALARM` tylko dla budzików/kalendarzy (polityka Play); Doze | spóźnione przypomnienia | PoC-4: pomiar z `delivery: 'bestEffort'` i `'alarmClock'` (expo-notifications SDK 58); prośba o pozwolenie z wyjaśnieniem; awaryjnie push z serwera (FCM), gdy telefon online |
+| R3 | Android 14+: `SCHEDULE_EXACT_ALARM` domyślnie odmówione, `USE_EXACT_ALARM` tylko dla budzików/kalendarzy (polityka Play); Doze | spóźnione przypomnienia | PoC-4: bez dokładnych alarmów NO-GO → `USE_EXACT_ALARM` (APK poza Play, D17); 3-dobowy pomiar w Doze w MVP-3; przy publikacji w Play powrót do `SCHEDULE_EXACT_ALARM` + prośba w aplikacji; awaryjnie push z serwera (FCM) |
 | R4 | Parser PL rozpoznaje fragment tytułu jako datę | zepsute tytuły | pełne formy fragmentów, chipy z cofaniem, korpus pułapek w testach |
-| R5 | rrule.js — błędy stref i wydajność | złe terminy serii | tylko daty pływające (UTC jako „bez strefy”), testy z §7.2; wyjście: własny podzbiór RRULE |
+| R5 | rrule.js — błędy stref i wydajność | złe terminy serii | **zamknięte w PoC-3**: własny podzbiór RRULE na datach pływających (D19), zgodny z rrule.js na 500 losowych regułach |
 | R6 | Google OAuth: wygasanie tokenów, weryfikacja zakresów | zerwana synchronizacja kalendarza | PoC-6; ICS i kalendarz telefonu jako odczyt bez OAuth |
-| R7 | Widżety i calendar-kit na Expo SDK 58 / New Architecture | brak widżetu / kalendarza na telefonie | PoC-4; wyjście: skróty aplikacji zamiast widżetu, własna oś dnia |
-| R8 | Biblioteka Gantta nie daje rozciągania/zależności tak, jak trzeba | Etap 6 dłuższy | PoC-5: porównanie z własnym SVG |
+| R7 | Widżety i calendar-kit na Expo SDK 58 / New Architecture | brak widżetu / kalendarza na telefonie | **zamknięte w PoC-4**: widżet działa; calendar-kit odrzucony → własna oś dnia (D16) |
+| R8 | Biblioteka Gantta nie daje rozciągania/zależności tak, jak trzeba | Etap 6 dłuższy | **zamknięte w PoC-5**: SVAR wystarcza (D18); cykle blokuje `core`, widok trzymany zamontowany (< 150 ms) |
 | R9 | Zakres (20 modułów) dla jednej osoby | brak używalnej aplikacji przez długi czas | MVP-2 = pierwszy realny użytek na webie; reszta przyrostowo, każdy etap z kryterium odbioru |
 | R10 | Limity Supabase Free, wstrzymanie projektu | przerwa w synchronizacji | aplikacja działa offline; monitor w `docs/USLUGI.md`; Pro w razie potrzeby |
-| R11 | Podszyte maile do adresu przechwytywania | śmieci w Inbox | token w adresie + lista nadawców + dziennik odrzuceń |
+| R11 | Podszyte maile do adresu przechwytywania | śmieci w Inbox | token w adresie + lista nadawców + DMARC + dziennik odrzuceń |
+| R12 | Brak OTA (D17) | każda poprawka na telefonie = nowy APK | GitHub Actions buduje APK; ewentualnie własny serwer zgodny z protokołem Expo Updates |
+| R13 | Kanban z wieloma kartami (PoC-5: start przeciągania 150–184 ms) | szarpnięcie przy podniesieniu karty | porcje albo wirtualizacja, pomiar ponownie w MVP-4 |
 
 ---
 
-## 12. Decyzje do potwierdzenia (z rekomendacją)
-| # | Decyzja | Rekomendacja |
+## 12. Decyzje
+Stan po bramce decyzyjnej (19.11.2026): wszystkie zatwierdzone.
+
+| # | Decyzja | Rozstrzygnięcie |
 |---|---|---|
-| D1 | Platformy | **Android + web (PWA)**; iOS i desktop natywny w v1.x |
-| D2 | Web local-first czy online | **Local-first** (sqlite-wasm + wspólny `packages/sync`); wyjście awaryjne po PoC-1: web online z optymistycznymi zapisami |
-| D3 | Konflikty | **LWW per pole z HLC**, ukończenia i czas pracy tylko dopisywane |
-| D4 | Format opisu | **Markdown** (TipTap na webie) |
-| D5 | Składnia szybkiego dodawania | **`#` = lista/projekt/przestrzeń, w razie braku — tag; `@` = zawsze tag**; `!1–!4` priorytet; `~` czas trwania; `^` przypomnienie |
-| D6 | Statusy kanbanu | **Stałe 5 statusów** w v1.0; własne kolumny statusów w v1.x |
-| D7 | Zakres telefonu | **Pełna edycja + kalendarz dnia/tygodnia**; oś czasu (Gantt) tylko na webie; kanban na telefonie uproszczony |
+| D1 | Platformy | **Android + web (PWA)**; iOS i desktop natywny w v1.x (decyzja 2026-11-19) |
+| D2 | Web local-first czy online | **Local-first** (sqlite-wasm + wspólny `packages/sync`); potwierdzone w PoC-1 i PoC-5 (decyzja 2026-11-19) |
+| D3 | Konflikty | **LWW per pole z HLC**, ukończenia i czas pracy tylko dopisywane (decyzja 2026-11-19) |
+| D4 | Format opisu | **Markdown** (TipTap 3 + `@tiptap/markdown` na webie, potwierdzone w PoC-5; decyzja 2026-11-19) |
+| D5 | Składnia szybkiego dodawania | **`#` = lista/projekt/przestrzeń, w razie braku — tag; `@` = zawsze tag**; `!1–!4` priorytet; `~` czas trwania; `^` przypomnienie (decyzja 2026-11-19) |
+| D6 | Statusy kanbanu | **Stałe 5 statusów** w v1.0; własne kolumny statusów w v1.x (decyzja 2026-11-19) |
+| D7 | Zakres telefonu | **Pełna edycja + kalendarz dnia/tygodnia**; oś czasu (Gantt) tylko na webie; kanban na telefonie uproszczony (decyzja 2026-11-19) |
 | D8 | Kalendarz firmowy (spotkania) | **Google** (decyzja 2026-11-18): dwukierunkowa synchronizacja z Google Calendar; ICS i kalendarz telefonu jako odczyt dla pozostałych; Microsoft 365 dopiero w v1.x |
 | D9 | Domena dla adresu e-mail | **E-mail → Inbox przesunięte do v1.x** (decyzja 2026-11-18) — wymaga domeny z DNS w Cloudflare; do tego czasu przechwytywanie przez udostępnianie z telefonu i Web Share Target (M19) |
 | D10 | Projekt Supabase | **Osobny projekt na osobnym koncie** Supabase (Free, decyzja 2026-11-18) — limit 2 aktywnych projektów konta ExpeditionPlan nie dotyczy TaskPlanner |
 | D11 | Widżety pulpitu | **PWA + skróty** w v1.0; natywny widżet / zasobnik / globalny skrót przez Tauri w v1.x |
 | D12 | Integracje na serwerze | **Supabase Edge Functions + `pg_cron`** (nie trasy API Vercela) |
 | D13 | Import z obecnego narzędzia | **Brak** (decyzja 2026-11-18): start od zera, bez `tools/import`; zostaje eksport/import JSON własnych danych (Etap 13). Korpus parsera uzupełnią przykładowe zadania wpisane przez użytkownika |
-| D14 | Język i nazwa | UI po polsku, nazwa aplikacji „TaskPlanner”, pakiety `@taskplanner/*` |
+| D15 | Kolejność kart na tablicy z kilku list | **Osobny `tasks.board_sort_key`** (decyzja 2026-11-19): `sort_key` jest per lista/rodzic, więc karty z różnych list nie mają wspólnej kolejności. Kolumna w schemacie MVP-1, użycie w kanbanie MVP-4; pusty klucz = kolejność automatyczna (priorytet, termin) |
+| D16 | Widok dnia na telefonie | **Własna oś dnia** na Reanimated + Gesture Handler 3 (decyzja 2026-11-19, PoC-4); bez `@howljs/calendar-kit`. Płynność palcem do sprawdzenia w MVP-3 |
+| D17 | Build i dystrybucja Androida | **Bez EAS** (decyzja 2026-11-18/19, PoC-4): APK lokalnie i z GitHub Actions, podpis kluczem z sekretów repozytorium, poza Google Play; aktualizacja = nowy APK (bez OTA); dokładne alarmy przez `USE_EXACT_ALARM` |
+| D18 | Biblioteka osi czasu | **SVAR React Gantt** (decyzja 2026-11-19, PoC-5); własny SVG niepotrzebny |
+| D19 | Silnik cykliczności | **Własny podzbiór RRULE** (decyzja 2026-11-19, PoC-3); rrule.js tylko w testach |
+| D14 | Język i nazwa | UI po polsku, nazwa aplikacji „TaskPlanner”, pakiety `@taskplanner/*` (decyzja 2026-11-19) |
+
+---
+
+## 13. Zmiany w v0.2 (bramka decyzyjna 19.11.2026)
+- §2: build Androida bez EAS i OTA (D17); własny podzbiór RRULE (D19), SVAR Gantt (D18), własna oś dnia na telefonie (D16); kanban rysuje tylko widoczne karty; struktura repozytorium zgodna ze stanem po PoC (`tools/email-worker`, `tools/edge-tests`, `.github/workflows`).
+- §4: ustalenia gramatyki z PoC-2 i PoC-3.
+- §5: zakres = przestrzeń albo zakres osobisty, `scope_members` zamiast `workspace_members`, brak `workspace_id`, `scope_id` wyliczany, `due_time` jako `GG:MM`, unikalność i id tagów, `board_sort_key` (D15), tabele tymczasowe z PoC-6, jawne granty.
+- §6: kody odrzuceń, stronicowanie pierwszej migawki ze wskaźnikiem postępu, kaskady lokalnie, zadania w tle na telefonie.
+- §7: API i podzbiór cykliczności, reguły nawyków, blokada cykli przy SVAR.
+- §9–§11: przypomnienia z `USE_EXACT_ALARM`, GitHub Actions zamiast EAS, wyniki PoC-6 dla usług; ryzyka R5, R7, R8 zamknięte, nowe R12 (brak OTA) i R13 (kanban).
+- §12: D1–D7 i D14 zatwierdzone, nowe D15–D19.
+- Odłożone do etapów: 3-dobowy pomiar przypomnień w Doze, tytuł strony z prawdziwego Chrome i płynność osi dnia palcem (MVP-3); token Google > 7 dni (w trakcie MVP); droga e-mail przez Cloudflare (v1.x, D9).

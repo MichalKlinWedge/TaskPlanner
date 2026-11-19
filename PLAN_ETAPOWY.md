@@ -96,6 +96,8 @@ Cel: przed budową produktu sprawdzić rzeczy, które mogą zmienić architektur
 ### Bramka decyzyjna po PoC
 Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, biblioteka Gantta, rrule.js), specyfikacja v0.2 z poprawkami.
 
+**Stan (19.11.2026):** zrobione — wszystkie sześć PoC z werdyktem GO (PoC-5 z warunkami), `SPECYFIKACJA.md` **v0.2** (zmiany w §13). Decyzje: D1–D7 i D14 zatwierdzone bez zmian; nowe D15 `board_sort_key` dla kanbanu z kilku list, D16 własna oś dnia na telefonie (bez calendar-kit), D17 build Androida bez EAS i OTA (APK poza Play, `USE_EXACT_ALARM`), D18 SVAR React Gantt, D19 własny podzbiór RRULE. Warunki z PoC rozpisane niżej w MVP-1…4 i Etapie 6.
+
 ---
 
 ## MVP — „Zarządzam dniem na laptopie i telefonie” (≈ 18–25 dni)
@@ -107,6 +109,7 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 - Logowanie Google + magic link na webie i w aplikacji (deep link); onboarding: przestrzenie „Osobiste” i „Praca” z Inbox, ustawienia (strefa, tydzień, godziny pracy, domyślne godziny i czasy).
 - Prosty ekran przestrzeni i list (tworzenie, zmiana nazwy, kolor, kolejność, archiwizacja) [W+A].
 - `seed:dev` ładuje dane z `tools/seed-dev` do lokalnej bazy.
+- Z bramki po PoC: `tasks.board_sort_key` (D15) w schemacie; stronicowana pierwsza migawka `pull_changes` ze wskaźnikiem postępu (PoC-5: 2 017 zadań = ~4,2 s); tymczasowe tabele PoC-6 (`inbound_addresses`, `push_subscriptions`) przeniesione do `profiles` / `devices`, strefa z ustawień profilu; jawne granty w każdej migracji (PoC-6: projekt w chmurze ich nie nadaje).
 
 **Kryterium odbioru:** zadanie dodane na telefonie w trybie samolotowym pojawia się na webie < 5 s po włączeniu sieci; równoległe edycje offline różnych pól tego samego zadania zachowują obie zmiany; drugi użytkownik nie widzi niczego (test pgTAP i ręcznie). `npm run test:db` i `npm run test:sync` zielone.
 
@@ -128,13 +131,14 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 - Gesty: przesunięcie = ukończ / menu terminu; długie przytrzymanie = zaznaczanie i operacje grupowe.
 - Przypomnienia lokalne M8 (względne i bezwzględne, okno 7 dni, akcje w powiadomieniu), prośba o pozwolenie na dokładne alarmy.
 - Synchronizacja w tle (`expo-background-task`), wskaźnik stanu; aktualizacje = nowy APK z GitHub Actions (`.github/workflows/android.yml`), bez EAS Update (decyzja z PoC-4).
+- Odłożone z PoC-4: 3-dobowy pomiar przypomnień w Doze (≥ 95 % ±1 min z `USE_EXACT_ALARM`), tytuł strony przy udostępnianiu z prawdziwego Chrome (`EXTRA_SUBJECT`), czas od akcji w powiadomieniu do zapisu w release, płynność własnej osi dnia palcem (D16).
 
-**Kryterium odbioru:** cały dzień w trybie samolotowym: dodawanie, edycja, odhaczanie, przypomnienia (także „Odłóż” z powiadomienia przy zamkniętej aplikacji) działają; po włączeniu sieci wszystkie zmiany są na webie, a zmiany z webu na telefonie.
+**Kryterium odbioru:** cały dzień w trybie samolotowym: dodawanie, edycja, odhaczanie, przypomnienia (także „Odłóż” z powiadomienia przy zamkniętej aplikacji) działają; po włączeniu sieci wszystkie zmiany są na webie, a zmiany z webu na telefonie. Pomiar 3 dób w Doze: ≥ 95 % przypomnień ±1 min.
 
 ### MVP-4 — Cykliczność, przypomnienia w przeglądarce, kanban (≈ 4–6 dni)
 - Edytor reguł M7 [W+A]: szablony, tryb zaawansowany, opis po polsku na żywo, podgląd 5 dat. Ukończ / pomiń / przesuń wystąpienie / zakończ serię; reset podzadań; wirtualne wystąpienia w „Nadchodzące”.
 - Przypomnienia Web Push (`reminders-push` + `pg_cron`), kanał przypomnień per urządzenie, brak duplikatów.
-- Kanban M10 na webie (kryteria kolumn: status, priorytet, dzień tygodnia, tag, lista; przeciąganie zmienia atrybut) i uproszczony na telefonie.
+- Kanban M10 na webie (kryteria kolumn: status, priorytet, dzień tygodnia, tag, lista; przeciąganie zmienia atrybut) i uproszczony na telefonie. Warunki z PoC-5: tylko widoczne karty jako `useSortable` (porcje albo wirtualizacja), kolejność na tablicy z kilku list przez `board_sort_key` (D15), ponowny pomiar pierwszej klatki przeciągania.
 
 **Kryterium odbioru:** każdy przykład z §7.2 działa od wpisania w szybkim dodawaniu do ukończenia na drugim urządzeniu; przypomnienie przychodzi tylko na wybrane urządzenie (±1 min); projekt przeprowadzony przez kanban od „Do zrobienia” do „Gotowe”.
 
@@ -151,7 +155,7 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 **Kryterium odbioru:** plan dnia ułożony przeciąganiem na webie, spotkania z kalendarza firmowego widoczne obok, konflikt oznaczony; telefon pokazuje ten sam plan offline.
 
 ### Etap 6 — Oś czasu i zależności (≈ 4–5 dni)
-- Gantt (biblioteka z PoC-5): projekty i zadania, przesuwanie, rozciąganie, skale, linia „dziś”.
+- Gantt (SVAR React Gantt, D18): projekty i zadania, przesuwanie, rozciąganie, skale, linia „dziś”. Warunki z PoC-5: widok zamontowany po pierwszym otwarciu (przełączenie < 150 ms), polskie napisy z `@svar-ui/gantt-locales`, zależność zapisywana dopiero po `detectCycle` (SVAR przyjmuje cykle).
 - Zależności `finish_to_start` z `lag_days`: tworzenie przeciągnięciem, strzałki, naruszenia, „Przesuń zależne” (`core/dependencies.ts`), blokada cykli.
 - Daty projektu i postęp na osi; zależności widoczne też w panelu zadania [W+A] (lista poprzedników/następników).
 
