@@ -365,7 +365,7 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 ### Tabele — konto i struktura
 | Tabela | Najważniejsze kolumny | Uwagi |
 |---|---|---|
-| `profiles` | `id` (= id użytkownika), `display_name`, `settings jsonb` (`ProfileSettings`, z flagą `onboarded`), `focus jsonb` (`FocusState` — aktywny timer skupienia, `null` = brak; Etap 7); `inbox_token`, `inbound_senders text[]` dojdą razem z e-mailem (v1.x, D9) | zakres osobisty; powstaje triggerem razem z kontem (MVP-1) |
+| `profiles` | `id` (= id użytkownika), `display_name`, `settings jsonb` (`ProfileSettings`, z flagą `onboarded`), `focus jsonb` (`FocusState` — aktywny timer skupienia, `null` = brak; Etap 7), `calendar_sync jsonb` (`CalendarSync` — konto Google z kalendarzem „TaskPlanner” i wysyłane przestrzenie, `null` = wyłączone; Etap 12); `inbox_token`, `inbound_senders text[]` dojdą razem z e-mailem (v1.x, D9) | zakres osobisty; powstaje triggerem razem z kontem (MVP-1) |
 | `devices` | `id`, `user_id`, `name`, `platform` (`web`/`android`), `reminder_channel`, `push_subscription jsonb`, `last_sync_at` | |
 | `sync_scopes` | `id`, `kind` (`workspace`/`personal`), `owner_id`, `sync_version bigint` | licznik zakresu; Realtime subskrybuje te wiersze |
 | `workspaces` | `id` (= `scope_id`), `name`, `color`, `icon`, `sort_key`, `archived_at` | jedna przestrzeń = jeden zakres |
@@ -391,7 +391,8 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 |---|---|---|
 | `calendar_accounts` | `id`, `user_id`, `provider` (`google`/`microsoft`/`ics`), `label`, `secret_id` (Vault), `sync_state jsonb`, `status` | tokeny i adres ICS w Vault; kolumny sekretów niewidoczne dla klientów |
 | `calendars` | `id`, `account_id`, `external_id`, `name`, `color`, `visible`, `is_task_target` | |
-| `calendar_events` | `id`, `calendar_id`, `external_id`, `title`, `start_at`, `end_at`, `all_day`, `location`, `etag`, `task_id` | okno −30…+180 dni; zakres osobisty |
+| `calendar_events` | `id`, `calendar_id`, `external_id`, `title`, `start_at`, `end_at`, `all_day`, `location`, `etag`, `task_id` | okno −30…+180 dni; zakres osobisty; bez wydarzeń kalendarza „TaskPlanner” (`is_task_target` — to zadania) |
+| `calendar_task_links` | `calendar_id`, `task_id`, `external_id`, `etag`, `pushed jsonb` (rzut zadania w chwili ostatniej zgodności) | tylko serwer (Etap 12): zadanie ↔ wydarzenie kalendarza „TaskPlanner”, podstawa scalania trójstronnego; `calendar_task_runs` — dzierżawa uzgadniania kalendarza |
 | `inbound_messages` | `id`, `user_id`, `received_at`, `from_addr`, `subject`, `status` (`created`/`rejected`), `task_id`, `reason` | dziennik, bez treści; unikalny Message-ID |
 | `oauth_states` | jednorazowy `state` OAuth (15 min) | PoC-6 |
 | `inbound_addresses` | token i nadawcy adresu e-mail | **tymczasowa z PoC-6** — przechodzi do `profiles` w v1.x razem z e-mailem (D9; decyzja 2026-11-19) |

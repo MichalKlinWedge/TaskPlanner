@@ -1,7 +1,8 @@
 /**
  * Fałszywe usługi zewnętrzne dla testów integracyjnych, osiągalne z kontenera Edge Runtime pod
  * `http://host.docker.internal:54590` (`.env.test`): Google OAuth + Calendar API v3 (calendarList,
- * events.list z `syncToken` i stronicowaniem, watch, channels.stop), plik ICS z ETag, usługa Web Push.
+ * events.list z `syncToken` i stronicowaniem, watch, channels.stop; Etap 12: calendars.insert, events
+ * insert/get/patch/delete z `If-Match` → 412, zajęty id → 409, usunięte → 410), plik ICS z ETag, usługa Web Push.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 
@@ -11,18 +12,31 @@ export interface FakeEvent {
   id: string;
   summary?: string;
   status?: 'confirmed' | 'cancelled';
-  start: { dateTime?: string; date?: string };
-  end: { dateTime?: string; date?: string };
+  start: { dateTime?: string; date?: string; timeZone?: string };
+  end: { dateTime?: string; date?: string; timeZone?: string };
   location?: string;
+  description?: string;
+  extendedProperties?: { private?: Record<string, string> };
+  reminders?: unknown;
 }
 
-interface StoredEvent extends FakeEvent {
+export interface StoredEvent extends FakeEvent {
   etag: string;
   version: number;
+  updated: string;
+}
+
+/** Zapis przez API (Etap 12) — do sprawdzania, ile i czego aplikacja wysłała. */
+export interface ApiWrite {
+  method: 'insert' | 'patch' | 'delete';
+  calendarId: string;
+  eventId: string;
+  ifMatch?: string;
+  status: number;
 }
 
 interface FakeCalendar {
-  entry: { id: string; summary: string; primary?: boolean; selected?: boolean; backgroundColor?: string };
+  entry: { id: string; summary: string; primary?: boolean; selected?: boolean; backgroundColor?: string; description?: string; timeZone?: string; accessRole?: string };
   events: Map<string, StoredEvent>;
   /** Tokeny synchronizacji starsze niż ta wersja → 410 Gone. */
   invalidBefore: number;
@@ -72,7 +86,10 @@ export class FakeServices {
   refreshTokenRevoked = false;
   expiresIn = 3600;
   pageSize = 3;
-  counts = { refresh: 0, exchange: 0, list: 0, watch: 0, stop: 0, revoke: 0 };
+  counts = { refresh: 0, exchange: 0, list: 0, watch: 0, stop: 0, revoke: 0, createCalendar: 0 };
+  writes: ApiWrite[] = [];
+  /** Zmiana „w Google” tuż przed zapisem aplikacji (wyścig: zapis z `If-Match` dostaje 412). */
+  beforeWrite = new Map<string, () => void>();
   icsFiles = new Map<string, { text: string; etag: string }>();
   icsRequests: { name: string; ifNoneMatch?: string; status: number }[] = [];
   push: PushRequest[] = [];
@@ -115,14 +132,30 @@ export class FakeServices {
 
   upsertEvent(calendarId: string, ev: FakeEvent) {
     const v = ++this.version;
-    this.calendars.get(calendarId)!.events.set(ev.id, { status: 'confirmed', ...ev, etag: `"e${v}"`, version: v });
+    this.calendars.get(calendarId)!.events.set(ev.id, { status: 'confirmed', ...ev, etag: `"e${v}"`, version: v, updated: new Date().toISOString() });
+  }
+
+  /** Zmiana w interfejsie Google: pozostałe pola (także `extendedProperties`) zostają. */
+  editEvent(calendarId: string, id: string, patch: Partial<FakeEvent>) {
+    const cal = this.calendars.get(calendarId)!;
+    const ev = cal.events.get(id)!;
+    this.upsertEvent(calendarId, { ...ev, ...patch, id });
   }
 
   deleteEvent(calendarId: string, id: string) {
     const cal = this.calendars.get(calendarId)!;
     const ev = cal.events.get(id)!;
     const v = ++this.version;
-    cal.events.set(id, { ...ev, status: 'cancelled', etag: `"e${v}"`, version: v });
+    cal.events.set(id, { ...ev, status: 'cancelled', etag: `"e${v}"`, version: v, updated: new Date().toISOString() });
+  }
+
+  /** Kalendarz po nazwie (np. „TaskPlanner” utworzony przez aplikację). */
+  calendarByName(summary: string) {
+    return [...this.calendars.values()].find((c) => c.entry.summary === summary);
+  }
+
+  liveEvents(calendarId: string) {
+    return [...(this.calendars.get(calendarId)?.events.values() ?? [])].filter((e) => e.status !== 'cancelled');
   }
 
   /** Wszystkie dotychczasowe `syncToken` tego kalendarza wygasają (410). */
@@ -200,7 +233,7 @@ export class FakeServices {
       if (p.get('grant_type') === 'authorization_code') {
         this.counts.exchange++;
         const code = p.get('code');
-        if (code !== 'good-code' && code !== 'no-calendar-scope') return send(res, 400, { error: 'invalid_grant' });
+        if (code !== 'good-code' && code !== 'no-calendar-scope' && code !== 'read-only-code') return send(res, 400, { error: 'invalid_grant' });
         const idPayload = Buffer.from(JSON.stringify({ email: this.email })).toString('base64url');
         return send(res, 200, {
           access_token: this.issueAccessToken(),
@@ -208,8 +241,10 @@ export class FakeServices {
           refresh_token: 'rt-1',
           id_token: `eyJhbGciOiJub25lIn0.${idPayload}.sig`,
           scope: code === 'good-code'
-            ? 'openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/calendar.readonly'
-            : 'openid https://www.googleapis.com/auth/userinfo.email',
+            ? 'openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.app.created'
+            : code === 'read-only-code'
+              ? 'openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/calendar.readonly'
+              : 'openid https://www.googleapis.com/auth/userinfo.email',
           token_type: 'Bearer',
         });
       }
@@ -234,6 +269,13 @@ export class FakeServices {
     if (api === '/users/me/calendarList') {
       return send(res, 200, { items: [...this.calendars.values()].map((c) => c.entry) });
     }
+    if (api === '/calendars' && req.method === 'POST') {
+      this.counts.createCalendar++;
+      const b = JSON.parse(body.toString());
+      const id = `tp${++this.version}@group.calendar.google.com`;
+      this.addCalendar({ id, summary: b.summary, description: b.description, timeZone: b.timeZone, accessRole: 'owner', selected: true });
+      return send(res, 200, { kind: 'calendar#calendar', id, summary: b.summary, description: b.description, timeZone: b.timeZone });
+    }
     if (api === '/channels/stop') {
       this.counts.stop++;
       const { id, resourceId } = JSON.parse(body.toString());
@@ -243,9 +285,12 @@ export class FakeServices {
       res.writeHead(204);
       return res.end();
     }
-    const m = /^\/calendars\/([^/]+)\/events(\/watch)?$/.exec(api);
+    const m = /^\/calendars\/([^/]+)\/events(?:\/([^/]+))?$/.exec(api);
     const cal = m && this.calendars.get(decodeURIComponent(m[1]!));
     if (!m || !cal) return send(res, 404, { error: { code: 404, message: 'Not Found', errors: [{ reason: 'notFound' }] } });
+
+    const eventId = m[2] && m[2] !== 'watch' ? decodeURIComponent(m[2]) : null;
+    if (eventId || (req.method === 'POST' && !m[2])) return this.eventWrite(req, res, cal, eventId, body);
 
     if (m[2]) {
       this.counts.watch++;
@@ -268,17 +313,21 @@ export class FakeServices {
     const pageSize = Math.min(Number(url.searchParams.get('maxResults') ?? 250), this.pageSize);
     const offset = Number(url.searchParams.get('pageToken') ?? 0);
     let items: StoredEvent[];
+    const cancelledMinimal = (e: StoredEvent) => (e.status === 'cancelled' ? ({ id: e.id, status: e.status, etag: e.etag, version: e.version } as StoredEvent) : e);
     if (syncToken) {
       if (url.searchParams.has('timeMin')) return send(res, 400, { error: { code: 400, message: 'timeMin z syncToken' } });
       const [calId, v] = syncToken.split(':');
       if (calId !== cal.entry.id || Number(v) < cal.invalidBefore) {
         return send(res, 410, { error: { code: 410, message: 'Sync token is no longer valid', errors: [{ reason: 'fullSyncRequired' }] } });
       }
-      items = [...cal.events.values()].filter((e) => e.version > Number(v));
-    } else {
+      // Jak Google: usunięte w przyroście to sam identyfikator i status.
+      items = [...cal.events.values()].filter((e) => e.version > Number(v)).map(cancelledMinimal);
+    } else if (url.searchParams.has('timeMin')) {
       const min = Date.parse(url.searchParams.get('timeMin')!);
       const max = Date.parse(url.searchParams.get('timeMax')!);
       items = [...cal.events.values()].filter((e) => e.status !== 'cancelled' && overlaps(e, min, max));
+    } else {
+      items = [...cal.events.values()].filter((e) => e.status !== 'cancelled');
     }
     items.sort((a, b) => a.version - b.version);
     const page = items.slice(offset, offset + pageSize);
@@ -287,5 +336,61 @@ export class FakeServices {
     if (more) out.nextPageToken = String(offset + pageSize);
     else out.nextSyncToken = `${cal.entry.id}:${this.version}`;
     return send(res, 200, out);
+  }
+
+  /** events.insert / get / patch / delete jak w Calendar API v3 (ETag, If-Match, 409, 410). */
+  private eventWrite(req: IncomingMessage, res: ServerResponse, cal: FakeCalendar, eventId: string | null, body: Buffer) {
+    const err = (code: number, message: string, reason: string) => send(res, code, { error: { code, message, errors: [{ reason }] } });
+    const ifMatch = req.headers['if-match'] as string | undefined;
+    const out = ({ version: _v, ...e }: StoredEvent) => e;
+    const log = (method: ApiWrite['method'], id: string, status: number) => this.writes.push({ method, calendarId: cal.entry.id, eventId: id, ifMatch, status });
+    if (req.method === 'POST') {
+      const b = JSON.parse(body.toString()) as FakeEvent;
+      const id = b.id ?? `g${++this.version}`;
+      if (!/^[a-v0-9]{5,1024}$/.test(id)) {
+        log('insert', id, 400);
+        return err(400, 'Invalid resource id value.', 'invalid');
+      }
+      if (cal.events.has(id)) {
+        log('insert', id, 409);
+        return err(409, 'The requested identifier already exists.', 'duplicate');
+      }
+      this.upsertEvent(cal.entry.id, { ...b, id });
+      log('insert', id, 200);
+      return send(res, 200, out(cal.events.get(id)!));
+    }
+    const hook = req.method !== 'GET' ? this.beforeWrite.get(eventId!) : undefined;
+    if (hook) {
+      this.beforeWrite.delete(eventId!);
+      hook();
+    }
+    const ev = cal.events.get(eventId!);
+    if (req.method === 'GET') return ev ? send(res, 200, out(ev)) : err(404, 'Not Found', 'notFound');
+    const method = req.method === 'DELETE' ? 'delete' : 'patch';
+    if (!ev) {
+      log(method, eventId!, 404);
+      return err(404, 'Not Found', 'notFound');
+    }
+    if (ifMatch && ifMatch !== ev.etag) {
+      log(method, eventId!, 412);
+      return err(412, 'Precondition Failed', 'conditionNotMet');
+    }
+    if (req.method === 'DELETE') {
+      if (ev.status === 'cancelled') {
+        log('delete', eventId!, 410);
+        return err(410, 'Resource has been deleted', 'deleted');
+      }
+      this.deleteEvent(cal.entry.id, eventId!);
+      log('delete', eventId!, 204);
+      res.writeHead(204, { 'content-length': '0' });
+      return res.end();
+    }
+    if (req.method === 'PATCH') {
+      const b = JSON.parse(body.toString()) as Partial<FakeEvent>;
+      this.upsertEvent(cal.entry.id, { ...ev, ...b, id: ev.id, extendedProperties: b.extendedProperties ?? ev.extendedProperties });
+      log('patch', eventId!, 200);
+      return send(res, 200, out(cal.events.get(eventId!)!));
+    }
+    return err(405, 'Method not allowed', 'notAllowed');
   }
 }

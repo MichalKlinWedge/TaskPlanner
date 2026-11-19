@@ -85,6 +85,52 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"calendar_task_links": {
+                  Row: {
+                    "calendar_id": string,"etag": string | null,"external_id": string,"pushed": NonNullable<Json>,"task_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "calendar_id": string,"etag"?: string | null,"external_id": string,"pushed": NonNullable<Json>,"task_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "calendar_id"?: string,"etag"?: string | null,"external_id"?: string,"pushed"?: NonNullable<Json>,"task_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "calendar_task_links_calendar_id_fkey"
+      columns: ["calendar_id"]
+isOneToOne: false
+      referencedRelation: "calendars"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "calendar_task_links_task_id_fkey"
+      columns: ["task_id"]
+isOneToOne: false
+      referencedRelation: "tasks"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"calendar_task_runs": {
+                  Row: {
+                    "calendar_id": string,"expires_at": string | null,"holder": string | null,"rerun": boolean
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "calendar_id": string,"expires_at"?: string | null,"holder"?: string | null,"rerun"?: boolean
+                  }
+                  Update: {
+                    "calendar_id"?: string,"expires_at"?: string | null,"holder"?: string | null,"rerun"?: boolean
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "calendar_task_runs_calendar_id_fkey"
+      columns: ["calendar_id"]
+isOneToOne: true
+      referencedRelation: "calendars"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"calendars": {
                   Row: {
                     "account_id": string,"color": string | null,"created_at": string,"external_id": string,"id": string,"is_task_target": boolean,"last_synced_at": string | null,"name": string,"row_version": number,"sync_state": NonNullable<Json>,"updated_at": string,"user_id": string,"visible": boolean
@@ -215,14 +261,14 @@ isOneToOne: false
                   ]
                 },"profiles": {
                   Row: {
-                    "created_at": string,"created_by": string | null,"deleted_at": string | null,"display_name": string | null,"field_clock": NonNullable<Json>,"focus": Json | null,"id": string,"row_version": number,"scope_id": string,"settings": NonNullable<Json>,"updated_at": string
+                    "calendar_sync": Json | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"display_name": string | null,"field_clock": NonNullable<Json>,"focus": Json | null,"id": string,"row_version": number,"scope_id": string,"settings": NonNullable<Json>,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"display_name"?: string | null,"field_clock"?: NonNullable<Json>,"focus"?: Json | null,"id": string,"row_version"?: number,"scope_id": string,"settings"?: NonNullable<Json>,"updated_at"?: string
+                    "calendar_sync"?: Json | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"display_name"?: string | null,"field_clock"?: NonNullable<Json>,"focus"?: Json | null,"id": string,"row_version"?: number,"scope_id": string,"settings"?: NonNullable<Json>,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"display_name"?: string | null,"field_clock"?: NonNullable<Json>,"focus"?: Json | null,"id"?: string,"row_version"?: number,"scope_id"?: string,"settings"?: NonNullable<Json>,"updated_at"?: string
+                    "calendar_sync"?: Json | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"display_name"?: string | null,"field_clock"?: NonNullable<Json>,"focus"?: Json | null,"id"?: string,"row_version"?: number,"scope_id"?: string,"settings"?: NonNullable<Json>,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -558,6 +604,24 @@ isOneToOne: false
                            },
 "account_secret_set":
 { Args: { "p_account": string,"p_secret": string }; Returns: undefined
+                           },
+"calendar_kick":
+{ Args: { "p_user": string }; Returns: undefined
+                           },
+"calendar_sync_disable":
+{ Args: { "p_account": string,"p_user": string }; Returns: undefined
+                           },
+"calendar_task_apply":
+{ Args: { "p_calendar": string,"p_link": Json,"p_patch": Json,"p_task": string }; Returns: Json
+                           },
+"calendar_task_create":
+{ Args: { "p_calendar": string,"p_link": Json,"p_task": Json }; Returns: string
+                           },
+"calendar_task_lock":
+{ Args: { "p_calendar": string,"p_holder": string,"p_ttl_seconds"?: number }; Returns: boolean
+                           },
+"calendar_task_unlock":
+{ Args: { "p_calendar": string,"p_holder": string,"p_ttl_seconds"?: number }; Returns: boolean
                            },
 "call_edge_function":
 { Args: { "p_body"?: Json,"p_path": string }; Returns: number

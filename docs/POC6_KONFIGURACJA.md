@@ -21,7 +21,7 @@ Resztę (`link`, `db push`, `functions deploy`, `secrets set`) robię ja — **z
 1. console.cloud.google.com → nowy projekt `TaskPlanner`.
 2. APIs & Services → Library → **Google Calendar API** → Enable.
 3. Google Auth Platform (OAuth consent screen): typ **External**, nazwa „TaskPlanner”, e-mail kontaktowy — Twój.
-   - Data access → Add scopes: `.../auth/calendar.readonly`, `openid`, `.../auth/userinfo.email`.
+   - Data access → Add scopes: `.../auth/calendar.readonly`, `openid`, `.../auth/userinfo.email` (Etap 12: też `.../auth/calendar.app.created` — §2a).
    - Audience → **Publish app** (stan *In production*, bez weryfikacji — ekran „unverified app” jest oczekiwany;
      w stanie *Testing* token odświeżania wygasa po 7 dniach).
 4. Clients → Create client → **Web application**, Authorized redirect URIs:
@@ -30,6 +30,22 @@ Resztę (`link`, `db push`, `functions deploy`, `secrets set`) robię ja — **z
 5. Do `.env.local`: `GOOGLE_CLIENT_ID=…`, `GOOGLE_CLIENT_SECRET=…`.
 6. W Google Calendar załóż kalendarz testowy (np. „TaskPlanner test”), w jego ustawieniach skopiuj
    **Tajny adres w formacie iCal** i dopisz do `.env.local` jako `ICS_TEST_URL=…` (to też sekret).
+
+### 2a. Etap 12 — zapis do kalendarza „TaskPlanner” (≈ 5 min, robisz Ty w Google Cloud)
+Dwukierunkowa synchronizacja zadań potrzebuje drugiego zakresu: **`https://www.googleapis.com/auth/calendar.app.created`**
+(„Make secondary Google calendars, and see, create, change, and delete events on them”). Pozwala utworzyć kalendarz
+„TaskPlanner” i pisać tylko w nim — bez prawa zapisu w innych kalendarzach (odczyt nadal przez `calendar.readonly`).
+1. Google Auth Platform → Data access → Add or remove scopes → dopisz `.../auth/calendar.app.created` → Save.
+   Zakres jest wrażliwy: aplikacja *In production* bez weryfikacji dalej działa z ekranem „unverified app”
+   (limit 100 użytkowników — wystarczy).
+2. Nic więcej w projekcie: ten sam klient OAuth i adresy przekierowania.
+3. Konta połączone przed Etapem 12 mają tylko odczyt — w aplikacji: Ustawienia → „Połączone kalendarze” →
+   **Połącz Google Calendar** jeszcze raz (to samo konto; zgoda pokaże nowy zakres, zostaw go zaznaczony).
+   Bez zgody na zapis karta konta pokazuje „Brak zgody na zapis w Google…”, a zadania nie są wysyłane.
+
+Zapasowo, gdyby `calendar.app.created` nie dawał `calendars.insert`/`events.watch` na prawdziwym Google: pełny
+zakres `https://www.googleapis.com/auth/calendar` (wtedy zmiana stałej `CALENDAR_WRITE_SCOPE`
+w `supabase/functions/_shared/google.ts`).
 
 ## 3. Cloudflare — Email Routing + Email Worker (≈ 15 min, wymaga domeny — decyzja D9)
 1. Domena z DNS w Cloudflare (Websites → Add a domain, zmiana serwerów nazw u rejestratora). Bez domeny:

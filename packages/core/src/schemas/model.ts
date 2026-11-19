@@ -102,6 +102,16 @@ export const ProfileSettings = z.object({
 });
 export type ProfileSettings = z.infer<typeof ProfileSettings>;
 
+/**
+ * `profiles.calendar_sync` (Etap 12, M18): konto Google z kalendarzem „TaskPlanner” i przestrzenie, których
+ * zadania z godziną są tam wydarzeniami. Pusta lista = nic nie wysyłamy (wydarzenia znikają z Google).
+ */
+export const CalendarSync = z.object({
+  accountId: Id,
+  workspaceIds: z.array(Id).max(100),
+});
+export type CalendarSync = z.infer<typeof CalendarSync>;
+
 // ── Wiersze: konto i struktura ───────────────────────────────────────────────────────────────
 
 /** Profil: id = id użytkownika = jego zakres osobisty. */
@@ -111,6 +121,8 @@ export const ProfileRow = z.object({
   settings: ProfileSettings,
   /** Timer skupienia (Etap 7); `null` = brak. */
   focus: FocusState.nullable(),
+  /** Zadania z godziną → kalendarz „TaskPlanner” w Google (Etap 12); `null` = wyłączone. */
+  calendar_sync: CalendarSync.nullable(),
 });
 
 export const DeviceRow = z.object({

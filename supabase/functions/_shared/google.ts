@@ -1,11 +1,14 @@
 /**
  * Google OAuth 2.0 i Calendar API v3 przez `fetch` (bez SDK). Adresy z konfiguracji, żeby testy mogły
- * podstawić fałszywe Google. Zakres tylko do odczytu (SPECYFIKACJA M18, Etap 5: odczyt).
+ * podstawić fałszywe Google. Odczyt wszystkich kalendarzy (`calendar.readonly`, Etap 5) i zapis tylko
+ * w kalendarzach utworzonych przez aplikację (`calendar.app.created`, Etap 12: kalendarz „TaskPlanner”).
  */
 import { contentEtag, overlapsWindow, type EventRow, type SyncWindow } from './calendar.ts';
 
-export const GOOGLE_SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/calendar.readonly'];
 export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
+/** Tworzenie kalendarzy i zapis wydarzeń tylko w nich — bez dostępu do zapisu w innych kalendarzach. */
+export const CALENDAR_WRITE_SCOPE = 'https://www.googleapis.com/auth/calendar.app.created';
+export const GOOGLE_SCOPES = ['openid', 'email', CALENDAR_SCOPE, CALENDAR_WRITE_SCOPE];
 
 export interface GoogleConfig {
   clientId: string;
@@ -47,6 +50,18 @@ export class GoogleError extends Error {
   /** `syncToken` nieważny — pełna synchronizacja od nowa. */
   get gone() {
     return this.status === 410;
+  }
+  /** Wydarzenie / kalendarz nie istnieje (albo usunięty na stałe). */
+  get missing() {
+    return this.status === 404 || this.status === 410;
+  }
+  /** `If-Match`: wydarzenie zmieniło się od ostatniego odczytu. */
+  get stale() {
+    return this.status === 412;
+  }
+  /** Identyfikator wydarzenia już zajęty (także przez usunięte wydarzenie). */
+  get duplicate() {
+    return this.status === 409;
   }
 }
 
@@ -142,7 +157,7 @@ async function api<T>(cfg: GoogleConfig, token: string, path: string, init: Requ
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(init.headers ?? {}) },
   });
   if (!res.ok) throw await failure(res, path.split('?')[0]!);
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204 || res.headers.get('content-length') === '0') return undefined as T;
   return res.json();
 }
 
@@ -154,6 +169,9 @@ export interface GoogleCalendarEntry {
   primary?: boolean;
   selected?: boolean;
   deleted?: boolean;
+  description?: string;
+  timeZone?: string;
+  accessRole?: string;
 }
 
 export async function listCalendars(cfg: GoogleConfig, token: string): Promise<GoogleCalendarEntry[]> {
@@ -177,6 +195,10 @@ export interface GoogleEvent {
   location?: string;
   start?: { date?: string; dateTime?: string; timeZone?: string };
   end?: { date?: string; dateTime?: string; timeZone?: string };
+  /** RFC 3339 */
+  updated?: string;
+  description?: string;
+  extendedProperties?: { private?: Record<string, string>; shared?: Record<string, string> };
 }
 
 export interface EventsPage {
@@ -190,14 +212,14 @@ export interface EventsPage {
  * `events.list` wszystkich stron. Z `syncToken` — tylko zmiany (także usunięte, `status: cancelled`);
  * bez niego — pełna lista w oknie. `singleEvents`: serie rozwinięte w wystąpienia (jak ICS).
  */
-export async function listEvents(cfg: GoogleConfig, token: string, calendarId: string, syncToken: string | null, window: SyncWindow): Promise<EventsPage> {
+export async function listEvents(cfg: GoogleConfig, token: string, calendarId: string, syncToken: string | null, window: SyncWindow | null, opts: { singleEvents?: boolean } = {}): Promise<EventsPage> {
   const items: GoogleEvent[] = [];
   let pageToken: string | undefined;
   let nextSyncToken: string | null = null;
   do {
-    const q = new URLSearchParams({ singleEvents: 'true', maxResults: '250' });
+    const q = new URLSearchParams({ singleEvents: String(opts.singleEvents ?? true), maxResults: '250' });
     if (syncToken) q.set('syncToken', syncToken);
-    else {
+    else if (window) {
       q.set('timeMin', new Date(window.fromMs).toISOString());
       q.set('timeMax', new Date(window.toMs).toISOString());
     }
@@ -242,6 +264,35 @@ export async function stopChannel(cfg: GoogleConfig, token: string, channel: Pic
     if (!(error instanceof GoogleError) || error.status !== 404) throw error;
   }
 }
+
+// ── Zapis (Etap 12: tylko kalendarz „TaskPlanner”) ───────────────────────────────────────────
+
+const eventPath = (calendarId: string, eventId?: string) =>
+  `/calendars/${encodeURIComponent(calendarId)}/events${eventId ? `/${encodeURIComponent(eventId)}` : ''}`;
+
+export const insertCalendar = (cfg: GoogleConfig, token: string, body: { summary: string; description?: string; timeZone?: string }) =>
+  api<{ id: string; summary: string; timeZone?: string }>(cfg, token, '/calendars', { method: 'POST', body: JSON.stringify(body) });
+
+export const getCalendar = (cfg: GoogleConfig, token: string, calendarId: string) =>
+  api<{ id: string; summary: string; timeZone?: string }>(cfg, token, `/calendars/${encodeURIComponent(calendarId)}`);
+
+export const getEvent = (cfg: GoogleConfig, token: string, calendarId: string, eventId: string) =>
+  api<GoogleEvent>(cfg, token, eventPath(calendarId, eventId));
+
+/** Nowe wydarzenie z własnym `id` — powtórzone wstawienie kończy się 409 (bez duplikatu). */
+export const insertEvent = (cfg: GoogleConfig, token: string, calendarId: string, body: Record<string, unknown>) =>
+  api<GoogleEvent>(cfg, token, `${eventPath(calendarId)}?sendUpdates=none`, { method: 'POST', body: JSON.stringify(body) });
+
+/** Zmiana pól wydarzenia; z `ifMatch` — tylko jeśli nikt go nie zmienił od tej wersji (inaczej 412). */
+export const patchEvent = (cfg: GoogleConfig, token: string, calendarId: string, eventId: string, body: Record<string, unknown>, ifMatch?: string | null) =>
+  api<GoogleEvent>(cfg, token, `${eventPath(calendarId, eventId)}?sendUpdates=none`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+    headers: ifMatch ? { 'if-match': ifMatch } : {},
+  });
+
+export const deleteEvent = (cfg: GoogleConfig, token: string, calendarId: string, eventId: string, ifMatch?: string | null) =>
+  api<void>(cfg, token, `${eventPath(calendarId, eventId)}?sendUpdates=none`, { method: 'DELETE', headers: ifMatch ? { 'if-match': ifMatch } : {} });
 
 /** Wydarzenie Google → wiersz; `null` = usunięte albo poza oknem (do usunięcia, jeśli było). */
 export function mapGoogleEvent(ev: GoogleEvent, window: SyncWindow): EventRow | null {
