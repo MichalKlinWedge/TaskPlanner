@@ -4,7 +4,7 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { bulkTaskOps, isOpen, plural, selectInbox, selectToday, type BulkAction, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
+import { applyFilter, bulkTaskOps, isEmptyFilter, isOpen, plural, selectInbox, selectToday, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
@@ -13,6 +13,8 @@ import { routeHash, useRoute, type Route } from "@/lib/route";
 
 import { AppEnvProvider, useAppEnv, visibleTaskIds } from "./app-env";
 import { CommandPalette, ShortcutsDialog, type PaletteMode, type PalettePick } from "./command-palette";
+import { FilterBar } from "./filter-bar";
+import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-views";
 import { QuickAddDialog } from "./quick-add";
 import { TaskPanel } from "./task-panel";
 import { TaskActionsProvider, useTaskActions } from "./task-item";
@@ -98,9 +100,18 @@ export function Shell({
     const inboxIds = new Set(data.lists.filter((l) => l.kind === "inbox").map((l) => l.id));
     const view = selectToday(data.tasks, ctx, { completed: "hidden" });
     const perList = new Map<string, number>();
-    for (const t of data.tasks) if (isOpen(t) && t.kind === "task") perList.set(t.listId, (perList.get(t.listId) ?? 0) + 1);
-    return { inbox: selectInbox(data.tasks, inboxIds, ctx).length, today: view.overdue.length + view.today.length, overdue: view.overdue.length, perList };
-  }, [data.tasks, data.lists, ctx]);
+    const perTag = new Map<string, number>();
+    for (const t of data.tasks) {
+      if (!isOpen(t) || t.kind !== "task") continue;
+      perList.set(t.listId, (perList.get(t.listId) ?? 0) + 1);
+      if (!ctx.workspaceId || t.workspaceId === ctx.workspaceId) for (const id of t.tagIds) perTag.set(id, (perTag.get(id) ?? 0) + 1);
+    }
+    const perFilter = new Map(data.savedFilters.map((f) => [f.id, filterCount(data.tasks, f.query, ctx)]));
+    return { inbox: selectInbox(data.tasks, inboxIds, ctx).length, today: view.overdue.length + view.today.length, overdue: view.overdue.length, perList, perTag, perFilter };
+  }, [data.tasks, data.lists, data.savedFilters, ctx]);
+
+  // Filtr doraźny (chipy) nad Inbox / Dziś / Nadchodzące / listą — do zmiany widoku.
+  const [adhoc, setAdhoc] = useState<FilterQuery>({});
 
   // Nowy widok: od góry, a na wąskim ekranie menu się chowa.
   const hash = routeHash(route);
@@ -110,14 +121,25 @@ export function Shell({
     void Promise.resolve().then(() => {
       setMenuOpen(false);
       setSelected([]);
+      setAdhoc({});
     });
   }, [hash]);
 
   if (!data.loaded) return <Splash text="Wczytywanie zadań…" />;
 
   const list = route.view === "list" ? data.lists.find((l) => l.id === route.id) : undefined;
-  const props = { data, ctx, targetInbox };
-  const content =
+  const tag = route.view === "tag" ? data.tags.find((t) => t.id === route.id) : undefined;
+  const savedFilter = route.view === "filter" ? data.savedFilters.find((f) => f.id === route.id) : undefined;
+  const filterable = ["inbox", "today", "upcoming", "list"].includes(route.view);
+  // Widoki dostają zadania po filtrze doraźnym; liczniki paska bocznego liczą się z pełnych danych.
+  const viewData = filterable && !isEmptyFilter(adhoc) ? { ...data, tasks: applyFilter(data.tasks, adhoc, today) } : data;
+  const toolbar = filterable ? (
+    <FilterBar query={adhoc} onChange={setAdhoc} hide={route.view === "list" ? ["lists"] : []}>
+      <SaveFilter query={adhoc} onSaved={(id) => navigate({ view: "filter", id })} />
+    </FilterBar>
+  ) : null;
+  const props = { data: viewData, ctx, targetInbox, toolbar };
+  const body =
     route.view === "inbox" ? (
       <InboxView {...props} />
     ) : route.view === "today" ? (
@@ -131,10 +153,18 @@ export function Shell({
     ) : route.view === "trash" ? (
       <TrashView data={data} store={store} />
     ) : list ? (
-      <ListView key={list.id} data={data} ctx={ctx} list={list} store={store} />
+      <ListView key={list.id} data={viewData} ctx={ctx} list={list} store={store} toolbar={toolbar} />
+    ) : tag ? (
+      <TagView key={tag.id} data={data} ctx={ctx} tag={tag} navigate={navigate} />
+    ) : savedFilter ? (
+      <SavedFilterView key={savedFilter.id} data={data} ctx={ctx} filter={savedFilter} navigate={navigate} />
+    ) : route.view === "tag" || route.view === "filter" ? (
+      <p className="py-6 text-sm text-[var(--muted)]">{route.view === "tag" ? "Ten tag został usunięty." : "Ten filtr został usunięty."}</p>
     ) : (
       <p className="py-6 text-sm text-[var(--muted)]">Ta lista nie istnieje albo jest zarchiwizowana.</p>
     );
+
+  const content = body;
 
   const workspaces = workspaceId ? data.workspaces.filter((w) => w.id === workspaceId) : data.workspaces;
   // Okno szybkiego dodawania dodaje tam, skąd je wywołano (lista / „Dziś” z dzisiejszym terminem).
@@ -197,6 +227,20 @@ export function Shell({
             {workspaces.map((w) => (
               <WorkspaceLists key={w.id} name={w.name} color={w.color} lists={data.lists.filter((l) => l.workspaceId === w.id && l.kind !== "inbox")} counts={counts.perList} route={route} navigate={navigate} />
             ))}
+            {data.savedFilters.length ? (
+              <SidebarSection title="Filtry">
+                {data.savedFilters.map((f) => (
+                  <NavItem key={f.id} route={{ view: "filter", id: f.id }} current={route} navigate={navigate} icon="⚲" label={f.name} count={counts.perFilter.get(f.id)} />
+                ))}
+              </SidebarSection>
+            ) : null}
+            {data.tags.length ? (
+              <SidebarSection title="Tagi">
+                {data.tags.map((t) => (
+                  <NavItem key={t.id} route={{ view: "tag", id: t.id }} current={route} navigate={navigate} color={t.color} label={`@${t.name}`} count={counts.perTag.get(t.id)} />
+                ))}
+              </SidebarSection>
+            ) : null}
             <nav className="mt-4 flex flex-col gap-0.5 border-t border-[var(--line)] pt-3">
               <NavItem route={{ view: "manage" }} current={route} navigate={navigate} icon="🗂️" label="Przestrzenie i listy" />
               <NavItem route={{ view: "trash" }} current={route} navigate={navigate} icon="🗑️" label="Kosz" />
@@ -226,7 +270,41 @@ export function Shell({
   );
 }
 
-const sameRoute = (a: Route, b: Route) => a.view === b.view && (a.view !== "list" || (b.view === "list" && a.id === b.id));
+const sameRoute = (a: Route, b: Route) => routeHash(a) === routeHash(b);
+
+/** Sekcja paska bocznego zwijana kliknięciem w nagłówek (stan per przeglądarka). */
+function SidebarSection({ title, children }: { title: string; children: ReactNode }) {
+  const key = `tp-section-${title}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(key) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  return (
+    <section className="mt-4">
+      <h2>
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => {
+            setOpen(!open);
+            try {
+              localStorage.setItem(key, open ? "0" : "1");
+            } catch {
+              // Bez pamięci przeglądarki — tylko do odświeżenia.
+            }
+          }}
+          className="mb-1 flex w-full items-center gap-1 px-2 text-left text-xs font-semibold tracking-wide text-[var(--muted)] uppercase hover:text-[var(--foreground)]"
+        >
+          <span aria-hidden>{open ? "▾" : "▸"}</span> {title}
+        </button>
+      </h2>
+      {open ? <nav className="flex flex-col gap-0.5">{children}</nav> : null}
+    </section>
+  );
+}
 
 function NavItem({
   route,
@@ -467,6 +545,8 @@ function PaletteHost({
     }
     if (item.kind === "list") return then(() => navigate({ view: "list", id: item.id.slice("list:".length) }));
     if (item.kind === "workspace") return then(() => writeWorkspace(item.id.slice("workspace:".length)));
+    if (item.kind === "tag") return then(() => navigate({ view: "tag", id: item.id.slice("tag:".length) }));
+    if (item.kind === "filter") return then(() => navigate({ view: "filter", id: item.id.slice("filter:".length) }));
 
     const actions: Record<string, () => void> = {
       "view.inbox": () => then(() => navigate({ view: "inbox" })),

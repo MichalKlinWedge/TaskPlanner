@@ -7,9 +7,13 @@ import { localDateAt, localDateTimeAt, weekStart } from '../dates.ts';
 import {
   applyFilter,
   buildTree,
+  DUE_PRESETS,
+  duePreset,
   FilterQuery,
+  filterChips,
   flattenTree,
   groupTasks,
+  isEmptyFilter,
   progress,
   selectInbox,
   selectToday,
@@ -310,5 +314,33 @@ describe('wydajność', () => {
     selectToday(many, ctx);
     selectUpcoming(many, ctx);
     expect(performance.now() - start).toBeLessThan(50);
+  });
+});
+
+describe('chipy filtrów', () => {
+  it('opis warunków i gotowe zakresy terminu', () => {
+    const query = {
+      tags: { ids: ['0190a000-0000-7000-8000-000000000001', '0190a000-0000-7000-8000-000000000002'], match: 'all' as const },
+      priorities: [1, 2] as (1 | 2)[],
+      statuses: ['waiting' as const],
+      due: DUE_PRESETS.today.due,
+      hasTime: true,
+    };
+    const tags = new Map([
+      ['0190a000-0000-7000-8000-000000000001', 'telefon'],
+      ['0190a000-0000-7000-8000-000000000002', 'praca'],
+    ]);
+    expect(filterChips(query, { tags }).map((c) => c.label)).toEqual([
+      'Wszystkie tagi: telefon, praca',
+      'Priorytet: krytyczny, wysoki',
+      'Status: oczekuje',
+      'Termin: Do dziś',
+      'Z godziną',
+    ]);
+    expect(filterChips({ due: { kind: 'range', from: { offsetDays: 2 }, to: '2026-12-24' } })[0]!.label).toBe('Termin: od dziś + 2 do 24 gru');
+    expect(duePreset(DUE_PRESETS.week.due)).toBe('week');
+    expect(isEmptyFilter({})).toBe(true);
+    expect(isEmptyFilter({ hasTime: false })).toBe(false);
+    expect(FilterQuery.safeParse(DUE_PRESETS.overdue).success).toBe(true);
   });
 });

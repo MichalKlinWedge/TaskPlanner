@@ -51,6 +51,8 @@ export interface ViewProps {
   ctx: ViewContext;
   /** Inbox, do którego trafiają nowe zadania z widoków zbiorczych. */
   targetInbox: List | undefined;
+  /** Pasek pod nagłówkiem (chipy filtrów). */
+  toolbar?: ReactNode;
 }
 
 function Header({ title, subtitle, children }: { title: string; subtitle?: string; children?: ReactNode }) {
@@ -85,7 +87,7 @@ const listNames = (data: AppData) => new Map(data.lists.map((l) => [l.id, l.name
 
 // ── Inbox ────────────────────────────────────────────────────────────────────────────────────
 
-export function InboxView({ data, ctx, targetInbox }: ViewProps) {
+export function InboxView({ data, ctx, targetInbox, toolbar }: ViewProps) {
   const inboxIds = useMemo(() => new Set(data.lists.filter((l) => l.kind === "inbox").map((l) => l.id)), [data.lists]);
   const tasks = useMemo(() => selectInbox(data.tasks, inboxIds, ctx), [data.tasks, inboxIds, ctx]);
   const workspaceName = new Map(data.workspaces.map((w) => [w.id, w.name]));
@@ -93,6 +95,7 @@ export function InboxView({ data, ctx, targetInbox }: ViewProps) {
   return (
     <>
       <Header title="Inbox" subtitle={plural(tasks.length, ["zadanie", "zadania", "zadań"])} />
+      {toolbar}
       <QuickAdd listId={targetInbox?.id} placeholder={targetInbox && all ? `Dodaj do Inboxu („${workspaceName.get(targetInbox.workspaceId)}”)` : "Dodaj do Inboxu"} />
       {tasks.length ? (
         <ul className="divide-y divide-[var(--line)]">
@@ -109,7 +112,7 @@ export function InboxView({ data, ctx, targetInbox }: ViewProps) {
 
 // ── Dziś ─────────────────────────────────────────────────────────────────────────────────────
 
-export function TodayView({ data, ctx, targetInbox }: ViewProps) {
+export function TodayView({ data, ctx, targetInbox, toolbar }: ViewProps) {
   const view = useMemo(() => selectToday(data.tasks, ctx), [data.tasks, ctx]);
   const names = listNames(data);
   const open = view.overdue.length + view.today.length;
@@ -117,6 +120,7 @@ export function TodayView({ data, ctx, targetInbox }: ViewProps) {
   return (
     <>
       <Header title="Dziś" subtitle={`${capitalized(dayLabel(ctx.today))} · ${plural(open, ["zadanie", "zadania", "zadań"])}`} />
+      {toolbar}
       <QuickAdd listId={targetInbox?.id} dueDate={ctx.today} placeholder="Dodaj zadanie na dziś" />
       {view.overdue.length ? (
         <Section title={VIEW_SECTION.overdue} count={view.overdue.length} tone="danger">
@@ -160,12 +164,13 @@ export function TodayView({ data, ctx, targetInbox }: ViewProps) {
 
 // ── Nadchodzące ──────────────────────────────────────────────────────────────────────────────
 
-export function UpcomingView({ data, ctx, targetInbox }: ViewProps) {
+export function UpcomingView({ data, ctx, targetInbox, toolbar }: ViewProps) {
   const view = useMemo(() => selectUpcoming(data.tasks, ctx), [data.tasks, ctx]);
   const names = listNames(data);
   return (
     <>
       <Header title="Nadchodzące" subtitle="14 dni, dalej tygodniami" />
+      {toolbar}
       {view.days.map(({ date, items }) => (
         <Section key={date} title={`${capitalized(relativeDay(date, ctx.today))}${date === ctx.today || date === addDays(ctx.today, 1) ? ` · ${dayLabel(date)}` : ""}`} count={items.length || undefined}>
           {items.map((item) => (
@@ -211,7 +216,7 @@ function AddInline({ date, listId }: { date: LocalDate; listId: string }) {
 
 // ── Lista / projekt ──────────────────────────────────────────────────────────────────────────
 
-export function ListView({ data, ctx, list, store }: { data: AppData; ctx: ViewContext; list: List; store: TabStore }) {
+export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; ctx: ViewContext; list: List; store: TabStore; toolbar?: ReactNode }) {
   const { notify } = useTaskActions();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const sortBy: SortBy = list.prefs.sortBy ?? "manual";
@@ -263,6 +268,7 @@ export function ListView({ data, ctx, list, store }: { data: AppData; ctx: ViewC
           </Select>
         </div>
       </Header>
+      {toolbar}
       <QuickAdd listId={list.id} placeholder={`Dodaj do „${list.name}”`} />
       {!tasks.length ? <Empty>Brak zadań.</Empty> : null}
       {rows ? (

@@ -119,9 +119,11 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
     const items: SearchItem[] = data.tasks.map((t) => taskSearchItem(t, { listName: listName.get(t.listId), tagNames: t.tagIds.map((id) => tagName.get(id) ?? "") }));
     for (const l of data.lists) if (l.kind !== "inbox") items.push({ id: `list:${l.id}`, kind: "list", title: l.name, listName: names.get(l.workspaceId) });
     for (const w of data.workspaces) items.push({ id: `workspace:${w.id}`, kind: "workspace", title: w.name });
+    for (const t of data.tags) items.push({ id: `tag:${t.id}`, kind: "tag", title: t.name, keywords: ["tag"] });
+    for (const f of data.savedFilters) items.push({ id: `filter:${f.id}`, kind: "filter", title: f.name, keywords: ["filtr"] });
     if (mode === "all") items.push(...commandSearchItems(selectedIds.size).filter((c) => AVAILABLE_COMMANDS.has(c.id)));
     return buildSearchIndex(items);
-  }, [mode, data.tasks, data.lists, data.workspaces, listName, tagName, names, selectedIds.size]);
+  }, [mode, data.tasks, data.lists, data.workspaces, data.tags, data.savedFilters, listName, tagName, names, selectedIds.size]);
 
   const options: Option[] = useMemo(() => {
     if (mode === "priority") {
@@ -143,7 +145,7 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
     }
     if (mode === "date") return [];
     if (!index) return [];
-    const kinds: SearchKind[] | undefined = mode === "search" ? ["task", "list", "workspace"] : query.startsWith(">") ? ["action", "view"] : undefined;
+    const kinds: SearchKind[] | undefined = mode === "search" ? ["task", "list", "workspace", "tag", "filter"] : query.startsWith(">") ? ["action", "view"] : undefined;
     const text = query.replace(/^>/, "");
     return search(index, text, { limit: 30, recent: readRecent(), kinds }).map((r) => ({
       key: r.item.id,
@@ -179,7 +181,7 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
           : mode === "workspace"
             ? "Przestrzeń"
             : mode === "search"
-              ? "Szukaj zadań, list, przestrzeni"
+              ? "Szukaj zadań, list, przestrzeni, tagów, filtrów"
               : "Szukaj albo wpisz polecenie (> — tylko polecenia)";
 
   return (

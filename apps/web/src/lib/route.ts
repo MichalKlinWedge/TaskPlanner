@@ -11,6 +11,8 @@ export type Route =
   | { view: "today" }
   | { view: "upcoming" }
   | { view: "list"; id: string }
+  | { view: "tag"; id: string }
+  | { view: "filter"; id: string }
   | { view: "manage" }
   | { view: "trash" }
   | { view: "settings" };
@@ -28,13 +30,15 @@ export function parseRoute(hash: string): Route {
     case "settings":
       return { view };
     case "list":
-      return id ? { view: "list", id } : DEFAULT_ROUTE;
+    case "tag":
+    case "filter":
+      return id ? { view, id } : DEFAULT_ROUTE;
     default:
       return DEFAULT_ROUTE;
   }
 }
 
-export const routeHash = (route: Route): string => (route.view === "list" ? `#/list/${route.id}` : `#/${route.view}`);
+export const routeHash = (route: Route): string => ("id" in route ? `#/${route.view}/${route.id}` : `#/${route.view}`);
 
 const subscribe = (listener: () => void) => {
   window.addEventListener("hashchange", listener);
