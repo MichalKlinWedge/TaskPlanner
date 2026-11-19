@@ -1,6 +1,7 @@
 /**
  * Lista / projekt (M9): drzewo podzadań ze zwijaniem i postępem (kolejność ręczna, bez grupowania)
  * albo grupy po sortowaniu; sortowanie, grupowanie i ukończone w `view_prefs` listy — jak na webie.
+ * „▦ Tablica” otwiera kanban listy (`/board?list=`).
  */
 import {
   buildTree,
@@ -20,7 +21,7 @@ import {
   type SortBy,
   type ViewPrefs,
 } from '@taskplanner/core';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -52,6 +53,7 @@ function Pref<T extends string>({ label, value, labels, onChange }: { label: str
 }
 
 export default function ListScreen() {
+  const p = usePalette();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data, today, ctx } = useView();
   const { notify } = useTaskActions();
@@ -122,6 +124,9 @@ export default function ListScreen() {
               <Pref label="Sortowanie" value={sortBy} labels={SORT_BY} onChange={(v) => setPrefs({ sortBy: v })} />
               <Pref label="Grupy" value={groupBy} labels={GROUP_BY} onChange={(v) => setPrefs({ groupBy: v })} />
               <Pref label="Ukończone" value={completed} labels={COMPLETED_MODE} onChange={(v) => setPrefs({ completed: v })} />
+              <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/board', params: { list: list.id } })} style={[styles.pref, { borderColor: p.border }]}>
+                <Text style={{ color: p.accent, fontSize: 13 }}>▦ Tablica</Text>
+              </Pressable>
             </View>
           </ScreenHeader>
         }

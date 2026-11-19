@@ -19,7 +19,9 @@ import { localEngine } from './sync';
 export const CHANNEL_ID = 'reminders';
 /** Bez „:” i „-” (wymóg `setNotificationCategoryAsync`). */
 export const CATEGORY_ID = 'task_reminder';
-export const ACTION = { complete: 'complete', snooze: 'snooze10', tomorrow: 'tomorrow' } as const;
+/** Przypomnienie nawyku (Etap 8): „Zrobione” zapisuje wpis dnia bez otwierania aplikacji. */
+export const HABIT_CATEGORY_ID = 'habit_reminder';
+export const ACTION = { complete: 'complete', snooze: 'snooze10', tomorrow: 'tomorrow', habitDone: 'habit_done' } as const;
 /** Zaplanowane przez ten moduł; inne prefiksy (odłożone, PoC-4) nie są ruszane. */
 const PREFIX = 'r_';
 export const SNOOZE_PREFIX = 's_';
@@ -33,6 +35,8 @@ export interface ReminderData extends Record<string, unknown> {
   dueAt?: string | null;
   /** Seria testowa PoC-4. */
   batch?: string;
+  /** Przypomnienie nawyku (akcja „Zrobione” na dzień `occurrenceDate`). */
+  habit?: boolean;
 }
 
 export interface ScheduleResult {
@@ -99,7 +103,14 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
     const tasks: ReminderTask[] = data.tasks.map((t) => ({ ...t, timeZone: zoneOf.get(t.id) ?? null }));
     const byId = new Map(tasks.map((t) => [t.id, t]));
     const { timeZone, defaultReminderTime } = data.settings;
-    const fires = reminderFireTimes(tasks, rules.map(toReminderRule), { from: new Date(now), timeZone, defaultTime: defaultReminderTime, limit: MAX_SCHEDULED_REMINDERS });
+    // Wpisy nawyków: dzień już zaliczony, wolny albo okres z osiągniętym celem nie przypomina.
+    const fires = reminderFireTimes(tasks, rules.map(toReminderRule), {
+      from: new Date(now),
+      timeZone,
+      defaultTime: defaultReminderTime,
+      limit: MAX_SCHEDULED_REMINDERS,
+      habitCompletions: data.habitCompletions,
+    });
 
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     const ours = new Map(scheduled.filter((n) => n.identifier.startsWith(PREFIX)).map((n) => [n.identifier, n]));
@@ -114,14 +125,14 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
       const content = reminderBody(task, fire, fire.fireAt, task.timeZone ?? timeZone);
       const existing = ours.get(id);
       const old = existing?.content as { title?: string | null; body?: string | null; data?: Partial<ReminderData> } | undefined;
-      if (existing && old?.data?.at === at && old.title === content.title && old.body === content.body) continue;
+      if (existing && old?.data?.at === at && old.title === content.title && old.body === content.body && !!old.data?.habit === (task.kind === 'habit')) continue;
       if (existing) await Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined);
       await Notifications.scheduleNotificationAsync({
         identifier: id,
         content: {
           ...content,
-          data: { taskId: task.id, at, occurrenceDate: fire.occurrenceDate, dueAt: fire.dueAt } satisfies ReminderData,
-          categoryIdentifier: CATEGORY_ID,
+          data: { taskId: task.id, at, occurrenceDate: fire.occurrenceDate, dueAt: fire.dueAt, ...(task.kind === 'habit' && { habit: true }) } satisfies ReminderData,
+          categoryIdentifier: task.kind === 'habit' ? HABIT_CATEGORY_ID : CATEGORY_ID,
         },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at, channelId: CHANNEL_ID },
       });

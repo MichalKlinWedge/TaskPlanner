@@ -3,7 +3,7 @@
  * z core (`TaskOp`) z dymkiem, zaznaczanie wielu zadań (długie przytrzymanie) i operacje grupowe
  * (`bulkTaskOps`). Wszystko idzie przez lokalną bazę (`mutate` → wiersz + outbox).
  */
-import { bulkTaskOps, completeTaskOps, isOpen, localDateAt, openDescendants, plural, relativeDay, reopenTaskPatch, type BulkAction, type TaskOp, type ViewTask } from '@taskplanner/core';
+import { bulkTaskOps, completeTaskOps, descendants, isOpen, localDateAt, openDescendants, plural, relativeDay, reopenTaskPatch, type BulkAction, type TaskOp, type ViewTask } from '@taskplanner/core';
 import * as Haptics from 'expo-haptics';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -106,7 +106,8 @@ export function TaskActionsProvider({ children }: { children: ReactNode }) {
           return;
         }
         const now = new Date();
-        const result = completeTaskOps(task, { now, timeZone });
+        // Seria: zamknięte podzadania wracają do „Do zrobienia” przy następnym wystąpieniu (M7).
+        const result = completeTaskOps(task, { now, timeZone, subtasks: task.recurrence ? descendants(tasksRef.current, task.id) : [] });
         // M3: rodzic z otwartymi podzadaniami — „Ukończyć też podzadania?”.
         const open = task.recurrence ? [] : openDescendants(tasksRef.current, task.id);
         if (open.length && (await confirm(`Ukończyć „${task.title}”?`, `Zadanie ma ${plural(open.length, ['otwarte podzadanie', 'otwarte podzadania', 'otwartych podzadań'])}. Ukończyć też je?`))) {
