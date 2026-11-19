@@ -1,5 +1,9 @@
 # Wyniki PoC
 
+## Bramka decyzyjna (19.11.2026)
+
+Wszystkie sześć PoC zakończone z werdyktem GO (PoC-5 z warunkami). Ustalenia i odstępstwa z sekcji niżej są wpisane do `SPECYFIKACJA.md` v0.2 (lista zmian w §13), decyzje D1–D19 w §12, warunki na kolejne etapy w `PLAN_ETAPOWY.md` (MVP-1…4, Etap 6). Nadal niesprawdzone: 3-dobowy pomiar przypomnień w Doze i tytuł strony z prawdziwego Chrome (MVP-3), token Google *In production* > 7 dni (w trakcie MVP), droga e-mail przez Cloudflare (v1.x, D9).
+
 ## PoC-4 — Android: przypomnienia, widżet, udostępnianie, kalendarz (18.11.2026)
 
 **Werdykt (19.11.2026): GO** — wszystkie biblioteki zostają (`expo-notifications`, `react-native-android-widget`, `expo-share-intent`, `expo-calendar`), przypomnienia **tylko z dokładnymi alarmami** (`USE_EXACT_ALARM`). Telefon: Galaxy S22 Ultra, Android 16, One UI; dev build z Metro i release. Scenariusze: `docs/POC4_TELEFON.md` (S1–S9).
