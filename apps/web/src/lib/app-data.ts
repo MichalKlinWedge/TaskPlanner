@@ -5,7 +5,7 @@
  * (z tagami) i dzisiejsze wykonania nawyków. Zapytania odświeżają się po każdej zmianie tabel
  * (także z innej karty i z synchronizacji); reguły widoków liczy `@taskplanner/core`.
  */
-import { localDateAt, ProfileSettings, toViewTask, ViewPrefs, type LocalDate, type LocalTaskRow, type ListKind, type ViewTask } from "@taskplanner/core";
+import { FilterQuery, localDateAt, ProfileSettings, toViewTask, ViewPrefs, type LocalDate, type LocalTaskRow, type ListKind, type ViewTask } from "@taskplanner/core";
 import type { SqlRow, TabStore } from "@taskplanner/sync";
 import { useEffect, useMemo, useState } from "react";
 
@@ -35,10 +35,19 @@ export interface Tag {
   sortKey: string;
 }
 
+export interface SavedFilter {
+  id: string;
+  name: string;
+  icon: string | null;
+  query: FilterQuery;
+  sortKey: string;
+}
+
 export interface AppData {
   workspaces: Workspace[];
   lists: List[];
   tags: Tag[];
+  savedFilters: SavedFilter[];
   tasks: ViewTask[];
   /** Id nawyków odhaczonych dziś. */
   habitsDoneToday: Set<string>;
@@ -84,6 +93,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
     ["lists"],
   );
   const tags = useLocalQuery<Row>(store, "select id, name, color, sort_key from tags where deleted_at is null", [], ["tags"]);
+  const filters = useLocalQuery<Row>(store, "select id, name, icon, query, sort_key from saved_filters where deleted_at is null", [], ["saved_filters"]);
   const tasks = useLocalQuery<SqlRow>(
     store,
     `select t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
@@ -121,6 +131,13 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
       workspaces: workspaces.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key) })).sort(byKey),
       lists: allLists,
       tags: tags.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key) })).sort(byKey),
+      // Filtr z nieznanym warunkiem (nowsza wersja aplikacji) — pomijany, a nie psujący widoku.
+      savedFilters: filters.rows
+        .flatMap((r): SavedFilter[] => {
+          const query = FilterQuery.safeParse(json(r.query) ?? {});
+          return query.success ? [{ id: String(r.id), name: String(r.name), icon: r.icon as string | null, query: query.data, sortKey: String(r.sort_key) }] : [];
+        })
+        .sort(byKey),
       // Zadania z zarchiwizowanych list nie trafiają do widoków.
       tasks: tasks.rows
         .map((r) => toViewTask(r as unknown as LocalTaskRow, typeof r.tag_ids === "string" && r.tag_ids ? r.tag_ids.split(",") : []))
@@ -128,5 +145,5 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
       habitsDoneToday: new Set(habits.rows.map((r) => String(r.task_id))),
       loaded: workspaces.ms !== null && lists.ms !== null && tasks.ms !== null,
     };
-  }, [workspaces, lists, tags, tasks, habits]);
+  }, [workspaces, lists, tags, filters, tasks, habits]);
 }

@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { addDays, localDateAt, weekStart } from './dates.ts';
 import type { HabitSettings } from './habits.ts';
 import { PRIORITY, TASK_STATUS, VIEW_SECTION } from './labels.ts';
-import { dayLabel } from './format.ts';
+import { dayLabel, shortDate } from './format.ts';
 import { occurrences, type Recurrence } from './recurrence.ts';
 import { LocalDate, Priority, TaskStatus, type LocalTime } from './schemas/primitives.ts';
 
@@ -251,6 +251,60 @@ export function matchesFilter(query: FilterQuery, today: LocalDate): (task: View
 }
 
 export const applyFilter = (tasks: readonly ViewTask[], query: FilterQuery, today: LocalDate): ViewTask[] => tasks.filter(matchesFilter(query, today));
+
+/** Gotowe zakresy terminu w chipie „Termin” (daty względne — filtr zapisany działa każdego dnia). */
+export const DUE_PRESETS = {
+  overdue: { label: 'Zaległe', due: { kind: 'range', to: { offsetDays: -1 } } },
+  today: { label: 'Do dziś', due: { kind: 'range', to: { offsetDays: 0 } } },
+  tomorrow: { label: 'Jutro', due: { kind: 'range', from: { offsetDays: 1 }, to: { offsetDays: 1 } } },
+  week: { label: 'Najbliższe 7 dni', due: { kind: 'range', from: { offsetDays: 0 }, to: { offsetDays: 6 } } },
+  any: { label: 'Z terminem', due: { kind: 'any' } },
+  none: { label: 'Bez terminu', due: { kind: 'none' } },
+} as const satisfies Record<string, { label: string; due: NonNullable<FilterQuery['due']> }>;
+export type DuePreset = keyof typeof DUE_PRESETS;
+
+/** Który gotowy zakres to jest (do zaznaczenia w chipie); `null` — zakres własny. */
+export function duePreset(due: FilterQuery['due']): DuePreset | null {
+  if (!due) return null;
+  const key = JSON.stringify(due);
+  return (Object.keys(DUE_PRESETS) as DuePreset[]).find((k) => JSON.stringify(DUE_PRESETS[k].due) === key) ?? null;
+}
+
+const dateText = (d: RelativeDate) =>
+  typeof d === 'string' ? shortDate(d) : d.offsetDays === 0 ? 'dziś' : d.offsetDays === 1 ? 'jutro' : d.offsetDays === -1 ? 'wczoraj' : d.offsetDays > 0 ? `dziś + ${d.offsetDays}` : `dziś − ${-d.offsetDays}`;
+
+export interface FilterChip {
+  /** Pole filtra (klik × usuwa ten warunek). */
+  field: keyof FilterQuery;
+  label: string;
+}
+
+/** Warunki filtra po polsku — chipy nad widokiem i opis zapisanego filtra. */
+export function filterChips(query: FilterQuery, names: { lists?: ReadonlyMap<string, string>; workspaces?: ReadonlyMap<string, string>; tags?: ReadonlyMap<string, string> } = {}): FilterChip[] {
+  const name = (map: ReadonlyMap<string, string> | undefined, ids: readonly string[]) => ids.map((id) => map?.get(id) ?? '?').join(', ');
+  const chips: FilterChip[] = [];
+  if (query.tags) chips.push({ field: 'tags', label: `${query.tags.ids.length > 1 ? (query.tags.match === 'all' ? 'Wszystkie tagi' : 'Dowolny tag') : 'Tag'}: ${name(names.tags, query.tags.ids)}` });
+  if (query.priorities) chips.push({ field: 'priorities', label: `Priorytet: ${query.priorities.map((p) => PRIORITY[p].label.toLowerCase()).join(', ')}` });
+  if (query.lists) chips.push({ field: 'lists', label: `Lista: ${name(names.lists, query.lists)}` });
+  if (query.workspaces) chips.push({ field: 'workspaces', label: `Przestrzeń: ${name(names.workspaces, query.workspaces)}` });
+  if (query.statuses) chips.push({ field: 'statuses', label: `Status: ${query.statuses.map((s) => TASK_STATUS[s].toLowerCase()).join(', ')}` });
+  if (query.due) {
+    const preset = duePreset(query.due);
+    const label = preset
+      ? DUE_PRESETS[preset].label
+      : query.due.kind === 'range'
+        ? [query.due.from && `od ${dateText(query.due.from)}`, query.due.to && `do ${dateText(query.due.to)}`].filter(Boolean).join(' ')
+        : query.due.kind === 'none'
+          ? 'Bez terminu'
+          : 'Z terminem';
+    chips.push({ field: 'due', label: `Termin: ${label}` });
+  }
+  if (query.hasTime !== undefined) chips.push({ field: 'hasTime', label: query.hasTime ? 'Z godziną' : 'Bez godziny' });
+  return chips;
+}
+
+/** Filtr bez warunków (pusty obiekt) — widok bez filtrowania. */
+export const isEmptyFilter = (query: FilterQuery): boolean => Object.values(query).every((v) => v === undefined);
 
 // ── Grupowanie ───────────────────────────────────────────────────────────────────────────────
 

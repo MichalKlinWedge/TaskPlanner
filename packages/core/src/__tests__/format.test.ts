@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { authErrorMessage, capitalized, dayChip, dayLabel, dayMonth, formatMinutes, plural, pluralForm, relativeDay, shortDate } from '../format.ts';
+import { authErrorMessage, capitalized, dayChip, dayLabel, dayMonth, formatMinutes, plural, pluralForm, quickAddChip, relativeDay, reminderOffset, shortDate } from '../format.ts';
+import { parseQuickAdd } from '../quick-add.ts';
 import { AUTH_ERROR, PRIORITY, REMINDER_KIND, TASK_STATUS, WEEKDAY } from '../labels.ts';
 import { LocalTime, Priority } from '../schemas/primitives.ts';
 
@@ -97,5 +98,28 @@ describe('błędy logowania po polsku', () => {
   it('nieznany błąd — komunikat serwera, pusty — ogólny', () => {
     expect(authErrorMessage({ code: 'hook_timeout', message: 'Hook timed out' })).toBe('Hook timed out');
     expect(authErrorMessage(null)).toBe('Nie udało się zalogować.');
+  });
+});
+
+describe('chipy szybkiego dodawania', () => {
+  it('wartości z pól wyniku', () => {
+    const text = 'Zapłacić rachunek jutro o 10 ~90m #dom !wysoki @telefon co tydzień ^15m';
+    const result = parseQuickAdd(text, { now: '2026-11-18T12:00', workspaces: ['Dom'], lists: [], tags: ['telefon'] });
+    expect(result.tokens.map((t) => quickAddChip(t, result, '2026-11-18'))).toEqual([
+      'Termin: jutro',
+      'Godzina: 10:00',
+      'Czas: 1 h 30 min',
+      'Lista: Dom (Inbox)',
+      'Priorytet: Wysoki',
+      'Tag: telefon',
+      'Powtarzanie: w każdy czwartek',
+      'Przypomnienie: ^15m',
+    ]);
+  });
+});
+
+describe('przypomnienia', () => {
+  it('wyprzedzenie po polsku', () => {
+    expect([0, 15, 90, 1440, 2880].map(reminderOffset)).toEqual(['w chwili terminu', '15 min przed', '1 h 30 min przed', '1 dzień przed', '2 dni przed']);
   });
 });

@@ -1,0 +1,533 @@
+"use client";
+
+/**
+ * Panel zadania (MVP-2): wszystkie pola zadania, opis w Markdown (TipTap), tagi, przypomnienia,
+ * podzadania (do 4 poziomów), historia zmian (online, z `activity_log`) i kosz. Każda zmiana to
+ * `store.mutate` jednego pola — synchronizacja scala zmiany pól z innych urządzeń (§6).
+ */
+import {
+  canAddSubtask,
+  datesPatch,
+  deleteTaskOps,
+  describeRecurrence,
+  formatMinutes,
+  LIST_KIND,
+  moveTaskOps,
+  parseQuickAdd,
+  PRIORITY,
+  REMINDER_PRESETS,
+  reminderOffset,
+  relativeDay,
+  shortDate,
+  TASK_FIELD,
+  TASK_STATUS,
+  taskTagId,
+  taskTagOps,
+  localDateTimeAt,
+  uuidv7,
+  type LocalDate,
+  type LocalTime,
+  type Priority,
+  type TaskStatus,
+  type ViewTask,
+} from "@taskplanner/core";
+import { EditorContent, useEditor } from "@tiptap/react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+
+import { descriptionExtensions, descriptionMarkdown } from "@/lib/editor";
+import { useLocalQuery } from "@/lib/local-store";
+import { supabaseBrowser } from "@/lib/supabase-browser";
+
+import { useAppEnv } from "./app-env";
+import { QuickAdd } from "./quick-add";
+import { TaskItem, useTaskActions } from "./task-item";
+import { Button, IconButton, Input, Select } from "./ui";
+
+type Row = Record<string, string | number | null>;
+
+const STATUSES = Object.keys(TASK_STATUS) as TaskStatus[];
+const PRIORITIES = [1, 2, 3, 4] as const satisfies readonly Priority[];
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1 text-xs">
+      <span className="font-medium text-[var(--muted)]">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function Block({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="border-t border-[var(--line)] pt-3">
+      <h3 className="mb-2 text-xs font-semibold tracking-wide text-[var(--muted)] uppercase">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+export function TaskPanel({ taskId }: { taskId: string }) {
+  const { store, data, userId, today, timeZone, openTask } = useAppEnv();
+  const { run, toggle } = useTaskActions();
+  const task = data.tasks.find((t) => t.id === taskId);
+
+  // Escape zamyka panel (poza polami tekstowymi i edytorem).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const el = event.target as HTMLElement | null;
+      if (event.key === "Escape" && !(el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)))) openTask(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openTask]);
+
+  if (!task) {
+    return (
+      <PanelFrame onClose={() => openTask(null)}>
+        <p className="text-sm text-[var(--muted)]">Tego zadania już nie ma (usunięte albo w zarchiwizowanej liście).</p>
+      </PanelFrame>
+    );
+  }
+
+  const update = (patch: Record<string, unknown>) => run([{ table: "tasks", id: task.id, patch }]);
+  const parent = task.parentId ? data.tasks.find((t) => t.id === task.parentId) : undefined;
+  const children = data.tasks.filter((t) => t.parentId === task.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
+  const workspaceName = new Map(data.workspaces.map((w) => [w.id, w.name]));
+
+  const remove = () => {
+    const ops = deleteTaskOps(data.tasks, task.id, new Date());
+    void run(ops, { text: `„${task.title}” w koszu`, undo: ops.map((op) => ({ ...op, patch: { deleted_at: null } })) });
+    openTask(parent?.id ?? null);
+  };
+
+  return (
+    <PanelFrame onClose={() => openTask(null)}>
+      {parent ? (
+        <button type="button" className="mb-2 block max-w-full truncate text-left text-xs text-[var(--muted)] hover:text-[var(--accent)]" onClick={() => openTask(parent.id)}>
+          ↑ {parent.title}
+        </button>
+      ) : null}
+      <div className="flex items-start gap-2">
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={task.status === "done"}
+          aria-label={task.status === "done" ? "Przywróć zadanie" : "Ukończ zadanie"}
+          onClick={() => void toggle(task)}
+          className="mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-xs text-white"
+          style={{ borderColor: PRIORITY[task.priority].color, background: task.status === "done" ? PRIORITY[task.priority].color : "transparent" }}
+        >
+          {task.status === "done" ? "✓" : ""}
+        </button>
+        <TitleField key={`${task.id}:${task.title}`} value={task.title} onSave={(title) => void update({ title })} />
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <Field label="Status">
+          <Select value={task.status} onChange={(e) => void update(e.target.value === "done" || e.target.value === "cancelled" ? { status: e.target.value, completed_at: new Date().toISOString() } : { status: e.target.value, completed_at: null })}>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {TASK_STATUS[s]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Priorytet">
+          <Select value={task.priority} onChange={(e) => void update({ priority: Number(e.target.value) })}>
+            {PRIORITIES.map((p) => (
+              <option key={p} value={p}>
+                {PRIORITY[p].label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Lista">
+          <Select
+            value={task.listId}
+            onChange={(e) => void run(moveTaskOps(data.tasks, task.id, e.target.value))}
+          >
+            {data.workspaces.map((w) => (
+              <optgroup key={w.id} label={w.name}>
+                {data.lists
+                  .filter((l) => l.workspaceId === w.id)
+                  .map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.kind === "inbox" ? `Inbox (${w.name})` : `${l.name} · ${LIST_KIND[l.kind]}`}
+                    </option>
+                  ))}
+              </optgroup>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Czas (min)">
+          <Input
+            key={`${task.id}:${task.durationMin}`}
+            type="number"
+            min={1}
+            max={10080}
+            step={5}
+            defaultValue={task.durationMin ?? ""}
+            placeholder="—"
+            onBlur={(e) => {
+              const value = e.target.value ? Math.round(Number(e.target.value)) : null;
+              if (value !== task.durationMin && (value === null || (value >= 1 && value <= 10080))) void update({ duration_min: value });
+            }}
+          />
+        </Field>
+        <Field label="Termin">
+          <Input type="date" value={task.dueDate ?? ""} onChange={(e) => void update(datesPatch(task, { due_date: (e.target.value || null) as LocalDate | null }))} />
+        </Field>
+        <Field label="Godzina">
+          <Input type="time" value={task.dueTime ?? ""} disabled={!task.dueDate} onChange={(e) => void update(datesPatch(task, { due_time: (e.target.value || null) as LocalTime | null }))} />
+        </Field>
+        <Field label="Początek">
+          <Input type="date" value={task.startDate ?? ""} max={task.dueDate ?? undefined} disabled={!task.dueDate} onChange={(e) => void update(datesPatch(task, { start_date: (e.target.value || null) as LocalDate | null }))} />
+        </Field>
+        <div className="flex items-end text-xs text-[var(--muted)]">
+          {task.dueDate ? `${relativeDay(task.dueDate, today, "distance")}${task.durationMin ? ` · ${formatMinutes(task.durationMin)}` : ""}` : "Bez terminu"}
+        </div>
+      </div>
+
+      <RecurrenceField key={`rec:${task.id}`} task={task} onSave={(patch) => void update(patch)} timeZone={timeZone} today={today} />
+
+      <TagsField task={task} userId={userId} />
+
+      <RemindersField key={`rem:${task.id}`} task={task} />
+
+      <Block title="Opis">
+        <DescriptionEditor key={task.id} taskId={task.id} store={store} />
+      </Block>
+
+      <Block title={`Podzadania${children.length ? ` · ${children.filter((c) => c.status === "done").length}/${children.filter((c) => c.status !== "cancelled").length}` : ""}`}>
+        {children.length ? (
+          <ul className="divide-y divide-[var(--line)]">
+            {children.map((c) => (
+              <TaskItem key={c.id} task={c} today={today} />
+            ))}
+          </ul>
+        ) : null}
+        {canAddSubtask(data.tasks, task.id) ? (
+          <QuickAdd parent={{ id: task.id, listId: task.listId }} placeholder="Dodaj podzadanie" />
+        ) : (
+          <p className="text-xs text-[var(--muted)]">Najwyżej 4 poziomy zadań — tu nie można dodać kolejnego.</p>
+        )}
+      </Block>
+
+      <History key={`hist:${task.id}`} taskId={task.id} lists={new Map(data.lists.map((l) => [l.id, l.kind === "inbox" ? `Inbox (${workspaceName.get(l.workspaceId)})` : l.name]))} />
+
+      <div className="mt-4 flex items-center justify-between border-t border-[var(--line)] pt-3 text-xs text-[var(--muted)]">
+        <span>Dodano {task.createdAt.startsWith("1970") ? "teraz (jeszcze nie wysłane)" : shortDate(task.createdAt.slice(0, 10))}</span>
+        <Button kind="danger" onClick={remove}>
+          Przenieś do kosza
+        </Button>
+      </div>
+    </PanelFrame>
+  );
+}
+
+function PanelFrame({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  return (
+    <aside
+      aria-label="Zadanie"
+      className="fixed inset-0 z-30 overflow-y-auto bg-[var(--surface)] p-4 lg:static lg:z-auto lg:w-[26rem] lg:shrink-0 lg:border-l lg:border-[var(--line)]"
+    >
+      <div className="mb-1 flex justify-end">
+        <IconButton label="Zamknij panel (Esc)" onClick={onClose}>
+          ✕
+        </IconButton>
+      </div>
+      {children}
+    </aside>
+  );
+}
+
+function TitleField({ value, onSave }: { value: string; onSave: (title: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  const commit = () => {
+    const title = draft.trim();
+    if (title && title !== value) onSave(title.slice(0, 500));
+    else setDraft(value);
+  };
+  return (
+    <textarea
+      aria-label="Tytuł"
+      value={draft}
+      rows={Math.min(4, Math.max(1, Math.ceil(draft.length / 34)))}
+      maxLength={500}
+      onChange={(e) => setDraft(e.target.value.replace(/\n/g, " "))}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+        if (e.key === "Escape") {
+          setDraft(value);
+          e.currentTarget.blur();
+        }
+      }}
+      className="min-w-0 flex-1 resize-none rounded-md border border-transparent bg-transparent px-1 py-0.5 text-lg font-semibold outline-none hover:border-[var(--line)] focus:border-[var(--accent)]"
+    />
+  );
+}
+
+function RecurrenceField({ task, onSave, timeZone, today }: { task: ViewTask; onSave: (patch: Record<string, unknown>) => void; timeZone?: string; today: LocalDate }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    // Ta sama gramatyka co szybkie dodawanie: „co tydzień”, „w dni robocze”, „co 3 dni po ukończeniu”.
+    const parsed = parseQuickAdd(`x ${text}`, { now: localDateTimeAt(new Date(), timeZone), workspaces: [], lists: [], tags: [] });
+    const rec = parsed.fields.recurrence;
+    if (!rec) return setError("Nie rozpoznano — np. „co tydzień”, „w dni robocze”, „co miesiąc 15.”, „co 3 dni po ukończeniu”.");
+    // Seria liczy się od terminu zadania (kotwica), a nie od dziś — „co 2 tygodnie” od 28.12 to 11.01.
+    const due = task.dueDate ?? parsed.fields.dueDate ?? today;
+    onSave({ recurrence: rec.mode === "schedule" ? { ...rec, anchor: due } : rec, due_date: due });
+    setEditing(false);
+    setText("");
+    setError(null);
+  };
+  return (
+    <Block title="Powtarzanie">
+      {editing ? (
+        <form onSubmit={submit} className="flex flex-col gap-1">
+          <div className="flex gap-2">
+            <Input autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="np. co tydzień w poniedziałek" aria-label="Reguła powtarzania" className="flex-1" />
+            <Button type="submit">Ustaw</Button>
+            <Button kind="ghost" onClick={() => setEditing(false)}>
+              Anuluj
+            </Button>
+          </div>
+          {error ? <p className="text-xs text-[var(--danger)]">{error}</p> : null}
+        </form>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span>{task.recurrence ? `↻ ${describeRecurrence(task.recurrence)}` : <span className="text-[var(--muted)]">Nie powtarza się</span>}</span>
+          <Button kind="ghost" onClick={() => setEditing(true)}>
+            {task.recurrence ? "Zmień" : "Ustaw"}
+          </Button>
+          {task.recurrence ? (
+            <Button kind="ghost" onClick={() => onSave({ recurrence: null })}>
+              Usuń
+            </Button>
+          ) : null}
+        </div>
+      )}
+    </Block>
+  );
+}
+
+function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
+  const { data } = useAppEnv();
+  const { run } = useTaskActions();
+  const [name, setName] = useState("");
+  const byId = new Map(data.tags.map((t) => [t.id, t]));
+  const add = (event: FormEvent) => {
+    event.preventDefault();
+    const value = name.trim().replace(/^[@#]/, "");
+    if (!value) return;
+    setName("");
+    void run(taskTagOps({ userId, tags: data.tags }, task.id, [value]));
+  };
+  return (
+    <Block title="Tagi">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {task.tagIds.map((id) => (
+          <span key={id} className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
+            {byId.get(id)?.name ?? "…"}
+            <button
+              type="button"
+              aria-label={`Usuń tag ${byId.get(id)?.name ?? ""}`}
+              className="opacity-60 hover:opacity-100"
+              onClick={() => void run([{ table: "task_tags", id: taskTagId(task.id, id), patch: { deleted_at: new Date().toISOString() } }])}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <form onSubmit={add} className="inline-flex">
+          <Input list="tag-names" value={name} onChange={(e) => setName(e.target.value)} placeholder="+ tag" aria-label="Dodaj tag" maxLength={60} className="w-32 py-0.5 text-xs" />
+          <datalist id="tag-names">
+            {data.tags
+              .filter((t) => !task.tagIds.includes(t.id))
+              .map((t) => (
+                <option key={t.id} value={t.name} />
+              ))}
+          </datalist>
+        </form>
+      </div>
+    </Block>
+  );
+}
+
+function RemindersField({ task }: { task: ViewTask }) {
+  const { store } = useAppEnv();
+  const { run } = useTaskActions();
+  const { rows } = useLocalQuery<Row>(store, "select id, kind, offset_min, at_date, at_time from reminders where task_id = ? and deleted_at is null order by kind, offset_min, at_date, at_time", [task.id], ["reminders"]);
+  const [choice, setChoice] = useState("");
+  const [at, setAt] = useState({ date: task.dueDate ?? "", time: "09:00" });
+
+  const add = (patch: Record<string, unknown>) => void run([{ table: "reminders", id: uuidv7(), patch: { task_id: task.id, offset_min: null, at_date: null, at_time: null, ...patch } }]);
+
+  return (
+    <Block title="Przypomnienia">
+      <ul className="mb-2 flex flex-col gap-1 text-sm">
+        {rows.map((r) => (
+          <li key={String(r.id)} className="flex items-center gap-2">
+            <span>🔔 {r.kind === "relative" ? reminderOffset(Number(r.offset_min)) : `${relativeDay(String(r.at_date) as LocalDate, task.dueDate ?? (String(r.at_date) as LocalDate))} ${String(r.at_time).slice(0, 5)}`}</span>
+            <IconButton label="Usuń przypomnienie" onClick={() => void run([{ table: "reminders", id: String(r.id), patch: { deleted_at: new Date().toISOString() } }])}>
+              ×
+            </IconButton>
+          </li>
+        ))}
+        {!rows.length ? <li className="text-xs text-[var(--muted)]">Brak przypomnień</li> : null}
+      </ul>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select
+          aria-label="Dodaj przypomnienie"
+          value={choice}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value.startsWith("rel:")) add({ kind: "relative", offset_min: Number(value.slice(4)) });
+            setChoice(value === "abs" ? "abs" : "");
+          }}
+          className="py-1 text-xs"
+        >
+          <option value="">+ Dodaj przypomnienie…</option>
+          {task.dueDate
+            ? REMINDER_PRESETS.map((m) => (
+                <option key={m} value={`rel:${m}`}>
+                  {reminderOffset(m)}
+                </option>
+              ))
+            : null}
+          <option value="abs">O wybranej porze…</option>
+        </Select>
+        {choice === "abs" ? (
+          <form
+            className="flex gap-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!at.date || !at.time) return;
+              add({ kind: "absolute", at_date: at.date, at_time: at.time });
+              setChoice("");
+            }}
+          >
+            <Input type="date" aria-label="Dzień przypomnienia" value={at.date} onChange={(e) => setAt({ ...at, date: e.target.value })} className="py-0.5 text-xs" />
+            <Input type="time" aria-label="Godzina przypomnienia" value={at.time} onChange={(e) => setAt({ ...at, time: e.target.value })} className="py-0.5 text-xs" />
+            <Button type="submit">Dodaj</Button>
+          </form>
+        ) : null}
+      </div>
+      {!task.dueDate ? <p className="mt-1 text-xs text-[var(--muted)]">Przypomnienia „przed terminem” wymagają terminu.</p> : null}
+    </Block>
+  );
+}
+
+function DescriptionEditor({ taskId, store }: { taskId: string; store: ReturnType<typeof useAppEnv>["store"] }) {
+  const { run } = useTaskActions();
+  const { rows, ms } = useLocalQuery<Row>(store, "select description_md from tasks where id = ?", [taskId], ["tasks"]);
+  const saved = (rows[0]?.description_md as string | null) ?? "";
+  const editor = useEditor({
+    extensions: descriptionExtensions,
+    content: "",
+    immediatelyRender: false,
+    editorProps: { attributes: { "aria-label": "Opis zadania" } },
+    onBlur: ({ editor: e }) => {
+      const markdown = descriptionMarkdown(e).trim();
+      if (markdown !== saved.trim()) void run([{ table: "tasks", id: taskId, patch: { description_md: markdown || null } }]);
+    },
+  });
+  // Treść z bazy, gdy edytor nie ma fokusu (zmiana z innego urządzenia nie przerywa pisania).
+  useEffect(() => {
+    if (!editor || ms === null || editor.isFocused) return;
+    if (descriptionMarkdown(editor).trim() !== saved.trim()) editor.commands.setContent(saved, { contentType: "markdown" });
+  }, [editor, saved, ms]);
+
+  return (
+    <div className="min-h-16 rounded-md border border-[var(--line)] px-3 py-2 text-sm focus-within:border-[var(--accent)] [&_.tiptap]:min-h-12 [&_.tiptap]:outline-none [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-4 [&_blockquote]:pl-3 [&_pre]:bg-black/10 [&_pre]:p-2 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_a]:text-[var(--accent)] [&_a]:underline [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:gap-2">
+      <EditorContent editor={editor} />
+    </div>
+  );
+}
+
+interface Change {
+  at: string;
+  changes: Record<string, unknown>;
+}
+
+/** Historia zmian z serwera (`activity_log`) — tylko online; zmiany offline pojawią się po wysłaniu. */
+function History({ taskId, lists }: { taskId: string; lists: Map<string, string> }) {
+  const [state, setState] = useState<{ rows: Change[]; error: string | null } | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    void supabaseBrowser()
+      .from("activity_log")
+      .select("at, changes")
+      .eq("row_id", taskId)
+      .order("at", { ascending: false })
+      .limit(50)
+      .then(({ data, error }) => alive && setState({ rows: (data as Change[] | null) ?? [], error: error ? "Historia jest dostępna online." : null }));
+    return () => {
+      alive = false;
+    };
+  }, [open, taskId]);
+
+  const value = useMemo(
+    () => (field: string, v: unknown): string => {
+      if (field === "deleted_at") return v ? "w koszu" : "przywrócone";
+      if (v === null || v === undefined || v === "") return "—";
+      if (field === "status") return TASK_STATUS[v as TaskStatus] ?? String(v);
+      if (field === "priority") return PRIORITY[v as Priority]?.label ?? String(v);
+      if (field === "list_id") return lists.get(String(v)) ?? "inna lista";
+      if (field === "due_date" || field === "start_date") return shortDate(String(v));
+      if (field === "due_time") return String(v).slice(0, 5);
+      if (field === "completed_at") return new Date(String(v)).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
+      if (field === "recurrence" && typeof v === "object") return "zmieniona reguła";
+      if (field === "description_md") return "zmieniony";
+      return typeof v === "object" ? JSON.stringify(v) : String(v);
+    },
+    [lists],
+  );
+
+  return (
+    <section className="border-t border-[var(--line)] pt-3">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="text-xs font-semibold tracking-wide text-[var(--muted)] uppercase hover:text-[var(--foreground)]">
+        {open ? "▾" : "▸"} Historia zmian
+      </button>
+      {open ? (
+        state === null ? (
+          <p className="mt-2 text-xs text-[var(--muted)]">Wczytywanie…</p>
+        ) : state.error ? (
+          <p className="mt-2 text-xs text-[var(--muted)]">{state.error}</p>
+        ) : (
+          <ol className="mt-2 flex flex-col gap-2 text-xs">
+            {state.rows.map((row, i) => {
+              // Wpis z utworzenia ma wszystkie kolumny — puste pomijamy; kolejność ręczna nie jest „zmianą”.
+              const created = "kind" in row.changes && "list_id" in row.changes && "title" in row.changes;
+              const fields = Object.entries(row.changes).filter(([f, v]) => f !== "sort_key" && f !== "board_sort_key" && !(created && (v === null || f === "kind" || f === "postpone_count")));
+              if (!fields.length) return null;
+              return (
+                <li key={i}>
+                  <span className="text-[var(--muted)]">{new Date(row.at).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" })}</span>
+                  {created ? <span> · utworzono</span> : null}
+                  <ul className="pl-3">
+                    {fields.map(([f, v]) => (
+                      <li key={f}>
+                        {TASK_FIELD[f] ?? f}: {value(f, v)}
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              );
+            })}
+            {!state.rows.length ? <li className="text-[var(--muted)]">Brak zapisanych zmian.</li> : null}
+          </ol>
+        )
+      ) : null}
+    </section>
+  );
+}

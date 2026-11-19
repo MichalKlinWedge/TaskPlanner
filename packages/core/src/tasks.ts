@@ -6,8 +6,11 @@
 import { addDays, daysBetween, localDateAt } from './dates.ts';
 import { HabitSettings } from './habits.ts';
 import { isHlc, parseHlc } from './hlc.ts';
-import { completionId } from './ids.ts';
+import { completionId, tagId, taskTagId, uuidv7 } from './ids.ts';
+import { normalizeWord, type QuickAddResult } from './quick-add.ts';
 import { nextDue, Recurrence } from './recurrence.ts';
+import { reschedulePatch } from './review.ts';
+import { keyBetween } from './sort-key.ts';
 import type { LocalDate, LocalTime, Priority, TaskStatus } from './schemas/primitives.ts';
 import type { ViewTask } from './views.ts';
 
@@ -83,7 +86,7 @@ export function toViewTask(row: LocalTaskRow, tagIds: readonly string[] = []): V
 }
 
 export interface TaskOp {
-  table: 'tasks' | 'task_completions';
+  table: 'tasks' | 'task_completions' | 'tags' | 'task_tags' | 'reminders' | 'saved_filters';
   id: string;
   patch: Record<string, unknown>;
 }
@@ -136,3 +139,301 @@ export function completeTaskOps(task: CompletableTask, { now, timeZone }: { now:
 
 /** Ponowne otwarcie zamkniętego zadania (odhaczenie w widoku ukończonych). */
 export const reopenTaskPatch = (): Record<string, unknown> => ({ status: 'todo', completed_at: null });
+
+// ── Szybkie dodawanie ────────────────────────────────────────────────────────────────────────
+
+/** Przestrzenie, listy i tagi z lokalnej bazy — do rozwiązania `#lista`, `#przestrzeń` i `@tag`. */
+export interface QuickAddScope {
+  userId: string;
+  workspaces: readonly { id: string; name: string }[];
+  lists: readonly { id: string; workspaceId: string; kind: string; name: string }[];
+  tags: readonly { id: string; name: string; sortKey: string }[];
+  /** Lista, gdy wpis nie wskazuje innej (Inbox bieżącej przestrzeni albo lista, z której wywołano). */
+  defaultListId: string;
+  /** Termin, gdy wpis go nie podaje (np. „Dziś”, dzień w „Nadchodzących”). */
+  defaultDueDate?: string | null;
+  /** Ostatni klucz kolejności wśród rodzeństwa (id listy — zadania główne, id rodzica — podzadania). */
+  lastSortKey: (listOrParentId: string) => string | undefined;
+  /** Generator id (testy); domyślnie UUIDv7. */
+  newId?: () => string;
+  /** Podzadanie: lista rodzica, wskazanie listy we wpisie jest pomijane. */
+  parent?: { id: string; listId: string };
+}
+
+export interface QuickAddOps {
+  taskId: string;
+  listId: string;
+  ops: TaskOp[];
+}
+
+const same = (a: string, b: string) => normalizeWord(a) === normalizeWord(b);
+
+/**
+ * Wynik `parseQuickAdd` → operacje `mutate`: zadanie (z `source`), nowe tagi (id deterministyczne
+ * z nazwy — dwa urządzenia tworzą ten sam tag jednym wierszem), powiązania z tagami i przypomnienia.
+ * Wskazana przestrzeń = jej Inbox; nieznana lista / przestrzeń (parser zna tylko istniejące) — lista domyślna.
+ */
+export function quickAddTaskOps(result: QuickAddResult, text: string, scope: QuickAddScope): QuickAddOps {
+  const newId = scope.newId ?? (() => uuidv7());
+  const { fields } = result;
+  const title = result.title.trim();
+  if (!title) throw new Error('Zadanie musi mieć tytuł.');
+
+  let listId = scope.parent?.listId ?? scope.defaultListId;
+  const target = scope.parent ? undefined : fields.target;
+  if (target) {
+    const workspace = scope.workspaces.find((w) => same(w.name, target.workspace));
+    const list =
+      target.kind === 'workspace'
+        ? scope.lists.find((l) => l.kind === 'inbox' && l.workspaceId === workspace?.id)
+        : scope.lists.find((l) => l.kind !== 'inbox' && same(l.name, target.name) && (!workspace || l.workspaceId === workspace.id));
+    if (list) listId = list.id;
+  }
+
+  const taskId = newId();
+  const ops: TaskOp[] = [];
+  const dueDate = fields.dueDate ?? scope.defaultDueDate ?? null;
+  ops.push({
+    table: 'tasks',
+    id: taskId,
+    patch: {
+      list_id: listId,
+      parent_id: scope.parent?.id ?? null,
+      kind: 'task',
+      title: title.slice(0, 500),
+      status: 'todo',
+      priority: fields.priority ?? 4,
+      due_date: dueDate,
+      due_time: dueDate ? (fields.dueTime ?? null) : null,
+      duration_min: fields.durationMin ?? null,
+      recurrence: fields.recurrence ?? null,
+      sort_key: keyBetween(scope.lastSortKey(scope.parent?.id ?? listId)),
+      source: { kind: 'quick_add', text: text.slice(0, 1000) },
+      postpone_count: 0,
+    },
+  });
+
+  ops.push(...taskTagOps(scope, taskId, fields.tags ?? []));
+
+  for (const reminder of fields.reminders ?? []) {
+    ops.push({
+      table: 'reminders',
+      id: newId(),
+      patch:
+        reminder.kind === 'relative'
+          ? { task_id: taskId, kind: 'relative', offset_min: reminder.offsetMin, at_date: null, at_time: null }
+          : { task_id: taskId, kind: 'absolute', offset_min: null, at_date: reminder.atDate, at_time: reminder.atTime },
+    });
+  }
+  return { taskId, listId, ops };
+}
+
+/**
+ * Tagi zadania po nazwach: istniejący tag (bez wielkości liter i polskich znaków) albo nowy
+ * z id deterministycznym z nazwy (dwa urządzenia tworzą ten sam tag jednym wierszem).
+ */
+export function taskTagOps(scope: Pick<QuickAddScope, 'userId' | 'tags'>, taskId: string, names: readonly string[]): TaskOp[] {
+  const ops: TaskOp[] = [];
+  let lastTagKey = scope.tags.reduce<string | undefined>((max, t) => (!max || t.sortKey > max ? t.sortKey : max), undefined);
+  for (const name of new Set(names.map((n) => n.trim()).filter(Boolean))) {
+    let id = scope.tags.find((t) => same(t.name, name))?.id;
+    if (!id) {
+      id = tagId(scope.userId, name);
+      lastTagKey = keyBetween(lastTagKey);
+      ops.push({ table: 'tags', id, patch: { name: name.slice(0, 60), color: null, sort_key: lastTagKey } });
+    }
+    ops.push({ table: 'task_tags', id: taskTagId(taskId, id), patch: { task_id: taskId, tag_id: id, deleted_at: null } });
+  }
+  return ops;
+}
+
+// ── Podzadania, przenoszenie, kosz ───────────────────────────────────────────────────────────
+
+/** Najwięcej poziomów: zadanie + 3 poziomy podzadań (M3; trigger odrzuca głębsze — `TP001`). */
+export const MAX_TASK_DEPTH = 4;
+/** Ile dni usunięte zadanie leży w koszu (potem serwer usuwa je trwale, §6). */
+export const TRASH_DAYS = 30;
+
+type TreeTask = Pick<ViewTask, 'id' | 'parentId'>;
+
+/** Wszystkie podzadania (każdego poziomu), w kolejności przeszukiwania wszerz. */
+export function descendants<T extends TreeTask>(tasks: readonly T[], id: string): T[] {
+  const children = new Map<string, T[]>();
+  for (const t of tasks) if (t.parentId) children.set(t.parentId, [...(children.get(t.parentId) ?? []), t]);
+  const out: T[] = [];
+  const queue = [id];
+  const seen = new Set(queue);
+  while (queue.length) {
+    for (const child of children.get(queue.shift()!) ?? []) {
+      if (seen.has(child.id)) continue;
+      seen.add(child.id);
+      out.push(child);
+      queue.push(child.id);
+    }
+  }
+  return out;
+}
+
+/** Poziom zadania: 1 = zadanie główne. */
+export function taskDepth(tasks: readonly TreeTask[], id: string): number {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  let depth = 1;
+  for (let t = byId.get(id); t?.parentId && depth <= MAX_TASK_DEPTH * 4; t = byId.get(t.parentId)) depth++;
+  return depth;
+}
+
+/** Czy pod `parentId` można dodać nowe podzadanie (bez przekroczenia 4 poziomów). */
+export const canAddSubtask = (tasks: readonly TreeTask[], parentId: string): boolean => taskDepth(tasks, parentId) < MAX_TASK_DEPTH;
+
+/**
+ * Zmiana dat zadania z zachowaniem reguł wiersza (`TaskRow`): bez terminu nie ma godziny ani
+ * początku; początek po terminie przesuwa się na termin.
+ */
+export function datesPatch(
+  current: Pick<ViewTask, 'startDate' | 'dueDate' | 'dueTime'>,
+  change: Partial<{ start_date: LocalDate | null; due_date: LocalDate | null; due_time: LocalTime | null }>,
+): Record<string, unknown> {
+  const next = { start_date: current.startDate, due_date: current.dueDate, due_time: current.dueTime, ...change };
+  if (!next.due_date) {
+    next.due_time = null;
+    next.start_date = null;
+  } else if (next.start_date && next.start_date > next.due_date) next.start_date = next.due_date;
+  const patch: Record<string, unknown> = {};
+  if (next.start_date !== current.startDate) patch.start_date = next.start_date;
+  if (next.due_date !== current.dueDate) patch.due_date = next.due_date;
+  if (next.due_time !== current.dueTime) patch.due_time = next.due_time;
+  return patch;
+}
+
+/**
+ * Przeniesienie na inną listę: zadanie i jego podzadania (serwer robi to samo w triggerze —
+ * lokalnie od razu, także offline). Podzadanie przeniesione na inną listę staje się zadaniem głównym.
+ */
+export function moveTaskOps(tasks: readonly (TreeTask & Pick<ViewTask, 'listId'>)[], id: string, listId: string): TaskOp[] {
+  const task = tasks.find((t) => t.id === id);
+  if (!task || task.listId === listId) return [];
+  return [
+    { table: 'tasks', id, patch: task.parentId ? { list_id: listId, parent_id: null } : { list_id: listId } },
+    ...descendants(tasks, id).map((d): TaskOp => ({ table: 'tasks', id: d.id, patch: { list_id: listId } })),
+  ];
+}
+
+/** Do kosza: zadanie i podzadania z tym samym `deleted_at` (przywrócenie bierze je razem). */
+export function deleteTaskOps(tasks: readonly TreeTask[], id: string, now: Date | string): TaskOp[] {
+  const at = new Date(now).toISOString();
+  return [id, ...descendants(tasks, id).map((d) => d.id)].map((taskId) => ({ table: 'tasks', id: taskId, patch: { deleted_at: at } }));
+}
+
+/** Z kosza: zadanie i podzadania usunięte razem z nim; rodzic wciąż w koszu → zadanie główne. */
+export function restoreTaskOps(
+  trashed: readonly (TreeTask & { deletedAt: string | null })[],
+  id: string,
+  { parentAlive }: { parentAlive: boolean },
+): TaskOp[] {
+  const task = trashed.find((t) => t.id === id);
+  if (!task?.deletedAt) return [];
+  return [
+    { table: 'tasks', id, patch: task.parentId && !parentAlive ? { deleted_at: null, parent_id: null } : { deleted_at: null } },
+    ...descendants(trashed, id)
+      .filter((d) => d.deletedAt === task.deletedAt)
+      .map((d): TaskOp => ({ table: 'tasks', id: d.id, patch: { deleted_at: null } })),
+  ];
+}
+
+/** Otwarte podzadania (pytanie „Ukończyć też podzadania?” przy ukończeniu rodzica). */
+export const openDescendants = <T extends TreeTask & Pick<ViewTask, 'status'>>(tasks: readonly T[], id: string): T[] =>
+  descendants(tasks, id).filter((t) => t.status !== 'done' && t.status !== 'cancelled');
+
+// ── Operacje na zaznaczonych zadaniach (paleta, skróty, operacje grupowe M3) ───────────────
+
+export type BulkAction =
+  | { kind: 'complete' }
+  | { kind: 'priority'; priority: Priority }
+  | { kind: 'today' }
+  | { kind: 'tomorrow' }
+  | { kind: 'date'; date: LocalDate }
+  | { kind: 'move'; listId: string }
+  | { kind: 'delete' };
+
+const BEFORE: Record<string, (t: ViewTask) => unknown> = {
+  list_id: (t) => t.listId,
+  parent_id: (t) => t.parentId,
+  priority: (t) => t.priority,
+  status: (t) => t.status,
+  completed_at: (t) => t.completedAt,
+  due_date: (t) => t.dueDate,
+  due_time: (t) => t.dueTime,
+  start_date: (t) => t.startDate,
+  postpone_count: (t) => t.postponeCount,
+  deleted_at: () => null,
+};
+
+/** Odwrotność łatki zadania: poprzednie wartości tych samych pól. */
+const undoOf = (op: TaskOp, task: ViewTask | undefined): TaskOp => ({
+  table: op.table,
+  id: op.id,
+  patch: Object.fromEntries(Object.keys(op.patch).map((field) => [field, task ? (BEFORE[field]?.(task) ?? null) : null])),
+});
+
+/**
+ * Jedna akcja na wielu zadaniach naraz, z operacjami „Cofnij”. Zadania zamknięte pomija ukończenie;
+ * „Dziś / Jutro / data” liczy `reschedulePatch` (godzina zostaje, zakres przesuwa się w całości,
+ * przesunięcie na później zwiększa licznik). Podzadania zaznaczone razem z rodzicem przy
+ * przeniesieniu i usunięciu idą z nim (bez podwójnych operacji).
+ */
+export function bulkTaskOps(
+  selected: readonly ViewTask[],
+  all: readonly ViewTask[],
+  action: BulkAction,
+  { today, now, timeZone }: { today: LocalDate; now: Date | string; timeZone?: string },
+): { ops: TaskOp[]; undo: TaskOp[] } {
+  const byId = new Map(all.map((t) => [t.id, t]));
+  const ops: TaskOp[] = [];
+  const undo: TaskOp[] = [];
+  const push = (list: readonly TaskOp[]) => {
+    for (const op of list) {
+      if (ops.some((o) => o.table === op.table && o.id === op.id)) continue;
+      ops.push(op);
+      if (op.table === 'tasks') undo.push(undoOf(op, byId.get(op.id)));
+    }
+  };
+  const ids = new Set(selected.map((t) => t.id));
+  // Przy przeniesieniu / usunięciu wystarczą zaznaczone „najwyżej w drzewie”.
+  const tops = selected.filter((t) => {
+    for (let p = t.parentId; p; p = byId.get(p)?.parentId ?? null) if (ids.has(p)) return false;
+    return true;
+  });
+
+  for (const task of action.kind === 'move' || action.kind === 'delete' ? tops : selected) {
+    switch (action.kind) {
+      case 'complete': {
+        if (task.kind === 'task' && (task.status === 'done' || task.status === 'cancelled')) break;
+        const result = completeTaskOps(task, { now, timeZone });
+        for (const op of result.ops) if (!ops.some((o) => o.table === op.table && o.id === op.id)) ops.push(op);
+        undo.push(...result.undo);
+        break;
+      }
+      case 'priority':
+        if (task.priority !== action.priority) push([{ table: 'tasks', id: task.id, patch: { priority: action.priority } }]);
+        break;
+      case 'today':
+      case 'tomorrow':
+      case 'date': {
+        const patch = reschedulePatch(task, action, { today });
+        if (!patch) break;
+        const snake: Record<string, unknown> = { due_date: patch.dueDate };
+        if (patch.startDate !== undefined) snake.start_date = patch.startDate;
+        if (patch.postponeCount !== undefined) snake.postpone_count = patch.postponeCount;
+        push([{ table: 'tasks', id: task.id, patch: snake }]);
+        break;
+      }
+      case 'move':
+        push(moveTaskOps(all, task.id, action.listId));
+        break;
+      case 'delete':
+        push(deleteTaskOps(all, task.id, now));
+        break;
+    }
+  }
+  return { ops, undo };
+}

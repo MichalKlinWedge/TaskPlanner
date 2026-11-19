@@ -3,8 +3,25 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { completionId } from '../ids.ts';
-import { completeTaskOps, reopenTaskPatch, toViewTask, type LocalTaskRow } from '../tasks.ts';
+import { completionId, tagId, taskTagId } from '../ids.ts';
+import { parseQuickAdd } from '../quick-add.ts';
+import {
+  bulkTaskOps,
+  canAddSubtask,
+  completeTaskOps,
+  datesPatch,
+  deleteTaskOps,
+  descendants,
+  moveTaskOps,
+  openDescendants,
+  quickAddTaskOps,
+  reopenTaskPatch,
+  restoreTaskOps,
+  taskDepth,
+  toViewTask,
+  type LocalTaskRow,
+  type QuickAddScope,
+} from '../tasks.ts';
 
 const ID = '0190a000-0000-7000-8000-000000000001';
 
@@ -95,5 +112,182 @@ describe('completeTaskOps', () => {
 
   it('ponowne otwarcie', () => {
     expect(reopenTaskPatch()).toEqual({ status: 'todo', completed_at: null });
+  });
+});
+
+describe('quickAddTaskOps', () => {
+  const scope: QuickAddScope = {
+    userId: 'u1',
+    workspaces: [
+      { id: 'w-dom', name: 'Dom' },
+      { id: 'w-praca', name: 'Praca' },
+    ],
+    lists: [
+      { id: 'in-dom', workspaceId: 'w-dom', kind: 'inbox', name: 'Inbox' },
+      { id: 'in-praca', workspaceId: 'w-praca', kind: 'inbox', name: 'Inbox' },
+      { id: 'l-remont', workspaceId: 'w-dom', kind: 'project', name: 'Remont kuchni' },
+    ],
+    tags: [{ id: 'g-tel', name: 'telefon', sortKey: 'b' }],
+    defaultListId: 'in-dom',
+    lastSortKey: (listId) => (listId === 'l-remont' ? 'm' : undefined),
+    newId: (() => {
+      let n = 0;
+      return () => `id-${++n}`;
+    })(),
+  };
+  const parse = (text: string) =>
+    parseQuickAdd(text, {
+      now: '2026-11-18T12:00',
+      currentWorkspace: 'Dom',
+      workspaces: scope.workspaces.map((w) => w.name),
+      lists: [{ workspace: 'Dom', name: 'Remont kuchni', kind: 'project' }],
+      tags: scope.tags.map((t) => t.name),
+    });
+
+  it('pola, przestrzeń → jej Inbox, źródło', () => {
+    const text = 'Zapłacić rachunek za prąd jutro o 10:00 #praca !wysoki ~30m';
+    const { taskId, listId, ops } = quickAddTaskOps(parse(text), text, scope);
+    expect(listId).toBe('in-praca');
+    expect(ops).toEqual([
+      {
+        table: 'tasks',
+        id: taskId,
+        patch: expect.objectContaining({
+          list_id: 'in-praca',
+          title: 'Zapłacić rachunek za prąd',
+          priority: 2,
+          due_date: '2026-11-19',
+          due_time: '10:00',
+          duration_min: 30,
+          source: { kind: 'quick_add', text },
+        }),
+      },
+    ]);
+  });
+
+  it('lista z nazwy, koniec kolejności, tag istniejący i nowy, przypomnienie', () => {
+    const text = 'Kupić płytki #remont-kuchni @telefon @Hurtownia jutro o 9 ^15m';
+    const { taskId, listId, ops } = quickAddTaskOps(parse(text), text, scope);
+    expect(listId).toBe('l-remont');
+    expect((ops[0]!.patch.sort_key as string) > 'm').toBe(true);
+    const newTag = tagId('u1', 'Hurtownia');
+    expect(ops.slice(1)).toEqual([
+      { table: 'task_tags', id: taskTagId(taskId, 'g-tel'), patch: { task_id: taskId, tag_id: 'g-tel', deleted_at: null } },
+      { table: 'tags', id: newTag, patch: { name: 'Hurtownia', color: null, sort_key: expect.any(String) } },
+      { table: 'task_tags', id: taskTagId(taskId, newTag), patch: { task_id: taskId, tag_id: newTag, deleted_at: null } },
+      { table: 'reminders', id: expect.any(String), patch: { task_id: taskId, kind: 'relative', offset_min: 15, at_date: null, at_time: null } },
+    ]);
+  });
+
+  it('termin domyślny widoku, cykl, pusty tytuł', () => {
+    const { ops } = quickAddTaskOps(parse('Podlać kwiaty co tydzień'), 'Podlać kwiaty co tydzień', { ...scope, defaultDueDate: '2026-11-25' });
+    expect(ops[0]!.patch).toMatchObject({ list_id: 'in-dom', due_date: '2026-11-18', recurrence: { mode: 'schedule', rrule: 'FREQ=WEEKLY;BYDAY=WE' } });
+    expect(quickAddTaskOps(parse('Coś'), 'Coś', { ...scope, defaultDueDate: '2026-11-25' }).ops[0]!.patch.due_date).toBe('2026-11-25');
+    expect(() => quickAddTaskOps(parse('jutro'), 'jutro', scope)).toThrow('tytuł');
+  });
+});
+
+describe('podzadania, przenoszenie, kosz', () => {
+  // a → b → c → d (4 poziomy), a → e; f osobno.
+  const tree = [
+    { id: 'a', parentId: null, listId: 'L1', status: 'todo' },
+    { id: 'b', parentId: 'a', listId: 'L1', status: 'done' },
+    { id: 'c', parentId: 'b', listId: 'L1', status: 'todo' },
+    { id: 'd', parentId: 'c', listId: 'L1', status: 'cancelled' },
+    { id: 'e', parentId: 'a', listId: 'L1', status: 'in_progress' },
+    { id: 'f', parentId: null, listId: 'L1', status: 'todo' },
+  ] as const;
+
+  it('potomkowie, poziom, limit 4 poziomów, otwarte podzadania', () => {
+    expect(descendants(tree, 'a').map((t) => t.id)).toEqual(['b', 'e', 'c', 'd']);
+    expect(taskDepth(tree, 'a')).toBe(1);
+    expect(taskDepth(tree, 'd')).toBe(4);
+    expect(canAddSubtask(tree, 'c')).toBe(true);
+    expect(canAddSubtask(tree, 'd')).toBe(false);
+    expect(openDescendants(tree, 'a').map((t) => t.id)).toEqual(['e', 'c']);
+  });
+
+  it('daty: bez terminu nie ma godziny ani początku, początek nie po terminie', () => {
+    const cur = { startDate: '2026-11-16', dueDate: '2026-11-18', dueTime: '10:00' } as const;
+    expect(datesPatch(cur, { due_date: null })).toEqual({ start_date: null, due_date: null, due_time: null });
+    expect(datesPatch(cur, { due_date: '2026-11-15' })).toEqual({ start_date: '2026-11-15', due_date: '2026-11-15' });
+    expect(datesPatch(cur, { due_time: '11:30' })).toEqual({ due_time: '11:30' });
+    expect(datesPatch(cur, { due_date: '2026-11-18' })).toEqual({});
+  });
+
+  it('przeniesienie: z podzadaniami; podzadanie na inną listę → zadanie główne', () => {
+    expect(moveTaskOps(tree, 'a', 'L2')).toEqual([
+      { table: 'tasks', id: 'a', patch: { list_id: 'L2' } },
+      ...['b', 'e', 'c', 'd'].map((id) => ({ table: 'tasks', id, patch: { list_id: 'L2' } })),
+    ]);
+    expect(moveTaskOps(tree, 'c', 'L2')[0]).toEqual({ table: 'tasks', id: 'c', patch: { list_id: 'L2', parent_id: null } });
+    expect(moveTaskOps(tree, 'a', 'L1')).toEqual([]);
+  });
+
+  it('kosz: usunięcie z podzadaniami, przywrócenie tych usuniętych razem', () => {
+    const at = '2026-11-19T10:00:00.000Z';
+    expect(deleteTaskOps(tree, 'b', at)).toEqual(['b', 'c', 'd'].map((id) => ({ table: 'tasks', id, patch: { deleted_at: at } })));
+    const trashed = tree.map((t) => ({ ...t, deletedAt: ['b', 'c'].includes(t.id) ? at : t.id === 'd' ? '2026-11-01T00:00:00.000Z' : null }));
+    expect(restoreTaskOps(trashed, 'b', { parentAlive: true })).toEqual([
+      { table: 'tasks', id: 'b', patch: { deleted_at: null } },
+      { table: 'tasks', id: 'c', patch: { deleted_at: null } },
+    ]);
+    expect(restoreTaskOps(trashed, 'c', { parentAlive: false })).toEqual([{ table: 'tasks', id: 'c', patch: { deleted_at: null, parent_id: null } }]);
+  });
+
+  it('szybkie dodawanie podzadania: lista rodzica, kolejność wśród rodzeństwa', () => {
+    const parse = (text: string) => parseQuickAdd(text, { now: '2026-11-18T12:00', workspaces: ['Dom'], lists: [{ workspace: 'Dom', name: 'Zakupy' }], tags: [] });
+    const { listId, ops } = quickAddTaskOps(parse('Kupić mleko #zakupy'), 'Kupić mleko #zakupy', {
+      userId: 'u1',
+      workspaces: [{ id: 'w', name: 'Dom' }],
+      lists: [{ id: 'zak', workspaceId: 'w', kind: 'list', name: 'Zakupy' }],
+      tags: [],
+      defaultListId: 'in',
+      parent: { id: 'a', listId: 'L1' },
+      lastSortKey: (id) => (id === 'a' ? 'k' : undefined),
+    });
+    expect(listId).toBe('L1');
+    expect(ops[0]!.patch).toMatchObject({ list_id: 'L1', parent_id: 'a' });
+    expect((ops[0]!.patch.sort_key as string) > 'k').toBe(true);
+  });
+});
+
+describe('bulkTaskOps', () => {
+  const base = toViewTask(row);
+  const a = { ...base, id: 'a', dueDate: '2026-11-18' as const, dueTime: '09:00' as const, priority: 3 as const };
+  const b = { ...base, id: 'b', parentId: 'a', dueDate: null, priority: 4 as const, postponeCount: 0 };
+  const c = { ...base, id: 'c', status: 'done' as const, completedAt: '2026-11-18T10:00:00Z' };
+  const all = [a, b, c];
+  const ctx = { today: '2026-11-19' as const, now: NOW };
+
+  it('priorytet z cofnięciem; bez zmiany — bez operacji', () => {
+    const { ops, undo } = bulkTaskOps([a, b], all, { kind: 'priority', priority: 4 }, ctx);
+    expect(ops).toEqual([{ table: 'tasks', id: 'a', patch: { priority: 4 } }]);
+    expect(undo).toEqual([{ table: 'tasks', id: 'a', patch: { priority: 3 } }]);
+  });
+
+  it('jutro: godzina zostaje, licznik przesunięć rośnie; cofnięcie przywraca termin i licznik', () => {
+    const { ops, undo } = bulkTaskOps([a, b], all, { kind: 'tomorrow' }, ctx);
+    expect(ops).toEqual([
+      { table: 'tasks', id: 'a', patch: { due_date: '2026-11-20', postpone_count: 3 } },
+      { table: 'tasks', id: 'b', patch: { due_date: '2026-11-20' } },
+    ]);
+    expect(undo[0]).toEqual({ table: 'tasks', id: 'a', patch: { due_date: '2026-11-18', postpone_count: 2 } });
+  });
+
+  it('przeniesienie i kosz: podzadanie zaznaczone z rodzicem idzie z nim raz', () => {
+    expect(bulkTaskOps([a, b], all, { kind: 'move', listId: 'L9' }, ctx).ops).toEqual([
+      { table: 'tasks', id: 'a', patch: { list_id: 'L9' } },
+      { table: 'tasks', id: 'b', patch: { list_id: 'L9' } },
+    ]);
+    const del = bulkTaskOps([b, a], all, { kind: 'delete' }, ctx);
+    expect(del.ops.map((o) => o.id)).toEqual(['a', 'b']);
+    expect(del.undo.every((u) => u.patch.deleted_at === null)).toBe(true);
+  });
+
+  it('ukończenie pomija zamknięte', () => {
+    const { ops, undo } = bulkTaskOps([a, c], all, { kind: 'complete' }, ctx);
+    expect(ops.map((o) => o.id)).toEqual(['a']);
+    expect(undo).toEqual([{ table: 'tasks', id: 'a', patch: { status: 'todo', completed_at: null } }]);
   });
 });

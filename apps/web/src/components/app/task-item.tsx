@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * Wiersz zadania, pole „Dodaj zadanie” i akcje zadań (ukończenie z „Cofnij”, dodanie). Zapisy
- * idą przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
+ * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
+ * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { completeTaskOps, describeRecurrence, isOpen, keyBetween, localDateAt, PRIORITY, relativeDay, reopenTaskPatch, uuidv7, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { completeTaskOps, describeRecurrence, isOpen, localDateAt, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { Input } from "./ui";
+import { useAppEnv } from "./app-env";
 
 // ── Akcje ────────────────────────────────────────────────────────────────────────────────────
 
@@ -18,19 +18,12 @@ interface Toast {
   undo?: TaskOp[];
 }
 
-export interface NewTask {
-  listId: string;
-  title: string;
-  dueDate?: LocalDate | null;
-  parentId?: string | null;
-  /** Klucz ostatniego zadania na liście (nowe idzie na koniec). */
-  after?: string;
-}
-
 interface TaskActions {
   toggle: (task: ViewTask, opts?: { habitDone?: boolean }) => Promise<void>;
-  add: (task: NewTask) => Promise<string>;
-  error: (message: string) => void;
+  /** Zapis operacji po kolei; z `toast` — dymek, z `undo` — także „Cofnij”. */
+  run: (ops: readonly TaskOp[], toast?: { text: string; undo?: TaskOp[] }) => Promise<void>;
+  /** Dymek z komunikatem (np. błąd). */
+  notify: (message: string) => void;
 }
 
 const ActionsContext = createContext<TaskActions | null>(null);
@@ -45,14 +38,14 @@ const apply = async (store: TabStore, ops: readonly TaskOp[]) => {
   for (const op of ops) await store.mutate(op.table, op.id, op.patch);
 };
 
-/** Akcje zadań i dymek „Cofnij” na dole ekranu. */
-export function TaskActionsProvider({ store, timeZone, children }: { store: TabStore; timeZone?: string; children: ReactNode }) {
+/** Akcje zadań i dymek „Cofnij” na dole ekranu. `tasks` — do pytania o otwarte podzadania. */
+export function TaskActionsProvider({ store, timeZone, tasks, children }: { store: TabStore; timeZone?: string; tasks: readonly ViewTask[]; children: ReactNode }) {
   const [toast, setToast] = useState<Toast | null>(null);
   const next = useRef(0);
 
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast((t) => (t?.id === toast.id ? null : t)), 6000);
+    const timer = setTimeout(() => setToast((t) => (t?.id === toast.id ? null : t)), 10_000);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -71,34 +64,37 @@ export function TaskActionsProvider({ store, timeZone, children }: { store: TabS
           await store.mutate("tasks", task.id, reopenTaskPatch());
           return;
         }
-        const result = completeTaskOps(task, { now: new Date(), timeZone });
+        const now = new Date();
+        const result = completeTaskOps(task, { now, timeZone });
+        // M3: rodzic z otwartymi podzadaniami — „Ukończyć też podzadania?” (domyślnie tak).
+        const open = task.recurrence ? [] : openDescendants(tasks, task.id);
+        if (open.length && window.confirm(`„${task.title}” ma ${plural(open.length, ["otwarte podzadanie", "otwarte podzadania", "otwartych podzadań"])}. Ukończyć też je?`)) {
+          for (const child of open) {
+            const done = completeTaskOps({ ...child, recurrence: null }, { now, timeZone });
+            result.ops.push(...done.ops);
+            result.undo.push(...done.undo);
+          }
+        }
         await apply(store, result.ops);
-        const today = localDateAt(new Date(), timeZone);
+        const today = localDateAt(now, timeZone);
         show(result.nextDue ? `„${task.title}” — następny termin: ${relativeDay(result.nextDue, today)}` : `Ukończono „${task.title}”`, result.undo);
       } catch (e) {
         show(e instanceof Error ? e.message : String(e));
       }
     },
-    [store, timeZone, show],
+    [store, timeZone, show, tasks],
   );
 
-  const add = useCallback(
-    async ({ listId, title, dueDate = null, parentId = null, after }: NewTask) => {
-      const id = uuidv7();
-      await store.mutate("tasks", id, {
-        list_id: listId,
-        parent_id: parentId,
-        kind: "task",
-        title,
-        status: "todo",
-        priority: 4,
-        due_date: dueDate,
-        sort_key: keyBetween(after),
-        postpone_count: 0,
-      });
-      return id;
+  const run = useCallback(
+    async (ops: readonly TaskOp[], toast?: { text: string; undo?: TaskOp[] }) => {
+      try {
+        await apply(store, ops);
+        if (toast) show(toast.text, toast.undo);
+      } catch (e) {
+        show(e instanceof Error ? e.message : String(e));
+      }
     },
-    [store],
+    [store, show],
   );
 
   const undo = async () => {
@@ -109,7 +105,7 @@ export function TaskActionsProvider({ store, timeZone, children }: { store: TabS
   };
 
   return (
-    <ActionsContext.Provider value={{ toggle, add, error: show }}>
+    <ActionsContext.Provider value={{ toggle, run, notify: show }}>
       {children}
       {toast ? (
         <div role="status" className="fixed bottom-4 left-1/2 z-30 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900">
@@ -150,13 +146,21 @@ export interface TaskItemProps {
 
 export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone }: TaskItemProps) {
   const { toggle } = useTaskActions();
+  const { openTask, selectedIds, select } = useAppEnv();
+  const selected = selectedIds.has(task.id);
   const closed = task.kind === "habit" ? Boolean(habitDone) : !isOpen(task);
   const date = virtualDate ?? task.dueDate;
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
 
   return (
-    <li className={`group flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""}`} style={{ paddingLeft: depth * 20 }} data-task-id={task.id}>
+    <li
+      className={`group flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""} ${selected ? "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]" : ""}`}
+      style={{ paddingLeft: depth * 20 }}
+      data-task-id={task.id}
+      data-virtual={virtualDate ? "" : undefined}
+      data-selected={selected || undefined}
+    >
       {collapsed === undefined ? (
         <span className="w-4 shrink-0" />
       ) : (
@@ -179,9 +183,19 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           {closed ? "✓" : ""}
         </button>
       )}
-      <div className="min-w-0 flex-1">
-        <div className={`break-words ${closed ? "line-through opacity-50" : ""}`}>{task.title}</div>
-        <div className="flex flex-wrap items-center gap-x-2 text-xs text-[var(--muted)]">
+      <button
+        type="button"
+        className="min-w-0 flex-1 cursor-pointer text-left"
+        onClick={(e) => {
+          // Ctrl / Shift + klik — zaznaczanie wielu (operacje grupowe), zwykły klik — panel.
+          if (e.ctrlKey || e.metaKey) return select(task.id, "toggle");
+          if (e.shiftKey) return select(task.id, "range");
+          select(task.id);
+          openTask(task.id);
+        }}
+      >
+        <span className={`block break-words ${closed ? "line-through opacity-50" : ""}`}>{task.title}</span>
+        <span className="flex flex-wrap items-center gap-x-2 text-xs text-[var(--muted)]">
           {showDate && date ? <span className={overdue ? "font-medium text-[var(--danger)]" : ""}>{relativeDay(date, today)}</span> : null}
           {task.dueTime ? <span>{task.dueTime}</span> : null}
           {task.recurrence ? <span title={describeRecurrence(task.recurrence)}>↻ {describeRecurrence(task.recurrence)}</span> : null}
@@ -192,28 +206,8 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           ) : null}
           {task.status === "in_progress" || task.status === "waiting" ? <span>{task.status === "in_progress" ? "w trakcie" : "oczekuje"}</span> : null}
           {listName ? <span className="truncate">{listName}</span> : null}
-        </div>
-      </div>
+        </span>
+      </button>
     </li>
-  );
-}
-
-// ── Dodawanie ────────────────────────────────────────────────────────────────────────────────
-
-/** Pole „Dodaj zadanie”: Enter dodaje i zostawia fokus (szybkie dodawanie z parserem — następny krok MVP-2). */
-export function AddTask({ placeholder = "Dodaj zadanie", onAdd, disabled }: { placeholder?: string; onAdd: (title: string) => Promise<unknown>; disabled?: boolean }) {
-  const [title, setTitle] = useState("");
-  const { error } = useTaskActions();
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const text = title.trim();
-    if (!text) return;
-    setTitle("");
-    void onAdd(text.slice(0, 500)).catch((e: unknown) => error(e instanceof Error ? e.message : String(e)));
-  };
-  return (
-    <form onSubmit={submit} className="my-2">
-      <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={`+ ${placeholder}`} aria-label={placeholder} maxLength={500} disabled={disabled} className="w-full" />
-    </form>
   );
 }

@@ -3,13 +3,17 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { localDateAt, weekStart } from '../dates.ts';
+import { localDateAt, localDateTimeAt, weekStart } from '../dates.ts';
 import {
   applyFilter,
   buildTree,
+  DUE_PRESETS,
+  duePreset,
   FilterQuery,
+  filterChips,
   flattenTree,
   groupTasks,
+  isEmptyFilter,
   progress,
   selectInbox,
   selectToday,
@@ -62,6 +66,8 @@ describe('daty lokalne', () => {
   it('dzień ukończenia według strefy, nie UTC', () => {
     expect(localDateAt('2026-11-18T23:30:00Z', 'Europe/Warsaw')).toBe('2026-11-19');
     expect(localDateAt('2026-11-18T22:59:00Z', 'Europe/Warsaw')).toBe('2026-11-18');
+    expect(localDateTimeAt('2026-11-18T23:05:00Z', 'Europe/Warsaw')).toBe('2026-11-19T00:05');
+    expect(localDateTimeAt('2026-07-01T11:30:00Z', 'Europe/Warsaw')).toBe('2026-07-01T13:30');
   });
   it('początek tygodnia od poniedziałku albo niedzieli', () => {
     expect(weekStart('2026-11-18')).toBe('2026-11-16');
@@ -308,5 +314,33 @@ describe('wydajność', () => {
     selectToday(many, ctx);
     selectUpcoming(many, ctx);
     expect(performance.now() - start).toBeLessThan(50);
+  });
+});
+
+describe('chipy filtrów', () => {
+  it('opis warunków i gotowe zakresy terminu', () => {
+    const query = {
+      tags: { ids: ['0190a000-0000-7000-8000-000000000001', '0190a000-0000-7000-8000-000000000002'], match: 'all' as const },
+      priorities: [1, 2] as (1 | 2)[],
+      statuses: ['waiting' as const],
+      due: DUE_PRESETS.today.due,
+      hasTime: true,
+    };
+    const tags = new Map([
+      ['0190a000-0000-7000-8000-000000000001', 'telefon'],
+      ['0190a000-0000-7000-8000-000000000002', 'praca'],
+    ]);
+    expect(filterChips(query, { tags }).map((c) => c.label)).toEqual([
+      'Wszystkie tagi: telefon, praca',
+      'Priorytet: krytyczny, wysoki',
+      'Status: oczekuje',
+      'Termin: Do dziś',
+      'Z godziną',
+    ]);
+    expect(filterChips({ due: { kind: 'range', from: { offsetDays: 2 }, to: '2026-12-24' } })[0]!.label).toBe('Termin: od dziś + 2 do 24 gru');
+    expect(duePreset(DUE_PRESETS.week.due)).toBe('week');
+    expect(isEmptyFilter({})).toBe(true);
+    expect(isEmptyFilter({ hasTime: false })).toBe(false);
+    expect(FilterQuery.safeParse(DUE_PRESETS.overdue).success).toBe(true);
   });
 });
