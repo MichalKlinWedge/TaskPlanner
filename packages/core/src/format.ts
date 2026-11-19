@@ -116,3 +116,10 @@ export function quickAddChip(token: QuickAddToken, { fields }: QuickAddResult, t
   })();
   return `${QUICK_ADD_KIND[token.kind]}: ${value}`;
 }
+
+/** Przypomnienie względne: „w chwili terminu”, „15 min przed”, „1 dzień przed”. */
+export function reminderOffset(minutes: number): string {
+  if (minutes === 0) return 'w chwili terminu';
+  if (minutes % 1440 === 0) return `${plural(minutes / 1440, ['dzień', 'dni', 'dni'])} przed`;
+  return `${formatMinutes(minutes)} przed`;
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { authErrorMessage, capitalized, dayChip, dayLabel, dayMonth, formatMinutes, plural, pluralForm, quickAddChip, relativeDay, shortDate } from '../format.ts';
+import { authErrorMessage, capitalized, dayChip, dayLabel, dayMonth, formatMinutes, plural, pluralForm, quickAddChip, relativeDay, reminderOffset, shortDate } from '../format.ts';
 import { parseQuickAdd } from '../quick-add.ts';
 import { AUTH_ERROR, PRIORITY, REMINDER_KIND, TASK_STATUS, WEEKDAY } from '../labels.ts';
 import { LocalTime, Priority } from '../schemas/primitives.ts';
@@ -115,5 +115,11 @@ describe('chipy szybkiego dodawania', () => {
       'Powtarzanie: w każdy czwartek',
       'Przypomnienie: ^15m',
     ]);
+  });
+});
+
+describe('przypomnienia', () => {
+  it('wyprzedzenie po polsku', () => {
+    expect([0, 15, 90, 1440, 2880].map(reminderOffset)).toEqual(['w chwili terminu', '15 min przed', '1 h 30 min przed', '1 dzień przed', '2 dni przed']);
   });
 });

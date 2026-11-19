@@ -60,6 +60,33 @@ export const GROUP_BY: Record<'none' | 'priority' | 'list' | 'date' | 'tag' | 's
   status: 'Status',
 };
 
+/** Pola zadania w historii zmian (`activity_log.changes`). */
+export const TASK_FIELD: Record<string, string> = {
+  title: 'Tytuł',
+  description_md: 'Opis',
+  status: 'Status',
+  priority: 'Priorytet',
+  start_date: 'Początek',
+  due_date: 'Termin',
+  due_time: 'Godzina',
+  duration_min: 'Czas',
+  time_zone: 'Strefa',
+  recurrence: 'Powtarzanie',
+  habit: 'Nawyk',
+  kind: 'Rodzaj',
+  list_id: 'Lista',
+  parent_id: 'Zadanie nadrzędne',
+  completed_at: 'Ukończono',
+  deleted_at: 'Kosz',
+  sort_key: 'Kolejność',
+  board_sort_key: 'Kolejność na tablicy',
+  postpone_count: 'Przesunięcia terminu',
+  source: 'Źródło',
+};
+
+/** Gotowe przypomnienia względne (minuty przed terminem). */
+export const REMINDER_PRESETS = [0, 15, 30, 60, 120, 1440] as const;
+
 /** Rodzaje rozpoznanych fragmentów szybkiego dodawania (chipy). */
 export const QUICK_ADD_KIND: Record<'date' | 'time' | 'duration' | 'priority' | 'target' | 'tag' | 'recurrence' | 'reminder', string> = {
   date: 'Termin',

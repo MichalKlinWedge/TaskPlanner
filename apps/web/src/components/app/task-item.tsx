@@ -4,9 +4,11 @@
  * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
  * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { completeTaskOps, describeRecurrence, isOpen, localDateAt, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { completeTaskOps, describeRecurrence, isOpen, localDateAt, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+
+import { useAppEnv } from "./app-env";
 
 // ── Akcje ────────────────────────────────────────────────────────────────────────────────────
 
@@ -36,8 +38,8 @@ const apply = async (store: TabStore, ops: readonly TaskOp[]) => {
   for (const op of ops) await store.mutate(op.table, op.id, op.patch);
 };
 
-/** Akcje zadań i dymek „Cofnij” na dole ekranu. */
-export function TaskActionsProvider({ store, timeZone, children }: { store: TabStore; timeZone?: string; children: ReactNode }) {
+/** Akcje zadań i dymek „Cofnij” na dole ekranu. `tasks` — do pytania o otwarte podzadania. */
+export function TaskActionsProvider({ store, timeZone, tasks, children }: { store: TabStore; timeZone?: string; tasks: readonly ViewTask[]; children: ReactNode }) {
   const [toast, setToast] = useState<Toast | null>(null);
   const next = useRef(0);
 
@@ -62,15 +64,25 @@ export function TaskActionsProvider({ store, timeZone, children }: { store: TabS
           await store.mutate("tasks", task.id, reopenTaskPatch());
           return;
         }
-        const result = completeTaskOps(task, { now: new Date(), timeZone });
+        const now = new Date();
+        const result = completeTaskOps(task, { now, timeZone });
+        // M3: rodzic z otwartymi podzadaniami — „Ukończyć też podzadania?” (domyślnie tak).
+        const open = task.recurrence ? [] : openDescendants(tasks, task.id);
+        if (open.length && window.confirm(`„${task.title}” ma ${plural(open.length, ["otwarte podzadanie", "otwarte podzadania", "otwartych podzadań"])}. Ukończyć też je?`)) {
+          for (const child of open) {
+            const done = completeTaskOps({ ...child, recurrence: null }, { now, timeZone });
+            result.ops.push(...done.ops);
+            result.undo.push(...done.undo);
+          }
+        }
         await apply(store, result.ops);
-        const today = localDateAt(new Date(), timeZone);
+        const today = localDateAt(now, timeZone);
         show(result.nextDue ? `„${task.title}” — następny termin: ${relativeDay(result.nextDue, today)}` : `Ukończono „${task.title}”`, result.undo);
       } catch (e) {
         show(e instanceof Error ? e.message : String(e));
       }
     },
-    [store, timeZone, show],
+    [store, timeZone, show, tasks],
   );
 
   const run = useCallback(
@@ -134,13 +146,19 @@ export interface TaskItemProps {
 
 export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone }: TaskItemProps) {
   const { toggle } = useTaskActions();
+  const { openTask, openTaskId } = useAppEnv();
+  const selected = openTaskId === task.id;
   const closed = task.kind === "habit" ? Boolean(habitDone) : !isOpen(task);
   const date = virtualDate ?? task.dueDate;
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
 
   return (
-    <li className={`group flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""}`} style={{ paddingLeft: depth * 20 }} data-task-id={task.id}>
+    <li
+      className={`group flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""} ${selected ? "bg-[var(--hover)]" : ""}`}
+      style={{ paddingLeft: depth * 20 }}
+      data-task-id={task.id}
+    >
       {collapsed === undefined ? (
         <span className="w-4 shrink-0" />
       ) : (
@@ -163,9 +181,9 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           {closed ? "✓" : ""}
         </button>
       )}
-      <div className="min-w-0 flex-1">
-        <div className={`break-words ${closed ? "line-through opacity-50" : ""}`}>{task.title}</div>
-        <div className="flex flex-wrap items-center gap-x-2 text-xs text-[var(--muted)]">
+      <button type="button" className="min-w-0 flex-1 cursor-pointer text-left" onClick={() => openTask(task.id)}>
+        <span className={`block break-words ${closed ? "line-through opacity-50" : ""}`}>{task.title}</span>
+        <span className="flex flex-wrap items-center gap-x-2 text-xs text-[var(--muted)]">
           {showDate && date ? <span className={overdue ? "font-medium text-[var(--danger)]" : ""}>{relativeDay(date, today)}</span> : null}
           {task.dueTime ? <span>{task.dueTime}</span> : null}
           {task.recurrence ? <span title={describeRecurrence(task.recurrence)}>↻ {describeRecurrence(task.recurrence)}</span> : null}
@@ -176,8 +194,8 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           ) : null}
           {task.status === "in_progress" || task.status === "waiting" ? <span>{task.status === "in_progress" ? "w trakcie" : "oczekuje"}</span> : null}
           {listName ? <span className="truncate">{listName}</span> : null}
-        </div>
-      </div>
+        </span>
+      </button>
     </li>
   );
 }

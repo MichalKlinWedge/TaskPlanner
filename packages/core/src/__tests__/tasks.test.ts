@@ -5,7 +5,22 @@ import { describe, expect, it } from 'vitest';
 
 import { completionId, tagId, taskTagId } from '../ids.ts';
 import { parseQuickAdd } from '../quick-add.ts';
-import { completeTaskOps, quickAddTaskOps, reopenTaskPatch, toViewTask, type LocalTaskRow, type QuickAddScope } from '../tasks.ts';
+import {
+  canAddSubtask,
+  completeTaskOps,
+  datesPatch,
+  deleteTaskOps,
+  descendants,
+  moveTaskOps,
+  openDescendants,
+  quickAddTaskOps,
+  reopenTaskPatch,
+  restoreTaskOps,
+  taskDepth,
+  toViewTask,
+  type LocalTaskRow,
+  type QuickAddScope,
+} from '../tasks.ts';
 
 const ID = '0190a000-0000-7000-8000-000000000001';
 
@@ -168,5 +183,70 @@ describe('quickAddTaskOps', () => {
     expect(ops[0]!.patch).toMatchObject({ list_id: 'in-dom', due_date: '2026-11-18', recurrence: { mode: 'schedule', rrule: 'FREQ=WEEKLY;BYDAY=WE' } });
     expect(quickAddTaskOps(parse('Coś'), 'Coś', { ...scope, defaultDueDate: '2026-11-25' }).ops[0]!.patch.due_date).toBe('2026-11-25');
     expect(() => quickAddTaskOps(parse('jutro'), 'jutro', scope)).toThrow('tytuł');
+  });
+});
+
+describe('podzadania, przenoszenie, kosz', () => {
+  // a → b → c → d (4 poziomy), a → e; f osobno.
+  const tree = [
+    { id: 'a', parentId: null, listId: 'L1', status: 'todo' },
+    { id: 'b', parentId: 'a', listId: 'L1', status: 'done' },
+    { id: 'c', parentId: 'b', listId: 'L1', status: 'todo' },
+    { id: 'd', parentId: 'c', listId: 'L1', status: 'cancelled' },
+    { id: 'e', parentId: 'a', listId: 'L1', status: 'in_progress' },
+    { id: 'f', parentId: null, listId: 'L1', status: 'todo' },
+  ] as const;
+
+  it('potomkowie, poziom, limit 4 poziomów, otwarte podzadania', () => {
+    expect(descendants(tree, 'a').map((t) => t.id)).toEqual(['b', 'e', 'c', 'd']);
+    expect(taskDepth(tree, 'a')).toBe(1);
+    expect(taskDepth(tree, 'd')).toBe(4);
+    expect(canAddSubtask(tree, 'c')).toBe(true);
+    expect(canAddSubtask(tree, 'd')).toBe(false);
+    expect(openDescendants(tree, 'a').map((t) => t.id)).toEqual(['e', 'c']);
+  });
+
+  it('daty: bez terminu nie ma godziny ani początku, początek nie po terminie', () => {
+    const cur = { startDate: '2026-11-16', dueDate: '2026-11-18', dueTime: '10:00' } as const;
+    expect(datesPatch(cur, { due_date: null })).toEqual({ start_date: null, due_date: null, due_time: null });
+    expect(datesPatch(cur, { due_date: '2026-11-15' })).toEqual({ start_date: '2026-11-15', due_date: '2026-11-15' });
+    expect(datesPatch(cur, { due_time: '11:30' })).toEqual({ due_time: '11:30' });
+    expect(datesPatch(cur, { due_date: '2026-11-18' })).toEqual({});
+  });
+
+  it('przeniesienie: z podzadaniami; podzadanie na inną listę → zadanie główne', () => {
+    expect(moveTaskOps(tree, 'a', 'L2')).toEqual([
+      { table: 'tasks', id: 'a', patch: { list_id: 'L2' } },
+      ...['b', 'e', 'c', 'd'].map((id) => ({ table: 'tasks', id, patch: { list_id: 'L2' } })),
+    ]);
+    expect(moveTaskOps(tree, 'c', 'L2')[0]).toEqual({ table: 'tasks', id: 'c', patch: { list_id: 'L2', parent_id: null } });
+    expect(moveTaskOps(tree, 'a', 'L1')).toEqual([]);
+  });
+
+  it('kosz: usunięcie z podzadaniami, przywrócenie tych usuniętych razem', () => {
+    const at = '2026-11-19T10:00:00.000Z';
+    expect(deleteTaskOps(tree, 'b', at)).toEqual(['b', 'c', 'd'].map((id) => ({ table: 'tasks', id, patch: { deleted_at: at } })));
+    const trashed = tree.map((t) => ({ ...t, deletedAt: ['b', 'c'].includes(t.id) ? at : t.id === 'd' ? '2026-11-01T00:00:00.000Z' : null }));
+    expect(restoreTaskOps(trashed, 'b', { parentAlive: true })).toEqual([
+      { table: 'tasks', id: 'b', patch: { deleted_at: null } },
+      { table: 'tasks', id: 'c', patch: { deleted_at: null } },
+    ]);
+    expect(restoreTaskOps(trashed, 'c', { parentAlive: false })).toEqual([{ table: 'tasks', id: 'c', patch: { deleted_at: null, parent_id: null } }]);
+  });
+
+  it('szybkie dodawanie podzadania: lista rodzica, kolejność wśród rodzeństwa', () => {
+    const parse = (text: string) => parseQuickAdd(text, { now: '2026-11-18T12:00', workspaces: ['Dom'], lists: [{ workspace: 'Dom', name: 'Zakupy' }], tags: [] });
+    const { listId, ops } = quickAddTaskOps(parse('Kupić mleko #zakupy'), 'Kupić mleko #zakupy', {
+      userId: 'u1',
+      workspaces: [{ id: 'w', name: 'Dom' }],
+      lists: [{ id: 'zak', workspaceId: 'w', kind: 'list', name: 'Zakupy' }],
+      tags: [],
+      defaultListId: 'in',
+      parent: { id: 'a', listId: 'L1' },
+      lastSortKey: (id) => (id === 'a' ? 'k' : undefined),
+    });
+    expect(listId).toBe('L1');
+    expect(ops[0]!.patch).toMatchObject({ list_id: 'L1', parent_id: 'a' });
+    expect((ops[0]!.patch.sort_key as string) > 'k').toBe(true);
   });
 });

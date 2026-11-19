@@ -8,6 +8,7 @@
 import {
   addDays,
   buildTree,
+  descendants,
   capitalized,
   COMPLETED_MODE,
   dayLabel,
@@ -19,11 +20,13 @@ import {
   plural,
   progress,
   relativeDay,
+  restoreTaskOps,
   selectInbox,
   selectToday,
   selectUpcoming,
   SORT_BY,
   sortTasks,
+  TRASH_DAYS,
   VIEW_SECTION,
   withCompleted,
   type CompletedMode,
@@ -37,10 +40,11 @@ import type { TabStore } from "@taskplanner/sync";
 import { useMemo, useState, type ReactNode } from "react";
 
 import type { AppData, List } from "@/lib/app-data";
+import { useLocalQuery } from "@/lib/local-store";
 
 import { QuickAdd } from "./quick-add";
 import { TaskItem, useTaskActions } from "./task-item";
-import { Select } from "./ui";
+import { Button, Select } from "./ui";
 
 export interface ViewProps {
   data: AppData;
@@ -291,6 +295,56 @@ export function ListView({ data, ctx, list, store }: { data: AppData; ctx: ViewC
             </ul>
           ),
         )
+      )}
+    </>
+  );
+}
+
+// ── Kosz ─────────────────────────────────────────────────────────────────────────────────────
+
+/** Kosz (M3): usunięte w ostatnich 30 dniach, przywracanie razem z podzadaniami usuniętymi naraz. */
+export function TrashView({ data, store }: { data: AppData; store: TabStore }) {
+  const { run } = useTaskActions();
+  // Granica liczona przy wejściu do widoku (stabilna wartość parametru zapytania).
+  const [since] = useState(() => new Date(Date.now() - TRASH_DAYS * 86_400_000).toISOString());
+  const { rows } = useLocalQuery<Record<string, string | number | null>>(
+    store,
+    "select id, parent_id, list_id, title, deleted_at from tasks where deleted_at is not null and deleted_at > ? order by deleted_at desc",
+    [since],
+    ["tasks"],
+  );
+  const trashed = rows.map((r) => ({ id: String(r.id), parentId: r.parent_id as string | null, listId: String(r.list_id), title: String(r.title), deletedAt: r.deleted_at as string }));
+  const byId = new Map(trashed.map((t) => [t.id, t]));
+  // Podzadania usunięte razem z rodzicem są pod nim (przywracają się z nim), nie osobno.
+  const roots = trashed.filter((t) => !(t.parentId && byId.get(t.parentId)?.deletedAt === t.deletedAt));
+  const alive = new Set(data.tasks.map((t) => t.id));
+  const names = listNames(data);
+
+  return (
+    <>
+      <Header title="Kosz" subtitle={`Usunięte zadania zostają tu ${TRASH_DAYS} dni, potem znikają na stałe.`} />
+      {roots.length ? (
+        <ul className="divide-y divide-[var(--line)]">
+          {roots.map((t) => {
+            const inside = descendants(trashed, t.id).filter((d) => d.deletedAt === t.deletedAt).length;
+            return (
+              <li key={t.id} className="flex items-center gap-3 py-2 text-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="break-words">{t.title}</div>
+                  <div className="text-xs text-[var(--muted)]">
+                    {names.get(t.listId) ?? "lista zarchiwizowana"} · usunięte {new Date(t.deletedAt).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" })}
+                    {inside ? ` · z ${plural(inside, ["podzadaniem", "podzadaniami", "podzadaniami"])}` : ""}
+                  </div>
+                </div>
+                <Button onClick={() => void run(restoreTaskOps(trashed, t.id, { parentAlive: !t.parentId || alive.has(t.parentId) }), { text: `Przywrócono „${t.title}”` })}>
+                  Przywróć
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <Empty>Kosz jest pusty.</Empty>
       )}
     </>
   );

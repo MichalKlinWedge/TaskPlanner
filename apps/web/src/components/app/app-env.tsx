@@ -1,0 +1,41 @@
+"use client";
+
+/**
+ * Wspólne dane powłoki dla komponentów głębiej w drzewie (szybkie dodawanie, panel zadania,
+ * wiersze zadań): lokalna baza, dane widoków, użytkownik, dziś i otwieranie panelu zadania.
+ */
+import type { LocalDate } from "@taskplanner/core";
+import type { TabStore } from "@taskplanner/sync";
+import { createContext, useContext } from "react";
+
+import type { AppData } from "@/lib/app-data";
+
+export interface AppEnv {
+  store: TabStore;
+  data: AppData;
+  userId: string;
+  timeZone?: string;
+  today: LocalDate;
+  /** Bieżąca przestrzeń; `null` = „Wszystkie”. */
+  workspaceId: string | null;
+  /** Otwarcie panelu zadania (`null` zamyka). */
+  openTask: (id: string | null) => void;
+  /** Zadanie otwarte w panelu. */
+  openTaskId: string | null;
+}
+
+const EnvContext = createContext<AppEnv | null>(null);
+export const AppEnvProvider = EnvContext.Provider;
+
+export function useAppEnv(): AppEnv {
+  const env = useContext(EnvContext);
+  if (!env) throw new Error("useAppEnv poza <AppEnvProvider>.");
+  return env;
+}
+
+/** Ostatni klucz kolejności wśród rodzeństwa: zadania główne listy albo podzadania rodzica. */
+export const lastSortKey = (data: AppData, listOrParentId: string): string | undefined =>
+  data.tasks.reduce<string | undefined>(
+    (max, t) => ((t.parentId === listOrParentId || (t.listId === listOrParentId && t.parentId === null)) && (!max || t.sortKey > max) ? t.sortKey : max),
+    undefined,
+  );

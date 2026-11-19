@@ -11,10 +11,12 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactN
 import { useAppData, useToday, type List } from "@/lib/app-data";
 import { routeHash, useRoute, type Route } from "@/lib/route";
 
-import { QuickAddDialog, QuickAddEnvProvider } from "./quick-add";
+import { AppEnvProvider } from "./app-env";
+import { QuickAddDialog } from "./quick-add";
+import { TaskPanel } from "./task-panel";
 import { TaskActionsProvider } from "./task-item";
 import { Select, Splash } from "./ui";
-import { InboxView, ListView, TodayView, UpcomingView } from "./views";
+import { InboxView, ListView, TodayView, TrashView, UpcomingView } from "./views";
 
 const WORKSPACE_KEY = "tp-workspace";
 const ALL = "all";
@@ -65,6 +67,7 @@ export function Shell({
   const workspaceId = stored !== ALL && data.workspaces.some((w) => w.id === stored) ? stored : null;
   const [menuOpen, setMenuOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
   // Szybkie dodawanie z każdego miejsca (M13): `Q` poza polem tekstowym, `Ctrl+Spacja` zawsze.
   useEffect(() => {
@@ -115,6 +118,8 @@ export function Shell({
       manage
     ) : route.view === "settings" ? (
       settingsView
+    ) : route.view === "trash" ? (
+      <TrashView data={data} store={store} />
     ) : list ? (
       <ListView key={list.id} data={data} ctx={ctx} list={list} store={store} />
     ) : (
@@ -126,8 +131,8 @@ export function Shell({
   const quickDefaults = list ? { listId: list.id } : route.view === "today" ? { listId: targetInbox?.id, dueDate: today } : { listId: targetInbox?.id };
 
   return (
-    <TaskActionsProvider store={store} timeZone={settings.timeZone}>
-      <QuickAddEnvProvider value={{ data, userId, timeZone: settings.timeZone, today, workspaceId }}>
+    <AppEnvProvider value={{ store, data, userId, timeZone: settings.timeZone, today, workspaceId, openTask: setOpenTaskId, openTaskId }}>
+      <TaskActionsProvider store={store} timeZone={settings.timeZone} tasks={data.tasks}>
         <div className="flex min-h-0 flex-1">
           <button
             type="button"
@@ -175,16 +180,18 @@ export function Shell({
             ))}
             <nav className="mt-4 flex flex-col gap-0.5 border-t border-[var(--line)] pt-3">
               <NavItem route={{ view: "manage" }} current={route} navigate={navigate} icon="🗂️" label="Przestrzenie i listy" />
+              <NavItem route={{ view: "trash" }} current={route} navigate={navigate} icon="🗑️" label="Kosz" />
               <NavItem route={{ view: "settings" }} current={route} navigate={navigate} icon="⚙️" label="Ustawienia" />
             </nav>
           </aside>
           <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-3xl p-4 pb-20 sm:p-6">{content}</div>
           </main>
+          {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>
         <QuickAddDialog open={quickOpen} onClose={() => setQuickOpen(false)} {...quickDefaults} />
-      </QuickAddEnvProvider>
-    </TaskActionsProvider>
+      </TaskActionsProvider>
+    </AppEnvProvider>
   );
 }
 

@@ -6,25 +6,11 @@
  * Ten sam komponent w widokach (pole na górze) i w oknie wywoływanym klawiszem `Q` / `Ctrl+Spacja`.
  */
 import { localDateTimeAt, parseQuickAdd, plural, quickAddChip, quickAddTaskOps, suppressToken, type LocalDate, type QuickAddContext, type QuickAddTokenKind } from "@taskplanner/core";
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 
-import type { AppData } from "@/lib/app-data";
-
+import { lastSortKey, useAppEnv } from "./app-env";
 import { useTaskActions } from "./task-item";
 import { inputClass } from "./ui";
-
-/** Wspólne dane szybkiego dodawania (z powłoki). */
-export interface QuickAddEnv {
-  data: AppData;
-  userId: string;
-  timeZone?: string;
-  today: LocalDate;
-  /** Bieżąca przestrzeń (listy z niej mają pierwszeństwo przy `#`); `null` = „Wszystkie”. */
-  workspaceId: string | null;
-}
-
-const EnvContext = createContext<QuickAddEnv | null>(null);
-export const QuickAddEnvProvider = EnvContext.Provider;
 
 const KIND_STYLE: Record<QuickAddTokenKind, string> = {
   date: "bg-blue-100 text-blue-900 dark:bg-blue-900/50 dark:text-blue-100",
@@ -42,6 +28,8 @@ export interface QuickAddProps {
   listId?: string;
   /** Termin, gdy wpis go nie podaje. */
   dueDate?: LocalDate | null;
+  /** Podzadanie tego zadania (lista rodzica, wskazanie listy we wpisie pomijane). */
+  parent?: { id: string; listId: string };
   placeholder?: string;
   autoFocus?: boolean;
   /** Po dodaniu (Enter); `more` = Ctrl+Enter — okno zostaje otwarte. */
@@ -49,10 +37,8 @@ export interface QuickAddProps {
   onCancel?: () => void;
 }
 
-export function QuickAdd({ listId, dueDate, placeholder = "Dodaj zadanie", autoFocus, onAdded, onCancel }: QuickAddProps) {
-  const env = useContext(EnvContext);
-  if (!env) throw new Error("QuickAdd poza <QuickAddEnvProvider>.");
-  const { data, userId, timeZone, today, workspaceId } = env;
+export function QuickAdd({ listId, dueDate, parent, placeholder = "Dodaj zadanie", autoFocus, onAdded, onCancel }: QuickAddProps) {
+  const { data, userId, timeZone, today, workspaceId } = useAppEnv();
   const { run, notify } = useTaskActions();
   const [text, setText] = useState("");
   const input = useRef<HTMLInputElement>(null);
@@ -62,7 +48,7 @@ export function QuickAdd({ listId, dueDate, placeholder = "Dodaj zadanie", autoF
   }, [autoFocus]);
 
   const names = useMemo(() => new Map(data.workspaces.map((w) => [w.id, w.name])), [data.workspaces]);
-  const defaultListId = listId ?? data.lists.find((l) => l.kind === "inbox" && l.workspaceId === (workspaceId ?? data.workspaces[0]?.id))?.id;
+  const defaultListId = parent?.listId ?? listId ?? data.lists.find((l) => l.kind === "inbox" && l.workspaceId === (workspaceId ?? data.workspaces[0]?.id))?.id;
   const defaultWorkspace = data.lists.find((l) => l.id === defaultListId)?.workspaceId ?? workspaceId;
 
   const parserContext = useMemo(
@@ -84,8 +70,8 @@ export function QuickAdd({ listId, dueDate, placeholder = "Dodaj zadanie", autoF
     tags: data.tags,
     defaultListId: listIdFallback,
     defaultDueDate: dueDate ?? null,
-    lastSortKey: (id: string) =>
-      data.tasks.reduce<string | undefined>((max, t) => (t.listId === id && t.parentId === null && (!max || t.sortKey > max) ? t.sortKey : max), undefined),
+    parent,
+    lastSortKey: (id: string) => lastSortKey(data, id),
   });
 
   const listName = (id: string) => {
@@ -105,7 +91,7 @@ export function QuickAdd({ listId, dueDate, placeholder = "Dodaj zadanie", autoF
       if (!parsed.title.trim()) continue;
       const base = scope(defaultListId);
       const result = quickAddTaskOps(parsed, line, { ...base, lastSortKey: (id) => keys.get(id) ?? base.lastSortKey(id) });
-      keys.set(result.listId, result.ops[0]!.patch.sort_key as string);
+      keys.set(parent?.id ?? result.listId, result.ops[0]!.patch.sort_key as string);
       ops.push(...result.ops);
       added.push(result);
     }
