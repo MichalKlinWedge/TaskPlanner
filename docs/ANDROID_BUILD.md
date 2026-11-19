@@ -17,6 +17,8 @@ Decyzja (PoC-4, 18.11.2026): APK budujemy sami — lokalnie (`expo run:android` 
 
 Szybciej: `gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a` (jedna architektura).
 
+**Release lokalnie** (19.11.2026): `cd android && gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a "-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1536m"` z `JAVA_HOME` = JDK 26 i `ANDROID_HOME` (bez nich: „SDK location not found”; z domyślnymi 512 MB Metaspace R8 pada na `minifyReleaseWithR8`). Pierwszy build ~15 min, kolejne ~2–3 min. Podpis kluczem debug — `adb install -r app/build/outputs/apk/release/app-release.apk` instaluje się na dev build bez utraty danych. Release blokuje nieszyfrowane HTTP poza `127.0.0.1` / `localhost` (`plugins/local-cleartext.js`), więc lokalny Supabase przez `adb reverse` działa, a serwer w sieci lokalnej (`http://192.168…`) — nie.
+
 ## GitHub Actions
 
 Uruchomienie: Actions → „Android APK” → *Run workflow* (opcja „Utworzyć GitHub Release”) albo push tagu `android-v*` (np. `git tag android-v0.1.0 && git push origin android-v0.1.0`). APK jest w artefaktach przebiegu (30 dni) i — przy tagu — w Releases.
