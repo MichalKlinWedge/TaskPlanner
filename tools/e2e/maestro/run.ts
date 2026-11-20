@@ -1,16 +1,17 @@
 /**
  * Maestro na telefonie (Etap 13): `npm run test:mobile`. Przygotowuje przebieg (identyfikator RUN
- * w tytułach zadań, godzina przypomnienia za 3 min, `adb reverse` do lokalnego Supabase), uruchamia
+ * w tytułach zadań, `adb reverse` do lokalnego Supabase), uruchamia
  * przepływy z `config.yaml`, sprawdza wynik na serwerze kluczem `service_role` (jak `tools/e2e`)
  * i na koniec przenosi zadania „Maestro …” (także z wcześniejszych, przerwanych przebiegów) do kosza.
  *
  * Wymagania: telefon przez USB (`adb devices` → `device`) z zainstalowanym APK zalogowanym na
  * MAESTRO_EMAIL (domyślnie dev@taskplanner.test) przy lokalnym Supabase; widżet „Dziś” na domyślnej
  * stronie ekranu głównego; Maestro CLI (`~/.maestro/bin` albo MAESTRO_BIN) i JDK ≥ 17
- * (MAESTRO_JAVA_HOME albo JAVA_HOME). `--keep` zostawia zadania przebiegu.
+ * (MAESTRO_JAVA_HOME albo JAVA_HOME); odblokowany ekran (skrypt podtrzymuje go w trakcie przebiegu).
+ * `--keep` zostawia zadania przebiegu.
  * Uruchamiane wprost przez Node ≥ 22.18 (usuwanie typów; pakiety workspace to źródła TS poza node_modules).
  */
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFile, execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -20,7 +21,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import { adminClient, localSupabase, push, type Account } from '../src/supabase.ts';
 
-const HERE = fileURLToPath(new URL('.', import.meta.url));
+const HERE = fileURLToPath(new URL('.', import.meta.url)).replace(/[\\/]$/, '');
 const OUT = join(HERE, '..', 'out', 'maestro');
 const WIN = process.platform === 'win32';
 const EMAIL = process.env.MAESTRO_EMAIL ?? 'dev@taskplanner.test';
@@ -58,22 +59,31 @@ function maestroPath(): string {
 
 /** Sesja użytkownika z jednorazowego linku (hasło konta zostaje bez zmian). */
 async function signInWithLink(email: string): Promise<Account> {
-  const { data, error } = await adminClient().auth.admin.generateLink({ type: 'magiclink', email });
+  const { data, error } = await adminClient().auth.admin.generateLink({
+    type: 'magiclink',
+    email,
+  });
   if (error) fail(`generateLink ${email}: ${error.message}`);
   const { url, anonKey } = localSupabase();
-  const client = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: auth, error: otpError } = await client.auth.verifyOtp({ type: 'magiclink', token_hash: data.properties.hashed_token });
+  const client = createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: auth, error: otpError } = await client.auth.verifyOtp({
+    type: 'magiclink',
+    token_hash: data.properties.hashed_token,
+  });
   if (otpError || !auth.session) fail(`Logowanie ${email}: ${otpError?.message}`);
   return { id: auth.session.user.id, email, client, session: auth.session };
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const localDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const localTime = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
 // Konto przed telefonem — bez lokalnego Supabase albo konta nie ma sensu zaczynać.
 const admin = adminClient();
-const { data: users, error: usersError } = await admin.auth.admin.listUsers({ perPage: 1000 });
+const { data: users, error: usersError } = await admin.auth.admin.listUsers({
+  perPage: 1000,
+});
 if (usersError) fail(`listUsers: ${usersError.message}`);
 const user = users.users.find((u) => u.email === EMAIL);
 if (!user) fail(`Brak konta ${EMAIL} w lokalnym Supabase.`);
@@ -89,25 +99,31 @@ if (devices.length !== 1) fail(`Potrzebny dokładnie jeden telefon w \`adb devic
 execFileSync(adb, ['reverse', `tcp:${API_PORT}`, `tcp:${API_PORT}`]);
 
 const start = new Date();
-const remindAt = new Date(start.getTime() + 3 * 60_000);
-if (localDate(remindAt) !== localDate(start)) fail('Przypomnienie wypadłoby po północy — uruchom za kilka minut.');
+// Przypomnienie ustawia `reminder.yaml` na „teraz + 3 min” — cały przebieg musi zmieścić się w tym dniu.
+if (localDate(new Date(start.getTime() + 10 * 60_000)) !== localDate(start)) fail('Przebieg zahaczyłby o północ — uruchom po 00:00.');
 const today = localDate(start);
 const run = start.getTime().toString(36).slice(-5);
-const REMIND_AT = localTime(remindAt);
-console.log(`Przebieg ${run}: zadania „Maestro ${run} …”, przypomnienie o ${REMIND_AT}. Telefonu nie dotykać (~5 min).`);
+console.log(`Przebieg ${run}: zadania „Maestro ${run} …”. Telefonu nie dotykać (~5 min).`);
 
 mkdirSync(OUT, { recursive: true });
 const java = javaHome();
-const result = spawnSync(
-  maestroPath(),
-  ['test', HERE, '--format', 'junit', '--output', join(OUT, 'report.xml'), '--test-output-dir', OUT, '-e', `RUN=${run}`, '-e', `REMIND_AT=${REMIND_AT}`],
-  {
-    stdio: 'inherit',
-    shell: WIN,
-    env: { ...process.env, JAVA_HOME: java, PATH: [join(java, 'bin'), join(adb, '..'), process.env.PATH].join(WIN ? ';' : ':') },
+// Czekanie na przypomnienie trwa do 2 min, a zgaszony ekran blokuje telefon (kod) i przepływy padają.
+// Klawisz o kodzie 0 (KEYCODE_UNKNOWN) aplikacje ignorują, a system liczy go jako aktywność użytkownika.
+const keepAwake = setInterval(() => execFile(adb, ['shell', 'input', 'keyevent', '0'], () => undefined), 30_000);
+const args = ['test', HERE, '--format', 'junit', '--output', join(OUT, 'report.xml'), '--test-output-dir', OUT, '-e', `RUN=${run}`];
+// `maestro.bat` na Windows wymaga powłoki — argumenty (ścieżki) w cudzysłowach.
+const maestro = spawn(WIN ? [maestroPath(), ...args].map((a) => `"${a}"`).join(' ') : maestroPath(), WIN ? [] : args, {
+  stdio: 'inherit',
+  shell: WIN,
+  env: {
+    ...process.env,
+    JAVA_HOME: java,
+    PATH: [join(java, 'bin'), join(adb, '..'), process.env.PATH].join(WIN ? ';' : ':'),
   },
-);
-if (result.status !== 0) fail(`Maestro zakończył się kodem ${result.status} — zrzuty i dziennik w ${OUT}; zadania przebiegu zostają.`);
+});
+const status = await new Promise<number | null>((resolve) => maestro.on('exit', resolve));
+clearInterval(keepAwake);
+if (status !== 0) fail(`Maestro zakończył się kodem ${status} — zrzuty i dziennik w ${OUT}; zadania przebiegu zostają.`);
 
 interface TaskRow {
   id: string;
@@ -132,7 +148,7 @@ const listOurs = async (): Promise<TaskRow[]> => {
 // Serwer: wszystkie trzy zadania ukończone (synchronizacja w tle — czekamy do 30 s).
 const expected: Record<string, (t: TaskRow) => string | null> = {
   [`Maestro ${run} A`]: (t) => (t.priority === 1 && t.due_date === '2020-01-02' ? null : `priorytet ${t.priority}, termin ${t.due_date}`),
-  [`Maestro ${run} R`]: (t) => (t.due_date === today && t.due_time === REMIND_AT ? null : `termin ${t.due_date} ${t.due_time}`),
+  [`Maestro ${run} R`]: (t) => (t.due_date === today && t.due_time ? null : `termin ${t.due_date} ${t.due_time}`),
   [`Maestro ${run} Wid`]: (t) => (t.due_date === '2020-01-01' ? null : `termin ${t.due_date}`),
 };
 let problems: string[] = [];
@@ -163,7 +179,15 @@ if (!KEEP) {
   // Do kosza jak z urządzenia (`push_changes`, LWW) — telefon dostanie zmianę przy następnej synchronizacji.
   const leftovers = await listOurs();
   const at = new Date().toISOString();
-  const rejected = await push(await signInWithLink(EMAIL), leftovers.map((t) => ({ table: 'tasks', id: t.id, patch: { deleted_at: at } })), 'maestro');
+  const rejected = await push(
+    await signInWithLink(EMAIL),
+    leftovers.map((t) => ({
+      table: 'tasks',
+      id: t.id,
+      patch: { deleted_at: at },
+    })),
+    'maestro',
+  );
   if (rejected) fail(`Sprzątanie: ${rejected} odrzuconych operacji.`);
   console.log(`Kosz: ${leftovers.length} zadań „Maestro …”.`);
 }

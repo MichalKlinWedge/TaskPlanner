@@ -84,7 +84,7 @@ Na tym samym komputerze działa kilka niezależnych stosów Supabase (porty 543x
 | `npm run test:integration --workspace tools/edge-tests` | Edge Functions z fałszywymi usługami — lokalny Supabase + `serve:test` |
 | `npm run typecheck:deno --workspace tools/edge-tests` | `deno check` funkcji |
 | `npm run test:e2e` | Playwright na webie (szybkie dodawanie, kanban, kalendarz, oś czasu, paleta, start offline) — lokalny Supabase |
-| `npm run test:mobile` | Maestro na telefonie przez USB: szybkie dodawanie i „Dziś”, przypomnienie, widżet — lokalny Supabase, APK zalogowany na `dev@taskplanner.test`, Maestro CLI i JDK ≥ 17 (`MAESTRO_JAVA_HOME`), widżet „Dziś” na domyślnej stronie ekranu głównego |
+| `npm run test:mobile` | Maestro na telefonie przez USB: szybkie dodawanie i „Dziś”, przypomnienie, widżet — lokalny Supabase, APK zalogowany na `dev@taskplanner.test`, Maestro CLI i JDK ≥ 17 (`MAESTRO_JAVA_HOME`), widżet „Dziś” na ekranie głównym, odblokowany telefon (~5 min bez dotykania) |
 
 Pojedynczy test: `npx vitest run src/__tests__/sort-key.test.ts` (albo `-t "nazwa"`) w danym pakiecie.
 
