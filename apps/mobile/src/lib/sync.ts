@@ -21,6 +21,30 @@ import { reportError } from './error-log';
 
 export const DB_NAME = 'taskplanner.db';
 
+/** Limit czasu żądania do Supabase (poza Storage — pliki mogą iść długo). */
+const FETCH_TIMEOUT_MS = 30_000;
+
+/**
+ * `fetch` z limitem czasu: bez niego jedno zawieszone połączenie (otwarte gniazdo bez odpowiedzi,
+ * np. po zmianie sieci) trzyma synchronizację do restartu aplikacji. Po przekroczeniu żądanie kończy
+ * się błędem, a silnik ponawia je jak każdy błąd sieci.
+ */
+const fetchWithTimeout: typeof fetch = (input, init) => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  if (url.includes('/storage/v1/')) return fetch(input, init);
+  const controller = new AbortController();
+  const outer = init?.signal;
+  if (outer?.aborted) controller.abort();
+  else outer?.addEventListener('abort', () => controller.abort(), { once: true });
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  return fetch(input, { ...init, signal: controller.signal })
+    .catch((error: unknown) => {
+      if (controller.signal.aborted && !outer?.aborted) throw new Error(`Serwer nie odpowiedział w ${FETCH_TIMEOUT_MS / 1000} s (timeout)`); // „timeout” — `isTransientError`, nie do dziennika błędów
+      throw error;
+    })
+    .finally(() => clearTimeout(timer));
+};
+
 let client: SupabaseClient | null = null;
 let clientFor = '';
 
@@ -33,6 +57,7 @@ export function supabaseClient(): SupabaseClient {
       // PKCE: link z maila i powrót z Google przychodzą z `?code=`, który wymienia ten sam klient
       // (weryfikator kodu leży w tym samym kv-store).
       auth: { storage: Storage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, flowType: 'pkce' },
+      global: { fetch: fetchWithTimeout },
     });
     clientFor = id;
   }
