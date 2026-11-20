@@ -1,9 +1,10 @@
 /**
- * Współpracownicy (jak Ustawienia → „Współpracownicy” na webie): osoby do wskazania jako
- * odpowiedzialne i uczestnicy zadań — tylko informacyjnie, bez dostępu. Dodanie, edycja (nazwa,
- * e-mail), usunięcie z „Cofnij” (osoba znika z uczestników, zadania wracają do twórcy).
+ * Współpracownicy (jak widok „Współpracownicy” na webie): osoby do wskazania jako odpowiedzialne i
+ * uczestnicy zadań — tylko informacyjnie, bez dostępu. Dodanie, edycja (nazwa, e-mail, akronim do
+ * znaczka przy zadaniu, status — tylko aktywni podpowiadają się przy zadaniach), usunięcie z „Cofnij”
+ * (osoba znika z uczestników, zadania wracają do twórcy).
  */
-import { collaboratorSaveOps, deleteCollaboratorOps, plural, type Collaborator } from '@taskplanner/core';
+import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, deleteCollaboratorOps, initials, isActiveCollaborator, plural, type Collaborator } from '@taskplanner/core';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -17,6 +18,16 @@ interface Usage {
   assigned: number;
   participating: number;
 }
+
+interface Draft {
+  name: string;
+  email: string;
+  acronym: string;
+  active: boolean;
+}
+
+const EMPTY: Draft = { name: '', email: '', acronym: '', active: true };
+const draftOf = (person: Collaborator): Draft => ({ name: person.name, email: person.email ?? '', acronym: person.acronym ?? '', active: isActiveCollaborator(person) });
 
 export default function Collaborators() {
   const p = usePalette();
@@ -33,20 +44,21 @@ export default function Collaborators() {
       );
       return new Map(rows.map((r): [string, Usage] => [r.id, { assigned: Number(r.assigned), participating: Number(r.participating) }]));
     }) ?? new Map<string, Usage>();
-  const [draft, setDraft] = useState({ name: '', email: '' });
-  const [editing, setEditing] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [editing, setEditing] = useState<{ id: string; draft: Draft } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const people = collaboratorsByStatus(data.collaborators);
 
   const add = () => {
     const result = collaboratorSaveOps(data.userId, data.collaborators, draft);
     if (!result.ok) return setError(result.error);
     setError(null);
-    setDraft({ name: '', email: '' });
+    setDraft(EMPTY);
     void run(result.ops, { text: `Dodano „${draft.name.trim()}”` });
   };
   const save = (person: Collaborator) => {
     if (!editing) return;
-    const result = collaboratorSaveOps(data.userId, data.collaborators, editing, person);
+    const result = collaboratorSaveOps(data.userId, data.collaborators, editing.draft, person);
     if (!result.ok) return setError(result.error);
     setError(null);
     setEditing(null);
@@ -62,52 +74,60 @@ export default function Collaborators() {
       engine.db.all<{ id: string }>('select id from task_participants where collaborator_id = ? and deleted_at is null', [person.id]),
     ]);
     const { ops, undo } = deleteCollaboratorOps(person, { assignedTaskIds: assigned.map((r) => r.id), participantRowIds: participants.map((r) => r.id) }, new Date());
+    setEditing(null);
     void run(ops, { text: `Usunięto „${person.name}”`, undo });
   };
 
   return (
     <Screen>
       <Section title="Osoby">
-        <P muted>Do wskazania jako odpowiedzialne i uczestnicy zadań. Tylko informacyjnie — nie dostają dostępu do zadań ani powiadomień.</P>
-        {data.collaborators.map((person) => {
+        <P muted>Do wskazania jako odpowiedzialne i uczestnicy zadań. Tylko informacyjnie — nie dostają dostępu do zadań ani powiadomień. Nieaktywni nie podpowiadają się przy zadaniach.</P>
+        {people.map((person) => {
           const count = usage.get(person.id);
+          const active = isActiveCollaborator(person);
           const info = [
+            person.email,
             count?.assigned ? `odpowiada za ${plural(count.assigned, ['zadanie', 'zadania', 'zadań'])}` : null,
             count?.participating ? `uczestnik ${plural(count.participating, ['zadania', 'zadań', 'zadań'])}` : null,
           ].filter(Boolean);
           return editing?.id === person.id ? (
             <View key={person.id} style={[styles.person, { borderColor: p.border }]}>
-              <Field label="Nazwa" value={editing.name} onChangeText={(name) => setEditing({ ...editing, name })} maxLength={100} autoFocus />
-              <Field label="E-mail (opcjonalnie)" value={editing.email} onChangeText={(email) => setEditing({ ...editing, email })} maxLength={254} autoCapitalize="none" keyboardType="email-address" />
+              <PersonFields draft={editing.draft} onChange={(next) => setEditing({ id: person.id, draft: next })} />
               <Row>
                 <Button title="Zapisz" onPress={() => save(person)} />
                 <Button title="Anuluj" kind="secondary" onPress={() => setEditing(null)} />
+                <Button title="Usuń" kind="danger" onPress={() => void remove(person)} />
               </Row>
             </View>
           ) : (
-            <View key={person.id} style={[styles.person, styles.line, { borderColor: p.border }]}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Edytuj ${person.name}`}
-                style={{ flex: 1, gap: 2 }}
-                onPress={() => setEditing({ id: person.id, name: person.name, email: person.email ?? '' })}
-              >
-                <Text style={{ color: p.fg, fontSize: 16 }}>{person.name}</Text>
-                {person.email ? <Text style={{ color: p.muted, fontSize: 13 }}>{person.email}</Text> : null}
+            <Pressable
+              key={person.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Edytuj ${person.name}`}
+              style={[styles.person, styles.line, { borderColor: p.border, opacity: active ? 1 : 0.55 }]}
+              onPress={() => {
+                setError(null);
+                setEditing({ id: person.id, draft: draftOf(person) });
+              }}
+            >
+              <View style={[styles.badge, { backgroundColor: p.accent }]}>
+                <Text style={styles.badgeText}>{collaboratorBadge(person)}</Text>
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ color: p.fg, fontSize: 16 }}>
+                  {person.name}
+                  {active ? '' : '  · nieaktywny'}
+                </Text>
                 {info.length ? <Text style={{ color: p.muted, fontSize: 12 }}>{info.join(' · ')}</Text> : null}
-              </Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel={`Usuń ${person.name}`} hitSlop={10} onPress={() => void remove(person)}>
-                <Text style={{ color: p.muted, fontSize: 18 }}>✕</Text>
-              </Pressable>
-            </View>
+              </View>
+            </Pressable>
           );
         })}
-        {!data.collaborators.length ? <P muted>Brak współpracowników — dodaj osobę poniżej albo wpisz nazwę w polu „+ osoba” w zadaniu.</P> : null}
+        {!people.length ? <P muted>Brak współpracowników — dodaj osobę poniżej albo wpisz nazwę w polu „+ osoba” w zadaniu.</P> : null}
       </Section>
 
       <Section title="Nowa osoba">
-        <Field label="Imię i nazwisko" value={draft.name} onChangeText={(name) => setDraft({ ...draft, name })} maxLength={100} />
-        <Field label="E-mail (opcjonalnie)" value={draft.email} onChangeText={(email) => setDraft({ ...draft, email })} maxLength={254} autoCapitalize="none" keyboardType="email-address" />
+        <PersonFields draft={draft} onChange={setDraft} />
         <Button title="Dodaj" disabled={!draft.name.trim()} onPress={add} />
         {error ? <P tone="bad">{error}</P> : null}
       </Section>
@@ -115,7 +135,30 @@ export default function Collaborators() {
   );
 }
 
+function PersonFields({ draft, onChange }: { draft: Draft; onChange: (draft: Draft) => void }) {
+  return (
+    <>
+      <Field label="Nazwa" value={draft.name} onChangeText={(name) => onChange({ ...draft, name })} maxLength={100} />
+      <Field label="E-mail (opcjonalnie)" value={draft.email} onChangeText={(email) => onChange({ ...draft, email })} maxLength={254} autoCapitalize="none" keyboardType="email-address" />
+      <Field
+        label="Akronim (znaczek przy zadaniu, puste = inicjały)"
+        value={draft.acronym}
+        onChangeText={(acronym) => onChange({ ...draft, acronym })}
+        maxLength={5}
+        autoCapitalize="characters"
+        placeholder={draft.name.trim() ? initials(draft.name) : 'np. AN'}
+      />
+      <Row>
+        <Button title="Aktywny" kind={draft.active ? 'primary' : 'secondary'} onPress={() => onChange({ ...draft, active: true })} />
+        <Button title="Nieaktywny" kind={draft.active ? 'secondary' : 'primary'} onPress={() => onChange({ ...draft, active: false })} />
+      </Row>
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
   person: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 8 },
   line: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  badge: { minWidth: 32, height: 32, borderRadius: 16, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
+  badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 });

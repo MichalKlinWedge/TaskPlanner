@@ -22,6 +22,7 @@ export type Route =
   | { view: "filter"; id: string }
   | { view: "manage" }
   | { view: "trash" }
+  | { view: "people" }
   | { view: "settings" };
 
 export const DEFAULT_ROUTE: Route = { view: "today" };
@@ -38,6 +39,7 @@ export function parseRoute(hash: string): Route {
     case "habits":
     case "manage":
     case "trash":
+    case "people":
     case "settings":
       return { view };
     case "list":

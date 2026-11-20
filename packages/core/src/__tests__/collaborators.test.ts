@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   addParticipantByNameOps,
   addParticipantOps,
+  assigneeChoices,
   assigneeOf,
+  collaboratorBadge,
   collaboratorFields,
+  collaboratorsByStatus,
   collaboratorMatches,
   collaboratorSaveOps,
   creatorLabel,
@@ -26,7 +29,7 @@ const people = [lukasz, anna];
 
 describe('współpracownicy', () => {
   it('pola formularza: przycięte, pusty e-mail = brak, błędy po polsku', () => {
-    expect(collaboratorFields({ name: '  Ola ', email: '  ' })).toEqual({ ok: true, name: 'Ola', email: null });
+    expect(collaboratorFields({ name: '  Ola ', email: '  ' })).toEqual({ ok: true, name: 'Ola', email: null, acronym: null });
     expect(collaboratorFields({ name: ' ' })).toEqual({ ok: false, error: 'Nazwa nie może być pusta.' });
     expect(collaboratorFields({ name: 'Ola', email: 'ola@' })).toEqual({ ok: false, error: 'Niepoprawny adres e-mail.' });
   });
@@ -73,9 +76,42 @@ describe('współpracownicy', () => {
 
   it('operacje przechodzą schematy wierszy', () => {
     const saved = collaboratorSaveOps(USER, [], { name: 'Ola', email: 'ola@example.com' });
-    expect(saved.ok && MODEL.collaborators.safeParse({ id: saved.id, ...saved.ops[0]!.patch }).success).toBe(true);
+    expect(saved.ok && MODEL.collaborators.safeParse({ id: saved.id, acronym: null, archived_at: null, ...saved.ops[0]!.patch }).success).toBe(true);
     const [op] = addParticipantOps(TASK, anna.id);
     expect(MODEL.task_participants.safeParse({ id: op!.id, ...op!.patch }).success).toBe(true);
+  });
+});
+
+describe('akronim i status', () => {
+  const ewa: Collaborator = { id: collaboratorId(USER, 'Ewa Kot'), name: 'Ewa Kot', email: null, acronym: 'EK2', archivedAt: '2026-11-19T10:00:00.000Z' };
+  const all = [...people, ewa];
+
+  it('akronim: przycięty, pusty = brak, najwyżej 5 znaków; znaczek = akronim albo inicjały', () => {
+    expect(collaboratorFields({ name: 'Ola', acronym: ' OL ' })).toEqual({ ok: true, name: 'Ola', email: null, acronym: 'OL' });
+    expect(collaboratorFields({ name: 'Ola', acronym: ' ' })).toMatchObject({ ok: true, acronym: null });
+    expect(collaboratorFields({ name: 'Ola', acronym: 'ABCDEF' })).toEqual({ ok: false, error: 'Akronim: najwyżej 5 znaków.' });
+    expect(collaboratorBadge(ewa)).toBe('EK2');
+    expect(collaboratorBadge(anna)).toBe('AN');
+  });
+
+  it('status: zmiana tylko przy różnicy; nowa osoba może być od razu nieaktywna', () => {
+    const at = '2026-11-20T10:00:00.000Z';
+    expect(collaboratorSaveOps(USER, all, { name: 'Anna Nowak', email: anna.email, active: false }, anna, at)).toMatchObject({ ops: [{ patch: { archived_at: at } }] });
+    expect(collaboratorSaveOps(USER, all, { name: 'Ewa Kot', acronym: 'EK2', active: true }, ewa, at)).toMatchObject({ ops: [{ patch: { archived_at: null } }] });
+    expect(collaboratorSaveOps(USER, all, { name: 'Ewa Kot', acronym: 'EK2', active: false }, ewa, at)).toMatchObject({ ops: [] });
+    expect(collaboratorSaveOps(USER, all, { name: 'Ewa Kot', acronym: '' }, ewa, at)).toMatchObject({ ops: [{ patch: { acronym: null } }] });
+    const created = collaboratorSaveOps(USER, [], { name: 'Ola', acronym: 'OL', active: false }, undefined, at);
+    expect(created.ok && created.ops[0]!.patch).toMatchObject({ acronym: 'OL', archived_at: at });
+    expect(created.ok && MODEL.collaborators.safeParse({ id: created.id, email: null, acronym: null, archived_at: null, ...created.ops[0]!.patch }).success).toBe(true);
+  });
+
+  it('podpowiedzi tylko z aktywnych (także po akronimie); odpowiedzialny: aktywni + obecny', () => {
+    expect(collaboratorMatches(all, '').map((c) => c.name)).toEqual(['Anna Nowak', 'Łukasz']);
+    expect(collaboratorMatches(all, 'ewa')).toEqual([]);
+    expect(collaboratorMatches([{ ...ewa, archivedAt: null }], 'ek2').map((c) => c.name)).toEqual(['Ewa Kot']);
+    expect(assigneeChoices(all, null).map((c) => c.name)).toEqual(['Anna Nowak', 'Łukasz']);
+    expect(assigneeChoices(all, ewa.id).map((c) => c.name)).toEqual(['Anna Nowak', 'Ewa Kot', 'Łukasz']);
+    expect(collaboratorsByStatus(all).map((c) => c.name)).toEqual(['Anna Nowak', 'Łukasz', 'Ewa Kot']);
   });
 });
 

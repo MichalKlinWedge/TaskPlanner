@@ -113,7 +113,7 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     scope: 'personal',
   },
   collaborators: {
-    columns: columns<'collaborators'>()(['scope_id', 'name', 'email']),
+    columns: columns<'collaborators'>()(['scope_id', 'name', 'email', 'acronym', 'archived_at']),
     json: [],
     scope: 'personal',
   },

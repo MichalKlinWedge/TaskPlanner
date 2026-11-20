@@ -10,6 +10,7 @@ import {
   addDependencyOps,
   addParticipantByNameOps,
   addParticipantOps,
+  assigneeChoices,
   assigneeOf,
   assignTaskOps,
   canAddSubtask,
@@ -469,7 +470,7 @@ function PeopleField({ task, data }: { task: ViewTask; data: AppData }) {
     then(
       pickOption<string>('Odpowiedzialny', [
         { label: `${creator} (twórca zadania)`, value: '', selected: !assignee },
-        ...data.collaborators.map((c) => ({ label: c.name, value: c.id, hint: c.email ?? undefined, selected: c.id === assignee?.id })),
+        ...assigneeChoices(data.collaborators, assignee?.id).map((c) => ({ label: c.archivedAt ? `${c.name} (nieaktywny)` : c.name, value: c.id, hint: c.email ?? undefined, selected: c.id === assignee?.id })),
       ]),
       (id) => id !== undefined && id !== (assignee?.id ?? '') && run(assignTaskOps(task.id, id || null)),
     );

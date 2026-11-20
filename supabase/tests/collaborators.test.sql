@@ -2,7 +2,7 @@
 -- Uruchomienie: npm run test:db
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(17);
+select plan(19);
 
 insert into auth.users (id, email) values
   ('00000000-0000-4000-8000-0000000000c1', 'wlasciciel-wsp@test.local'),
@@ -64,6 +64,10 @@ select ok(exists (select 1 from public.activity_log where row_id = :T and change
 -- ── Reguły ───────────────────────────────────────────────────────────────────────────────────
 select is(pg_temp.code(pg_temp.push(pg_temp.op('collaborators', gen_random_uuid(), '{"name": "Ola", "email": "ola@"}', pg_temp.h(2100)))), '23514',
   'zły e-mail odrzucony');
+select is(pg_temp.code(pg_temp.push(pg_temp.op('collaborators', gen_random_uuid(), '{"name": "Ola", "acronym": "ABCDEF"}', pg_temp.h(2100)))), '23514',
+  'akronim dłuższy niż 5 znaków odrzucony');
+select is((pg_temp.push(pg_temp.op('collaborators', :C, '{"acronym": "AN", "archived_at": "2026-11-20T10:00:00Z"}', pg_temp.h(2150))) ->> 'applied')::int, 1,
+  'akronim i status (archived_at) zapisywalne przez push_changes');
 select is(pg_temp.code(pg_temp.push(pg_temp.op('task_comments', gen_random_uuid(),
     jsonb_build_object('task_id', :T, 'body', '   ', 'posted_at', '2026-11-20T09:00:00Z'), pg_temp.h(2100)))), '23514', 'pusty komentarz odrzucony');
 select is(pg_temp.code(pg_temp.push(pg_temp.op('task_participants', gen_random_uuid(),

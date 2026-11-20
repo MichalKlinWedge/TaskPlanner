@@ -15,24 +15,35 @@ export interface Collaborator {
   id: string;
   name: string;
   email: string | null;
+  /** Skrót przy zadaniu; brak = inicjały z nazwy (`collaboratorBadge`). */
+  acronym?: string | null;
+  /** Nieaktywny od (ISO); brak = aktywny. */
+  archivedAt?: string | null;
 }
 
 export interface CollaboratorInput {
   name: string;
   email?: string | null;
+  acronym?: string | null;
+  /** Status; brak = bez zmiany (nowy — aktywny). */
+  active?: boolean;
 }
 
 type Result<T> = ({ ok: true } & T) | { ok: false; error: string };
 
-const Fields = CollaboratorRow.pick({ name: true, email: true });
+const Fields = CollaboratorRow.pick({ name: true, email: true, acronym: true });
 
-/** Nazwa i e-mail z formularza: przycięte, pusty e-mail = brak; błąd po polsku. */
-export function collaboratorFields(input: CollaboratorInput): Result<{ name: string; email: string | null }> {
+/** Nazwa, e-mail i akronim z formularza: przycięte, puste e-mail / akronim = brak; błąd po polsku. */
+export function collaboratorFields(input: CollaboratorInput): Result<{ name: string; email: string | null; acronym: string | null }> {
   const email = input.email?.trim() || null;
-  const parsed = Fields.safeParse({ name: input.name, email });
+  const acronym = input.acronym?.trim() || null;
+  const parsed = Fields.safeParse({ name: input.name, email, acronym });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Niepoprawne dane.' };
-  return { ok: true, name: parsed.data.name, email: parsed.data.email };
+  return { ok: true, name: parsed.data.name, email: parsed.data.email, acronym: parsed.data.acronym };
 }
+
+/** Aktywny = podpowiada się przy zadaniach. */
+export const isActiveCollaborator = (collaborator: Pick<Collaborator, 'archivedAt'>): boolean => !collaborator.archivedAt;
 
 /** Współpracownik o tej nazwie (bez wielkości liter i polskich znaków). */
 export const findCollaborator = (collaborators: readonly Collaborator[], name: string): Collaborator | undefined => {
@@ -44,18 +55,24 @@ export const findCollaborator = (collaborators: readonly Collaborator[], name: s
 export const sortCollaborators = <T extends Collaborator>(collaborators: readonly T[]): T[] =>
   [...collaborators].sort((a, b) => a.name.localeCompare(b.name, 'pl', { sensitivity: 'base' }) || (a.id < b.id ? -1 : 1));
 
-/** Podpowiedzi do pola „+ osoba”: po nazwie albo e-mailu, bez już wybranych. */
+/** Podpowiedzi do pola „+ osoba”: aktywni, po nazwie, akronimie albo e-mailu, bez już wybranych. */
 export function collaboratorMatches(collaborators: readonly Collaborator[], query: string, exclude: readonly string[] = [], limit = 8): Collaborator[] {
   const needle = normalizeText(query.trim());
   const skip = new Set(exclude);
-  return sortCollaborators(collaborators.filter((c) => !skip.has(c.id) && (!needle || normalizeText(c.name).includes(needle) || (c.email ?? '').toLowerCase().includes(needle)))).slice(0, limit);
+  return sortCollaborators(collaborators.filter((c) => !skip.has(c.id) && isActiveCollaborator(c) && (!needle || normalizeText(c.name).includes(needle) || normalizeText(c.acronym ?? '') === needle || (c.email ?? '').toLowerCase().includes(needle)))).slice(0, limit);
 }
 
 /**
  * Nowy współpracownik albo zmiana istniejącego. Nowy dostaje id z nazwy (`collaboratorId`), więc ta
  * sama osoba dodana na dwóch urządzeniach offline to jeden wiersz, a dodanie usuniętej — jej przywrócenie.
  */
-export function collaboratorSaveOps(userId: string, collaborators: readonly Collaborator[], input: CollaboratorInput, existing?: Collaborator): Result<{ id: string; ops: TaskOp[] }> {
+export function collaboratorSaveOps(
+  userId: string,
+  collaborators: readonly Collaborator[],
+  input: CollaboratorInput,
+  existing?: Collaborator,
+  now: Date | string = new Date(),
+): Result<{ id: string; ops: TaskOp[] }> {
   const fields = collaboratorFields(input);
   if (!fields.ok) return fields;
   const twin = findCollaborator(collaborators, fields.name);
@@ -64,11 +81,21 @@ export function collaboratorSaveOps(userId: string, collaborators: readonly Coll
     // Ten sam id co osoba usunięta albo dodana równolegle na innym urządzeniu: bez podanego e-maila
     // nie nadpisujemy tamtego (nowy wiersz i tak ma pusty).
     const id = collaboratorId(userId, fields.name);
-    return { ok: true, id, ops: [{ table: 'collaborators', id, patch: { scope_id: userId, name: fields.name, ...(fields.email && { email: fields.email }), deleted_at: null } }] };
+    const patch = {
+      scope_id: userId,
+      name: fields.name,
+      ...(fields.email && { email: fields.email }),
+      ...(fields.acronym && { acronym: fields.acronym }),
+      ...(input.active !== undefined && { archived_at: input.active ? null : new Date(now).toISOString() }),
+      deleted_at: null,
+    };
+    return { ok: true, id, ops: [{ table: 'collaborators', id, patch }] };
   }
   const patch: Record<string, unknown> = {};
   if (fields.name !== existing.name) patch.name = fields.name;
   if (fields.email !== existing.email) patch.email = fields.email;
+  if (fields.acronym !== (existing.acronym ?? null)) patch.acronym = fields.acronym;
+  if (input.active !== undefined && input.active !== isActiveCollaborator(existing)) patch.archived_at = input.active ? null : new Date(now).toISOString();
   return { ok: true, id: existing.id, ops: Object.keys(patch).length ? [{ table: 'collaborators', id: existing.id, patch }] : [] };
 }
 
@@ -138,6 +165,22 @@ export const creatorLabel = (createdBy: string | null | undefined, userId: strin
 export function assigneeOf(assigneeId: string | null | undefined, collaborators: readonly Collaborator[]): Collaborator | null {
   return assigneeId ? (collaborators.find((c) => c.id === assigneeId) ?? null) : null;
 }
+
+/** Znaczek przy zadaniu: akronim osoby albo inicjały z nazwy. */
+export const collaboratorBadge = (collaborator: Pick<Collaborator, 'name' | 'acronym'>): string => collaborator.acronym?.trim() || initials(collaborator.name);
+
+/** Kolejność listy współpracowników: aktywni, potem nieaktywni, w grupie alfabetycznie. */
+export const collaboratorsByStatus = <T extends Collaborator>(collaborators: readonly T[]): T[] => {
+  const sorted = sortCollaborators(collaborators);
+  return [...sorted.filter(isActiveCollaborator), ...sorted.filter((c) => !isActiveCollaborator(c))];
+};
+
+/**
+ * Wybór odpowiedzialnego: aktywni i obecny odpowiedzialny (także nieaktywny — żeby lista pokazała,
+ * kto jest wybrany).
+ */
+export const assigneeChoices = <T extends Collaborator>(collaborators: readonly T[], currentId: string | null | undefined): T[] =>
+  sortCollaborators(collaborators.filter((c) => isActiveCollaborator(c) || c.id === currentId));
 
 /** Inicjały do znaczka na wierszu zadania: „Anna Nowak” → „AN”, „ania” → „A”. */
 export function initials(name: string): string {

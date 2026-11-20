@@ -4,7 +4,7 @@
  * terminu; długie przytrzymanie = zaznaczanie (potem dotknięcie dokłada kolejne), dotknięcie =
  * szczegóły zadania. Wirtualne wystąpienie serii (Nadchodzące) — tylko do odczytu.
  */
-import { assigneeOf, describeRecurrence, initials, isOpen, PRIORITY, relativeDay, type LocalDate, type ViewTask } from '@taskplanner/core';
+import { assigneeOf, collaboratorBadge, describeRecurrence, isOpen, PRIORITY, relativeDay, type LocalDate, type ViewTask } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { memo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -56,7 +56,7 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
     progress && progress.total > 0 ? { text: `☑ ${progress.done}/${progress.total}` } : null,
     task.status === 'in_progress' ? { text: 'w trakcie' } : task.status === 'waiting' ? { text: 'oczekuje' } : null,
     listName ? { text: listName } : null,
-    assignee ? { text: `👤 ${initials(assignee.name)}` } : null,
+    assignee ? { text: `👤 ${collaboratorBadge(assignee)}` } : null,
     ...(tagNames ?? []).map((t) => ({ text: `@${t}` })),
   ].filter(Boolean) as { text: string; bad?: boolean }[];
 

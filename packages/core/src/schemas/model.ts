@@ -306,6 +306,10 @@ export const CollaboratorRow = z.object({
   scope_id: Id,
   name: name(100),
   email: z.email('Niepoprawny adres e-mail.').max(254).nullable(),
+  /** Skrót przy zadaniu; `null` = inicjały z nazwy. */
+  acronym: z.string().trim().min(1, 'Akronim nie może być pusty.').max(5, 'Akronim: najwyżej 5 znaków.').nullable(),
+  /** Status: `null` = aktywny; nieaktywny nie podpowiada się przy zadaniach. */
+  archived_at: Instant.nullable(),
 });
 
 export const TaskParticipantRow = z.object({ id: Id, task_id: Id, collaborator_id: Id });

@@ -23,6 +23,7 @@ import { FocusIndicator, FocusProvider, FocusScreen } from "./focus";
 import { DailyReview, ReviewNudge, WeeklyReview } from "./review";
 import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-views";
 import { AttachmentsProvider } from "./attachments";
+import { CollaboratorsView } from "./collaborators";
 import { HabitDetail, HabitNotificationActions, HabitsView } from "./habits";
 import { QuickAddDialog } from "./quick-add";
 import { TaskPanel } from "./task-panel";
@@ -304,6 +305,8 @@ export function Shell({
       settingsView
     ) : route.view === "trash" ? (
       <TrashView data={data} store={store} />
+    ) : route.view === "people" ? (
+      <CollaboratorsView />
     ) : list ? (
       <ListView key={list.id} data={viewData} ctx={ctx} list={list} store={store} toolbar={toolbar} />
     ) : tag ? (
@@ -339,6 +342,7 @@ export function Shell({
   ];
   const bottomNav: NavEntry[] = [
     { route: { view: "manage" }, icon: "🗂️", label: "Przestrzenie i listy" },
+    { route: { view: "people" }, icon: "👥", label: "Współpracownicy" },
     { route: { view: "review", id: "daily" }, icon: "🧭", label: "Przegląd dnia" },
     { route: { view: "review", id: "weekly" }, icon: "🗒️", label: "Przegląd tygodnia" },
     { route: { view: "trash" }, icon: "🗑️", label: "Kosz" },

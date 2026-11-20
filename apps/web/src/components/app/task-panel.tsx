@@ -11,6 +11,7 @@ import {
   addDependencyOps,
   addParticipantByNameOps,
   addParticipantOps,
+  assigneeChoices,
   assignTaskOps,
   canAddSubtask,
   clampLag,
@@ -436,9 +437,9 @@ function PeopleField({ task }: { task: ViewTask }) {
         <Field label="Odpowiedzialny">
           <Select value={assignee} onChange={(e) => void run(assignTaskOps(task.id, e.target.value || null))}>
             <option value="">{creatorLabel(creator.rows[0]?.created_by as string | null | undefined, userId)} (twórca zadania)</option>
-            {data.collaborators.map((c) => (
+            {assigneeChoices(data.collaborators, assignee).map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name}
+                {c.archivedAt ? `${c.name} (nieaktywny)` : c.name}
               </option>
             ))}
           </Select>

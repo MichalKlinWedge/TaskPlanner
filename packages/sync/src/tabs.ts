@@ -46,9 +46,9 @@ type Operation =
  * Wersja protokołu kart — podbić, gdy dochodzi operacja albo zmienia się schemat lokalnej bazy
  * (nowa kolumna / tabela, której starszy lider nie ma). 1 = brak pola (do Etapu 7), 2 = `mutateMany`,
  * `profiles.focus`, `review_sessions` w przeglądzie, 3 = `collaborators`, `task_participants`,
- * `task_comments`, `tasks.assignee_id`.
+ * `task_comments`, `tasks.assignee_id`, 4 = `collaborators.acronym`, `collaborators.archived_at`.
  */
-export const TAB_PROTOCOL = 3;
+export const TAB_PROTOCOL = 4;
 
 /** Błąd zapisu przez lidera ze starszą wersją aplikacji. */
 export const STALE_LEADER_MESSAGE = 'Aplikacja jest otwarta w innej karcie w starszej wersji — odśwież albo zamknij tamtą kartę i spróbuj ponownie.';
