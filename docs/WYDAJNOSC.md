@@ -191,7 +191,8 @@ Galaxy S22 Ultra (Android 16), release APK (`arm64-v8a`, Hermes), lokalny Supaba
 | Zakładki Inbox / Nadchodzące / Przeglądaj | 121 / 100 / 90 ms ¹ | 105 / 115 / 91 ms | |
 | Pierwsze wejście w zakładkę (montowanie) | 200–312 ms | 99–231 ms | |
 | Lista projektu („Raporty kwartalne”, 176 otwartych) | 190 ms (172–276) | 180–260 ms | < 100 ms — patrz uwagi |
-| Kalendarz, miesiąc (2 964 pozycji w 6 tygodniach) | 5–10 s | do zmierzenia po poprawce 5 | |
+| Kalendarz, miesiąc (2 964 pozycji w 6 tygodniach) | 5–10 s | **0,94 s** (940–943 ms) | |
+| Kalendarz, tydzień / dzień | — | 0,30 s / 0,19 s | |
 
 ¹ Pierwsza wersja pomiaru (`useIsFocused`) sama przerysowywała ekran przy wejściu — stąd część różnicy.
 
@@ -204,11 +205,11 @@ Galaxy S22 Ultra (Android 16), release APK (`arm64-v8a`, Hermes), lokalny Supaba
 5. **Kalendarz** (`apps/mobile/src/app/calendar.tsx`, `packages/core` `format.ts`):
    - `EntryRow` szukał zadania przez `data.tasks.find` — dla każdego wiersza przegląd 10 000 zadań; teraz mapa po id.
    - Lista dnia w miesiącu (30) i dni tygodnia (po 10) stronicowane „Pokaż więcej (N)” — dzień ma tu ~100 pozycji, tydzień ~750.
-   - `compareText` / `compareCode` w `core/format.ts` zamiast `localeCompare`: w Hermes na Androidzie `localeCompare(…, 'pl')` tworzy kolator przy każdym wywołaniu, a sortowanie agendy (`agendaDays`) i bloków (`blocksForDay`) porównywało napisy dziesiątki tysięcy razy. W Node te same obliczenia dla miesiąca trwają ~100 ms. Efekt na telefonie — do potwierdzenia (pomiar przerwała utrata połączenia USB).
+   - `compareText` / `compareCode` w `core/format.ts` zamiast `localeCompare`: w Hermes na Androidzie `localeCompare(…, 'pl')` tworzy kolator przy każdym wywołaniu, a sortowanie agendy (`agendaDays`) i bloków (`blocksForDay`) porównywało napisy dziesiątki tysięcy razy. W Node te same obliczenia dla miesiąca trwają ~100 ms. Na telefonie miesiąc 5–10 s → 0,94 s (wejście z „Przeglądaj” do narysowania, perf@, 3 pomiary na tryb).
 
 ### Uwagi
 
 - **Próg 100 ms dla „Dziś” i listy projektu** dotyczy danych z lokalnej bazy. Same dane i obliczenia mieszczą się w nim z zapasem (lista projektu: render ekranu zaczyna się ~32 ms po dotknięciu, obliczenia < 10 ms); resztę czasu zajmuje React Native: przejście nawigacji, pierwsze narysowanie wierszy (~60–90 ms) i zamontowanie widoków natywnych. Przełączenie najprostszej zakładki („Przeglądaj”, bez listy zadań) trwa tak samo ~90 ms, więc „Dziś” (103 ms) jest praktycznie na poziomie samej nawigacji.
 - **Ukończenie i „Cofnij” (0,66 s)** to dalej pełny odczyt 10 015 zadań po każdej zmianie (0,41–0,46 s) + przeliczenie widoku. Następny krok to przyrostowe odświeżanie (tylko zmienione wiersze) — jak na webie.
 - **Pierwsza synchronizacja (12,6 s)** — pobieranie i zapis po połowie; widoki odświeżają się raz, po ostatniej stronie.
-- **Niezmierzone**: kalendarz po poprawce 5, przeciąganie bloku na osi dnia (kl./s; `dumpsys gfxinfo`), wydajność przy 2 000 zadań poza startem.
+- **Niezmierzone**: przeciąganie bloku na osi dnia (kl./s; `dumpsys gfxinfo`), wydajność przy 2 000 zadań poza startem.
