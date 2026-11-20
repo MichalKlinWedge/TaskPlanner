@@ -339,8 +339,10 @@ export interface HabitHeatDay {
   date: LocalDate;
   state: DayState;
   value: number | null;
-  /** Dzień po dziś (pusta komórka). */
+  /** Dzień po dziś (pusta komórka, chyba że `planned`). */
   future: boolean;
+  /** Przyszły dzień nawyku według reguły (nie przy celu „N razy w okresie” — tam dni nie są ustalone). */
+  planned: boolean;
 }
 
 export interface HabitYear {
@@ -360,22 +362,70 @@ export function habitDayCounts(days: readonly { state: DayState }[]): Record<Day
 }
 
 /** Mapa cieplna roku: 53 tygodnie do bieżącego włącznie. */
-export function habitYear(habit: Habit, completions: readonly HabitCompletion[], today: LocalDate): HabitYear {
+export function habitYear(habit: Habit, completions: readonly HabitCompletion[], today: LocalDate, { ahead = 0 }: { ahead?: number } = {}): HabitYear {
   const { byDate } = index(habit, completions);
-  const end = addDays(today, 7 - isoWeekday(today));
-  const from = addDays(end, -53 * 7 + 1);
+  const current = addDays(today, 7 - isoWeekday(today));
+  const from = addDays(current, -53 * 7 + 1);
+  // `ahead` — dodatkowe tygodnie po bieżącym z zaplanowanymi dniami.
+  const end = addDays(current, ahead * 7);
   const days = habitDays(habit, completions, from, end, today);
+  const planned = new Set(habit.goal ? [] : occurrences(habit.recurrence, { from: addDays(today, 1), to: end, limit: 1000 }));
   const weeks: HabitHeatDay[][] = [];
   const months: HabitYear['months'] = [];
   days.forEach((d, i) => {
     const column = Math.floor(i / 7);
     if (i % 7 === 0) weeks.push([]);
     const c = byDate.get(d.date);
-    weeks[column]!.push({ date: d.date, state: d.state, value: c?.kind === 'done' ? (c.value ?? null) : null, future: d.date > today });
+    weeks[column]!.push({ date: d.date, state: d.state, value: c?.kind === 'done' ? (c.value ?? null) : null, future: d.date > today, planned: planned.has(d.date) });
     if (d.date.endsWith('-01')) months.push({ column, month: Number(d.date.slice(5, 7)) });
   });
   const yearAgo = addDays(today, -365);
   return { weeks, months, counts: habitDayCounts(days.filter((d) => d.date <= today && d.date > yearAgo)) };
+}
+
+// ── Nawyki w kalendarzu i planie dnia ────────────────────────────────────────────────────────
+
+/** Nawyk z porą w danym dniu — blok w kalendarzu / planie dnia (`time-blocking.ts`). */
+export interface HabitSlot {
+  id: string;
+  title: string;
+  date: LocalDate;
+  time: LocalTime;
+  /** Stan dnia; przyszły dzień według reguły = `pending`. */
+  state: DayState;
+  /** Dzień po dziś (do odczytu, jak przyszłe wystąpienia serii). */
+  future: boolean;
+}
+
+/**
+ * Nawyki z porą (`habit.time`) w dniach `[from, to)`: dni według reguły (od początku do końca nawyku)
+ * oraz dni z wpisem spoza reguły. Bez nawyków zakończonych i bez celu „N razy w okresie” (dni nie są
+ * ustalone — zostają w bloku „Nawyki”).
+ */
+export function habitSlots(
+  tasks: readonly Pick<ViewTask, 'id' | 'title' | 'kind' | 'status' | 'recurrence' | 'habit'>[],
+  completions: ReadonlyMap<string, readonly HabitCompletion[]>,
+  from: LocalDate,
+  to: LocalDate,
+  today: LocalDate,
+): HabitSlot[] {
+  if (to <= from) return [];
+  const out: HabitSlot[] = [];
+  for (const task of tasks) {
+    if (task.kind !== 'habit' || !isOpen(task) || !task.habit?.time) continue;
+    const habit = toHabit(task);
+    if (!habit || habit.goal) continue;
+    const list = completions.get(task.id) ?? [];
+    const last = addDays(to, -1);
+    const scheduled = new Set(occurrences(habit.recurrence, { from, to: last, limit: 1000 }));
+    const logged = new Set(list.map((c) => c.date));
+    for (const day of habitDays(habit, list, from, last, today)) {
+      if (!scheduled.has(day.date) && !logged.has(day.date)) continue;
+      const future = day.date > today;
+      out.push({ id: task.id, title: task.title, date: day.date, time: task.habit.time, state: future && day.state === 'off' ? 'pending' : day.state, future });
+    }
+  }
+  return out;
 }
 
 // ── Etap 8: formularz nawyku ─────────────────────────────────────────────────────────────────
