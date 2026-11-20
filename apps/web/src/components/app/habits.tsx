@@ -534,6 +534,9 @@ function Heatmap({ year, habit, today }: { year: ReturnType<typeof habitYear>; h
           ))}
         </div>
       </div>
+      {habit.goal && year.weeks.some((w) => w.some((d) => d.future && !d.outside)) ? (
+        <p className="mt-1 text-xs text-[var(--muted)]">Przy „N razy w okresie” dni nie są z góry ustalone — przyszłe dni zapełnią się, gdy je odhaczysz.</p>
+      ) : null}
       <figcaption className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--muted)]">
         {legend.map((s) => (
           <span key={s} className="inline-flex items-center gap-1">
@@ -558,7 +561,8 @@ function HeatRow({ weekday, year, habit }: { weekday: IsoWeekday; year: ReturnTy
         const d = week[weekday - 1]!;
         if (d.outside) return <span key={d.date} />;
         if (d.future) {
-          if (!d.planned) return <span key={d.date} />;
+          // Przyszły dzień bez planu — blada komórka, żeby siatka roku była widoczna.
+          if (!d.planned) return <span key={d.date} title={dayChip(d.date)} className={`rounded-sm ${STATE_CLASS.off} opacity-30`} />;
           const label = `${dayChip(d.date)}: zaplanowane`;
           return <span key={d.date} title={label} aria-label={label} className={`rounded-sm ${PLANNED_CLASS}`} />;
         }
