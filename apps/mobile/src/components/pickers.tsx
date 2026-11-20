@@ -71,10 +71,11 @@ export function PickerHost() {
   );
   return (
     <Modal visible={!!request} transparent animationType="slide" onRequestClose={() => close()} statusBarTranslucent navigationBarTranslucent>
-      {request ? (
+      {request?.kind === 'many' ? (
+        <ManyList key={request.title} title={request.title} options={request.options} />
+      ) : request ? (
         <Sheet title={request.title} onClose={() => close()}>
           {request.kind === 'option' ? <OptionList options={request.options} /> : null}
-          {request.kind === 'many' ? <ManyList key={request.title} options={request.options} /> : null}
           {request.kind === 'date' ? <DatePicker key={`${request.title}:${request.value}`} request={request} /> : null}
           {request.kind === 'time' ? <TimePicker key={`${request.title}:${request.value}`} request={request} /> : null}
         </Sheet>
@@ -83,7 +84,8 @@ export function PickerHost() {
   );
 }
 
-export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+/** `footer` — pod przewijaną treścią, zawsze widoczny (np. „Zastosuj” pod długą listą tagów). */
+export function Sheet({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   return (
@@ -101,6 +103,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 520 }}>
           {children}
         </ScrollView>
+        {footer}
       </View>
     </View>
   );
@@ -129,7 +132,7 @@ function OptionList({ options }: { options: Option<unknown>[] }) {
   );
 }
 
-function ManyList({ options }: { options: Option<unknown>[] }) {
+function ManyList({ title, options }: { title: string; options: Option<unknown>[] }) {
   const p = usePalette();
   const [picked, setPicked] = useState<ReadonlySet<number>>(() => new Set(options.flatMap((o, i) => (o.selected ? [i] : []))));
   const toggle = (i: number) =>
@@ -139,8 +142,13 @@ function ManyList({ options }: { options: Option<unknown>[] }) {
       else next.add(i);
       return next;
     });
+  const apply = (
+    <Pressable accessibilityRole="button" onPress={() => close(options.filter((_, i) => picked.has(i)).map((o) => o.value))} style={[styles.done, { backgroundColor: p.accent }]}>
+      <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Zastosuj</Text>
+    </Pressable>
+  );
   return (
-    <View>
+    <Sheet title={title} onClose={() => close()} footer={apply}>
       {options.map((o, i) => (
         <Pressable
           key={`${i}:${o.label}`}
@@ -156,10 +164,7 @@ function ManyList({ options }: { options: Option<unknown>[] }) {
           </View>
         </Pressable>
       ))}
-      <Pressable accessibilityRole="button" onPress={() => close(options.filter((_, i) => picked.has(i)).map((o) => o.value))} style={[styles.done, { backgroundColor: p.accent }]}>
-        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Zastosuj</Text>
-      </Pressable>
-    </View>
+    </Sheet>
   );
 }
 
@@ -279,7 +284,7 @@ const styles = StyleSheet.create({
   optionText: { fontSize: 16 },
   check: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   box: { width: 22, height: 22, borderWidth: 1.5, borderRadius: 5, textAlign: 'center', color: '#fff', fontSize: 14, lineHeight: 19, overflow: 'hidden' },
-  done: { marginTop: 12, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  done: { marginTop: 4, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   pill: { borderWidth: 1, borderRadius: 18, paddingVertical: 7, paddingHorizontal: 13 },
   monthHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6 },
