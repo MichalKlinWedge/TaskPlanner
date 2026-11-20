@@ -41,7 +41,7 @@ export interface LogEntry {
 }
 
 /** Sesja `review_sessions`: początek przy wejściu (raz), koniec ze statystykami (raz). */
-export function useReviewSession(kind: ReviewKind) {
+export function useReviewSession(kind: ReviewKind, today: LocalDate) {
   const [id] = useState(() => uuidv7());
   useEffect(() => {
     void mutateMany([reviewStartOp(id, kind, new Date())]).catch(() => undefined);
@@ -51,9 +51,9 @@ export function useReviewSession(kind: ReviewKind) {
     (log: readonly LogEntry[]) => {
       if (finished.current) return;
       finished.current = true;
-      void mutateMany([reviewFinishOp(id, reviewStats(log), new Date())]).catch(() => undefined);
+      void mutateMany([reviewFinishOp(id, reviewStats(log, { today }), new Date())]).catch(() => undefined);
     },
-    [id],
+    [id, today],
   );
 }
 

@@ -48,7 +48,7 @@ export default function WeeklyReviewScreen() {
   const { data, today, ctx } = useView();
   const decide = useDecide();
   const { run } = useTaskActions();
-  const finish = useReviewSession('weekly');
+  const finish = useReviewSession('weekly', today);
   const [step, setStep] = useState<Step>('inbox');
   const [log, setLog] = useState<LogEntry[]>([]);
   const [finished, setFinished] = useState(false);
@@ -106,7 +106,7 @@ export default function WeeklyReviewScreen() {
   );
 
   if (finished) {
-    const stats = reviewStats(log);
+    const stats = reviewStats(log, ctx);
     const clean = review.inbox.length === 0 && review.projectsWithoutNext.length === 0;
     return (
       <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={[styles.body, { paddingBottom: 48 + insets.bottom }]}>

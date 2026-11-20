@@ -9,6 +9,7 @@
  */
 import {
   addDays,
+  localDateTimeAt,
   bulkTaskOps,
   dailyReviewQueue,
   dailySummary,
@@ -63,7 +64,7 @@ const isTyping = (target: EventTarget | null) =>
 
 /** Sesja `review_sessions`: początek przy wejściu (raz), koniec ze statystykami. */
 function useReviewSession(kind: ReviewKind) {
-  const { store } = useAppEnv();
+  const { store, today } = useAppEnv();
   const [id] = useState(() => uuidv7());
   useEffect(() => {
     void store.mutateMany([reviewStartOp(id, kind, new Date())]).catch(() => undefined);
@@ -72,7 +73,7 @@ function useReviewSession(kind: ReviewKind) {
   return (log: readonly LogEntry[]) => {
     if (finished.current) return;
     finished.current = true;
-    void store.mutateMany([reviewFinishOp(id, reviewStats(log), new Date())]).catch(() => undefined);
+    void store.mutateMany([reviewFinishOp(id, reviewStats(log, { today }), new Date())]).catch(() => undefined);
   };
 }
 
@@ -284,10 +285,14 @@ export function DailyReview({ ctx, settings, onExit, navigate }: { ctx: ViewCont
 
 function DailyDone({ ctx, settings, log, total, onExit, navigate }: { ctx: ViewContext; settings: ProfileSettings; log: LogEntry[]; total: number; onExit: () => void; navigate: (route: Route) => void }) {
   const { data } = useAppEnv();
-  const stats = reviewStats(log);
+  const stats = reviewStats(log, ctx);
   const summary = useMemo(() => dailySummary(data.tasks, ctx), [data.tasks, ctx]);
   const tomorrow = addDays(ctx.today, 1);
-  const tomorrowCtx = useMemo(() => ({ ...ctx, today: tomorrow }), [ctx, tomorrow]);
+  // Przegląd rano → plan na dziś, po południu i wieczorem → na jutro; przełącznik obok.
+  const [day, setDay] = useState<"today" | "tomorrow">(() => (localDateTimeAt(new Date(), ctx.timeZone).slice(11) < "12:00" ? "today" : "tomorrow"));
+  const planDate = day === "today" ? ctx.today : tomorrow;
+  const planCtx = useMemo(() => ({ ...ctx, today: planDate }), [ctx, planDate]);
+  const planTasks = day === "today" ? summary.today : summary.tomorrow;
   return (
     <Frame title="Przegląd dnia — gotowe" kind="daily" onExit={onExit} navigate={navigate}>
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Podsumowanie" data-testid="review-summary">
@@ -297,12 +302,29 @@ function DailyDone({ ctx, settings, log, total, onExit, navigate }: { ctx: ViewC
         <Stat label="Usunięte" value={String(stats.deleted)} />
       </section>
       {stats.needsDecision ? <p className="text-sm text-[var(--muted)]">{plural(stats.needsDecision, ["zadanie było przesuwane", "zadania były przesuwane", "zadań było przesuwanych"])} 3 razy lub więcej.</p> : null}
-      <section aria-label="Plan na jutro" className="grid gap-4 lg:grid-cols-[1fr_16rem]">
+      <section aria-label={day === "today" ? "Plan na dziś" : "Plan na jutro"} className="grid gap-4 lg:grid-cols-[1fr_16rem]">
         <div>
-          <h2 className="mb-2 text-sm font-semibold">Jutro · {dayLabel(tomorrow)}</h2>
-          {summary.tomorrow.length ? (
+          <div className="mb-2 flex items-center gap-2">
+            <h2 className="text-sm font-semibold">
+              {day === "today" ? "Dziś" : "Jutro"} · {dayLabel(planDate)}
+            </h2>
+            <div className="ml-auto flex rounded-md border border-[var(--line)] text-xs" role="group" aria-label="Plan na">
+              {(["today", "tomorrow"] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  aria-pressed={day === d}
+                  className={`px-2 py-0.5 ${day === d ? "bg-[var(--accent)] text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`}
+                  onClick={() => setDay(d)}
+                >
+                  {d === "today" ? "Dziś" : "Jutro"}
+                </button>
+              ))}
+            </div>
+          </div>
+          {planTasks.length ? (
             <ul className="divide-y divide-[var(--line)] rounded-md border border-[var(--line)] text-sm">
-              {summary.tomorrow.map((t) => (
+              {planTasks.map((t) => (
                 <li key={t.id} className="flex items-center gap-2 px-3 py-1.5">
                   <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: PRIORITY[t.priority].color }} />
                   <span className="min-w-0 flex-1 truncate">{t.title}</span>
@@ -311,10 +333,10 @@ function DailyDone({ ctx, settings, log, total, onExit, navigate }: { ctx: ViewC
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-[var(--muted)]">Na jutro nic zaplanowanego.</p>
+            <p className="text-sm text-[var(--muted)]">{day === "today" ? "Na dziś nic więcej zaplanowanego." : "Na jutro nic zaplanowanego."}</p>
           )}
         </div>
-        <DayPlan data={data} ctx={tomorrowCtx} settings={settings} />
+        <DayPlan key={planDate} data={data} ctx={planCtx} settings={settings} />
       </section>
       <div>
         <Button kind="primary" onClick={onExit}>
@@ -433,7 +455,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
   }, []);
 
   if (finished) {
-    const stats = reviewStats(log);
+    const stats = reviewStats(log, ctx);
     return (
       <Frame title="Przegląd tygodnia — gotowe" kind="weekly" onExit={onExit} navigate={navigate}>
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Podsumowanie" data-testid="review-summary">

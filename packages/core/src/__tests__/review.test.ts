@@ -86,6 +86,13 @@ describe('decyzje przeglądu', () => {
     ]);
     expect(stats).toEqual({ reviewed: 3, done: 1, rescheduled: 0, someday: 1, deleted: 1, needsDecision: 1 });
     expect(ReviewStats.parse(stats)).toEqual(stats);
+    // „Dziś” przy dzisiejszym = przejrzane, nie przeniesione; „Dziś” przy zaległym = przeniesione.
+    const log = [
+      { task: task({ id: 'd', dueDate: '2026-11-18' }), action: { kind: 'today' } as ReviewAction },
+      { task: task({ id: 'e', dueDate: '2026-11-15' }), action: { kind: 'today' } as ReviewAction },
+    ];
+    expect(reviewStats(log, ctx)).toMatchObject({ reviewed: 2, rescheduled: 1 });
+    expect(reviewStats(log)).toMatchObject({ reviewed: 2, rescheduled: 2 });
   });
 });
 
@@ -181,12 +188,14 @@ describe('asystent przeglądu (Etap 9)', () => {
       task({ id: 'done-today', status: 'done', completedAt: '2026-11-18T10:00:00Z' }),
       task({ id: 'done-yesterday', status: 'done', completedAt: '2026-11-17T22:30:00Z' }),
       task({ id: 'tomorrow', dueDate: '2026-11-19' }),
+      task({ id: 'today', dueDate: '2026-11-18' }),
       task({ id: 'later', dueDate: '2026-11-21' }),
       task({ id: 'other-ws', workspaceId: W2, dueDate: '2026-11-19' }),
     ];
     const summary = dailySummary(tasks, { ...ctx, workspaceId: W1 });
     expect(summary.doneToday.map((t) => t.id)).toEqual(['done-today']);
     expect(summary.tomorrow.map((t) => t.id)).toEqual(['tomorrow']);
+    expect(summary.today.map((t) => t.id)).toEqual(['today']);
     expect(REVIEW_ACTION.someday).toEqual({ key: '5', label: 'Kiedyś' });
   });
 });

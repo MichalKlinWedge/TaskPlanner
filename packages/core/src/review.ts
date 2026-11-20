@@ -144,15 +144,18 @@ export const ReviewStats = z.object({
 });
 export type ReviewStats = z.infer<typeof ReviewStats>;
 
-/** Statystyki sesji z dziennika decyzji (ostatnia decyzja przy zadaniu się liczy). */
-export function reviewStats(log: readonly { task: ViewTask; action: ReviewAction }[]): ReviewStats {
+/**
+ * Statystyki sesji z dziennika decyzji (ostatnia decyzja przy zadaniu się liczy). Z `ctx` termin
+ * bez zmiany (np. „Dziś” przy dzisiejszym) to tylko przejrzane, nie przeniesione.
+ */
+export function reviewStats(log: readonly { task: ViewTask; action: ReviewAction }[], ctx?: Pick<ViewContext, 'today'>): ReviewStats {
   const last = new Map(log.map((e) => [e.task.id, e]));
   const stats: ReviewStats = { reviewed: last.size, done: 0, rescheduled: 0, someday: 0, deleted: 0, needsDecision: 0 };
   for (const { task, action } of last.values()) {
     if (action.kind === 'done') stats.done++;
     else if (action.kind === 'delete') stats.deleted++;
     else if (action.kind === 'someday') stats.someday++;
-    else stats.rescheduled++;
+    else if (!ctx || reschedulePatch(task, action, ctx)) stats.rescheduled++;
     if (needsDecision(task)) stats.needsDecision++;
   }
   return stats;
@@ -197,6 +200,8 @@ export function reviewsDue(schedule: ReviewSchedule, now: Date, { timeZone, last
 export interface DailySummary {
   /** Ukończone dziś (zadania, bez nawyków). */
   doneToday: ViewTask[];
+  /** Plan na dziś: otwarte zadania z dzisiejszym terminem (przegląd zrobiony rano). */
+  today: ViewTask[];
   /** Plan na jutro: zadania z terminem jutro (z serii — bieżące wystąpienie). */
   tomorrow: ViewTask[];
 }
@@ -205,6 +210,7 @@ export interface DailySummary {
 export function dailySummary(tasks: readonly ViewTask[], ctx: ViewContext): DailySummary {
   const inWorkspace = (t: ViewTask) => !ctx.workspaceId || t.workspaceId === ctx.workspaceId;
   const doneToday = tasks.filter((t) => inWorkspace(t) && t.kind === 'task' && t.status === 'done' && t.completedAt && localDateAt(t.completedAt, ctx.timeZone) === ctx.today);
+  const today = selectToday(tasks, ctx, { completed: 'hidden' }).today.filter((t) => t.kind === 'task');
   const tomorrow = selectToday(tasks, { ...ctx, today: addDays(ctx.today, 1) }, { completed: 'hidden' }).today.filter((t) => t.kind === 'task');
-  return { doneToday, tomorrow };
+  return { doneToday, today, tomorrow };
 }

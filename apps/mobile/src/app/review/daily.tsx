@@ -10,6 +10,7 @@ import {
   dailyReviewQueue,
   dailySummary,
   daysBetween,
+  localDateTimeAt,
   needsDecision,
   plural,
   PRIORITY,
@@ -41,7 +42,7 @@ export default function DailyReviewScreen() {
   const insets = useSafeAreaInsets();
   const { data, today, ctx } = useView();
   const decide = useDecide();
-  const finish = useReviewSession('daily');
+  const finish = useReviewSession('daily', today);
   // Kolejka ustalona na starcie — przesunięte na jutro nie wracają, a „Wstecz” trafia w to samo zadanie.
   const [queue] = useState(() => dailyReviewQueue(data.tasks, ctx));
   const [index, setIndex] = useState(0);
@@ -167,8 +168,11 @@ function DailyDone({ log, total, started }: { log: LogEntry[]; total: number; st
   const [seconds] = useState(() => Math.round((Date.now() - started) / 1000));
   const p = usePalette();
   const { data, today, ctx } = useView();
-  const stats = reviewStats(log);
+  const stats = reviewStats(log, ctx);
   const summary = dailySummary(data.tasks, ctx);
+  // Przegląd rano → plan na dziś, po południu i wieczorem → na jutro (przełącznik pod listą).
+  const [onToday, setOnToday] = useState(() => localDateTimeAt(new Date(), ctx.timeZone).slice(11) < '12:00');
+  const plan = onToday ? summary.today : summary.tomorrow;
   return (
     <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.doneBody}>
       <Stack.Screen options={{ title: 'Przegląd dnia' }} />
@@ -185,13 +189,16 @@ function DailyDone({ log, total, started }: { log: LogEntry[]; total: number; st
           </Text>
         ))}
       </Section>
-      <Section title={`Plan na jutro · ${summary.tomorrow.length}`}>
+      <Section title={`Plan na ${onToday ? 'dziś' : 'jutro'} · ${plan.length}`}>
         <View style={{ marginHorizontal: -12 }}>
-          {summary.tomorrow.map((t) => (
+          {plan.map((t) => (
             <TaskRow key={t.id} task={t} today={today} showDate={false} listName={listLabel(data, t.listId)} />
           ))}
         </View>
-        {!summary.tomorrow.length ? <Text style={{ color: p.muted }}>Na jutro nic nie ma.</Text> : null}
+        {!plan.length ? <Text style={{ color: p.muted }}>{onToday ? 'Na dziś nic więcej nie ma.' : 'Na jutro nic nie ma.'}</Text> : null}
+        <Pressable onPress={() => setOnToday((v) => !v)} hitSlop={8} accessibilityRole="button">
+          <Text style={{ color: p.accent, marginTop: 6 }}>Pokaż plan na {onToday ? 'jutro' : 'dziś'}</Text>
+        </Pressable>
       </Section>
       <Button title="Gotowe" onPress={() => router.back()} />
     </ScrollView>
