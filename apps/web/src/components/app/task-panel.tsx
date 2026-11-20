@@ -56,7 +56,7 @@ import { TaskTimeField } from "./focus";
 import { QuickAdd } from "./quick-add";
 import { RecurrenceEditor } from "./recurrence-editor";
 import { TaskItem, useTaskActions } from "./task-item";
-import { Button, IconButton, Input, Select } from "./ui";
+import { Button, IconButton, Input, navLinkClass, Select } from "./ui";
 
 type Row = Record<string, string | number | null>;
 
@@ -205,7 +205,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
 
       {task.kind === "habit" ? (
         <Block title="Nawyk">
-          <a href={`#/habit/${task.id}`} className="text-sm text-[var(--accent)] hover:underline">
+          <a href={`#/habit/${task.id}`} className={`self-start ${navLinkClass}`}>
             Statystyki, harmonogram i cel →
           </a>
         </Block>

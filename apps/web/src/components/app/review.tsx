@@ -48,7 +48,7 @@ import { useAppEnv } from "./app-env";
 import { DayPlan } from "./day-plan";
 import { QuickAdd } from "./quick-add";
 import { useTaskActions } from "./task-item";
-import { Button, Input, Select } from "./ui";
+import { Button, Input, navLinkClass, Select } from "./ui";
 
 type Kind = ReviewAction["kind"];
 const KINDS = Object.keys(REVIEW_ACTION) as Kind[];
@@ -154,13 +154,13 @@ function Frame({ title, kind, onExit, navigate, children }: { title: string; kin
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5" data-testid={`review-${kind}`}>
       <header className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={onExit} className="rounded-md px-2 py-1 text-sm text-[var(--muted)] hover:bg-[var(--hover)]">
-          ← Wyjdź <kbd className="ml-1 text-xs">Esc</kbd>
+        <button type="button" onClick={onExit} className={navLinkClass}>
+          ← Wyjdź <kbd className="ml-1 font-normal opacity-70">Esc</kbd>
         </button>
         <h1 className="text-lg font-semibold">{title}</h1>
         <button
           type="button"
-          className="ml-auto text-xs text-[var(--accent)] hover:underline"
+          className={`ml-auto ${navLinkClass}`}
           onClick={() => navigate({ view: "review", id: kind === "daily" ? "weekly" : "daily" })}
         >
           {kind === "daily" ? "Przegląd tygodnia →" : "Przegląd dnia →"}
@@ -630,7 +630,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
                 </li>
               ))}
             </ul>
-            <a href="#/calendar" className="text-sm text-[var(--accent)] hover:underline">
+            <a href="#/calendar" className={`self-start ${navLinkClass}`}>
               Otwórz kalendarz tygodnia →
             </a>
           </>

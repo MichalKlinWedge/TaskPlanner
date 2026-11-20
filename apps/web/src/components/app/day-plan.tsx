@@ -13,6 +13,7 @@ import type { AppData } from "@/lib/app-data";
 import { useCalendarEvents } from "@/lib/calendar-events";
 
 import { useAppEnv } from "./app-env";
+import { navLinkClass } from "./ui";
 
 /** Pikseli na minutę osi (48 px na godzinę). */
 const PX = 0.8;
@@ -71,7 +72,7 @@ export function DayPlan({ data, ctx, settings }: { data: AppData; ctx: ViewConte
       <header className="mb-2 flex items-baseline gap-2">
         <h2 className="text-sm font-semibold">Plan dnia</h2>
         <span className="text-xs text-[var(--muted)]">{plural(day.timed.filter((b) => !b.passive).length, ["blok", "bloki", "bloków"])}</span>
-        <a href="#/calendar" className="ml-auto text-xs text-[var(--accent)] hover:underline">
+        <a href="#/calendar" className={`ml-auto ${navLinkClass}`}>
           Ułóż w kalendarzu →
         </a>
       </header>
