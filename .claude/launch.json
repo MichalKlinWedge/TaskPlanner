@@ -21,6 +21,12 @@
       "port": 3011
     },
     {
+      "name": "web-local-3012",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/dev-alt.mjs", "--local", "--port", "3012"],
+      "port": 3012
+    },
+    {
       "name": "mobile-metro-8082",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "start", "--workspace", "apps/mobile", "--", "--port", "8082"],

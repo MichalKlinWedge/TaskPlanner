@@ -27,7 +27,7 @@ const toggle = <T,>(list: readonly T[] | undefined, value: T): T[] | undefined =
   return next.length ? next : undefined;
 };
 
-function Popover({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+export function Popover({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
@@ -46,7 +46,7 @@ function Popover({ onClose, children }: { onClose: () => void; children: ReactNo
   );
 }
 
-function Check({ checked, onChange, children }: { checked: boolean; onChange: () => void; children: ReactNode }) {
+export function Check({ checked, onChange, children }: { checked: boolean; onChange: () => void; children: ReactNode }) {
   return (
     <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-[var(--hover)]">
       <input type="checkbox" checked={checked} onChange={onChange} />

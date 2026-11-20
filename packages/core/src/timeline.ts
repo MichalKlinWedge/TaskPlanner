@@ -8,9 +8,12 @@
  */
 import { addDays, daysBetween } from './dates.ts';
 import { detectCycle, projectSpan, shiftSuccessors, taskSpan, violations, type Dependency, type ScheduledTask, type Span, type Violation } from './dependencies.ts';
+import { plural } from './format.ts';
 import { uuidv7 } from './ids.ts';
-import type { LocalDate, TaskStatus } from './schemas/primitives.ts';
+import { PRIORITY, TASK_STATUS } from './labels.ts';
+import type { LocalDate, Priority, TaskStatus } from './schemas/primitives.ts';
 import type { TaskOp } from './tasks.ts';
+import type { XlsxCell, XlsxSheet } from './xlsx.ts';
 
 export interface TimelineTask extends ScheduledTask {
   listId: string;
@@ -137,6 +140,87 @@ export function timelineModel(projects: readonly TimelineProject[], tasks: reado
   }
   return { rows, links: linked.filter((d) => visible.has(d.predecessorId) && visible.has(d.successorId)), violations: found, undated: all.filter((t) => !visible.has(t.id)).length };
 }
+
+/**
+ * Projekty widoczne na osi: wszystkie poza ukrytymi w filtrze (nowy projekt jest więc od razu widoczny).
+ * Ukryte id, których już nie ma, nie przeszkadzają.
+ */
+export function visibleProjects<P extends Pick<TimelineProject, 'id'>>(projects: readonly P[], hidden: ReadonlySet<string>): P[] {
+  return hidden.size ? projects.filter((p) => !hidden.has(p.id)) : [...projects];
+}
+
+/** Opis filtra projektów na przycisku: „wszystkie”, nazwa jedynego albo „N z M”. */
+export function projectFilterLabel(projects: readonly Pick<TimelineProject, 'id' | 'name'>[], hidden: ReadonlySet<string>): string {
+  const shown = visibleProjects(projects, hidden);
+  if (shown.length === projects.length) return 'wszystkie';
+  if (!shown.length) return 'żaden';
+  if (shown.length === 1) return shown[0]!.name;
+  return `${shown.length} z ${projects.length}`;
+}
+
+/**
+ * Arkusz eksportu osi (to, co widać po filtrze): wiersz na projekt, zadanie i podzadanie w kolejności
+ * osi, z wcięciem poziomu, datami paska, postępem, statusem, priorytetem, poprzednikami i naruszeniem.
+ */
+export function timelineSheet(
+  model: TimelineModel,
+  tasks: readonly (Pick<TimelineTask, 'id' | 'title' | 'status'> & { priority?: Priority })[],
+  name = 'Oś czasu',
+): XlsxSheet {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const projectName = new Map(model.rows.filter((r) => r.kind === 'project').map((r) => [r.id, r.title]));
+  const depth = new Map<string, number>();
+  const late = new Map(model.violations.map((v) => [v.dependency.successorId, v]));
+  const predecessors = new Map<string, Dependency[]>();
+  for (const d of model.links) predecessors.set(d.successorId, [...(predecessors.get(d.successorId) ?? []), d]);
+  const titleOf = (id: string) => byId.get(id)?.title ?? '?';
+  const days = (n: number) => plural(n, ['dzień', 'dni', 'dni']);
+
+  const rows: XlsxCell[][] = [];
+  const indents: number[] = [];
+  for (const r of model.rows) {
+    const level = r.kind === 'project' ? 0 : (depth.get(r.parentId ?? '') ?? 0) + 1;
+    depth.set(r.id, level);
+    const task = r.kind === 'task' ? byId.get(r.id) : undefined;
+    const v = late.get(r.id);
+    rows.push([
+      projectName.get(r.projectId) ?? '',
+      r.title,
+      r.kind === 'project' ? 'Projekt' : level === 1 ? 'Zadanie' : 'Podzadanie',
+      r.span ? { date: r.span.start } : null,
+      r.span ? { date: r.span.end } : null,
+      r.span ? daysBetween(r.span.start, r.span.end) + 1 : null,
+      { percent: r.progress / 100 },
+      task ? TASK_STATUS[task.status] : '',
+      task?.priority ? PRIORITY[task.priority].label : '',
+      (predecessors.get(r.id) ?? []).map((d) => `${titleOf(d.predecessorId)}${d.lagDays ? ` (${d.lagDays > 0 ? '+' : '−'}${days(Math.abs(d.lagDays))})` : ''}`).join('; '),
+      v ? `${days(v.days)} za wcześnie po „${titleOf(v.dependency.predecessorId)}”` : '',
+    ]);
+    indents.push(level);
+  }
+  return {
+    name,
+    columns: [
+      { header: 'Projekt', width: 24 },
+      { header: 'Zadanie', width: 44 },
+      { header: 'Typ', width: 11 },
+      { header: 'Początek', width: 11 },
+      { header: 'Koniec', width: 11 },
+      { header: 'Dni', width: 6 },
+      { header: 'Postęp', width: 8 },
+      { header: 'Status', width: 13 },
+      { header: 'Priorytet', width: 10 },
+      { header: 'Poprzednicy', width: 32 },
+      { header: 'Naruszenie', width: 32 },
+    ],
+    rows,
+    indents,
+    indentColumn: 1,
+  };
+}
+
+/** Nazwa pliku eksportu osi z dniem. */
+export const timelineFileName = (today: LocalDate): string => `os-czasu-${today}.xlsx`;
 
 export interface TimelineResult {
   ops: TaskOp[];

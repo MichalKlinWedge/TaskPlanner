@@ -7,7 +7,8 @@
  * albo „Tylko to zadanie”), pasek projektu przesuwa cały projekt (`shiftProjectOps`). Zależność
  * koniec→początek: przeciągnięcie z końca paska na początek drugiego — zapis dopiero po
  * `addDependencyOps` (blokada cyklu; SVAR cykle przyjmuje). Naruszenia: czerwone paski i strzałki
- * oraz lista z „Popraw”.
+ * oraz lista z „Popraw”. Filtr „Projekty” ukrywa wybrane projekty (pamiętany w przeglądarce; nowy projekt
+ * jest widoczny), „Eksport XLSX” zapisuje widoczne wiersze osi (`timelineSheet` + `xlsxWorkbook`).
  *
  * SVAR dostaje dane tylko z lokalnej bazy: własnych zmian SVAR (dodanie zależności, przeciąganie
  * w siatce, edytor) nie przepuszczamy. Widok zostaje zamontowany po pierwszym otwarciu (`active` =
@@ -22,10 +23,16 @@ import {
   daysBetween,
   dependencyErrorText,
   plural,
+  projectFilterLabel,
   removeDependencyOps,
   shiftProjectOps,
   timelineChangeOps,
+  timelineFileName,
   timelineModel,
+  timelineSheet,
+  visibleProjects,
+  XLSX_MIME,
+  xlsxWorkbook,
   type Dependency,
   type LocalDate,
   type Span,
@@ -39,11 +46,13 @@ import { useDependencies } from "@/lib/dependencies";
 import { GANTT_PL } from "@/lib/gantt-locale";
 
 import { useAppEnv } from "./app-env";
+import { Check, Popover } from "./filter-bar";
 import { useTaskActions } from "./task-item";
 
 type Scale = "day" | "week" | "month";
 const SCALE_KEY = "tp-timeline-scale";
 const CASCADE_KEY = "tp-timeline-cascade";
+const HIDDEN_KEY = "tp-timeline-hidden";
 const PROJECT = "p:";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -93,6 +102,15 @@ function readStored<T extends string>(key: string, allowed: readonly T[], fallba
     return fallback;
   }
 }
+/** Ukryte projekty filtra (id) z pamięci przeglądarki. */
+function readHidden(): ReadonlySet<string> {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? "[]");
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
 function remember(key: string, value: string) {
   try {
     localStorage.setItem(key, value);
@@ -113,6 +131,64 @@ const useDark = () =>
     () => document.documentElement.dataset.theme === "dark",
     () => false,
   );
+
+interface FilterProject {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+/** Wybór projektów na osi: lista z polami wyboru, „Wszystkie” / „Żaden”, „tylko” przy projekcie. */
+function ProjectFilter({ projects, hidden, onChange }: { projects: readonly FilterProject[]; hidden: ReadonlySet<string>; onChange: (hidden: ReadonlySet<string>) => void }) {
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  const filtered = visibleProjects(projects, hidden).length !== projects.length;
+  const toggle = (id: string) => {
+    const next = new Set(hidden);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange(next);
+  };
+  return (
+    <span className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        data-testid="timeline-projects"
+        className={`max-w-56 truncate rounded-md border px-2.5 py-1 text-xs ${filtered ? "border-transparent bg-indigo-100 text-indigo-900 dark:bg-indigo-900/50 dark:text-indigo-100" : "border-[var(--line)] hover:bg-black/5 dark:hover:bg-white/10"}`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        Projekty: {projectFilterLabel(projects, hidden)} ▾
+      </button>
+      {open ? (
+        <Popover onClose={close}>
+          <div className="mb-1 flex gap-3 px-2 text-xs">
+            <button type="button" className="text-[var(--accent)] hover:underline" onClick={() => onChange(new Set())}>
+              Wszystkie
+            </button>
+            <button type="button" className="text-[var(--accent)] hover:underline" onClick={() => onChange(new Set(projects.map((p) => p.id)))}>
+              Żaden
+            </button>
+          </div>
+          {projects.map((p) => (
+            <div key={p.id} className="group flex items-center">
+              <div className="min-w-0 flex-1">
+                <Check checked={!hidden.has(p.id)} onChange={() => toggle(p.id)}>
+                  <span className="size-2.5 shrink-0 rounded-full" style={{ background: p.color && /^#[0-9a-f]{3,8}$/i.test(p.color) ? p.color : "var(--muted)" }} aria-hidden />
+                  <span className="truncate">{p.name}</span>
+                </Check>
+              </div>
+              <button type="button" title={`Pokaż tylko „${p.name}”`} className="px-1.5 text-xs text-[var(--muted)] opacity-0 group-hover:opacity-100 hover:text-[var(--foreground)] focus:opacity-100" onClick={() => onChange(new Set(projects.filter((x) => x.id !== p.id).map((x) => x.id)))}>
+                tylko
+              </button>
+            </div>
+          ))}
+        </Popover>
+      ) : null}
+    </span>
+  );
+}
 
 /** Pasek: tytuł, ukończone przekreślone, naruszenie na czerwono. */
 function Bar({ data }: { data: ITask }) {
@@ -176,13 +252,15 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   const [scale, setScaleState] = useState<Scale>(() => readStored(SCALE_KEY, ["day", "week", "month"], "day"));
   const [cascade, setCascadeState] = useState(() => readStored(CASCADE_KEY, ["1", "0"], "1") === "1");
   const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set());
+  const [hidden, setHiddenState] = useState<ReadonlySet<string>>(readHidden);
   const api = useRef<IApi | null>(null);
   const { today, workspaceId } = ctx;
 
-  const projects = useMemo(
+  const allProjects = useMemo(
     () => data.lists.filter((l) => l.kind === "project" && (!workspaceId || l.workspaceId === workspaceId)).map((l) => ({ id: l.id, name: l.name, color: l.color, startDate: l.startDate, endDate: l.endDate })),
     [data.lists, workspaceId],
   );
+  const projects = useMemo(() => visibleProjects(allProjects, hidden), [allProjects, hidden]);
   // Ukryty widok nie przelicza osi; po powrocie przelicza ją tylko, gdy dane się zmieniły (inaczej SVAR
   // nie dostaje nowych tablic i nic nie rysuje — przełączenie < 150 ms).
   const [cache, setCache] = useState(() => ({ projects, tasks: data.tasks, deps, model: timelineModel(projects, data.tasks, deps) }));
@@ -203,6 +281,22 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   const setCascade = (on: boolean) => {
     setCascadeState(on);
     remember(CASCADE_KEY, on ? "1" : "0");
+  };
+  const setHidden = (next: ReadonlySet<string>) => {
+    setHiddenState(next);
+    remember(HIDDEN_KEY, JSON.stringify([...next]));
+  };
+
+  const exportXlsx = () => {
+    const blob = new Blob([xlsxWorkbook([timelineSheet(model, data.tasks)])], { type: XLSX_MIME });
+    const url = URL.createObjectURL(blob);
+    const link = Object.assign(document.createElement("a"), { href: url, download: timelineFileName(today) });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    const rows = model.rows.filter((r) => r.kind === "task").length;
+    notify(`Zapisano ${timelineFileName(today)}: ${plural(projects.length, ["projekt", "projekty", "projektów"])}, ${plural(rows, ["zadanie", "zadania", "zadań"])}.`);
   };
 
   const ganttTasks = useMemo<ITask[]>(() => {
@@ -409,8 +503,12 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
           <input type="checkbox" checked={cascade} onChange={(e) => setCascade(e.target.checked)} />
           Przesuń zależne
         </label>
+        {allProjects.length ? <ProjectFilter projects={allProjects} hidden={hidden} onChange={setHidden} /> : null}
+        <button type="button" disabled={!model.rows.length} className="rounded-md border border-[var(--line)] px-2.5 py-1 text-xs hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/10" title="Zapisz widoczne wiersze osi (po filtrze projektów) do pliku Excel" onClick={exportXlsx} data-testid="timeline-export">
+          Eksport XLSX
+        </button>
         <span className="ml-auto text-xs text-[var(--muted)]">
-          {plural(projects.length, ["projekt", "projekty", "projektów"])} · {plural(model.links.length, ["zależność", "zależności", "zależności"])}
+          {projects.length === allProjects.length ? plural(projects.length, ["projekt", "projekty", "projektów"]) : `${projects.length} z ${plural(allProjects.length, ["projektu", "projektów", "projektów"])}`} · {plural(model.links.length, ["zależność", "zależności", "zależności"])}
           {model.undated ? ` · ${plural(model.undated, ["zadanie", "zadania", "zadań"])} bez terminu poza osią` : ""}
         </span>
       </header>
@@ -439,6 +537,13 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
           <style>{linkCss + projectCss}</style>
           <Chart tasks={ganttTasks} links={ganttLinks} scale={scale} start={range.start} end={range.end} highlight={highlight} dark={dark} init={init} />
         </div>
+      ) : allProjects.length ? (
+        <p className="py-6 text-sm text-[var(--muted)]">
+          Żaden projekt nie jest wybrany.{" "}
+          <button type="button" className="text-[var(--accent)] hover:underline" onClick={() => setHidden(new Set())}>
+            Pokaż wszystkie
+          </button>
+        </p>
       ) : (
         <p className="py-6 text-sm text-[var(--muted)]">Brak projektów — oś czasu pokazuje listy typu „projekt” z ich zadaniami. Projekt utworzysz w „Przestrzenie i listy”.</p>
       )}

@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { addDays } from '../dates.ts';
 import { violations, type Dependency } from '../dependencies.ts';
 import type { TaskOp } from '../tasks.ts';
-import { addDependencyOps, dependencyErrorText, removeDependencyOps, shiftProjectOps, taskLinks, timelineChangeOps, timelineModel, type TimelineProject, type TimelineTask } from '../timeline.ts';
+import { addDependencyOps, dependencyErrorText, projectFilterLabel, removeDependencyOps, shiftProjectOps, taskLinks, timelineChangeOps, timelineFileName, timelineModel, timelineSheet, visibleProjects, type TimelineProject, type TimelineTask } from '../timeline.ts';
 
 const W = 'ws-1';
 const task = (id: string, startDate: string | null, dueDate: string | null, over: Partial<TimelineTask> = {}): TimelineTask => ({
@@ -194,5 +194,43 @@ describe('kryterium odbioru: „Remont kuchni”', () => {
   it('próba cyklu (Montaż AGD → Pomiary → … → Montaż AGD) zablokowana', () => {
     const result = addDependencyOps(tasks, deps, { predecessorId: 't12', successorId: 't1' });
     expect(result).toEqual({ error: { reason: 'cycle', cycle: ['t12', 't1', 't2', 't3', 't11', 't12'] } });
+  });
+});
+
+describe('filtr projektów i eksport', () => {
+  const projects: TimelineProject[] = [
+    { id: 'p1', name: 'Remont', startDate: null, endDate: null },
+    { id: 'p2', name: 'Ogród', startDate: null, endDate: null },
+    { id: 'p3', name: 'Auto', startDate: null, endDate: null },
+  ];
+
+  it('ukryte projekty znikają z osi, nowy projekt jest widoczny', () => {
+    expect(visibleProjects(projects, new Set()).map((p) => p.id)).toEqual(['p1', 'p2', 'p3']);
+    expect(visibleProjects(projects, new Set(['p2', 'usuniety'])).map((p) => p.id)).toEqual(['p1', 'p3']);
+    expect(projectFilterLabel(projects, new Set())).toBe('wszystkie');
+    expect(projectFilterLabel(projects, new Set(['p2']))).toBe('2 z 3');
+    expect(projectFilterLabel(projects, new Set(['p2', 'p3']))).toBe('Remont');
+    expect(projectFilterLabel(projects, new Set(['p1', 'p2', 'p3']))).toBe('żaden');
+  });
+
+  it('arkusz: wiersze osi z poziomem, datami, postępem, poprzednikami i naruszeniem', () => {
+    const tasks = [
+      task('a', '2026-11-20', '2026-11-23', { title: 'Projekt wnętrza', sortKey: 'a' }),
+      task('b', null, '2026-11-24', { title: 'Zakupy', sortKey: 'b', priority: 2 } as Partial<TimelineTask>),
+      task('kid', null, '2026-11-24', { title: 'Płytki', parentId: 'b', status: 'done' }),
+      task('o', null, '2026-11-26', { title: 'Sadzenie', listId: 'p2' }),
+    ];
+    const model = timelineModel(visibleProjects(projects, new Set(['p2'])), tasks, [dep('a', 'b', 2)]);
+    const sheet = timelineSheet(model, tasks);
+    expect(sheet.columns.map((c) => c.header)).toEqual(['Projekt', 'Zadanie', 'Typ', 'Początek', 'Koniec', 'Dni', 'Postęp', 'Status', 'Priorytet', 'Poprzednicy', 'Naruszenie']);
+    expect(sheet.rows).toEqual([
+      ['Remont', 'Remont', 'Projekt', { date: '2026-11-20' }, { date: '2026-11-24' }, 5, { percent: 0.33 }, '', '', '', ''],
+      ['Remont', 'Projekt wnętrza', 'Zadanie', { date: '2026-11-20' }, { date: '2026-11-23' }, 4, { percent: 0 }, 'Do zrobienia', '', '', ''],
+      ['Remont', 'Zakupy', 'Zadanie', { date: '2026-11-24' }, { date: '2026-11-24' }, 1, { percent: 1 }, 'Do zrobienia', 'Wysoki', 'Projekt wnętrza (+2 dni)', '1 dzień za wcześnie po „Projekt wnętrza”'],
+      ['Remont', 'Płytki', 'Podzadanie', { date: '2026-11-24' }, { date: '2026-11-24' }, 1, { percent: 1 }, 'Gotowe', '', '', ''],
+      ['Auto', 'Auto', 'Projekt', null, null, null, { percent: 0 }, '', '', '', ''],
+    ]);
+    expect(sheet.indents).toEqual([0, 1, 1, 2, 0]);
+    expect(timelineFileName('2026-11-20')).toBe('os-czasu-2026-11-20.xlsx');
   });
 });

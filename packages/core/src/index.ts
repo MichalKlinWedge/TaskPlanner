@@ -29,3 +29,4 @@ export * from './time-blocking.ts';
 export * from './timeline.ts';
 export * from './views.ts';
 export * from './widgets.ts';
+export * from './xlsx.ts';
