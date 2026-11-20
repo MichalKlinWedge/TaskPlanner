@@ -312,6 +312,8 @@ export const CollaboratorRow = z.object({
   acronym: z.string().trim().min(1, 'Akronim nie może być pusty.').max(5, 'Akronim: najwyżej 5 znaków.').nullable(),
   /** Status: `null` = aktywny; nieaktywny nie podpowiada się przy zadaniach. */
   archived_at: Instant.nullable(),
+  /** Przestrzenie, w których osoba się podpowiada; `null` = wszystkie (jak `tags.workspace_ids`). */
+  workspace_ids: z.array(Id).max(100).nullable(),
 });
 
 export const TaskParticipantRow = z.object({ id: Id, task_id: Id, collaborator_id: Id });

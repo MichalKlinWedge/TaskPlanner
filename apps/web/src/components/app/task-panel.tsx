@@ -16,6 +16,7 @@ import {
   canAddSubtask,
   clampLag,
   collaboratorMatches,
+  collaboratorsForWorkspace,
   commentAuthor,
   commentTime,
   creatorLabel,
@@ -418,11 +419,13 @@ function PeopleField({ task }: { task: ViewTask }) {
   const byId = new Map(data.collaborators.map((c) => [c.id, c]));
   const chosen = participants.rows.map((r) => String(r.collaborator_id)).filter((id) => byId.has(id));
   const assignee = task.assigneeId && byId.has(task.assigneeId) ? task.assigneeId : "";
-  const suggestions = collaboratorMatches(data.collaborators, "", chosen, 100);
+  // Osoby z przestrzeni zadania (+ obecny odpowiedzialny, żeby wybór go pokazał).
+  const people = collaboratorsForWorkspace(data.collaborators, task.workspaceId, [assignee]);
+  const suggestions = collaboratorMatches(people, "", chosen, 100);
 
   const add = (event: FormEvent) => {
     event.preventDefault();
-    const result = addParticipantByNameOps(userId, data.collaborators, task.id, name);
+    const result = addParticipantByNameOps(userId, data.collaborators, task.id, name, task.workspaceId);
     if (!result.ok) return notify(result.error);
     setName("");
     void run(result.ops, result.created ? { text: `Nowy współpracownik: „${name.trim()}”` } : undefined);
@@ -438,7 +441,7 @@ function PeopleField({ task }: { task: ViewTask }) {
         <Field label="Odpowiedzialny">
           <Select value={assignee} onChange={(e) => void run(assignTaskOps(task.id, e.target.value || null))}>
             <option value="">{creatorLabel(creator.rows[0]?.created_by as string | null | undefined, userId)} (twórca zadania)</option>
-            {assigneeChoices(data.collaborators, assignee).map((c) => (
+            {assigneeChoices(people, assignee).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.archivedAt ? `${c.name} (nieaktywny)` : c.name}
               </option>

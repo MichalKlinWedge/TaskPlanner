@@ -10,6 +10,8 @@ import {
   collaboratorsByStatus,
   collaboratorMatches,
   collaboratorSaveOps,
+  collaboratorsForWorkspace,
+  collaboratorVisibleIn,
   creatorLabel,
   deleteCollaboratorOps,
   findCollaborator,
@@ -76,7 +78,7 @@ describe('współpracownicy', () => {
 
   it('operacje przechodzą schematy wierszy', () => {
     const saved = collaboratorSaveOps(USER, [], { name: 'Ola', email: 'ola@example.com' });
-    expect(saved.ok && MODEL.collaborators.safeParse({ id: saved.id, acronym: null, archived_at: null, ...saved.ops[0]!.patch }).success).toBe(true);
+    expect(saved.ok && MODEL.collaborators.safeParse({ id: saved.id, acronym: null, archived_at: null, workspace_ids: null, ...saved.ops[0]!.patch }).success).toBe(true);
     const [op] = addParticipantOps(TASK, anna.id);
     expect(MODEL.task_participants.safeParse({ id: op!.id, ...op!.patch }).success).toBe(true);
   });
@@ -102,7 +104,7 @@ describe('akronim i status', () => {
     expect(collaboratorSaveOps(USER, all, { name: 'Ewa Kot', acronym: '' }, ewa, at)).toMatchObject({ ops: [{ patch: { acronym: null } }] });
     const created = collaboratorSaveOps(USER, [], { name: 'Ola', acronym: 'OL', active: false }, undefined, at);
     expect(created.ok && created.ops[0]!.patch).toMatchObject({ acronym: 'OL', archived_at: at });
-    expect(created.ok && MODEL.collaborators.safeParse({ id: created.id, email: null, acronym: null, archived_at: null, ...created.ops[0]!.patch }).success).toBe(true);
+    expect(created.ok && MODEL.collaborators.safeParse({ id: created.id, email: null, acronym: null, archived_at: null, workspace_ids: null, ...created.ops[0]!.patch }).success).toBe(true);
   });
 
   it('podpowiedzi tylko z aktywnych (także po akronimie); odpowiedzialny: aktywni + obecny', () => {
@@ -112,6 +114,40 @@ describe('akronim i status', () => {
     expect(assigneeChoices(all, null).map((c) => c.name)).toEqual(['Anna Nowak', 'Łukasz']);
     expect(assigneeChoices(all, ewa.id).map((c) => c.name)).toEqual(['Anna Nowak', 'Ewa Kot', 'Łukasz']);
     expect(collaboratorsByStatus(all).map((c) => c.name)).toEqual(['Anna Nowak', 'Łukasz', 'Ewa Kot']);
+  });
+});
+
+describe('przestrzenie', () => {
+  const WORK = '01900000-0000-7000-8000-0000000000a1';
+  const HOME = '01900000-0000-7000-8000-0000000000a2';
+  const piotr: Collaborator = { id: collaboratorId(USER, 'Piotr'), name: 'Piotr', email: null, workspaceIds: [WORK] };
+  const all = [...people, piotr];
+
+  it('brak listy = wszędzie; lista = tylko te przestrzenie; bez przestrzeni (widoki zbiorcze) = wszyscy', () => {
+    expect(collaboratorVisibleIn(anna, HOME)).toBe(true);
+    expect(collaboratorVisibleIn({ workspaceIds: [] }, HOME)).toBe(true);
+    expect(collaboratorVisibleIn(piotr, WORK)).toBe(true);
+    expect(collaboratorVisibleIn(piotr, HOME)).toBe(false);
+    expect(collaboratorVisibleIn(piotr, null)).toBe(true);
+    expect(collaboratorsForWorkspace(all, HOME).map((c) => c.name)).toEqual(['Łukasz', 'Anna Nowak']);
+    // Już przy zadaniu / zaznaczony w filtrze zostaje.
+    expect(collaboratorsForWorkspace(all, HOME, [null, piotr.id]).map((c) => c.name)).toEqual(['Łukasz', 'Anna Nowak', 'Piotr']);
+  });
+
+  it('zapis: lista bez powtórzeń, pusta = wszystkie (`null`), zmiana tylko przy różnicy', () => {
+    expect(collaboratorSaveOps(USER, all, { name: 'Piotr', workspaceIds: [WORK, WORK] }, piotr)).toMatchObject({ ops: [] });
+    expect(collaboratorSaveOps(USER, all, { name: 'Piotr', workspaceIds: [] }, piotr)).toMatchObject({ ops: [{ patch: { workspace_ids: null } }] });
+    expect(collaboratorSaveOps(USER, all, { name: 'Piotr', workspaceIds: [HOME, WORK] }, piotr)).toMatchObject({ ops: [{ patch: { workspace_ids: [HOME, WORK] } }] });
+    expect(collaboratorSaveOps(USER, all, { name: 'Piotr' }, piotr)).toMatchObject({ ops: [] });
+    expect(collaboratorSaveOps(USER, all, { name: 'Anna Nowak', email: anna.email, workspaceIds: [] }, anna)).toMatchObject({ ops: [] });
+    const created = collaboratorSaveOps(USER, [], { name: 'Ola', workspaceIds: [HOME] });
+    expect(created.ok && created.ops[0]!.patch).toMatchObject({ workspace_ids: [HOME] });
+    // Nowa osoba wpisana w zadaniu dostaje przestrzeń zadania; istniejąca zostaje bez zmian.
+    const typed = addParticipantByNameOps(USER, all, TASK, 'Ola', HOME);
+    expect(typed.ok && typed.ops[0]!.patch).toMatchObject({ name: 'Ola', workspace_ids: [HOME] });
+    expect(addParticipantByNameOps(USER, all, TASK, 'Piotr', HOME)).toMatchObject({ created: false, ops: [{ table: 'task_participants' }] });
+    const all_ = collaboratorSaveOps(USER, [], { name: 'Ola', workspaceIds: [] });
+    expect(all_.ok && 'workspace_ids' in all_.ops[0]!.patch).toBe(false);
   });
 });
 

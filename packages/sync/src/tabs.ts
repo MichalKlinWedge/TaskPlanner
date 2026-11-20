@@ -47,9 +47,9 @@ type Operation =
  * (nowa kolumna / tabela, której starszy lider nie ma). 1 = brak pola (do Etapu 7), 2 = `mutateMany`,
  * `profiles.focus`, `review_sessions` w przeglądzie, 3 = `collaborators`, `task_participants`,
  * `task_comments`, `tasks.assignee_id`, 4 = `collaborators.acronym`, `collaborators.archived_at`,
- * 5 = `tags.workspace_ids`.
+ * 5 = `tags.workspace_ids`, 6 = `collaborators.workspace_ids`.
  */
-export const TAB_PROTOCOL = 5;
+export const TAB_PROTOCOL = 6;
 
 /** Błąd zapisu przez lidera ze starszą wersją aplikacji. */
 export const STALE_LEADER_MESSAGE = 'Aplikacja jest otwarta w innej karcie w starszej wersji — odśwież albo zamknij tamtą kartę i spróbuj ponownie.';

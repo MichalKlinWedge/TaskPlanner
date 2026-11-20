@@ -3,7 +3,7 @@
  * zmienia, „×” usuwa), „+ Filtr” dodaje kolejny, „Wyczyść” zdejmuje wszystkie. Wybór w arkuszach
  * `pickOption` / `pickMany`; opis warunków i gotowe zakresy terminu z `core`.
  */
-import { ASSIGNEE_CREATOR, ASSIGNEE_CREATOR_LABEL, collaboratorsByStatus, DUE_PRESETS, duePreset, filterChips, isEmptyFilter, PRIORITY, tagsForWorkspace, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from '@taskplanner/core';
+import { ASSIGNEE_CREATOR, ASSIGNEE_CREATOR_LABEL, collaboratorsByStatus, collaboratorsForWorkspace, DUE_PRESETS, duePreset, filterChips, isEmptyFilter, PRIORITY, tagsForWorkspace, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from '@taskplanner/core';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useView } from '@/lib/app-data';
@@ -81,7 +81,7 @@ export function FilterBar({ query, onChange, hide = [] }: { query: FilterQuery; 
       case 'assignees': {
         const values = await pickMany<string>('Odpowiedzialny', [
           { label: ASSIGNEE_CREATOR_LABEL, hint: 'bez wskazanej osoby', value: ASSIGNEE_CREATOR, selected: !!query.assignees?.includes(ASSIGNEE_CREATOR) },
-          ...collaboratorsByStatus(data.collaborators).map((c) => ({ label: c.name, hint: c.archivedAt ? 'nieaktywny' : undefined, value: c.id, selected: !!query.assignees?.includes(c.id) })),
+          ...collaboratorsByStatus(collaboratorsForWorkspace(data.collaborators, workspaceId, query.assignees)).map((c) => ({ label: c.name, hint: c.archivedAt ? 'nieaktywny' : undefined, value: c.id, selected: !!query.assignees?.includes(c.id) })),
         ]);
         if (values) set({ assignees: orUndefined(values) });
         return;

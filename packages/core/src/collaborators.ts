@@ -9,7 +9,7 @@
 import { collaboratorId, participantId } from './ids.ts';
 import { CollaboratorRow } from './schemas/model.ts';
 import { normalizeText } from './search.ts';
-import type { TaskOp } from './tasks.ts';
+import { tagVisibleIn, tagWorkspacesPatch, type TaskOp } from './tasks.ts';
 
 export interface Collaborator {
   id: string;
@@ -19,6 +19,8 @@ export interface Collaborator {
   acronym?: string | null;
   /** Nieaktywny od (ISO); brak = aktywny. */
   archivedAt?: string | null;
+  /** Przestrzenie, w których osoba się podpowiada; brak / `null` = wszystkie (jak przy tagach). */
+  workspaceIds?: readonly string[] | null;
 }
 
 export interface CollaboratorInput {
@@ -27,6 +29,8 @@ export interface CollaboratorInput {
   acronym?: string | null;
   /** Status; brak = bez zmiany (nowy — aktywny). */
   active?: boolean;
+  /** Przestrzenie, w których osoba się podpowiada; puste = wszystkie, brak = bez zmiany. */
+  workspaceIds?: readonly string[];
 }
 
 type Result<T> = ({ ok: true } & T) | { ok: false; error: string };
@@ -44,6 +48,22 @@ export function collaboratorFields(input: CollaboratorInput): Result<{ name: str
 
 /** Aktywny = podpowiada się przy zadaniach. */
 export const isActiveCollaborator = (collaborator: Pick<Collaborator, 'archivedAt'>): boolean => !collaborator.archivedAt;
+
+/**
+ * Czy osoba podpowiada się w przestrzeni (uczestnicy, odpowiedzialny, filtr „Odpowiedzialny”) —
+ * ta sama reguła co przy tagach: brak przestrzeni albo brak listy = wszędzie.
+ */
+export const collaboratorVisibleIn = (collaborator: Pick<Collaborator, 'workspaceIds'>, workspaceId: string | null | undefined): boolean =>
+  tagVisibleIn({ workspaceIds: collaborator.workspaceIds ?? null }, workspaceId ?? null);
+
+/**
+ * Współpracownicy do pokazania w przestrzeni; `keep` — ukryci tam, ale już przy zadaniu albo
+ * zaznaczeni w filtrze (nie mogą zniknąć z wyboru).
+ */
+export function collaboratorsForWorkspace<T extends Collaborator>(collaborators: readonly T[], workspaceId: string | null | undefined, keep: Iterable<string | null | undefined> = []): T[] {
+  const kept = new Set(keep);
+  return collaborators.filter((c) => kept.has(c.id) || collaboratorVisibleIn(c, workspaceId));
+}
 
 /** Współpracownik o tej nazwie (bez wielkości liter i polskich znaków). */
 export const findCollaborator = (collaborators: readonly Collaborator[], name: string): Collaborator | undefined => {
@@ -87,6 +107,7 @@ export function collaboratorSaveOps(
       ...(fields.email && { email: fields.email }),
       ...(fields.acronym && { acronym: fields.acronym }),
       ...(input.active !== undefined && { archived_at: input.active ? null : new Date(now).toISOString() }),
+      ...(input.workspaceIds?.length && tagWorkspacesPatch(input.workspaceIds)),
       deleted_at: null,
     };
     return { ok: true, id, ops: [{ table: 'collaborators', id, patch }] };
@@ -96,6 +117,11 @@ export function collaboratorSaveOps(
   if (fields.email !== existing.email) patch.email = fields.email;
   if (fields.acronym !== (existing.acronym ?? null)) patch.acronym = fields.acronym;
   if (input.active !== undefined && input.active !== isActiveCollaborator(existing)) patch.archived_at = input.active ? null : new Date(now).toISOString();
+  if (input.workspaceIds) {
+    const next = tagWorkspacesPatch(input.workspaceIds).workspace_ids;
+    const same = (next ?? []).length === (existing.workspaceIds ?? []).length && (next ?? []).every((id) => existing.workspaceIds?.includes(id));
+    if (!same) patch.workspace_ids = next;
+  }
   return { ok: true, id: existing.id, ops: Object.keys(patch).length ? [{ table: 'collaborators', id: existing.id, patch }] : [] };
 }
 
@@ -140,12 +166,19 @@ export function removeParticipantOps(taskId: string, collaboratorId: string, now
 
 /**
  * Uczestnik z pola tekstowego: istniejący współpracownik o tej nazwie albo nowy (jedna paczka:
- * współpracownik, potem uczestnik — serwer sprawdza dostęp do współpracownika).
+ * współpracownik, potem uczestnik — serwer sprawdza dostęp do współpracownika). Nowy dostaje
+ * przestrzeń zadania (`workspaceId`, jak nowy tag); istniejącego nie zmienia.
  */
-export function addParticipantByNameOps(userId: string, collaborators: readonly Collaborator[], taskId: string, name: string): Result<{ collaboratorId: string; created: boolean; ops: TaskOp[] }> {
+export function addParticipantByNameOps(
+  userId: string,
+  collaborators: readonly Collaborator[],
+  taskId: string,
+  name: string,
+  workspaceId?: string | null,
+): Result<{ collaboratorId: string; created: boolean; ops: TaskOp[] }> {
   const known = findCollaborator(collaborators, name);
   if (known) return { ok: true, collaboratorId: known.id, created: false, ops: addParticipantOps(taskId, known.id) };
-  const saved = collaboratorSaveOps(userId, collaborators, { name });
+  const saved = collaboratorSaveOps(userId, collaborators, { name, ...(workspaceId && { workspaceIds: [workspaceId] }) });
   if (!saved.ok) return saved;
   return { ok: true, collaboratorId: saved.id, created: true, ops: [...saved.ops, ...addParticipantOps(taskId, saved.id)] };
 }

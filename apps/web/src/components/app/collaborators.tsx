@@ -4,15 +4,18 @@
  * Widok „Współpracownicy” (`#/people`, link w pasku bocznym): książka adresowa osób, które można
  * wskazać jako odpowiedzialne i uczestników zadań (tylko informacyjnie — nikt nie dostaje dostępu).
  * Kliknięcie osoby otwiera edycję: nazwa, e-mail, akronim (znaczek przy zadaniu) i status — tylko
- * aktywni podpowiadają się przy zadaniach. Usunięcie zabiera osobę z uczestników, a zadania, za które
+ * aktywni podpowiadają się przy zadaniach — oraz przestrzenie, w których osoba się podpowiada (jak
+ * przy tagach; żadna = wszystkie). Usunięcie zabiera osobę z uczestników, a zadania, za które
  * odpowiadała, wracają do twórcy (z cofnięciem).
  */
 import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, deleteCollaboratorOps, initials, isActiveCollaborator, plural, type Collaborator } from "@taskplanner/core";
 import { useState, type FormEvent } from "react";
 
+import type { AppData } from "@/lib/app-data";
 import { useLocalQuery } from "@/lib/local-store";
 
 import { useAppEnv } from "./app-env";
+import { WorkspaceChips } from "./filter-views";
 import { useTaskActions } from "./task-item";
 import { Button, Card, Field, Input, Notice, Select } from "./ui";
 
@@ -23,10 +26,11 @@ interface Draft {
   email: string;
   acronym: string;
   active: boolean;
+  workspaceIds: string[];
 }
 
-const EMPTY: Draft = { name: "", email: "", acronym: "", active: true };
-const draftOf = (person: Collaborator): Draft => ({ name: person.name, email: person.email ?? "", acronym: person.acronym ?? "", active: isActiveCollaborator(person) });
+const EMPTY: Draft = { name: "", email: "", acronym: "", active: true, workspaceIds: [] };
+const draftOf = (person: Collaborator): Draft => ({ name: person.name, email: person.email ?? "", acronym: person.acronym ?? "", active: isActiveCollaborator(person), workspaceIds: [...(person.workspaceIds ?? [])] });
 
 export function CollaboratorsView() {
   const { store, data, userId } = useAppEnv();
@@ -108,7 +112,7 @@ export function CollaboratorsView() {
       {adding ? (
         <Card className="mb-3">
           <form onSubmit={add} aria-label="Nowy współpracownik">
-            <PersonFields draft={adding} onChange={setAdding} autoFocus />
+            <PersonFields draft={adding} onChange={setAdding} workspaces={data.workspaces} autoFocus />
             <div className="mt-3 flex gap-2">
               <Button type="submit" kind="primary" disabled={!adding.name.trim()}>
                 Dodaj
@@ -131,6 +135,7 @@ export function CollaboratorsView() {
           {people.map((person) => {
             const count = counts.get(person.id);
             const active = isActiveCollaborator(person);
+            const spaces = (person.workspaceIds ?? []).map((id) => data.workspaces.find((w) => w.id === id)?.name).filter(Boolean);
             const usageText = [
               count?.assigned ? `odpowiada za ${plural(count.assigned, ["zadanie", "zadania", "zadań"])}` : null,
               count?.participating ? `uczestnik ${plural(count.participating, ["zadania", "zadań", "zadań"])}` : null,
@@ -142,7 +147,7 @@ export function CollaboratorsView() {
                 {editing?.id === person.id ? (
                   <Card>
                     <form onSubmit={(e) => save(e, person)} aria-label={`Edycja: ${person.name}`}>
-                      <PersonFields draft={editing.draft} onChange={(draft) => setEditing({ id: person.id, draft })} autoFocus />
+                      <PersonFields draft={editing.draft} onChange={(draft) => setEditing({ id: person.id, draft })} workspaces={data.workspaces} autoFocus />
                       <div className="mt-3 flex flex-wrap gap-2">
                         <Button type="submit" kind="primary">
                           Zapisz
@@ -168,7 +173,7 @@ export function CollaboratorsView() {
                         {person.name}
                         {active ? null : <span className="ml-2 rounded bg-[var(--hover)] px-1.5 py-0.5 text-[11px] font-normal text-[var(--muted)]">nieaktywny</span>}
                       </span>
-                      <span className="block text-xs text-[var(--muted)]">{[person.email, usageText].filter(Boolean).join(" · ") || " "}</span>
+                      <span className="block text-xs text-[var(--muted)]">{[person.email, usageText, spaces.length ? `tylko: ${spaces.join(", ")}` : null].filter(Boolean).join(" · ") || " "}</span>
                     </span>
                     <span className="text-xs text-[var(--muted)]">Edytuj</span>
                   </button>
@@ -184,7 +189,7 @@ export function CollaboratorsView() {
   );
 }
 
-function PersonFields({ draft, onChange, autoFocus }: { draft: Draft; onChange: (draft: Draft) => void; autoFocus?: boolean }) {
+function PersonFields({ draft, onChange, workspaces, autoFocus }: { draft: Draft; onChange: (draft: Draft) => void; workspaces: AppData["workspaces"]; autoFocus?: boolean }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <Field label="Nazwa">
@@ -202,6 +207,13 @@ function PersonFields({ draft, onChange, autoFocus }: { draft: Draft; onChange: 
           <option value="inactive">Nieaktywny</option>
         </Select>
       </Field>
+      {workspaces.length > 1 ? (
+        // Nie `Field` (label): kliknięcie podpisu wcisnęłoby pierwszy przycisk. Podpis „Widoczny w:” dają chipy.
+        <div className="flex flex-col gap-1 text-sm sm:col-span-2">
+          <WorkspaceChips ids={draft.workspaceIds} workspaces={workspaces} label="Przestrzenie współpracownika" onChange={(workspaceIds) => onChange({ ...draft, workspaceIds })} />
+          <span className="text-xs opacity-60">Przestrzenie, w których osoba podpowiada się przy zadaniach i w filtrze „Odpowiedzialny”. Żadna = wszystkie.</span>
+        </div>
+      ) : null}
     </div>
   );
 }

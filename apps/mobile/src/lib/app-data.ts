@@ -130,7 +130,7 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
     db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs, project_status from lists where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, name, color, sort_key, workspace_ids from tags where deleted_at is null'),
     db.all<SqlRow>('select id, name, icon, query, sort_key from saved_filters where deleted_at is null'),
-    db.all<SqlRow>('select id, name, email, acronym, archived_at from collaborators where deleted_at is null'),
+    db.all<SqlRow>('select id, name, email, acronym, archived_at, workspace_ids from collaborators where deleted_at is null'),
     db.all<SqlRow>(`select ${TASK_COLUMNS} from tasks t where t.deleted_at is null`),
     // Osobno i pogrupowane w JS: podzapytanie na każde zadanie było najdroższą częścią odczytu na telefonie.
     db.all<SqlRow>('select task_id, tag_id from task_tags where deleted_at is null order by rowid'),
@@ -175,7 +175,7 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
         return query.success ? [{ id: String(r.id), name: String(r.name), icon: r.icon as string | null, query: query.data, sortKey: String(r.sort_key) }] : [];
       })
       .sort(byKey),
-    collaborators: sortCollaborators(collaborators.map((r) => ({ id: String(r.id), name: String(r.name), email: (r.email as string | null) ?? null, acronym: (r.acronym as string | null) ?? null, archivedAt: (r.archived_at as string | null) ?? null }))),
+    collaborators: sortCollaborators(collaborators.map((r) => ({ id: String(r.id), name: String(r.name), email: (r.email as string | null) ?? null, acronym: (r.acronym as string | null) ?? null, archivedAt: (r.archived_at as string | null) ?? null, workspaceIds: tagWorkspaceIds(r.workspace_ids) }))),
     // Zadania z zarchiwizowanych list nie trafiają do widoków.
     tasks: tasks
       .map((r) => toViewTask(r as unknown as LocalTaskRow, tagsOf.get(String(r.id)) ?? []))

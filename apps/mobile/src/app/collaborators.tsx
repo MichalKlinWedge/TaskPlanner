@@ -1,7 +1,8 @@
 /**
  * Współpracownicy (jak widok „Współpracownicy” na webie): osoby do wskazania jako odpowiedzialne i
  * uczestnicy zadań — tylko informacyjnie, bez dostępu. Dodanie, edycja (nazwa, e-mail, akronim do
- * znaczka przy zadaniu, status — tylko aktywni podpowiadają się przy zadaniach), usunięcie z „Cofnij”
+ * znaczka przy zadaniu, status — tylko aktywni podpowiadają się przy zadaniach, przestrzenie, w których
+ * osoba się podpowiada — jak przy tagach, żadna = wszystkie), usunięcie z „Cofnij”
  * (osoba znika z uczestników, zadania wracają do twórcy).
  */
 import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, deleteCollaboratorOps, initials, isActiveCollaborator, plural, type Collaborator } from '@taskplanner/core';
@@ -10,7 +11,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { confirm, useTaskActions } from '@/components/actions';
 import { Button, Field, P, Row, Screen, Section, usePalette } from '@/components/ui';
-import { useAppData } from '@/lib/app-data';
+import { WorkspaceChips } from '@/components/workspace-chips';
+import { useAppData, type AppData } from '@/lib/app-data';
 import { useLocalQuery } from '@/lib/local-query';
 import { localEngine } from '@/lib/sync';
 
@@ -24,10 +26,11 @@ interface Draft {
   email: string;
   acronym: string;
   active: boolean;
+  workspaceIds: string[];
 }
 
-const EMPTY: Draft = { name: '', email: '', acronym: '', active: true };
-const draftOf = (person: Collaborator): Draft => ({ name: person.name, email: person.email ?? '', acronym: person.acronym ?? '', active: isActiveCollaborator(person) });
+const EMPTY: Draft = { name: '', email: '', acronym: '', active: true, workspaceIds: [] };
+const draftOf = (person: Collaborator): Draft => ({ name: person.name, email: person.email ?? '', acronym: person.acronym ?? '', active: isActiveCollaborator(person), workspaceIds: [...(person.workspaceIds ?? [])] });
 
 export default function Collaborators() {
   const p = usePalette();
@@ -85,14 +88,16 @@ export default function Collaborators() {
         {people.map((person) => {
           const count = usage.get(person.id);
           const active = isActiveCollaborator(person);
+          const spaces = (person.workspaceIds ?? []).map((id) => data.workspaces.find((w) => w.id === id)?.name).filter(Boolean);
           const info = [
             person.email,
+            spaces.length ? `tylko: ${spaces.join(', ')}` : null,
             count?.assigned ? `odpowiada za ${plural(count.assigned, ['zadanie', 'zadania', 'zadań'])}` : null,
             count?.participating ? `uczestnik ${plural(count.participating, ['zadania', 'zadań', 'zadań'])}` : null,
           ].filter(Boolean);
           return editing?.id === person.id ? (
             <View key={person.id} style={[styles.person, { borderColor: p.border }]}>
-              <PersonFields draft={editing.draft} onChange={(next) => setEditing({ id: person.id, draft: next })} />
+              <PersonFields draft={editing.draft} onChange={(next) => setEditing({ id: person.id, draft: next })} workspaces={data.workspaces} />
               <Row>
                 <Button title="Zapisz" onPress={() => save(person)} />
                 <Button title="Anuluj" kind="secondary" onPress={() => setEditing(null)} />
@@ -127,7 +132,7 @@ export default function Collaborators() {
       </Section>
 
       <Section title="Nowa osoba">
-        <PersonFields draft={draft} onChange={setDraft} />
+        <PersonFields draft={draft} onChange={setDraft} workspaces={data.workspaces} />
         <Button title="Dodaj" disabled={!draft.name.trim()} onPress={add} />
         {error ? <P tone="bad">{error}</P> : null}
       </Section>
@@ -135,7 +140,7 @@ export default function Collaborators() {
   );
 }
 
-function PersonFields({ draft, onChange }: { draft: Draft; onChange: (draft: Draft) => void }) {
+function PersonFields({ draft, onChange, workspaces }: { draft: Draft; onChange: (draft: Draft) => void; workspaces: AppData['workspaces'] }) {
   return (
     <>
       <Field label="Nazwa" value={draft.name} onChangeText={(name) => onChange({ ...draft, name })} maxLength={100} />
@@ -152,6 +157,7 @@ function PersonFields({ draft, onChange }: { draft: Draft; onChange: (draft: Dra
         <Button title="Aktywny" kind={draft.active ? 'primary' : 'secondary'} onPress={() => onChange({ ...draft, active: true })} />
         <Button title="Nieaktywny" kind={draft.active ? 'secondary' : 'primary'} onPress={() => onChange({ ...draft, active: false })} />
       </Row>
+      {workspaces.length > 1 ? <WorkspaceChips ids={draft.workspaceIds} workspaces={workspaces} inset={false} onChange={(workspaceIds) => onChange({ ...draft, workspaceIds })} /> : null}
     </>
   );
 }

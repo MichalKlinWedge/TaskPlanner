@@ -167,14 +167,14 @@ isOneToOne: false
                   ]
                 },"collaborators": {
                   Row: {
-                    "acronym": string | null,"archived_at": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"email": string | null,"field_clock": NonNullable<Json>,"id": string,"name": string,"row_version": number,"scope_id": string,"updated_at": string
+                    "acronym": string | null,"archived_at": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"email": string | null,"field_clock": NonNullable<Json>,"id": string,"name": string,"row_version": number,"scope_id": string,"updated_at": string,"workspace_ids": Json | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "acronym"?: string | null,"archived_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"email"?: string | null,"field_clock"?: NonNullable<Json>,"id": string,"name": string,"row_version"?: number,"scope_id": string,"updated_at"?: string
+                    "acronym"?: string | null,"archived_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"email"?: string | null,"field_clock"?: NonNullable<Json>,"id": string,"name": string,"row_version"?: number,"scope_id": string,"updated_at"?: string,"workspace_ids"?: Json | null
                   }
                   Update: {
-                    "acronym"?: string | null,"archived_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"email"?: string | null,"field_clock"?: NonNullable<Json>,"id"?: string,"name"?: string,"row_version"?: number,"scope_id"?: string,"updated_at"?: string
+                    "acronym"?: string | null,"archived_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"email"?: string | null,"field_clock"?: NonNullable<Json>,"id"?: string,"name"?: string,"row_version"?: number,"scope_id"?: string,"updated_at"?: string,"workspace_ids"?: Json | null
                   }
                   Relationships: [
                     {

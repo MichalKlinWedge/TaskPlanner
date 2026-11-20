@@ -115,7 +115,9 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
           Usuń tag
         </Button>
       </header>
-      <TagWorkspaces tag={tag} workspaces={data.workspaces} onChange={(ids) => void update(tagWorkspacesPatch(ids))} />
+      <div className="mb-3">
+        <WorkspaceChips ids={tag.workspaceIds} workspaces={data.workspaces} label="Przestrzenie tagu" onChange={(ids) => void update(tagWorkspacesPatch(ids))} />
+      </div>
       <FilterBar query={query} onChange={(q) => setQuery(q.tags ? q : { ...q, tags: { ids: [tag.id], match: "any" } })}>
         <SaveFilter query={query} onSaved={(id) => navigate({ view: "filter", id })} />
       </FilterBar>
@@ -124,12 +126,12 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
   );
 }
 
-/** Przestrzenie, w których tag się pokazuje i podpowiada; żadna zaznaczona = wszystkie. */
-function TagWorkspaces({ tag, workspaces, onChange }: { tag: Tag; workspaces: AppData["workspaces"]; onChange: (ids: string[]) => void }) {
-  const chosen = (tag.workspaceIds ?? []).filter((id) => workspaces.some((w) => w.id === id));
+/** Przestrzenie, w których tag / współpracownik się pokazuje i podpowiada; żadna zaznaczona = wszystkie. */
+export function WorkspaceChips({ ids, workspaces, label, onChange }: { ids: readonly string[] | null | undefined; workspaces: AppData["workspaces"]; label: string; onChange: (ids: string[]) => void }) {
+  const chosen = (ids ?? []).filter((id) => workspaces.some((w) => w.id === id));
   const chip = (pressed: boolean) => `rounded-full border px-2.5 py-0.5 ${pressed ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)] hover:bg-[var(--hover)]"}`;
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs" role="group" aria-label="Przestrzenie tagu">
+    <div className="flex flex-wrap items-center gap-1.5 text-xs" role="group" aria-label={label}>
       <span className="text-[var(--muted)]">Widoczny w:</span>
       <button type="button" aria-pressed={!chosen.length} onClick={() => onChange([])} className={chip(!chosen.length)}>
         wszystkich przestrzeniach

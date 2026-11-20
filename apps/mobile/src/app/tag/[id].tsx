@@ -7,12 +7,11 @@
 import { tagWorkspacesPatch, type FilterQuery } from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Text, View } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
 import { EditNameBar, FilterResults } from '@/components/filter-screen';
-import { Chip, usePalette } from '@/components/ui';
-import { useAppData, type AppData, type Tag } from '@/lib/app-data';
+import { WorkspaceChips } from '@/components/workspace-chips';
+import { useAppData } from '@/lib/app-data';
 import { mutate } from '@/lib/sync';
 
 export default function TagScreen() {
@@ -47,29 +46,11 @@ export default function TagScreen() {
                 deleteTitle={`Usunąć tag „${tag.name}”?`}
                 deleteMessage="Zadania zostaną, stracą tylko ten tag."
               />
-              <TagWorkspaces tag={tag} workspaces={data.workspaces} onChange={(ids) => update(tagWorkspacesPatch(ids))} />
+              <WorkspaceChips ids={tag.workspaceIds} workspaces={data.workspaces} onChange={(ids) => update(tagWorkspacesPatch(ids))} />
             </>
           ) : undefined
         }
       />
     </>
-  );
-}
-
-/** Przestrzenie, w których tag się pokazuje i podpowiada; żadna zaznaczona = wszystkie. */
-function TagWorkspaces({ tag, workspaces, onChange }: { tag: Tag; workspaces: AppData['workspaces']; onChange: (ids: string[]) => void }) {
-  const p = usePalette();
-  const chosen = (tag.workspaceIds ?? []).filter((id) => workspaces.some((w) => w.id === id));
-  return (
-    <View style={{ paddingHorizontal: 12, paddingTop: 8, gap: 6 }}>
-      <Text style={{ color: p.muted, fontSize: 13 }}>Widoczny w:</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        <Chip label="wszystkich przestrzeniach" selected={!chosen.length} onPress={() => onChange([])} />
-        {workspaces.map((w) => {
-          const on = chosen.includes(w.id);
-          return <Chip key={w.id} label={w.name} selected={on} onPress={() => onChange(on ? chosen.filter((id) => id !== w.id) : [...chosen, w.id])} />;
-        })}
-      </View>
-    </View>
   );
 }

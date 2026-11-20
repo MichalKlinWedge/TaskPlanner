@@ -5,7 +5,7 @@
  * odpowiedzialny, termin, godzina. Aktywny warunek = chip z „×”; „+ Filtr” dodaje kolejny. Opis warunków i gotowe zakresy
  * terminu są w `core` (`filterChips`, `DUE_PRESETS`).
  */
-import { ASSIGNEE_CREATOR, ASSIGNEE_CREATOR_LABEL, collaboratorsByStatus, DUE_PRESETS, duePreset, filterChips, isEmptyFilter, LIST_KIND, PRIORITY, tagsForWorkspace, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from "@taskplanner/core";
+import { ASSIGNEE_CREATOR, ASSIGNEE_CREATOR_LABEL, collaboratorsByStatus, collaboratorsForWorkspace, DUE_PRESETS, duePreset, filterChips, isEmptyFilter, LIST_KIND, PRIORITY, tagsForWorkspace, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from "@taskplanner/core";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useAppEnv } from "./app-env";
@@ -128,7 +128,7 @@ export function FilterBar({ query, onChange, hide = [], children }: { query: Fil
             <Check checked={!!query.assignees?.includes(ASSIGNEE_CREATOR)} onChange={() => set({ assignees: toggle(query.assignees, ASSIGNEE_CREATOR) })}>
               <span title="Zadania bez wskazanej osoby odpowiedzialnej">{ASSIGNEE_CREATOR_LABEL}</span>
             </Check>
-            {collaboratorsByStatus(data.collaborators).map((c) => (
+            {collaboratorsByStatus(collaboratorsForWorkspace(data.collaborators, workspaceId, query.assignees)).map((c) => (
               <Check key={c.id} checked={!!query.assignees?.includes(c.id)} onChange={() => set({ assignees: toggle(query.assignees, c.id) })}>
                 {c.name}
                 {c.archivedAt ? <span className="text-xs text-[var(--muted)]">nieaktywny</span> : null}
