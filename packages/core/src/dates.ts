@@ -109,6 +109,17 @@ export function addMonths(date: LocalDate, months: number): LocalDate {
 
 export const dayOfMonth = (date: LocalDate): number => Number(date.slice(8, 10));
 
+/**
+ * Siatka miesiąca daty (widok miesiąca w kalendarzu): pełne tygodnie od tygodnia z 1. dniem do
+ * tygodnia z ostatnim dniem, każdy po 7 dni od `firstDay` (ISO: 1 = poniedziałek).
+ */
+export function monthWeeks(date: LocalDate, firstDay = 1): LocalDate[][] {
+  const last = lastDayOfMonth(date);
+  const weeks: LocalDate[][] = [];
+  for (let start = weekStart(`${date.slice(0, 7)}-01`, firstDay); start <= last; start = addDays(start, 7)) weeks.push(Array.from({ length: 7 }, (_, i) => addDays(start, i)));
+  return weeks;
+}
+
 /** 1 = poniedziałek … 7 = niedziela. */
 export const isoWeekday = (date: LocalDate): number => ((toDate(date).getUTCDay() + 6) % 7) + 1;
 

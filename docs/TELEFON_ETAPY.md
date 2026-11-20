@@ -61,6 +61,27 @@ Części „telefon — z MVP-3” z `PLAN_ETAPOWY.md` w `apps/mobile`: edytor p
 
 1. Tryb samolotowy: E3 (przeniesienie karty), E4 (Pomodoro z pauzą), E5 (odhaczenie), E7 (dwie decyzje) → wyłączyć tryb samolotowy → po < 10 s wszystko na webie, bez duplikatów.
 
+## E10. Kalendarz — dzień (Etap 5)
+
+1. Przeglądaj → „Kalendarz” → „Dzień”: oś 0–24 przewinięta do bieżącej godziny, linia „teraz”, wolne okna w godzinach pracy (zielone), bloki zadań z godziną, nawyki z porą, wydarzenia kalendarzy połączonych na serwerze.
+2. Przytrzymanie bloku zadania i przeciągnięcie → nowa godzina co 15 min, dymek „→ dziś GG:MM” z „Cofnij”; uchwyt na dole bloku → nowa długość. Na serwerze `due_time` / `duration_min`.
+3. Dotknięcie bloku → menu „Otwórz / Zmień godzinę… / Czas trwania… / Bez godziny”; „+ Zaplanuj…” → zadanie bez godziny → godzina.
+4. Dwa zadania na tę samą godzinę → obok siebie, czerwone obramowanie, „⚠ 1 konflikt” nad osią.
+
+## E11. Kalendarz — tydzień i miesiąc (Etap 5)
+
+1. „Tydzień”: 7 dni od pierwszego dnia tygodnia z ustawień, w każdym całodniowe, potem od najwcześniejszej godziny; wydarzenie wielodniowe w każdym dniu; dotknięcie dnia → oś dnia.
+2. „Miesiąc”: siatka z kropkami (zadania, nawyki, wydarzenia, konflikt na czerwono), dotknięcie dnia → agenda pod siatką, drugie dotknięcie / „Oś dnia ›” → widok dnia. ‹ › i „Dziś” przełączają zakres.
+
+## E12. Kalendarze telefonu (Etap 5)
+
+1. „📱” w nagłówku kalendarza → zgoda na kalendarz → lista kalendarzy telefonu (konto pod nazwą) → wybrać jeden → jego wydarzenia na osi dnia, w tygodniu i miesiącu (kolor kalendarza). Całodniowe — w swoim dniu (bez przesunięcia o strefę). Wydarzenie „wolny” bez konfliktu.
+
+## E13. „Plan dnia” w „Dziś” (Etap 5)
+
+1. Na górze „Dziś” zwijany „Plan dnia”: oś godzin pracy (poszerzona o bloki spoza nich), bloki, konflikty, „Ułóż w kalendarzu ›” → widok dnia. Stan zwinięcia zostaje po ponownym uruchomieniu.
+2. Offline (serwer odcięty): przesunięcie bloku w kalendarzu → widać od razu w „Planie dnia”; po przywróceniu serwera zmiana na webie.
+
 ## Wyniki
 
 | Scenariusz | Data | Wynik | Uwagi |
@@ -74,5 +95,9 @@ Części „telefon — z MVP-3” z `PLAN_ETAPOWY.md` w `apps/mobile`: edytor p
 | E7 Przegląd dnia | 20.11.2026 | OK (po poprawce) | 4 gesty + przyciski; podsumowanie „4 z 160” w 48 s; `review_sessions` ze `stats {done:1, someday:1, reviewed:4, rescheduled:2}`. Poprawione: dolne przyciski pod paskiem nawigacji systemu („Dalej” nie reagował) |
 | E8 Przegląd tygodnia | 20.11.2026 | OK | 6 kroków, „Przenieś do…” (Inbox 147 → 146), nadchodzący tydzień, nawyki 7 dni, podsumowanie |
 | E9 Offline | 20.11.2026 | OK z uwagą | zamiast trybu samolotowego odcięty serwer (`adb reverse --remove tcp:54521` + `am force-stop`, jak T8 w MVP-3). Offline: odhaczenie „Warzywa do obiadu”, karta → „W trakcie”, dwie decyzje przeglądu dnia (gest „jutro”, przycisk „Dziś”), Pomodoro z pauzą — na serwerze nic. Po `adb reverse tcp:54521 tcp:54521` synchronizacja **zawisła** (gniazdo otwarte, brak odpowiedzi — klient bez limitu czasu na `fetch`, por. uwaga niżej); po ponownym starcie aplikacji wszystko na serwerze w ~1,2 s: 3 zadania, wpis nawyku, odcinek `time_entries`, `profiles.focus` z pauzą, wiersz `review_sessions`; bez duplikatów (1 wpis nawyku na dzień, 1 odcinek) |
+| E10 Kalendarz — dzień | 20.11.2026 | OK (po poprawkach) | release APK. Przytrzymanie i przeciągnięcie bloku „Kupić zamówienie” 08:00 → 08:45 (dymek „→ dziś 08:45”, na serwerze `due_time` 08:45 w ~1 s); menu bloku: „Czas trwania…” → 30 min, uchwyt → 45 min, kolejny ruch uchwytu → 60 min i „Cofnij” → z powrotem 45 min na serwerze; „Zmień godzinę…” → 08:00. Konflikt 19:30 (dwa zadania obok siebie, czerwone obramowanie, „⚠ 1 konflikt”). Poprawione: przewinięcie na start (zimny start — wyrównanie do „teraz” po każdej zmianie treści, dopóki nie przewinie się palcem), tekst krótkich bloków (uchwyt nad krawędzią), „cały dzień” zwinięty do 8 pozycji z „+N”. „+ Zaplanuj…” niesprawdzone osobno (ten sam wybór godziny co w menu) |
+| E11 Tydzień i miesiąc | 20.11.2026 | OK | tydzień 16–22 lis z dniami jako kartami; miesiąc listopad 2026 (6 tygodni od poniedziałku), dotknięcie dnia → agenda pod siatką. Poprawione: „bez godziny” zamiast „cały dzień” przy zadaniach, kropki także pozycji ukończonych / „wolny” (przygaszone), całodniowe wydarzenia przed zadaniami |
+| E12 Kalendarze telefonu | 20.11.2026 | OK | lista 21 kalendarzy z kontem; „Dzień Niepodległości” z „Święta w Polsce” 11.11 (bez przesunięcia o strefę), przygaszone — status „wolny”, bez konfliktu. Jeden z kalendarzy świąt ma w telefonie wyłączoną synchronizację (0 wydarzeń) — to stan telefonu. Po teście wybór kalendarzy wyczyszczony |
+| E13 „Plan dnia” w „Dziś” | 20.11.2026 | OK z uwagą | rozwinięty: oś 06:00–20:00 (godziny pracy poszerzone o bloki), konflikt, wolne okna, linia „teraz”; zajmował cały ekran, więc domyślnie zwinięty z „Następny: 13:15 Napisać wizytę”, „⚠ 1”, „Kalendarz ›”. Krok 2 (offline) niesprawdzony |
 
 Uwaga do E9: zawieszenie po przywróceniu `adb reverse` to najpewniej artefakt przekierowania USB (połączenie otwarte w chwili jego dodania), ale pokazuje, że `fetch` w `lib/sync.ts` nie ma limitu czasu — jedno zawieszone żądanie blokuje synchronizację do restartu aplikacji. Poprawione 20.11.2026: `fetchWithTimeout` w `lib/sync.ts` (30 s, poza Storage). Próba na release APK: `adb reverse tcp:54521 tcp:54599` na serwer TCP, który przyjmuje połączenie i milczy; ukończenie zadania → po 30 s baner „Serwer nie odpowiedział w 30 s (timeout)” i ponowienie; po przywróceniu `adb reverse tcp:54521 tcp:54521` zmiana na serwerze po ~5 s, bez restartu aplikacji.

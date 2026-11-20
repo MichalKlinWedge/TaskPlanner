@@ -276,6 +276,38 @@ export function calendarEntries(
   return [...out, ...eventEntries.values()];
 }
 
+export interface AgendaDay {
+  date: LocalDate;
+  /** Całodniowe najpierw (wydarzenia przed zadaniami), potem od najwcześniejszej godziny w tym dniu. */
+  entries: CalendarEntry[];
+}
+
+/**
+ * Agenda dni `[from, to)` z pozycji `calendarEntries` (tydzień i miesiąc na telefonie): zadania
+ * i nawyki w swoim dniu, wydarzenie (także wielodniowe) w każdym dniu, który obejmuje — wydarzenie
+ * z godziną kończące się o północy nie zajmuje następnego dnia.
+ */
+export function agendaDays(entries: readonly CalendarEntry[], from: LocalDate, to: LocalDate): AgendaDay[] {
+  const days = new Map<LocalDate, CalendarEntry[]>();
+  for (let date = from; date < to; date = addDays(date, 1)) days.set(date, []);
+  for (const entry of entries) {
+    if (entry.kind !== 'event') {
+      days.get(entry.date)?.push(entry);
+      continue;
+    }
+    const first = entry.start.slice(0, 10);
+    const endDay = entry.end.slice(0, 10);
+    const until = entry.allDay || entry.end.slice(11, 16) === '00:00' ? endDay : addDays(endDay, 1);
+    const last = until > first ? until : addDays(first, 1);
+    for (let date = first < from ? from : first; date < last && date < to; date = addDays(date, 1)) days.get(date)?.push(entry);
+  }
+  return [...days].map(([date, list]) => {
+    const startOn = (e: CalendarEntry) => (e.allDay ? '' : e.start.slice(0, 10) < date ? `${date}T00:00` : e.start);
+    const eventFirst = (e: CalendarEntry) => (e.allDay && e.kind === 'event' ? 0 : 1);
+    return { date, entries: list.sort((a, b) => Number(b.allDay) - Number(a.allDay) || eventFirst(a) - eventFirst(b) || startOn(a).localeCompare(startOn(b)) || a.title.localeCompare(b.title, 'pl')) };
+  });
+}
+
 /**
  * Wolne okna dnia (`freeSlots`) jako zegar ścienny — do podświetlenia w widoku dnia kalendarza.
  */

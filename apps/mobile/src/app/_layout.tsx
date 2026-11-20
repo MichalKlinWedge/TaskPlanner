@@ -226,6 +226,7 @@ export default function RootLayout() {
             <Stack.Screen name="habit/[id]" options={{ title: 'Nawyk' }} />
             <Stack.Screen name="habit-form" options={{ title: 'Nawyk' }} />
             <Stack.Screen name="board" options={{ title: 'Tablica' }} />
+            <Stack.Screen name="calendar" options={{ title: 'Kalendarz' }} />
             <Stack.Screen name="review/daily" options={{ title: 'Przegląd dnia' }} />
             <Stack.Screen name="review/weekly" options={{ title: 'Przegląd tygodnia' }} />
             <Stack.Screen name="quick-add" options={{ title: 'Szybkie dodawanie', presentation: 'formSheet', sheetAllowedDetents: 'fitToContents', headerShown: false }} />
@@ -243,8 +244,6 @@ export default function RootLayout() {
             <Stack.Screen name="widget" options={{ title: 'Dziś i widżet (PoC-4)' }} />
             <Stack.Screen name="reminders" options={{ title: 'Przypomnienia (PoC-4)' }} />
             <Stack.Screen name="share" options={{ title: 'Udostępnione' }} />
-            <Stack.Screen name="calendar" options={{ title: 'Kalendarz (calendar-kit)' }} />
-            <Stack.Screen name="timeline" options={{ title: 'Oś dnia (własna)' }} />
             <Stack.Screen name="selftest" options={{ title: 'Samosprawdzenie (Hermes)' }} />
           </Stack>
           <PickerHost />
