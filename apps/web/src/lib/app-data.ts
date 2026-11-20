@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * Dane powłoki aplikacji z lokalnej bazy: przestrzenie, listy, tagi, zadania jako `ViewTask`
- * (z tagami) i dzisiejsze wykonania nawyków. Zapytania odświeżają się po każdej zmianie tabel
+ * Dane powłoki aplikacji z lokalnej bazy: przestrzenie, listy, tagi, współpracownicy, zadania jako
+ * `ViewTask` (z tagami i odpowiedzialnym) i dzisiejsze wykonania nawyków. Zapytania odświeżają się po każdej zmianie tabel
  * (także z innej karty i z synchronizacji); reguły widoków liczy `@taskplanner/core`.
  */
-import { AttachmentPreview, FilterQuery, localDateAt, ProfileSettings, toHabitCompletion, toViewTask, ViewPrefs, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ViewTask } from "@taskplanner/core";
+import { AttachmentPreview, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, toHabitCompletion, toViewTask, ViewPrefs, type Collaborator, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ViewTask } from "@taskplanner/core";
 import type { SqlRow, TabStore } from "@taskplanner/sync";
 import { useEffect, useMemo, useState } from "react";
 
@@ -68,6 +68,8 @@ export interface AppData {
   lists: List[];
   tags: Tag[];
   savedFilters: SavedFilter[];
+  /** Współpracownicy (alfabetycznie) — uczestnicy i odpowiedzialni zadań. */
+  collaborators: Collaborator[];
   tasks: ViewTask[];
   /** Id nawyków odhaczonych dziś. */
   habitsDoneToday: Set<string>;
@@ -118,10 +120,11 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
   );
   const tags = useLocalQuery<Row>(store, "select id, name, color, sort_key from tags where deleted_at is null", [], ["tags"]);
   const filters = useLocalQuery<Row>(store, "select id, name, icon, query, sort_key from saved_filters where deleted_at is null", [], ["saved_filters"]);
+  const collaborators = useLocalQuery<Row>(store, "select id, name, email from collaborators where deleted_at is null", [], ["collaborators"]);
   const tasks = useLocalQuery<SqlRow>(
     store,
     `select t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
-            t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count,
+            t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count, t.assignee_id,
             -- Z zegarów pól widoki potrzebują tylko statusu (\`statusChangedAt\`); cały JSON przy 10 000 zadań to ~5 MB na odczyt.
             json_object('status', json_extract(t.field_clock, '$.status')) as field_clock,
             (select group_concat(tt.tag_id) from task_tags tt where tt.task_id = t.id and tt.deleted_at is null) as tag_ids
@@ -175,6 +178,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
           return query.success ? [{ id: String(r.id), name: String(r.name), icon: r.icon as string | null, query: query.data, sortKey: String(r.sort_key) }] : [];
         })
         .sort(byKey),
+      collaborators: sortCollaborators(collaborators.rows.map((r) => ({ id: String(r.id), name: String(r.name), email: (r.email as string | null) ?? null }))),
       // Zadania z zarchiwizowanych list nie trafiają do widoków.
       tasks: tasks.rows
         .map((r) => toViewTask(r as unknown as LocalTaskRow, typeof r.tag_ids === "string" && r.tag_ids ? r.tag_ids.split(",") : []))
@@ -204,5 +208,5 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
       }, new Map<string, Attachment[]>()),
       loaded: workspaces.ms !== null && lists.ms !== null && tasks.ms !== null,
     };
-  }, [workspaces, lists, tags, filters, tasks, habits, attachments, today]);
+  }, [workspaces, lists, tags, filters, collaborators, tasks, habits, attachments, today]);
 }

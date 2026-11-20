@@ -59,6 +59,11 @@ export function uuidv5(name: string, namespace: string = TASKPLANNER_NAMESPACE):
 export const completionId = (taskId: string, occurrenceDate: string) => uuidv5(`completion:${taskId}:${occurrenceDate}`);
 /** Tag zadania (`task_tags.id`). */
 export const taskTagId = (taskId: string, tagId: string) => uuidv5(`task-tag:${taskId}:${tagId}`);
+/** Uczestnik zadania (`task_participants.id`). */
+export const participantId = (taskId: string, collaboratorId: string) => uuidv5(`participant:${taskId}:${collaboratorId}`);
+/** Współpracownik o danej nazwie (jak `tagId`): dodany z dwóch urządzeń offline to jeden wiersz. */
+export const collaboratorId = (userId: string, name: string) =>
+  uuidv5(`collaborator:${userId}:${name.normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/ł/g, 'l').replace(/Ł/g, 'L').trim().toLowerCase()}`);
 /** Inbox przestrzeni (`lists.id`, `kind = 'inbox'`). */
 export const inboxId = (workspaceId: string) => uuidv5(`inbox:${workspaceId}`);
 /** Tag o danej nazwie użytkownika: ten sam tag utworzony na dwóch urządzeniach to jeden wiersz. */

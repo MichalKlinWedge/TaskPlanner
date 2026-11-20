@@ -115,6 +115,7 @@ export default function BrowseScreen() {
 
       <Group title="Więcej">
         <Item title="Przestrzenie i listy" hint="Tworzenie, nazwy, kolory, kolejność, archiwum" href="/workspaces" />
+        <Item title="Współpracownicy" hint="Osoby do wskazania w zadaniach (tylko informacyjnie)" href="/collaborators" />
         <Item title="Kosz" hint="Usunięte w ostatnich 30 dniach" href="/trash" />
         <Item title="Konto i synchronizacja" hint="Logowanie, stan synchronizacji, przypomnienia" href="/settings" />
         <Item title="Narzędzia PoC" hint="Widżet, przypomnienia testowe, samosprawdzenie" href="/dev" />

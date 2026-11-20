@@ -9,6 +9,7 @@ import type { Tables } from '@taskplanner/db';
 export const SYNCED_TABLES = [
   'workspaces', 'lists', 'tasks', 'tags', 'task_tags', 'task_completions', 'profiles', 'devices',
   'reminders', 'task_dependencies', 'time_entries', 'attachments', 'saved_filters', 'review_sessions',
+  'collaborators', 'task_participants', 'task_comments',
 ] as const;
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
 
@@ -51,6 +52,7 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     columns: columns<'tasks'>()([
       'list_id', 'parent_id', 'kind', 'title', 'description_md', 'status', 'priority', 'start_date', 'due_date', 'due_time',
       'duration_min', 'time_zone', 'recurrence', 'habit', 'completed_at', 'sort_key', 'board_sort_key', 'source', 'postpone_count',
+      'assignee_id',
     ]),
     json: ['recurrence', 'habit', 'source'],
     scope: 'derived',
@@ -110,6 +112,21 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     json: ['stats'],
     scope: 'personal',
   },
+  collaborators: {
+    columns: columns<'collaborators'>()(['scope_id', 'name', 'email']),
+    json: [],
+    scope: 'personal',
+  },
+  task_participants: {
+    columns: columns<'task_participants'>()(['task_id', 'collaborator_id']),
+    json: [],
+    scope: 'derived',
+  },
+  task_comments: {
+    columns: columns<'task_comments'>()(['task_id', 'body', 'posted_at', 'edited_at']),
+    json: [],
+    scope: 'derived',
+  },
 };
 
 // ── Tylko do odczytu (integracje, `pulled_readonly_tables()`) ─────────────────────────────────
@@ -168,7 +185,7 @@ export function localSchema(): string[] {
   // Etap 13 (10 000 zadań): tagi zadania w zapytaniu widoków (`app-data.ts`) i podzadania bez listy
   // — bez indeksu każde zadanie przeglądało całe `task_tags` (start weba ~13 s).
   statements.push('create index if not exists tasks_parent on tasks (parent_id)');
-  for (const table of ['reminders', 'attachments', 'time_entries', 'task_tags', 'task_completions'] as const) {
+  for (const table of ['reminders', 'attachments', 'time_entries', 'task_tags', 'task_completions', 'task_participants', 'task_comments'] as const) {
     statements.push(`create index if not exists ${table}_task on ${table} (task_id)`);
   }
   statements.push('create index if not exists task_dependencies_predecessor on task_dependencies (predecessor_id)');

@@ -1,16 +1,31 @@
 /**
  * Szczegóły zadania (MVP-3, jak panel zadania na webie): tytuł, status, priorytet, lista, termin,
- * godzina, początek, czas, powtarzanie (edytor M7, pomiń / zakończ serię), czas pracy, tagi, przypomnienia,
- * zależności (M12, jak na webie), opis Markdown (edycja + podgląd z odhaczaniem pól), podzadania do 4 poziomów, kosz.
+ * godzina, początek, czas, osoby (odpowiedzialny i uczestnicy — tylko informacyjnie), powtarzanie (edytor M7,
+ * pomiń / zakończ serię), czas pracy, tagi, przypomnienia, zależności (M12, jak na webie), opis Markdown (edycja
+ * + podgląd z odhaczaniem pól), podzadania do 4 poziomów, komentarze, kosz.
  * Każda zmiana to `mutate` jednego pola — synchronizacja scala zmiany z innych urządzeń (§6).
  */
 import {
+  addCommentOps,
   addDependencyOps,
+  addParticipantByNameOps,
+  addParticipantOps,
+  assigneeOf,
+  assignTaskOps,
   canAddSubtask,
   clampLag,
+  collaboratorMatches,
+  commentAuthor,
+  commentTime,
+  creatorLabel,
   datesPatch,
+  deleteCommentOps,
   dependencyErrorText,
   deleteTaskOps,
+  editCommentOps,
+  MAX_COMMENT_LENGTH,
+  removeParticipantOps,
+  sortComments,
   descendants,
   describeRecurrence,
   endSeriesOps,
@@ -224,6 +239,7 @@ export default function TaskScreen() {
           </View>
         </View>
 
+        <PeopleField key={`people:${task.id}`} task={task} data={data} />
         <RecurrenceField key={`rec:${task.id}`} task={task} data={data} today={today} timeZone={data.settings.timeZone} onSave={(patch) => void update(patch)} />
         <TimeField task={task} />
         <TagsField task={task} data={data} />
@@ -248,6 +264,8 @@ export default function TaskScreen() {
             <Text style={{ color: p.muted, fontSize: 12 }}>Najwyżej 4 poziomy zadań — tu nie można dodać kolejnego.</Text>
           )}
         </Block>
+
+        <CommentsField key={`com:${task.id}`} task={task} data={data} today={today} />
 
         <View style={styles.footer}>
           <Text style={{ color: p.muted, fontSize: 12, flex: 1 }}>
@@ -405,6 +423,188 @@ function TagsField({ task, data }: { task: ViewTask; data: AppData }) {
             <Pill key={t.id} label={`@${t.name}`} onPress={() => add(t.name)} />
           ))}
           {query && !data.tags.some((t) => t.name.toLowerCase() === query) ? <Pill label={`+ nowy „${name.trim().replace(/^[@#]/, '')}”`} color={p.accent} onPress={() => add(name)} /> : null}
+        </View>
+      ) : null}
+    </Block>
+  );
+}
+
+/**
+ * Odpowiedzialny (domyślnie twórca) i uczestnicy — tylko do informacji, bez dostępu dla tych osób.
+ * Nowa nazwa w polu „+ osoba” dopisuje współpracownika (Przeglądaj → „Współpracownicy”).
+ */
+function PeopleField({ task, data }: { task: ViewTask; data: AppData }) {
+  const p = usePalette();
+  const { run, notify } = useTaskActions();
+  const info = useLocalQuery(
+    ['task_participants', 'tasks'],
+    async (engine) => {
+      const [parts, creator] = await Promise.all([
+        engine.db.all<{ collaborator_id: string }>('select collaborator_id from task_participants where task_id = ? and deleted_at is null order by rowid', [task.id]),
+        engine.db.all<{ created_by: string | null }>('select created_by from tasks where id = ?', [task.id]),
+      ]);
+      return { participants: parts.map((r) => r.collaborator_id), createdBy: creator[0]?.created_by ?? null };
+    },
+    [task.id],
+  );
+  const [name, setName] = useState('');
+  const byId = new Map(data.collaborators.map((c) => [c.id, c]));
+  const chosen = (info?.participants ?? []).filter((id) => byId.has(id));
+  const assignee = assigneeOf(task.assigneeId, data.collaborators);
+  const creator = creatorLabel(info?.createdBy, data.userId);
+  const suggestions = collaboratorMatches(data.collaborators, name, chosen, 6);
+  const typed = name.trim();
+
+  const add = (value: string) => {
+    const result = addParticipantByNameOps(data.userId, data.collaborators, task.id, value);
+    if (!result.ok) return notify(result.error);
+    setName('');
+    void run(result.ops, result.created ? { text: `Nowy współpracownik: „${value.trim()}”` } : undefined);
+  };
+  const remove = (id: string) => {
+    const { ops, undo } = removeParticipantOps(task.id, id, new Date());
+    void run(ops, { text: `Usunięto z uczestników: ${byId.get(id)?.name ?? ''}`, undo });
+  };
+  const pickAssignee = () =>
+    then(
+      pickOption<string>('Odpowiedzialny', [
+        { label: `${creator} (twórca zadania)`, value: '', selected: !assignee },
+        ...data.collaborators.map((c) => ({ label: c.name, value: c.id, hint: c.email ?? undefined, selected: c.id === assignee?.id })),
+      ]),
+      (id) => id !== undefined && id !== (assignee?.id ?? '') && run(assignTaskOps(task.id, id || null)),
+    );
+
+  return (
+    <Block title="Osoby">
+      <View style={styles.pills}>
+        <Text style={{ color: p.muted, fontSize: 13 }}>Odpowiedzialny</Text>
+        <Pill label={assignee ? `👤 ${assignee.name}` : `${creator} (twórca)`} color={p.accent} onPress={pickAssignee} />
+      </View>
+      <Text style={{ color: p.muted, fontSize: 13 }}>Uczestnicy</Text>
+      <View style={styles.pills}>
+        {chosen.map((id) => (
+          <Pill key={id} label={`${byId.get(id)?.name ?? '…'}  ×`} color="#0284c7" onPress={() => remove(id)} />
+        ))}
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          onSubmitEditing={() => typed && add(name)}
+          placeholder="+ osoba"
+          placeholderTextColor={p.muted}
+          accessibilityLabel="Dodaj uczestnika"
+          maxLength={100}
+          style={[styles.tagInput, { color: p.fg, borderColor: p.border }]}
+        />
+      </View>
+      {typed || suggestions.length ? (
+        <View style={styles.pills}>
+          {suggestions.map((c) => (
+            <Pill key={c.id} label={c.name} onPress={() => add(c.name)} />
+          ))}
+          {typed && !data.collaborators.some((c) => normalizeText(c.name) === normalizeText(typed)) ? <Pill label={`+ nowa osoba „${typed}”`} color={p.accent} onPress={() => add(name)} /> : null}
+        </View>
+      ) : null}
+      {assignee && !chosen.includes(assignee.id) ? <Pill label="+ odpowiedzialny do uczestników" onPress={() => void run(addParticipantOps(task.id, assignee.id))} /> : null}
+      <Text style={{ color: p.muted, fontSize: 12 }}>Tylko informacyjnie — te osoby nie dostają dostępu do zadania.</Text>
+    </Block>
+  );
+}
+
+/** Komentarze: wątek od najstarszego, dodanie, edycja i usunięcie z „Cofnij”. */
+function CommentsField({ task, data, today }: { task: ViewTask; data: AppData; today: LocalDate }) {
+  const p = usePalette();
+  const { run, notify } = useTaskActions();
+  const rows = useLocalQuery(
+    ['task_comments'],
+    (engine) =>
+      engine.db.all<{ id: string; body: string; posted_at: string; edited_at: string | null; created_by: string | null }>(
+        'select id, body, posted_at, edited_at, created_by from task_comments where task_id = ? and deleted_at is null',
+        [task.id],
+      ),
+    [task.id],
+  );
+  const comments = useMemo(
+    () => sortComments((rows ?? []).map((r) => ({ id: r.id, taskId: task.id, body: r.body, postedAt: r.posted_at, editedAt: r.edited_at, authorId: r.created_by }))),
+    [rows, task.id],
+  );
+  const [draft, setDraft] = useState('');
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+  const timeZone = data.settings.timeZone;
+
+  const submit = () => {
+    const result = addCommentOps(task.id, draft, new Date());
+    if (!result.ok) return notify(result.error);
+    setDraft('');
+    void run(result.ops);
+  };
+  const saveEdit = () => {
+    const comment = editing && comments.find((c) => c.id === editing.id);
+    if (!editing || !comment) return setEditing(null);
+    const result = editCommentOps(comment, editing.text, new Date());
+    if (!result.ok) return notify(result.error);
+    setEditing(null);
+    if (result.ops.length) void run(result.ops);
+  };
+  const remove = (id: string) => {
+    const { ops, undo } = deleteCommentOps(id, new Date());
+    void run(ops, { text: 'Usunięto komentarz', undo });
+  };
+
+  return (
+    <Block title={`Komentarze${comments.length ? ` · ${comments.length}` : ''}`}>
+      {comments.map((c) => (
+        <View key={c.id} style={[styles.comment, { borderColor: p.border }]}>
+          <View style={styles.reminder}>
+            <Text style={{ color: p.fg, fontSize: 13, fontWeight: '600' }}>{commentAuthor(c.authorId, data.userId)}</Text>
+            <Text style={{ color: p.muted, fontSize: 12, flex: 1 }}>
+              {commentTime(c.postedAt, today, timeZone)}
+              {c.editedAt ? ' (edytowano)' : ''}
+            </Text>
+          </View>
+          {editing?.id === c.id ? (
+            <>
+              <TextInput
+                autoFocus
+                multiline
+                value={editing.text}
+                onChangeText={(text) => setEditing({ id: c.id, text })}
+                maxLength={MAX_COMMENT_LENGTH}
+                accessibilityLabel="Edycja komentarza"
+                textAlignVertical="top"
+                style={[styles.input, styles.commentInput, { color: p.fg, borderColor: p.border }]}
+              />
+              <View style={styles.pills}>
+                <Pill label="Zapisz" color={p.accent} onPress={saveEdit} />
+                <Pill label="Anuluj" onPress={() => setEditing(null)} />
+              </View>
+            </>
+          ) : (
+            <>
+              <Text selectable style={{ color: p.fg, fontSize: 15 }}>
+                {c.body}
+              </Text>
+              <View style={styles.pills}>
+                <Pill label="Edytuj" onPress={() => setEditing({ id: c.id, text: c.body })} />
+                <Pill label="Usuń" color={p.bad} onPress={() => remove(c.id)} />
+              </View>
+            </>
+          )}
+        </View>
+      ))}
+      <TextInput
+        multiline
+        value={draft}
+        onChangeText={setDraft}
+        placeholder="Napisz komentarz…"
+        placeholderTextColor={p.muted}
+        maxLength={MAX_COMMENT_LENGTH}
+        accessibilityLabel="Nowy komentarz"
+        textAlignVertical="top"
+        style={[styles.input, styles.commentInput, { color: p.fg, borderColor: p.border }]}
+      />
+      {draft.trim() ? (
+        <View style={styles.pills}>
+          <Pill label="Dodaj komentarz" color={p.accent} onPress={submit} />
         </View>
       ) : null}
     </Block>
@@ -689,6 +889,8 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 15 },
   tagInput: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 3, fontSize: 13, minWidth: 90 },
   description: { minHeight: 140 },
+  comment: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8, gap: 6 },
+  commentInput: { minHeight: 64 },
   previewBox: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 10 },
   reminder: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dependency: { flexDirection: 'row', alignItems: 'center', gap: 8 },

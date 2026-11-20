@@ -13,6 +13,7 @@ import { useTheme } from "@/lib/theme";
 import { BackupCard } from "./backup-card";
 import { CalendarsCard } from "./calendars-card";
 import { CaptureCard } from "./capture-card";
+import { CollaboratorsCard } from "./collaborators-card";
 import { ErrorsCard } from "./errors-card";
 import { ProfileForm, type ProfileValues } from "./profile-form";
 import { InstallCard, OfflineCard } from "./pwa-cards";
@@ -97,6 +98,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
                 }}
               />
             </Card>
+            <CollaboratorsCard />
             <RemindersCard store={store} userId={userId} />
             <CalendarsCard store={store} timeZone={parseSettings(settings).timeZone} />
             <BackupCard store={store} userId={userId} timeZone={parseSettings(settings).timeZone} />

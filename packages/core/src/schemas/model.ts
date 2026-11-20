@@ -193,6 +193,8 @@ export const TaskRow = z
     board_sort_key: SortKey.nullable(),
     source: TaskSource.nullable(),
     postpone_count: z.number().int().min(0),
+    /** Odpowiedzialny (`collaborators.id`); `null` = twórca zadania. */
+    assignee_id: Id.nullable(),
   })
   .refine((t) => t.due_date || (!t.due_time && !t.start_date), { message: 'Godzina i początek wymagają terminu.', path: ['due_date'] })
   .refine((t) => !t.start_date || !t.due_date || t.start_date <= t.due_date, { message: 'Początek po terminie.', path: ['start_date'] })
@@ -292,6 +294,31 @@ export const ReviewSessionRow = z.object({
   stats: ReviewStats.nullable(),
 });
 
+// ── Wiersze: współpracownicy i komentarze ───────────────────────────────────────────────────
+
+/** Limit komentarza (znaki). */
+export const MAX_COMMENT_LENGTH = 10_000;
+
+/** Współpracownik (zakres osobisty): tylko do opisu zadań — nie daje dostępu. */
+export const CollaboratorRow = z.object({
+  id: Id,
+  /** Zakres osobisty. */
+  scope_id: Id,
+  name: name(100),
+  email: z.email('Niepoprawny adres e-mail.').max(254).nullable(),
+});
+
+export const TaskParticipantRow = z.object({ id: Id, task_id: Id, collaborator_id: Id });
+
+export const TaskCommentRow = z.object({
+  id: Id,
+  task_id: Id,
+  body: z.string().trim().min(1, 'Komentarz nie może być pusty.').max(MAX_COMMENT_LENGTH),
+  /** Chwila napisania na urządzeniu (także offline). */
+  posted_at: Instant,
+  edited_at: Instant.nullable(),
+});
+
 /** Schemat wiersza po nazwie tabeli (formularze, walidacja operacji przed `mutate`). */
 export const MODEL = {
   workspaces: WorkspaceRow,
@@ -308,6 +335,9 @@ export const MODEL = {
   review_sessions: ReviewSessionRow,
   profiles: ProfileRow,
   devices: DeviceRow,
+  collaborators: CollaboratorRow,
+  task_participants: TaskParticipantRow,
+  task_comments: TaskCommentRow,
 } as const;
 export type ModelTable = keyof typeof MODEL;
 export type ModelRow<T extends ModelTable> = z.infer<(typeof MODEL)[T]>;

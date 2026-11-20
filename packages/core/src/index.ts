@@ -1,5 +1,7 @@
 export * from './attachments.ts';
 export * from './backup.ts';
+export * from './collaborators.ts';
+export * from './comments.ts';
 export * from './commands.ts';
 export * from './dates.ts';
 export * from './dependencies.ts';

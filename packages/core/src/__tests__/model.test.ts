@@ -29,6 +29,7 @@ const task = {
   board_sort_key: null,
   source: { kind: 'quick_add', text: 'Zadzwonić do hydraulika jutro 9:30 ~15m !2' },
   postpone_count: 0,
+  assignee_id: null,
 } as const;
 
 const issues = (result: { success: boolean; error?: { issues: { path: PropertyKey[]; message: string }[] } }) =>

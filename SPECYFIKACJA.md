@@ -376,7 +376,7 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 ### Tabele — zadania
 | Tabela | Najważniejsze kolumny | Uwagi |
 |---|---|---|
-| `tasks` | `id`, `scope_id` (wyliczany), `list_id`, `parent_id`, `kind` (`task`/`habit`), `title`, `description_md`, `status`, `priority smallint 1–4`, `start_date`, `due_date`, `due_time`, `duration_min`, `time_zone`, `recurrence jsonb` (`Recurrence`), `habit jsonb` (`HabitGoal`), `completed_at`, `sort_key`, `board_sort_key` (D15), `source jsonb` (`TaskSource`: ręcznie / szybkie dodawanie / e-mail / link / kalendarz), `postpone_count` | trigger: głębokość ≤ 4, brak cyklu `parent_id`, zakres zgodny z listą i rodzicem |
+| `tasks` | `id`, `scope_id` (wyliczany), `list_id`, `parent_id`, `kind` (`task`/`habit`), `title`, `description_md`, `status`, `priority smallint 1–4`, `start_date`, `due_date`, `due_time`, `duration_min`, `time_zone`, `recurrence jsonb` (`Recurrence`), `habit jsonb` (`HabitGoal`), `completed_at`, `sort_key`, `board_sort_key` (D15), `source jsonb` (`TaskSource`: ręcznie / szybkie dodawanie / e-mail / link / kalendarz), `postpone_count`, `assignee_id` → `collaborators` (v1.x; `null` = twórca) | trigger: głębokość ≤ 4, brak cyklu `parent_id`, zakres zgodny z listą i rodzicem |
 | `tags` | `id`, `name`, `color`, `sort_key` | zakres osobisty; unikalny `lower(name)`; id = UUIDv5 z nazwy bez polskich znaków (`tagId`), więc ten sam tag z dwóch urządzeń to jeden wiersz |
 | `task_tags` | `id` (UUIDv5 z `task_id`+`tag_id`), `task_id`, `tag_id` | wiersz łączący z `deleted_at` — dodanie tagu na dwóch urządzeniach nie gubi żadnego |
 | `reminders` | `id`, `task_id`, `kind` (`relative`/`absolute`), `offset_min`, `at_date`, `at_time` | |
@@ -384,6 +384,9 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 | `task_completions` | `id` (UUIDv5 z `task_id`+`occurrence_date`), `task_id`, `occurrence_date`, `kind` (`done`/`skipped`), `value numeric`, `completed_at timestamptz` | **tylko dopisywane**; ten sam id z dwóch urządzeń = jeden wpis |
 | `time_entries` | `id`, `task_id`, `kind` (`focus`/`break`/`manual`), `started_at`, `ended_at`, `pomodoro_index` | tylko dopisywane (zamknięcie wpisu = ustawienie `ended_at`) |
 | `attachments` | `id`, `task_id`, `kind` (`file`/`link`), `storage_path`, `name`, `mime`, `size_bytes`, `url`, `preview jsonb` | pliki w Storage, poza strumieniem synchronizacji |
+| `collaborators` | `id`, `name`, `email` | v1.x; zakres osobisty (książka adresowa); id = UUIDv5 z nazwy (`collaboratorId`), jak tagi; tylko informacyjnie — bez dostępu |
+| `task_participants` | `id` (UUIDv5 z `task_id`+`collaborator_id`), `task_id`, `collaborator_id` | v1.x; wiersz łączący jak `task_tags`; trigger: współpracownik z zakresu z prawem zapisu (TP003) |
+| `task_comments` | `id`, `task_id`, `body` (1–10 000 znaków), `posted_at timestamptz` (z klienta — offline), `edited_at` | v1.x; autor = `created_by` |
 | `saved_filters` | `id`, `name`, `icon`, `query jsonb` (`FilterQuery`), `sort_key` | zakres osobisty |
 | `review_sessions` | `id`, `kind` (`daily`/`weekly`), `started_at`, `finished_at`, `stats jsonb` | |
 
@@ -439,6 +442,7 @@ Ustalenia z PoC-6: tabele integracji mają `user_id` (= zakres osobisty) i `row_
 - Pierwsza synchronizacja: pełna migawka **stronicowana** po tabelach ze wskaźnikiem postępu (MVP-1; w PoC 2 017 zadań bez stronicowania = ~4,2 s do pierwszego zapytania w przeglądarce, ~1 MB).
 - Kolejność cyklu: wyślij outbox → pobierz zmiany → przelicz zależne stany (`due_date` serii, powiadomienia, widżety, liczniki).
 - Online: Realtime na wierszach `sync_scopes` użytkownika = sygnał do pobrania; dodatkowe pobranie po gotowości subskrypcji (zimny start Realtime, wniosek z EP). Offline → online: natychmiastowy cykl. Telefon w tle: `expo-background-task` (co ok. 15 min, zależnie od systemu).
+- Nowa tabela albo kolumna w strumieniu (v1.x): starszy klient pomijał nieznane pola, a kursory i tak szły dalej — silnik zapamiętuje podpis zestawu (`SYNCED_SCHEMA` w `engine.ts`) i po jego zmianie raz pobiera wszystko od 0.
 - Usunięte wiersze (`deleted_at`) trwale usuwane po 90 dniach. Klient, którego ostatnia synchronizacja jest starsza niż ten horyzont, robi pełną migawkę.
 
 - Kaskady (usunięcie rodzica, przeniesienie listy) liczy serwer; do synchronizacji widoki ukrywają dzieci usuniętego rodzica albo `mutate` powtarza kaskadę lokalnie (MVP-2).

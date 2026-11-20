@@ -237,6 +237,7 @@ export default function RootLayout() {
             <Stack.Screen name="trash" options={{ title: 'Kosz' }} />
             <Stack.Screen name="workspaces" options={{ title: 'Przestrzenie i listy' }} />
             <Stack.Screen name="workspace/[id]" options={{ title: 'Przestrzeń' }} />
+            <Stack.Screen name="collaborators" options={{ title: 'Współpracownicy' }} />
             <Stack.Screen name="onboarding" options={{ title: 'Witaj w Task Planner', headerBackVisible: false, gestureEnabled: false }} />
             <Stack.Screen name="auth-callback" options={{ title: 'Logowanie' }} />
             <Stack.Screen name="settings" options={{ title: 'Konto i synchronizacja' }} />

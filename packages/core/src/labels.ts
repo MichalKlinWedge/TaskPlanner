@@ -93,6 +93,7 @@ export const TASK_FIELD: Record<string, string> = {
   board_sort_key: 'Kolejność na tablicy',
   postpone_count: 'Przesunięcia terminu',
   source: 'Źródło',
+  assignee_id: 'Odpowiedzialny',
 };
 
 /** Gotowe przypomnienia względne (minuty przed terminem). */
@@ -214,6 +215,7 @@ export const BACKUP_TABLE: Record<BackupTable, string> = {
   profiles: 'Profil',
   workspaces: 'Przestrzenie',
   lists: 'Listy i projekty',
+  collaborators: 'Współpracownicy',
   tasks: 'Zadania i nawyki',
   tags: 'Tagi',
   task_tags: 'Tagi zadań',
@@ -224,6 +226,8 @@ export const BACKUP_TABLE: Record<BackupTable, string> = {
   attachments: 'Załączniki (opis)',
   saved_filters: 'Zapisane filtry',
   review_sessions: 'Przeglądy',
+  task_participants: 'Uczestnicy zadań',
+  task_comments: 'Komentarze',
 };
 
 /** Rodzaje wpisów dziennika błędów (Ustawienia → „Błędy aplikacji”, `core/errors.ts`). */

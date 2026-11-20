@@ -4,11 +4,13 @@
  * terminu; długie przytrzymanie = zaznaczanie (potem dotknięcie dokłada kolejne), dotknięcie =
  * szczegóły zadania. Wirtualne wystąpienie serii (Nadchodzące) — tylko do odczytu.
  */
-import { describeRecurrence, isOpen, PRIORITY, relativeDay, type LocalDate, type ViewTask } from '@taskplanner/core';
+import { assigneeOf, describeRecurrence, initials, isOpen, PRIORITY, relativeDay, type LocalDate, type ViewTask } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { memo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Swipeable, { SwipeDirection, type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
+
+import { useAppData } from '@/lib/app-data';
 
 import { useTaskActions } from './actions';
 import { rescheduleWithMenu } from './task-menus';
@@ -45,6 +47,7 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
   const swipeable = !virtualDate && !selecting;
+  const assignee = assigneeOf(task.assigneeId, useAppData().collaborators);
 
   const meta = [
     showDate && date ? { text: relativeDay(date, today), bad: overdue } : null,
@@ -53,6 +56,7 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
     progress && progress.total > 0 ? { text: `☑ ${progress.done}/${progress.total}` } : null,
     task.status === 'in_progress' ? { text: 'w trakcie' } : task.status === 'waiting' ? { text: 'oczekuje' } : null,
     listName ? { text: listName } : null,
+    assignee ? { text: `👤 ${initials(assignee.name)}` } : null,
     ...(tagNames ?? []).map((t) => ({ text: `@${t}` })),
   ].filter(Boolean) as { text: string; bad?: boolean }[];
 

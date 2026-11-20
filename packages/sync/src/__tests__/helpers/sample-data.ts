@@ -1,8 +1,9 @@
 /**
  * Dane jak z aplikacji do testów kopii (Etap 13): onboarding, szybkie dodawanie (tagi,
- * przypomnienia, cykl), podzadania do 3 poziomów, kosz, ukończenie serii, wpis czasu, filtr, przegląd.
+ * przypomnienia, cykl), podzadania do 3 poziomów, kosz, ukończenie serii, wpis czasu, filtr, przegląd,
+ * współpracownik (odpowiedzialny i uczestnik), komentarz.
  */
-import { completeTaskOps, inboxId, keyBetween, onboardingOps, parseQuickAdd, quickAddTaskOps, uuidv7 } from '@taskplanner/core';
+import { addCommentOps, addParticipantOps, collaboratorId, completeTaskOps, inboxId, keyBetween, onboardingOps, parseQuickAdd, quickAddTaskOps, uuidv7 } from '@taskplanner/core';
 
 import type { SyncEngine } from '../../engine.ts';
 
@@ -34,6 +35,15 @@ export async function fillSample(engine: SyncEngine, userId: string) {
     { table: 'time_entries', id: uuidv7(), patch: { task_id: ids[2], kind: 'manual', started_at: '2026-11-18T09:00:00.000Z', ended_at: '2026-11-18T09:30:00.000Z', pomodoro_index: null } },
     { table: 'saved_filters', id: uuidv7(), patch: { name: 'Pilne', icon: null, query: { priorities: [1] }, sort_key: 'a' } },
     { table: 'review_sessions', id: uuidv7(), patch: { kind: 'daily', started_at: '2026-11-18T20:00:00.000Z', finished_at: null, stats: null } },
+  ]);
+  const anna = collaboratorId(userId, 'Anna');
+  const comment = addCommentOps(ids[2]!, 'Liczby od Anny w piątek.', '2026-11-18T10:00:00.000Z');
+  if (!comment.ok) throw new Error(comment.error);
+  await engine.mutateMany([
+    { table: 'collaborators', id: anna, patch: { scope_id: userId, name: 'Anna', email: 'anna@example.com' } },
+    { table: 'tasks', id: ids[2]!, patch: { assignee_id: anna } },
+    ...addParticipantOps(ids[2]!, anna),
+    ...comment.ops,
   ]);
   const series = (await engine.get('tasks', ids[1]!))!;
   const { ops: done } = completeTaskOps(

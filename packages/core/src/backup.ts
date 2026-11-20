@@ -17,10 +17,11 @@ import { Instant, MODEL, type ModelTable } from './schemas/model.ts';
 export const BACKUP_FORMAT = 'taskplanner-backup';
 export const BACKUP_VERSION = 1;
 
-/** Tabele w kopii w kolejności importu (rodzice przed dziećmi, jak `synced_tables()`). */
+/** Tabele w kopii w kolejności importu (rodzice przed dziećmi; współpracownicy przed zadaniami — `tasks.assignee_id`). */
 export const BACKUP_TABLES = [
-  'profiles', 'workspaces', 'lists', 'tasks', 'tags', 'task_tags', 'task_completions',
+  'profiles', 'workspaces', 'lists', 'collaborators', 'tasks', 'tags', 'task_tags', 'task_completions',
   'reminders', 'task_dependencies', 'time_entries', 'attachments', 'saved_filters', 'review_sessions',
+  'task_participants', 'task_comments',
 ] as const satisfies readonly ModelTable[];
 export type BackupTable = (typeof BACKUP_TABLES)[number];
 

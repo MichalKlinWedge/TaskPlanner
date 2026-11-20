@@ -2,15 +2,29 @@
 
 /**
  * Panel zadania (MVP-2): wszystkie pola zadania, opis w Markdown (TipTap), tagi, przypomnienia,
- * podzadania (do 4 poziomów), czas pracy (M14), zależności (poprzednicy / następnicy, M12), historia zmian (online, z `activity_log`) i kosz. Każda zmiana to
+ * podzadania (do 4 poziomów), czas pracy (M14), zależności (poprzednicy / następnicy, M12), osoby (odpowiedzialny
+ * i uczestnicy — tylko informacyjnie), komentarze, historia zmian (online, z `activity_log`) i kosz. Każda zmiana to
  * `store.mutate` jednego pola — synchronizacja scala zmiany pól z innych urządzeń (§6).
  */
 import {
+  addCommentOps,
   addDependencyOps,
+  addParticipantByNameOps,
+  addParticipantOps,
+  assignTaskOps,
   canAddSubtask,
   clampLag,
+  collaboratorMatches,
+  commentAuthor,
+  commentTime,
+  creatorLabel,
   datesPatch,
+  deleteCommentOps,
   dependencyErrorText,
+  editCommentOps,
+  MAX_COMMENT_LENGTH,
+  removeParticipantOps,
+  sortComments,
   deleteTaskOps,
   descendants,
   endSeriesOps,
@@ -43,7 +57,7 @@ import {
   type ViewTask,
 } from "@taskplanner/core";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import { useDependencies } from "@/lib/dependencies";
 import { descriptionExtensions, descriptionMarkdown } from "@/lib/editor";
@@ -203,6 +217,8 @@ export function TaskPanel({ taskId }: { taskId: string }) {
         </Field>
       </div>
 
+      <PeopleField key={`people:${task.id}`} task={task} />
+
       {task.kind === "habit" ? (
         <Block title="Nawyk">
           <a href={`#/habit/${task.id}`} className={`self-start ${navLinkClass}`}>
@@ -242,7 +258,14 @@ export function TaskPanel({ taskId }: { taskId: string }) {
 
       <DependenciesField key={`dep:${task.id}`} task={task} />
 
-      <History key={`hist:${task.id}`} taskId={task.id} lists={new Map(data.lists.map((l) => [l.id, l.kind === "inbox" ? `Inbox (${workspaceName.get(l.workspaceId)})` : l.name]))} />
+      <CommentsField key={`com:${task.id}`} task={task} />
+
+      <History
+        key={`hist:${task.id}`}
+        taskId={task.id}
+        lists={new Map(data.lists.map((l) => [l.id, l.kind === "inbox" ? `Inbox (${workspaceName.get(l.workspaceId)})` : l.name]))}
+        people={new Map(data.collaborators.map((c) => [c.id, c.name]))}
+      />
 
       <div className="mt-4 flex items-center justify-between border-t border-[var(--line)] pt-3 text-xs text-[var(--muted)]">
         <span>Dodano {task.createdAt.startsWith("1970") ? "teraz (jeszcze nie wysłane)" : shortDate(task.createdAt.slice(0, 10))}</span>
@@ -376,6 +399,192 @@ function DependenciesField({ task }: { task: ViewTask }) {
           </Button>
         </div>
       )}
+    </Block>
+  );
+}
+
+/**
+ * Odpowiedzialny (domyślnie twórca) i uczestnicy zadania — tylko do informacji, bez dostępu dla
+ * tych osób. Nowa nazwa w polu „+ osoba” dopisuje współpracownika (Ustawienia → „Współpracownicy”).
+ */
+function PeopleField({ task }: { task: ViewTask }) {
+  const { store, data, userId } = useAppEnv();
+  const { run, notify } = useTaskActions();
+  const participants = useLocalQuery<Row>(store, "select collaborator_id from task_participants where task_id = ? and deleted_at is null order by rowid", [task.id], ["task_participants"]);
+  const creator = useLocalQuery<Row>(store, "select created_by from tasks where id = ?", [task.id], ["tasks"]);
+  const [name, setName] = useState("");
+  const byId = new Map(data.collaborators.map((c) => [c.id, c]));
+  const chosen = participants.rows.map((r) => String(r.collaborator_id)).filter((id) => byId.has(id));
+  const assignee = task.assigneeId && byId.has(task.assigneeId) ? task.assigneeId : "";
+  const suggestions = collaboratorMatches(data.collaborators, "", chosen, 100);
+
+  const add = (event: FormEvent) => {
+    event.preventDefault();
+    const result = addParticipantByNameOps(userId, data.collaborators, task.id, name);
+    if (!result.ok) return notify(result.error);
+    setName("");
+    void run(result.ops, result.created ? { text: `Nowy współpracownik: „${name.trim()}”` } : undefined);
+  };
+  const remove = (id: string) => {
+    const { ops, undo } = removeParticipantOps(task.id, id, new Date());
+    void run(ops, { text: `Usunięto z uczestników: ${byId.get(id)?.name ?? ""}`, undo });
+  };
+
+  return (
+    <Block title="Osoby">
+      <div className="flex flex-col gap-3">
+        <Field label="Odpowiedzialny">
+          <Select value={assignee} onChange={(e) => void run(assignTaskOps(task.id, e.target.value || null))}>
+            <option value="">{creatorLabel(creator.rows[0]?.created_by as string | null | undefined, userId)} (twórca zadania)</option>
+            {data.collaborators.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <div className="flex flex-col gap-1 text-xs">
+          <span className="font-medium text-[var(--muted)]">Uczestnicy</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {chosen.map((id) => (
+              <span key={id} className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-900 dark:bg-sky-900/50 dark:text-sky-100" title={byId.get(id)?.email ?? undefined}>
+                {byId.get(id)?.name}
+                <button type="button" aria-label={`Usuń z uczestników: ${byId.get(id)?.name ?? ""}`} className="opacity-60 hover:opacity-100" onClick={() => remove(id)}>
+                  ×
+                </button>
+              </span>
+            ))}
+            <form onSubmit={add} className="inline-flex">
+              <Input list={`people-${task.id}`} value={name} onChange={(e) => setName(e.target.value)} placeholder="+ osoba" aria-label="Dodaj uczestnika" maxLength={100} className="w-36 py-0.5 text-xs" />
+              <datalist id={`people-${task.id}`}>
+                {suggestions.map((c) => (
+                  <option key={c.id} value={c.name} />
+                ))}
+              </datalist>
+            </form>
+          </div>
+          {assignee && !chosen.includes(assignee) ? (
+            <button type="button" className="self-start text-[var(--accent)] hover:underline" onClick={() => void run(addParticipantOps(task.id, assignee))}>
+              + dodaj odpowiedzialnego do uczestników
+            </button>
+          ) : null}
+          <span className="text-[var(--muted)]">Tylko informacyjnie — te osoby nie dostają dostępu do zadania.</span>
+        </div>
+      </div>
+    </Block>
+  );
+}
+
+/** Komentarze zadania: wątek od najstarszego, dodanie (Ctrl+Enter), edycja i usunięcie z cofnięciem. */
+function CommentsField({ task }: { task: ViewTask }) {
+  const { store, userId, today, timeZone } = useAppEnv();
+  const { run, notify } = useTaskActions();
+  const { rows } = useLocalQuery<Row>(store, "select id, body, posted_at, edited_at, created_by from task_comments where task_id = ? and deleted_at is null", [task.id], ["task_comments"]);
+  const comments = useMemo(
+    () =>
+      sortComments(
+        rows.map((r) => ({ id: String(r.id), taskId: task.id, body: String(r.body), postedAt: String(r.posted_at), editedAt: (r.edited_at as string | null) ?? null, authorId: (r.created_by as string | null) ?? null })),
+      ),
+    [rows, task.id],
+  );
+  const [draft, setDraft] = useState("");
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+
+  const submit = () => {
+    const result = addCommentOps(task.id, draft, new Date());
+    if (!result.ok) return notify(result.error);
+    setDraft("");
+    void run(result.ops);
+  };
+  const saveEdit = () => {
+    if (!editing) return;
+    const comment = comments.find((c) => c.id === editing.id);
+    if (!comment) return setEditing(null);
+    const result = editCommentOps(comment, editing.text, new Date());
+    if (!result.ok) return notify(result.error);
+    setEditing(null);
+    if (result.ops.length) void run(result.ops);
+  };
+  const remove = (id: string) => {
+    const { ops, undo } = deleteCommentOps(id, new Date());
+    void run(ops, { text: "Usunięto komentarz", undo });
+  };
+  const keys = (save: () => void, cancel?: () => void) => (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      save();
+    }
+    if (e.key === "Escape" && cancel) {
+      e.stopPropagation();
+      cancel();
+    }
+  };
+  const area = "w-full resize-y rounded-md border border-[var(--line)] bg-transparent px-2 py-1.5 text-sm outline-none focus:border-[var(--accent)]";
+
+  return (
+    <Block title={`Komentarze${comments.length ? ` · ${comments.length}` : ""}`}>
+      {comments.length ? (
+        <ol className="mb-3 flex flex-col gap-3" aria-label="Komentarze">
+          {comments.map((c) => (
+            <li key={c.id} className="text-sm">
+              <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                <span className="font-medium text-[var(--foreground)]">{commentAuthor(c.authorId, userId)}</span>
+                <span>{commentTime(c.postedAt, today, timeZone)}</span>
+                {c.editedAt ? <span title={`Edytowano ${commentTime(c.editedAt, today, timeZone)}`}>(edytowano)</span> : null}
+                {editing?.id !== c.id ? (
+                  <span className="ml-auto flex gap-2">
+                    <button type="button" className="hover:text-[var(--accent)]" onClick={() => setEditing({ id: c.id, text: c.body })}>
+                      Edytuj
+                    </button>
+                    <button type="button" className="hover:text-[var(--danger)]" onClick={() => remove(c.id)}>
+                      Usuń
+                    </button>
+                  </span>
+                ) : null}
+              </div>
+              {editing?.id === c.id ? (
+                <div className="mt-1 flex flex-col gap-1">
+                  <textarea
+                    autoFocus
+                    aria-label="Edycja komentarza"
+                    value={editing.text}
+                    maxLength={MAX_COMMENT_LENGTH}
+                    rows={3}
+                    onChange={(e) => setEditing({ id: c.id, text: e.target.value })}
+                    onKeyDown={keys(saveEdit, () => setEditing(null))}
+                    className={area}
+                  />
+                  <div className="flex gap-2">
+                    <Button onClick={saveEdit}>Zapisz</Button>
+                    <Button kind="ghost" onClick={() => setEditing(null)}>
+                      Anuluj
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-0.5 break-words whitespace-pre-wrap">{c.body}</p>
+              )}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      <div className="flex flex-col gap-1">
+        <textarea
+          aria-label="Nowy komentarz"
+          value={draft}
+          maxLength={MAX_COMMENT_LENGTH}
+          rows={2}
+          placeholder="Napisz komentarz… (Ctrl+Enter — dodaj)"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={keys(submit)}
+          className={area}
+        />
+        {draft.trim() ? (
+          <div>
+            <Button onClick={submit}>Dodaj komentarz</Button>
+          </div>
+        ) : null}
+      </div>
     </Block>
   );
 }
@@ -624,7 +833,7 @@ interface Change {
 }
 
 /** Historia zmian z serwera (`activity_log`) — tylko online; zmiany offline pojawią się po wysłaniu. */
-function History({ taskId, lists }: { taskId: string; lists: Map<string, string> }) {
+function History({ taskId, lists, people }: { taskId: string; lists: Map<string, string>; people: Map<string, string> }) {
   const [state, setState] = useState<{ rows: Change[]; error: string | null } | null>(null);
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -645,6 +854,7 @@ function History({ taskId, lists }: { taskId: string; lists: Map<string, string>
   const value = useMemo(
     () => (field: string, v: unknown): string => {
       if (field === "deleted_at") return v ? "w koszu" : "przywrócone";
+      if (field === "assignee_id") return v ? (people.get(String(v)) ?? "usunięty współpracownik") : "twórca zadania";
       if (v === null || v === undefined || v === "") return "—";
       if (field === "status") return TASK_STATUS[v as TaskStatus] ?? String(v);
       if (field === "priority") return PRIORITY[v as Priority]?.label ?? String(v);
@@ -656,7 +866,7 @@ function History({ taskId, lists }: { taskId: string; lists: Map<string, string>
       if (field === "description_md") return "zmieniony";
       return typeof v === "object" ? JSON.stringify(v) : String(v);
     },
-    [lists],
+    [lists, people],
   );
 
   return (

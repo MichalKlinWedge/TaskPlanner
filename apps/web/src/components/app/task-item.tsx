@@ -4,7 +4,7 @@
  * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
  * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { assigneeOf, completeTaskOps, descendants, describeRecurrence, initials, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -150,6 +150,7 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
   const { openTask, selectedIds, select, data } = useAppEnv();
   const selected = selectedIds.has(task.id);
   const attachments = data.attachments.get(task.id)?.length ?? 0;
+  const assignee = assigneeOf(task.assigneeId, data.collaborators);
   const closed = task.kind === "habit" ? Boolean(habitDone) : !isOpen(task);
   const date = virtualDate ?? task.dueDate;
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
@@ -225,6 +226,14 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           ) : null}
           {task.status === "in_progress" || task.status === "waiting" ? <span>{task.status === "in_progress" ? "w trakcie" : "oczekuje"}</span> : null}
           {attachments ? <span title={`Załączniki: ${attachments}`}>📎 {attachments}</span> : null}
+          {assignee ? (
+            <span className="inline-flex items-center gap-1" title={`Odpowiedzialny: ${assignee.name}`}>
+              <span aria-hidden className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-100 px-1 text-[10px] font-semibold text-sky-900 dark:bg-sky-900/60 dark:text-sky-100">
+                {initials(assignee.name)}
+              </span>
+              <span className="sr-only">Odpowiedzialny: {assignee.name}</span>
+            </span>
+          ) : null}
           {listName ? <span className="truncate">{listName}</span> : null}
         </span>
       </button>

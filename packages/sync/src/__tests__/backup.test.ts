@@ -34,7 +34,7 @@ describe('kopia JSON nad lokalną bazą', () => {
     await fillSample(a.engine, USER);
     const backup = await exportBackup(a.query, USER, '2026-11-18T21:00:00.000Z');
     expect(backupRowCount(backup)).toBeGreaterThan(15);
-    for (const table of ['profiles', 'workspaces', 'lists', 'tasks', 'tags', 'task_tags', 'reminders', 'task_completions', 'time_entries', 'saved_filters', 'review_sessions'] as const) {
+    for (const table of ['profiles', 'workspaces', 'lists', 'tasks', 'tags', 'task_tags', 'reminders', 'task_completions', 'time_entries', 'saved_filters', 'review_sessions', 'collaborators', 'task_participants', 'task_comments'] as const) {
       expect(backup.tables[table].length, table).toBeGreaterThan(0);
     }
 

@@ -165,6 +165,26 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"collaborators": {
+                  Row: {
+                    "created_at": string,"created_by": string | null,"deleted_at": string | null,"email": string | null,"field_clock": NonNullable<Json>,"id": string,"name": string,"row_version": number,"scope_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"email"?: string | null,"field_clock"?: NonNullable<Json>,"id": string,"name": string,"row_version"?: number,"scope_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"email"?: string | null,"field_clock"?: NonNullable<Json>,"id"?: string,"name"?: string,"row_version"?: number,"scope_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "collaborators_scope_id_fkey"
+      columns: ["scope_id"]
+isOneToOne: false
+      referencedRelation: "sync_scopes"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"devices": {
                   Row: {
                     "created_at": string,"created_by": string | null,"deleted_at": string | null,"field_clock": NonNullable<Json>,"id": string,"last_sync_at": string | null,"name": string,"platform": string,"push_subscription": Json | null,"reminder_channel": string,"row_version": number,"scope_id": string,"updated_at": string
@@ -295,14 +315,14 @@ isOneToOne: false
                   ]
                 },"reminder_deliveries": {
                   Row: {
-                    "attempts": number,"claimed_at": string,"device_id": string,"error": string | null,"fire_at": string,"fire_key": string,"id": number,"sent_at": string | null,"status": string,"task_id": string,"user_id": string
+                    "attempts": number,"claimed_at": string,"device_id": string,"error": string | null,"fire_at": string,"fire_key": string,"id": number,"sent_at": string | null,"status": string,"task_id": string | null,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "attempts"?: number,"claimed_at"?: string,"device_id": string,"error"?: string | null,"fire_at": string,"fire_key": string,"id"?: never,"sent_at"?: string | null,"status"?: string,"task_id": string,"user_id": string
+                    "attempts"?: number,"claimed_at"?: string,"device_id": string,"error"?: string | null,"fire_at": string,"fire_key": string,"id"?: never,"sent_at"?: string | null,"status"?: string,"task_id"?: string | null,"user_id": string
                   }
                   Update: {
-                    "attempts"?: number,"claimed_at"?: string,"device_id"?: string,"error"?: string | null,"fire_at"?: string,"fire_key"?: string,"id"?: never,"sent_at"?: string | null,"status"?: string,"task_id"?: string,"user_id"?: string
+                    "attempts"?: number,"claimed_at"?: string,"device_id"?: string,"error"?: string | null,"fire_at"?: string,"fire_key"?: string,"id"?: never,"sent_at"?: string | null,"status"?: string,"task_id"?: string | null,"user_id"?: string
                   }
                   Relationships: [
                     {
@@ -439,6 +459,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"task_comments": {
+                  Row: {
+                    "body": string,"created_at": string,"created_by": string | null,"deleted_at": string | null,"edited_at": string | null,"field_clock": NonNullable<Json>,"id": string,"posted_at": string,"row_version": number,"scope_id": string,"task_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "body": string,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"edited_at"?: string | null,"field_clock"?: NonNullable<Json>,"id": string,"posted_at": string,"row_version"?: number,"scope_id": string,"task_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "body"?: string,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"edited_at"?: string | null,"field_clock"?: NonNullable<Json>,"id"?: string,"posted_at"?: string,"row_version"?: number,"scope_id"?: string,"task_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "task_comments_scope_id_fkey"
+      columns: ["scope_id"]
+isOneToOne: false
+      referencedRelation: "sync_scopes"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "task_comments_task_id_fkey"
+      columns: ["task_id"]
+isOneToOne: false
+      referencedRelation: "tasks"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"task_completions": {
                   Row: {
                     "completed_at": string,"created_at": string,"created_by": string | null,"deleted_at": string | null,"field_clock": NonNullable<Json>,"id": string,"kind": string,"occurrence_date": string,"row_version": number,"scope_id": string,"task_id": string,"updated_at": string,"value": number | null
@@ -497,6 +543,38 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"task_participants": {
+                  Row: {
+                    "collaborator_id": string,"created_at": string,"created_by": string | null,"deleted_at": string | null,"field_clock": NonNullable<Json>,"id": string,"row_version": number,"scope_id": string,"task_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "collaborator_id": string,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"field_clock"?: NonNullable<Json>,"id": string,"row_version"?: number,"scope_id": string,"task_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "collaborator_id"?: string,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"field_clock"?: NonNullable<Json>,"id"?: string,"row_version"?: number,"scope_id"?: string,"task_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "task_participants_collaborator_id_fkey"
+      columns: ["collaborator_id"]
+isOneToOne: false
+      referencedRelation: "collaborators"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "task_participants_scope_id_fkey"
+      columns: ["scope_id"]
+isOneToOne: false
+      referencedRelation: "sync_scopes"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "task_participants_task_id_fkey"
+      columns: ["task_id"]
+isOneToOne: false
+      referencedRelation: "tasks"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"task_tags": {
                   Row: {
                     "created_at": string,"created_by": string | null,"deleted_at": string | null,"field_clock": NonNullable<Json>,"id": string,"row_version": number,"scope_id": string,"tag_id": string,"task_id": string,"updated_at": string
@@ -531,17 +609,23 @@ isOneToOne: false
                   ]
                 },"tasks": {
                   Row: {
-                    "board_sort_key": string | null,"completed_at": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"description_md": string | null,"due_date": string | null,"due_time": string | null,"duration_min": number | null,"field_clock": NonNullable<Json>,"habit": Json | null,"id": string,"kind": string,"list_id": string,"parent_id": string | null,"postpone_count": number,"priority": number,"recurrence": Json | null,"row_version": number,"scope_id": string,"sort_key": string,"source": Json | null,"start_date": string | null,"status": string,"time_zone": string | null,"title": string,"updated_at": string
+                    "assignee_id": string | null,"board_sort_key": string | null,"completed_at": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"description_md": string | null,"due_date": string | null,"due_time": string | null,"duration_min": number | null,"field_clock": NonNullable<Json>,"habit": Json | null,"id": string,"kind": string,"list_id": string,"parent_id": string | null,"postpone_count": number,"priority": number,"recurrence": Json | null,"row_version": number,"scope_id": string,"sort_key": string,"source": Json | null,"start_date": string | null,"status": string,"time_zone": string | null,"title": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "board_sort_key"?: string | null,"completed_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"due_date"?: string | null,"due_time"?: string | null,"duration_min"?: number | null,"field_clock"?: NonNullable<Json>,"habit"?: Json | null,"id": string,"kind"?: string,"list_id": string,"parent_id"?: string | null,"postpone_count"?: number,"priority"?: number,"recurrence"?: Json | null,"row_version"?: number,"scope_id": string,"sort_key"?: string,"source"?: Json | null,"start_date"?: string | null,"status"?: string,"time_zone"?: string | null,"title": string,"updated_at"?: string
+                    "assignee_id"?: string | null,"board_sort_key"?: string | null,"completed_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"due_date"?: string | null,"due_time"?: string | null,"duration_min"?: number | null,"field_clock"?: NonNullable<Json>,"habit"?: Json | null,"id": string,"kind"?: string,"list_id": string,"parent_id"?: string | null,"postpone_count"?: number,"priority"?: number,"recurrence"?: Json | null,"row_version"?: number,"scope_id": string,"sort_key"?: string,"source"?: Json | null,"start_date"?: string | null,"status"?: string,"time_zone"?: string | null,"title": string,"updated_at"?: string
                   }
                   Update: {
-                    "board_sort_key"?: string | null,"completed_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"due_date"?: string | null,"due_time"?: string | null,"duration_min"?: number | null,"field_clock"?: NonNullable<Json>,"habit"?: Json | null,"id"?: string,"kind"?: string,"list_id"?: string,"parent_id"?: string | null,"postpone_count"?: number,"priority"?: number,"recurrence"?: Json | null,"row_version"?: number,"scope_id"?: string,"sort_key"?: string,"source"?: Json | null,"start_date"?: string | null,"status"?: string,"time_zone"?: string | null,"title"?: string,"updated_at"?: string
+                    "assignee_id"?: string | null,"board_sort_key"?: string | null,"completed_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"due_date"?: string | null,"due_time"?: string | null,"duration_min"?: number | null,"field_clock"?: NonNullable<Json>,"habit"?: Json | null,"id"?: string,"kind"?: string,"list_id"?: string,"parent_id"?: string | null,"postpone_count"?: number,"priority"?: number,"recurrence"?: Json | null,"row_version"?: number,"scope_id"?: string,"sort_key"?: string,"source"?: Json | null,"start_date"?: string | null,"status"?: string,"time_zone"?: string | null,"title"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
+      foreignKeyName: "tasks_assignee_id_fkey"
+      columns: ["assignee_id"]
+isOneToOne: false
+      referencedRelation: "collaborators"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "tasks_list_id_fkey"
       columns: ["list_id"]
 isOneToOne: false
@@ -660,7 +744,7 @@ isOneToOne: false
 "id": number,
 "sent_at": string | null,
 "status": string,
-"task_id": string,
+"task_id": string | null,
 "user_id": string
             }[]
                           SetofOptions: {

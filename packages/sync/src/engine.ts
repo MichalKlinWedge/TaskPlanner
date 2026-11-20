@@ -61,6 +61,12 @@ const chunks = <T>(items: readonly T[], size: number): T[][] => {
 };
 /** Wersja zestawu tabel tylko do odczytu — zmiana wymusza ponowne pobranie zakresu osobistego. */
 const READONLY_VERSION = '1';
+/**
+ * Zestaw tabel i kolumn synchronizowanych. Starsza wersja aplikacji pomijała w `pull_changes` tabele
+ * i kolumny, których nie znała, a kursory zakresów i tak szły dalej — po aktualizacji te wiersze
+ * nie przyszłyby same. Zmiana zestawu = raz wszystkie zakresy od zera (scalenie jest idempotentne).
+ */
+const SYNCED_SCHEMA = SYNCED_TABLES.map((t) => `${t}(${TABLES[t].columns.join(',')})`).join(';');
 /** Wydarzenia kalendarzy starsze niż tyle dni (koniec) — usuwane lokalnie (okno serwera: −30 dni). */
 const CALENDAR_KEEP_DAYS = 30;
 
@@ -118,6 +124,13 @@ export class SyncEngine {
       await this.db.transaction(async (tx) => {
         await this.setMeta(tx, 'since', JSON.stringify(this.since));
         await this.setMeta(tx, 'readonly_tables', READONLY_VERSION);
+      });
+    }
+    if (meta.synced_schema !== SYNCED_SCHEMA) {
+      this.since = Object.fromEntries(Object.keys(this.since).map((scope) => [scope, 0]));
+      await this.db.transaction(async (tx) => {
+        await this.setMeta(tx, 'since', JSON.stringify(this.since));
+        await this.setMeta(tx, 'synced_schema', SYNCED_SCHEMA);
       });
     }
   }

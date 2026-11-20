@@ -1,12 +1,12 @@
 /**
- * Dane widoków z lokalnej bazy (MVP-3): przestrzenie, listy, tagi, zapisane filtry, zadania jako
- * `ViewTask` (z tagami), dzisiejsze wykonania nawyków i ustawienia profilu. Jeden magazyn na
+ * Dane widoków z lokalnej bazy (MVP-3): przestrzenie, listy, tagi, zapisane filtry, współpracownicy,
+ * zadania jako `ViewTask` (z tagami i odpowiedzialnym), dzisiejsze wykonania nawyków i ustawienia profilu. Jeden magazyn na
  * proces: zakładki, ekrany i widżet czytają ten sam wynik, a odświeżenie po zmianie tabel
  * (zapis, synchronizacja — także kilka stron pierwszej) łączy się w jedno zapytanie.
  * Reguły widoków liczy `@taskplanner/core` — tu jest tylko mapowanie wierszy, jak na webie
  * (`apps/web/src/lib/app-data.ts`).
  */
-import { FilterQuery, localDateAt, ProfileSettings, toHabitCompletion, toViewTask, ViewPrefs, type HabitCompletion, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask } from '@taskplanner/core';
+import { FilterQuery, localDateAt, ProfileSettings, sortCollaborators, toHabitCompletion, toViewTask, ViewPrefs, type Collaborator, type HabitCompletion, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask } from '@taskplanner/core';
 import type { SqlRow, SyncEngine } from '@taskplanner/sync';
 import Storage from 'expo-sqlite/kv-store';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -55,6 +55,8 @@ export interface AppData {
   lists: List[];
   tags: Tag[];
   savedFilters: SavedFilter[];
+  /** Współpracownicy (alfabetycznie) — uczestnicy i odpowiedzialni zadań. */
+  collaborators: Collaborator[];
   tasks: ViewTask[];
   /** Id nawyków odhaczonych dziś. */
   habitsDoneToday: Set<string>;
@@ -85,6 +87,7 @@ const EMPTY: AppData = {
   lists: [],
   tags: [],
   savedFilters: [],
+  collaborators: [],
   tasks: [],
   habitsDoneToday: new Set(),
   habitCompletions: new Map(),
@@ -94,7 +97,7 @@ const EMPTY: AppData = {
 
 /** Kolumny wiersza dla `toViewTask` (alias `t`) — też kosz. Z `field_clock` tylko `status` (jak na webie): widoki nie czytają innych zegarów. */
 export const TASK_COLUMNS = `t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
-  t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count,
+  t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count, t.assignee_id,
   json_object('status', json_extract(t.field_clock, '$.status')) as field_clock`;
 
 const loadSettings = async (engine: SyncEngine): Promise<ProfileSettings> =>
@@ -120,11 +123,12 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
   const settings = await loadSettings(engine);
   const today = localDateAt(new Date(), settings.timeZone);
   const queried = Date.now();
-  const [workspaces, lists, tags, filters, tasks, taskTags, habits] = await Promise.all([
+  const [workspaces, lists, tags, filters, collaborators, tasks, taskTags, habits] = await Promise.all([
     db.all<SqlRow>('select id, name, color, sort_key from workspaces where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs, project_status from lists where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, name, color, sort_key from tags where deleted_at is null'),
     db.all<SqlRow>('select id, name, icon, query, sort_key from saved_filters where deleted_at is null'),
+    db.all<SqlRow>('select id, name, email from collaborators where deleted_at is null'),
     db.all<SqlRow>(`select ${TASK_COLUMNS} from tasks t where t.deleted_at is null`),
     // Osobno i pogrupowane w JS: podzapytanie na każde zadanie było najdroższą częścią odczytu na telefonie.
     db.all<SqlRow>('select task_id, tag_id from task_tags where deleted_at is null order by rowid'),
@@ -169,6 +173,7 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
         return query.success ? [{ id: String(r.id), name: String(r.name), icon: r.icon as string | null, query: query.data, sortKey: String(r.sort_key) }] : [];
       })
       .sort(byKey),
+    collaborators: sortCollaborators(collaborators.map((r) => ({ id: String(r.id), name: String(r.name), email: (r.email as string | null) ?? null }))),
     // Zadania z zarchiwizowanych list nie trafiają do widoków.
     tasks: tasks
       .map((r) => toViewTask(r as unknown as LocalTaskRow, tagsOf.get(String(r.id)) ?? []))
@@ -189,7 +194,7 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
 
 // ── Magazyn ─────────────────────────────────────────────────────────────────────────────────
 
-const WATCHED = ['workspaces', 'lists', 'tags', 'saved_filters', 'tasks', 'task_tags', 'task_completions', 'profiles'];
+const WATCHED = ['workspaces', 'lists', 'tags', 'saved_filters', 'collaborators', 'tasks', 'task_tags', 'task_completions', 'profiles'];
 
 let data: AppData = EMPTY;
 const listeners = new Set<() => void>();

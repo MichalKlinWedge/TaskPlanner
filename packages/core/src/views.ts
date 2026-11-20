@@ -43,6 +43,8 @@ export interface ViewTask {
   postponeCount: number;
   /** Ostatnia zmiana statusu (czas z `field_clock.status`) — do „Oczekuje > 7 dni”. */
   statusChangedAt?: string | null;
+  /** Odpowiedzialny (`collaborators.id`); brak / `null` = twórca zadania. */
+  assigneeId?: string | null;
 }
 
 export interface ViewContext {
