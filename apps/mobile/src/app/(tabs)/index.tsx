@@ -1,5 +1,6 @@
 /**
  * „Dziś” (M9): zaległe, dziś, trwające, nawyki, ukończone dziś — reguły z `selectToday` (core).
+ * Na górze zwijany „Plan dnia” (Etap 5, `DayPlanCard`: oś godzin z blokami, wolne okna, konflikty).
  * Nawyki jako blok (Etap 8): `habitsForDay` z odhaczeniem, celem ilościowym, dniem wolnym i passą;
  * o porze przeglądu (`reviewsDue`) — odnośnik do przeglądu dnia / tygodnia (Etap 9). Chipy filtra
  * (jak na webie) zawężają zadania, nie nawyki; filtr trwa do zamknięcia aplikacji, nie jest zapisywany.
@@ -8,6 +9,7 @@ import { applyFilter, capitalized, dayLabel, habitsForDay, isEmptyFilter, plural
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
+import { DayPlanCard } from '@/components/day-plan';
 import { FilterBar } from '@/components/filter-bar';
 import { HabitTodayItem } from '@/components/habits';
 import { ReviewNudge } from '@/components/review';
@@ -27,6 +29,7 @@ export default function TodayScreen() {
   const open = view.overdue.length + view.today.length;
   const habitsLeft = habits.filter((h) => !h.settled).length;
   const sections: TaskSection[] = [
+    { key: 'plan', data: [], footer: data.loaded ? <DayPlanCard data={data} today={today} workspaceId={workspaceId} /> : undefined },
     { key: 'overdue', title: VIEW_SECTION.overdue, count: view.overdue.length, tone: 'bad', data: view.overdue.map((t) => row(t, { withList: true })) },
     { key: 'today', title: VIEW_SECTION.today, count: view.today.length, data: view.today.map((t) => row(t, { showDate: false, withList: true })) },
     { key: 'ongoing', title: VIEW_SECTION.ongoing, count: view.ongoing.length, data: view.ongoing.map((t) => row(t, { withList: true })) },

@@ -67,6 +67,7 @@ export default function BrowseScreen() {
       </Pressable>
 
       <Group title="Planowanie">
+        <Item title="Kalendarz" hint="Dzień z przeciąganiem bloków, tydzień, miesiąc" href="/calendar" />
         <Item title="Nawyki" hint="Passa, regularność, historia" href="/habits" />
         <Item title="Skupienie" hint="Pomodoro i stoper, czas pracy" href="/focus" />
         <Item title="Tablica" hint="Kanban bieżącej przestrzeni" href="/board" />
@@ -111,7 +112,7 @@ export default function BrowseScreen() {
         <Item title="Przestrzenie i listy" hint="Tworzenie, nazwy, kolory, kolejność, archiwum" href="/workspaces" />
         <Item title="Kosz" hint="Usunięte w ostatnich 30 dniach" href="/trash" />
         <Item title="Konto i synchronizacja" hint="Logowanie, stan synchronizacji, przypomnienia" href="/settings" />
-        <Item title="Narzędzia PoC" hint="Widżet, przypomnienia testowe, kalendarz, oś dnia, samosprawdzenie" href="/dev" />
+        <Item title="Narzędzia PoC" hint="Widżet, przypomnienia testowe, samosprawdzenie" href="/dev" />
       </Group>
     </ScrollView>
   );

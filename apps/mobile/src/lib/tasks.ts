@@ -115,11 +115,6 @@ export async function postponeToTomorrow(id: string, today = localToday()): Prom
   await mutate('tasks', id, { due_date: addDays(today, 1), postpone_count: (task.postpone_count ?? 0) + 1 });
 }
 
-/** Zmiana bloku czasu z widoku dnia (przeciągnięcie / rozciągnięcie). */
-export async function moveTaskBlock(id: string, dueDate: string, dueTime: string, durationMin: number): Promise<void> {
-  await mutate('tasks', id, { due_date: dueDate, due_time: dueTime, duration_min: Math.max(5, Math.round(durationMin)) });
-}
-
 /** Dane przykładowe: kilka zadań na dziś (z godziną, bez, zaległe, cykliczne). */
 export async function seedDemoTasks(): Promise<number> {
   const listId = await demoListId();

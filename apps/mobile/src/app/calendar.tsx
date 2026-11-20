@@ -1,77 +1,450 @@
-import { CalendarBody, CalendarContainer, CalendarHeader, type EventItem, type OnEventResponse } from '@howljs/calendar-kit';
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { View } from 'react-native';
+/**
+ * Kalendarz na telefonie (Etap 5, M11; D16 — własna oś dnia, bez calendar-kit): dzień / tydzień (agenda)
+ * / miesiąc nad `core/time-blocking.ts`, jak `#/calendar` na webie. Dzień: wiersz „cały dzień”,
+ * konflikty, oś z przeciąganiem bloków zadań (przytrzymanie → przesunięcie, uchwyt → długość),
+ * „Zaplanuj…” dla zadań bez godziny (`scheduleBlockPatch`), menu bloku (godzina, czas trwania, „Bez
+ * godziny” — `unscheduleBlockPatch`). Tydzień: `calendarEntries` → `agendaDays`. Miesiąc: `monthWeeks`
+ * z liczbą pozycji, dotknięcie dnia → agenda dnia. Wydarzenia: kalendarze połączone na serwerze
+ * i wybrane kalendarze telefonu (`lib/calendar-events.ts`). Wszystkie zmiany z „Cofnij”.
+ */
+import {
+  addDays,
+  addMonths,
+  agendaDays,
+  calendarEntries,
+  capitalized,
+  dayLabel,
+  formatMinutes,
+  habitSlots,
+  isOpen,
+  isoWeekday,
+  localDateTimeAt,
+  minutesToTime,
+  monthLabel,
+  monthWeeks,
+  plural,
+  PRIORITY,
+  relativeDay,
+  resizeBlockPatch,
+  scheduleBlockPatch,
+  selectToday,
+  shortDate,
+  unscheduleBlockPatch,
+  weekStart,
+  WEEKDAY,
+  type Block,
+  type CalendarEntry,
+  type IsoWeekday,
+  type LocalDate,
+  type LocalTime,
+  type TaskOp,
+  type ViewTask,
+} from '@taskplanner/core';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import Storage from 'expo-sqlite/kv-store';
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { P, Screen, Section } from '@/components/ui';
-import { deviceEvents, taskBlocks, type DeviceEvents } from '@/lib/day-items';
-import { moveTaskBlock } from '@/lib/tasks';
-import { toLocalDate, toLocalTime } from '@/lib/time';
-import { refreshWidgets } from '@/widget/refresh';
+import { useTaskActions } from '@/components/actions';
+import { DayTimeline } from '@/components/day-timeline';
+import { pickMany, pickOption, pickTime, type Option } from '@/components/pickers';
+import { Chip, usePalette } from '@/components/ui';
+import { useView, type AppData } from '@/lib/app-data';
+import { deviceCalendars, setDeviceCalendarIds, useCalendarEvents, useDeviceCalendarIds, type EventInfo } from '@/lib/calendar-events';
+import { useDayPlan, useNowMinute } from '@/lib/day-plan';
 
-/** PoC-4: widok dnia z @howljs/calendar-kit — wydarzenia telefonu + zadania; przeciągnięcie bloku zadania zmienia jego czas. */
+type Mode = 'day' | 'week' | 'month';
+const MODE_KEY = 'calendar.mode';
+const MODES: { mode: Mode; label: string }[] = [
+  { mode: 'day', label: 'Dzień' },
+  { mode: 'week', label: 'Tydzień' },
+  { mode: 'month', label: 'Miesiąc' },
+];
+/** Pikseli na godzinę w widoku dnia. */
+const HOUR = 56;
+const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
+const HABIT_COLOR = '#059669';
+
+const datesBefore = (t: ViewTask): Record<string, unknown> => ({ start_date: t.startDate, due_date: t.dueDate, due_time: t.dueTime, duration_min: t.durationMin });
+const pick = (all: Record<string, unknown>, keys: string[]) => Object.fromEntries(keys.map((k) => [k, all[k] ?? null]));
+const toMin = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+
 export default function CalendarScreen() {
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [info, setInfo] = useState<DeviceEvents | null>(null);
-  const [last, setLast] = useState<string | null>(null);
+  const p = usePalette();
+  const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ date?: string; mode?: string }>();
+  const { data, today, workspaceId } = useView();
+  const { notify } = useTaskActions();
+  const [mode, setModeState] = useState<Mode>(() => (params.mode as Mode | undefined) ?? (Storage.getItemSync(MODE_KEY) as Mode | null) ?? 'day');
+  const [date, setDate] = useState<LocalDate>(() => (/^\d{4}-\d{2}-\d{2}$/.test(params.date ?? '') ? (params.date as LocalDate) : today));
+  const deviceIds = useDeviceCalendarIds();
+  const firstDay = data.settings.firstDayOfWeek;
 
-  const load = useCallback(async () => {
-    const from = new Date();
-    from.setHours(0, 0, 0, 0);
-    const to = new Date(from.getTime() + 7 * 86_400_000);
-    const [device, tasks] = await Promise.all([deviceEvents(new Date(from.getTime() - 86_400_000), to), taskBlocks()]);
-    setInfo(device);
-    setEvents(
-      [...device.items, ...tasks].map((item) => ({
-        id: item.id,
-        title: item.taskId ? `✓ ${item.title}` : item.title,
-        color: item.color,
-        start: item.allDay ? { date: toLocalDate(item.start) } : { dateTime: item.start.toISOString() },
-        end: item.allDay ? { date: toLocalDate(item.end) } : { dateTime: item.end.toISOString() },
-      })),
+  const setMode = (next: Mode) => {
+    Storage.setItemSync(MODE_KEY, next);
+    setModeState(next);
+  };
+  const openDay = (day: LocalDate) => {
+    setDate(day);
+    setMode('day');
+  };
+  const shift = (dir: 1 | -1) => setDate((d) => (mode === 'day' ? addDays(d, dir) : mode === 'week' ? addDays(d, 7 * dir) : addMonths(d, dir)));
+  const weekFrom = weekStart(date, firstDay);
+  const title = mode === 'day' ? capitalized(dayLabel(date)) : mode === 'week' ? `${shortDate(weekFrom)} – ${shortDate(addDays(weekFrom, 6))}` : capitalized(monthLabel(date));
+
+  const chooseCalendars = async () => {
+    const calendars = await deviceCalendars().catch(() => null);
+    if (!calendars) return notify('Bez zgody na kalendarz telefonu — włącz ją w ustawieniach aplikacji.');
+    if (!calendars.length) return notify('W telefonie nie ma kalendarzy.');
+    const chosen = await pickMany(
+      'Kalendarze telefonu',
+      calendars.map((c) => ({ label: c.title, hint: c.account || undefined, value: c.id, selected: deviceIds.includes(c.id) })),
     );
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
-
-  const onDragEnd = async (event: OnEventResponse) => {
-    const started = Date.now();
-    if (!event.id.startsWith('task:') || !event.start.dateTime || !event.end.dateTime) {
-      setLast('Wydarzenia z kalendarza telefonu są tylko do odczytu.');
-      await load();
-      return;
-    }
-    const start = new Date(event.start.dateTime);
-    const end = new Date(event.end.dateTime);
-    await moveTaskBlock(event.id.slice(5), toLocalDate(start), toLocalTime(start), (end.getTime() - start.getTime()) / 60_000);
-    setLast(`Zapisano ${toLocalTime(start)}–${toLocalTime(end)} (${Date.now() - started} ms, lokalna baza + outbox)`);
-    await load();
-    await refreshWidgets().catch(() => undefined);
+    if (chosen) setDeviceCalendarIds(chosen);
   };
 
   return (
-    <Screen scroll={false}>
-      <Section>
-        <P muted>
-          {info
-            ? info.granted
-              ? `Kalendarze telefonu: ${info.calendars}, wydarzeń (8 dni): ${info.items.length}, odczyt ${info.ms} ms${info.error ? ` · błąd: ${info.error}` : ''}`
-              : 'Brak dostępu do kalendarza.'
-            : 'Wczytywanie…'}
-        </P>
-        <P muted>Przytrzymaj blok zadania (✓), przeciągnij albo rozciągnij dolną krawędź.</P>
-        {last ? <P tone="ok">{last}</P> : null}
-      </Section>
-      <View style={{ flex: 1, minHeight: 480 }}>
-        <CalendarContainer numberOfDays={1} events={events} allowDragToEdit scrollToNow onDragEventEnd={onDragEnd} useHaptic locale="pl" initialLocales={{ pl: { weekDayShort: 'nd_pn_wt_śr_cz_pt_sb'.split('_'), meridiem: { ante: '', post: '' }, more: 'więcej' } }}>
-          <CalendarHeader />
-          <CalendarBody hourFormat="HH:mm" />
-        </CalendarContainer>
+    <View style={{ flex: 1, backgroundColor: p.bg }}>
+      <Stack.Screen
+        options={{
+          title: 'Kalendarz',
+          headerRight: () => (
+            <Pressable accessibilityRole="button" accessibilityLabel="Kalendarze telefonu" hitSlop={10} onPress={() => void chooseCalendars()}>
+              <Text style={{ color: p.accent, fontSize: 14 }}>📱 {deviceIds.length || ''}</Text>
+            </Pressable>
+          ),
+        }}
+      />
+      <View style={[styles.bar, { borderColor: p.border, backgroundColor: p.card }]}>
+        <View style={styles.row}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Wstecz" hitSlop={10} onPress={() => shift(-1)} style={styles.arrow}>
+            <Text style={{ color: p.fg, fontSize: 20 }}>‹</Text>
+          </Pressable>
+          <Text style={{ color: p.fg, fontSize: 15, fontWeight: '600', flex: 1, textAlign: 'center' }} numberOfLines={1}>
+            {title}
+          </Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Dalej" hitSlop={10} onPress={() => shift(1)} style={styles.arrow}>
+            <Text style={{ color: p.fg, fontSize: 20 }}>›</Text>
+          </Pressable>
+        </View>
+        <View style={styles.row}>
+          {MODES.map((m) => (
+            <Chip key={m.mode} label={m.label} selected={mode === m.mode} onPress={() => setMode(m.mode)} />
+          ))}
+          <View style={{ flex: 1 }} />
+          <Chip label="Dziś" selected={date === today} onPress={() => setDate(today)} />
+        </View>
       </View>
-    </Screen>
+      {mode === 'day' ? (
+        <DayView key={date} data={data} date={date} today={today} workspaceId={workspaceId} bottom={insets.bottom} />
+      ) : mode === 'week' ? (
+        <RangeAgenda data={data} from={weekFrom} to={addDays(weekFrom, 7)} today={today} workspaceId={workspaceId} onDay={openDay} bottom={insets.bottom} />
+      ) : (
+        <MonthView data={data} date={date} today={today} workspaceId={workspaceId} onSelect={setDate} onDay={openDay} bottom={insets.bottom} />
+      )}
+    </View>
   );
 }
+
+/** Zapis terminu / godziny / długości z „Cofnij” (jak `schedule` w kalendarzu na webie). */
+function useSchedule() {
+  const { run } = useTaskActions();
+  return (task: ViewTask, patch: Record<string, unknown>, text: string) => {
+    const before = datesBefore(task);
+    if (!Object.keys(patch).length || Object.entries(patch).every(([k, v]) => before[k] === v)) return;
+    const ops: TaskOp[] = [{ table: 'tasks', id: task.id, patch }];
+    void run(ops, { text: `„${task.title}” ${text}`, undo: [{ table: 'tasks', id: task.id, patch: pick(before, Object.keys(patch)) }] });
+  };
+}
+
+function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; date: LocalDate; today: LocalDate; workspaceId: string | null; bottom: number }) {
+  const p = usePalette();
+  const { notify } = useTaskActions();
+  const plan = useDayPlan(data, date, workspaceId, today);
+  const nowMin = useNowMinute(plan.dayStart);
+  const schedule = useSchedule();
+  const { defaultDurationMin, workHours, timeZone } = data.settings;
+  const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  const touched = useRef(false);
+  const [axisTop, setAxisTop] = useState<number | null>(null);
+  const [allDayOpen, setAllDayOpen] = useState(false);
+  const day = plan.day;
+  const clock = (b: Pick<Block, 'startAt'>) => localDateTimeAt(b.startAt, timeZone).slice(11);
+
+  const at = (startMin: number) => `→ ${relativeDay(date, today)} ${minutesToTime(startMin)}`;
+  const setTime = async (task: ViewTask) => {
+    const time = await pickTime({ title: `Godzina: „${task.title}”`, value: task.dueTime ?? (workHours.start as LocalTime) });
+    if (!time) return;
+    schedule(task, scheduleBlockPatch(task, date, toMin(time), { defaultDurationMin }), at(toMin(time)));
+  };
+  const setDuration = async (task: ViewTask) => {
+    const current = task.durationMin ?? defaultDurationMin;
+    const minutes = await pickOption<number>(
+      `Czas trwania: „${task.title}”`,
+      [...new Set([...DURATIONS, current])].sort((a, b) => a - b).map((m) => ({ label: formatMinutes(m), value: m, selected: m === current })),
+    );
+    if (minutes) schedule(task, resizeBlockPatch(0, minutes), `— ${formatMinutes(minutes)}`);
+  };
+
+  const onBlock = async (block: Block) => {
+    if (block.kind === 'habit') return router.push({ pathname: '/habit/[id]', params: { id: block.id } });
+    if (block.kind === 'event') {
+      const info = plan.info.get(block.id);
+      return notify(`${block.title} · ${clock(block)}${info?.calendar ? ` · ${info.calendar}` : ''}${info?.location ? ` · ${info.location}` : ''}`);
+    }
+    const task = plan.tasks.get(block.id);
+    if (!task) return;
+    const options: Option<'open' | 'time' | 'duration' | 'unschedule'>[] = [{ label: 'Otwórz', value: 'open' }];
+    if (!block.virtual && isOpen(task)) options.push({ label: 'Zmień godzinę…', value: 'time' }, { label: 'Czas trwania…', value: 'duration' }, { label: 'Bez godziny', value: 'unschedule', hint: 'Dzień zostaje' });
+    const choice = options.length > 1 ? await pickOption(`${clock(block)} ${task.title}`, options) : 'open';
+    if (choice === 'open') router.push({ pathname: '/task/[id]', params: { id: task.id } });
+    else if (choice === 'time') await setTime(task);
+    else if (choice === 'duration') await setDuration(task);
+    else if (choice === 'unschedule') schedule(task, unscheduleBlockPatch(), '— bez godziny');
+  };
+
+  // Do zaplanowania: otwarte bez godziny — z tego dnia, a dziś także zaległe; potem bez terminu.
+  const planNext = async () => {
+    const all = data.tasks.filter((t) => t.kind === 'task' && isOpen(t) && !t.dueTime && (!workspaceId || t.workspaceId === workspaceId));
+    const dated = date === today ? (() => {
+      const view = selectToday(all, { today, timeZone, workspaceId, firstDayOfWeek: data.settings.firstDayOfWeek }, { completed: 'hidden' });
+      return [...view.overdue, ...view.today];
+    })() : all.filter((t) => t.dueDate === date);
+    const undated = all.filter((t) => !t.dueDate).sort((a, b) => a.priority - b.priority || (a.sortKey < b.sortKey ? -1 : 1));
+    const list = [...dated, ...undated].slice(0, 60);
+    if (!list.length) return notify('Brak zadań bez godziny.');
+    const task = await pickOption<ViewTask>(
+      'Zaplanuj zadanie',
+      list.map((t) => ({ label: t.title, value: t, hint: t.dueDate ? relativeDay(t.dueDate, today) : 'bez terminu' })),
+    );
+    if (task) await setTime(task);
+  };
+
+  // „Cały dzień”: wydarzenia, potem zadania bez godziny; zwinięte do 8 pozycji (jak na webie).
+  const ALL_DAY_LIMIT = 8;
+  const allDayItems = [...day.allDay.filter((i) => i.kind === 'event'), ...day.allDay.filter((i) => i.kind === 'task')];
+  const allDayShown = allDayOpen ? allDayItems : allDayItems.slice(0, ALL_DAY_LIMIT);
+  // Przewinięcie na start: dziś — godzina przed „teraz”, inny dzień — początek pracy albo pierwszy blok.
+  const initial = Math.max(0, ((date === today ? nowMin - 60 : Math.min(toMin(workHours.start), ...day.timed.map((b) => b.startMin))) / 60) * HOUR - 8);
+  // Wyrównanie do „teraz” / początku dnia po każdej zmianie treści nad osią (konflikty, „cały dzień”,
+  // wydarzenia telefonu dochodzą asynchronicznie) i wysokości — dopóki użytkownik sam nie przewinie.
+  const align = () => {
+    if (touched.current || axisTop === null || !data.loaded) return;
+    scroll.current?.scrollTo({ y: axisTop + initial, animated: false });
+  };
+  useEffect(align);
+
+  return (
+    <ScrollView
+      ref={scroll}
+      contentContainerStyle={{ paddingBottom: bottom + 24 }}
+      onScrollBeginDrag={() => {
+        touched.current = true;
+      }}
+      onContentSizeChange={align}
+    >
+      <View style={{ padding: 12, gap: 8 }}>
+        {plan.conflicts.length ? (
+          <View style={[styles.box, { borderColor: p.bad }]} accessibilityLabel="Konflikty">
+            <Text style={{ color: p.bad, fontWeight: '700', fontSize: 13 }}>⚠ {plural(plan.conflicts.length, ['konflikt', 'konflikty', 'konfliktów'])}</Text>
+            {plan.conflicts.map((c) => (
+              <Text key={`${c.a.kind}:${c.a.id}|${c.b.kind}:${c.b.id}`} style={{ color: p.fg, fontSize: 12 }}>
+                {clock(c.b)} {c.a.title} ↔ {c.b.title} <Text style={{ color: p.muted }}>· {c.overlapMin} min</Text>
+              </Text>
+            ))}
+          </View>
+        ) : null}
+        {day.allDay.length ? (
+          <View style={styles.wrap} accessibilityLabel="Cały dzień">
+            {allDayShown.map((t) => {
+              if (t.kind === 'event')
+                return (
+                  <View key={`event:${t.id}`} style={[styles.allDay, { borderColor: plan.info.get(t.id)?.color ?? p.border }]}>
+                    <Text style={{ color: p.fg, fontSize: 12 }} numberOfLines={1}>
+                      {t.title}
+                    </Text>
+                  </View>
+                );
+              const task = plan.tasks.get(t.id);
+              return (
+                <Pressable key={`task:${t.id}`} accessibilityRole="button" accessibilityLabel={`Zaplanuj „${t.title}”`} onPress={() => task && void setTime(task)} style={[styles.allDay, { borderColor: p.border, backgroundColor: p.card }]}>
+                  <Text style={{ color: task && !isOpen(task) ? p.muted : p.fg, fontSize: 12, textDecorationLine: task && !isOpen(task) ? 'line-through' : 'none' }} numberOfLines={1}>
+                    {t.title}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            {allDayItems.length > ALL_DAY_LIMIT ? (
+              <Pressable accessibilityRole="button" onPress={() => setAllDayOpen(!allDayOpen)} style={[styles.allDay, { borderColor: p.border }]}>
+                <Text style={{ color: p.accent, fontSize: 12 }}>{allDayOpen ? 'Zwiń' : `+${allDayItems.length - ALL_DAY_LIMIT}`}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+        <View style={styles.row}>
+          <Text style={{ color: p.muted, fontSize: 12, flex: 1 }}>
+            {plural(day.timed.filter((b) => !b.passive).length, ['blok', 'bloki', 'bloków'])} · przytrzymaj blok, żeby go przesunąć
+          </Text>
+          <Chip label="+ Zaplanuj…" onPress={() => void planNext()} />
+        </View>
+      </View>
+      <View onLayout={(e) => setAxisTop(e.nativeEvent.layout.y)}>
+      <DayTimeline
+        plan={day}
+        hot={plan.hot}
+        lanes={plan.lanes}
+        free={plan.free}
+        info={plan.info}
+        tasks={plan.tasks}
+        from={0}
+        to={day.dayMinutes}
+        hour={HOUR}
+        nowMin={date === today ? nowMin : null}
+        editable
+        onPress={(b) => void onBlock(b)}
+        onMove={(task, startMin, durationMin) => schedule(task, scheduleBlockPatch(task, date, startMin, { durationMin }), at(startMin))}
+        onResize={(task, startMin, endMin) => schedule(task, resizeBlockPatch(startMin, endMin), `— ${formatMinutes(Math.max(5, endMin - startMin))}`)}
+      />
+      </View>
+    </ScrollView>
+  );
+}
+
+/** Pozycje kalendarza dla `[from, to)` z wydarzeniami i nawykami bieżącej przestrzeni. */
+function useEntries(data: AppData, from: LocalDate, to: LocalDate, today: LocalDate, workspaceId: string | null): { entries: CalendarEntry[]; info: Map<string, EventInfo> } {
+  const { timeZone, defaultDurationMin } = data.settings;
+  const range = useMemo(() => ({ from, to }), [from, to]);
+  const events = useCalendarEvents(range, timeZone);
+  return useMemo(() => {
+    const own = data.tasks.filter((t) => !workspaceId || t.workspaceId === workspaceId);
+    const habits = habitSlots(own, data.habitCompletions, from, to, today);
+    const entries = calendarEntries(
+      own.filter((t) => t.kind === 'task'),
+      events.list,
+      from,
+      to,
+      { timeZone, defaultDurationMin, habits },
+    );
+    return { entries, info: events.info };
+  }, [data.tasks, data.habitCompletions, events, from, to, today, workspaceId, timeZone, defaultDurationMin]);
+}
+
+function EntryRow({ entry, data, info }: { entry: CalendarEntry; data: AppData; info: Map<string, EventInfo> }) {
+  const p = usePalette();
+  const task = entry.kind === 'task' ? data.tasks.find((t) => t.id === entry.id) : undefined;
+  const color = task ? (PRIORITY[task.priority]?.color ?? p.border) : entry.kind === 'habit' ? HABIT_COLOR : (info.get(entry.id)?.color ?? p.muted);
+  const time = entry.allDay ? (entry.kind === 'event' ? 'cały dzień' : 'bez godziny') : `${entry.start.slice(11, 16)}–${entry.end.slice(11, 16)}`;
+  const mark = entry.kind === 'habit' ? (entry.habitState === 'done' ? '✓ ' : '◎ ') : '';
+  const onPress =
+    entry.kind === 'task'
+      ? () => router.push({ pathname: '/task/[id]', params: { id: entry.id } })
+      : entry.kind === 'habit'
+        ? () => router.push({ pathname: '/habit/[id]', params: { id: entry.id } })
+        : undefined;
+  return (
+    <Pressable accessibilityRole={onPress ? 'button' : 'text'} disabled={!onPress} onPress={onPress} style={[styles.entry, { borderLeftColor: color, opacity: entry.passive || entry.virtual ? 0.6 : 1 }]}>
+      <Text style={{ color: p.muted, fontSize: 12, width: 82 }}>{time}</Text>
+      <Text style={{ color: p.fg, fontSize: 14, flex: 1, textDecorationLine: entry.passive && entry.kind !== 'event' ? 'line-through' : 'none' }} numberOfLines={1}>
+        {entry.conflict ? '⚠ ' : ''}
+        {mark}
+        {entry.title}
+      </Text>
+    </Pressable>
+  );
+}
+
+function RangeAgenda({ data, from, to, today, workspaceId, onDay, bottom }: { data: AppData; from: LocalDate; to: LocalDate; today: LocalDate; workspaceId: string | null; onDay: (d: LocalDate) => void; bottom: number }) {
+  const p = usePalette();
+  const { entries, info } = useEntries(data, from, to, today, workspaceId);
+  const days = useMemo(() => agendaDays(entries, from, to), [entries, from, to]);
+  return (
+    <ScrollView contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: bottom + 24 }}>
+      {days.map((d) => (
+        <View key={d.date} style={[styles.dayCard, { borderColor: d.date === today ? p.accent : p.border, backgroundColor: p.card }]}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz dzień ${dayLabel(d.date)}`} onPress={() => onDay(d.date)} style={styles.row}>
+            <Text style={{ color: d.date === today ? p.accent : p.fg, fontSize: 14, fontWeight: '700', flex: 1 }}>{capitalized(dayLabel(d.date))}</Text>
+            <Text style={{ color: p.muted, fontSize: 18 }}>›</Text>
+          </Pressable>
+          {d.entries.length ? d.entries.map((e) => <EntryRow key={e.key} entry={e} data={data} info={info} />) : <Text style={{ color: p.muted, fontSize: 12 }}>Nic nie zaplanowano.</Text>}
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function MonthView({ data, date, today, workspaceId, onSelect, onDay, bottom }: { data: AppData; date: LocalDate; today: LocalDate; workspaceId: string | null; onSelect: (d: LocalDate) => void; onDay: (d: LocalDate) => void; bottom: number }) {
+  const p = usePalette();
+  const firstDay = data.settings.firstDayOfWeek;
+  const weeks = useMemo(() => monthWeeks(date, firstDay), [date, firstDay]);
+  const from = weeks[0]![0]!;
+  const to = addDays(weeks[weeks.length - 1]![6]!, 1);
+  const { entries, info } = useEntries(data, from, to, today, workspaceId);
+  const days = useMemo(() => new Map(agendaDays(entries, from, to).map((d) => [d.date, d.entries])), [entries, from, to]);
+  const month = date.slice(0, 7);
+  const selected = days.get(date) ?? [];
+  return (
+    <ScrollView contentContainerStyle={{ padding: 8, gap: 10, paddingBottom: bottom + 24 }}>
+      <View>
+        <View style={styles.week}>
+          {weeks[0]!.map((d) => (
+            <Text key={d} style={[styles.weekday, { color: p.muted }]}>
+              {WEEKDAY[isoWeekday(d) as IsoWeekday].short}
+            </Text>
+          ))}
+        </View>
+        {weeks.map((week) => (
+          <View key={week[0]} style={styles.week}>
+            {week.map((d) => {
+              const list = days.get(d) ?? [];
+              // Kropki: najpierw aktywne, potem ukończone i „wolny” (przygaszone).
+              const dots = [...list.filter((e) => !e.passive), ...list.filter((e) => e.passive)];
+              const isSelected = d === date;
+              return (
+                <Pressable
+                  key={d}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${dayLabel(d)}, ${plural(list.length, ['pozycja', 'pozycje', 'pozycji'])}`}
+                  accessibilityState={{ selected: isSelected }}
+                  onPress={() => (isSelected ? onDay(d) : onSelect(d))}
+                  style={[styles.cell, { borderColor: isSelected ? p.accent : p.border, backgroundColor: isSelected ? p.selected : d.slice(0, 7) === month ? p.card : 'transparent' }]}
+                >
+                  <Text style={{ color: d === today ? p.accent : d.slice(0, 7) === month ? p.fg : p.muted, fontSize: 13, fontWeight: d === today ? '700' : '400' }}>{Number(d.slice(8, 10))}</Text>
+                  <View style={styles.dots}>
+                    {dots.slice(0, 4).map((e) => (
+                      <View key={e.key} style={[styles.dot, { opacity: e.passive ? 0.4 : 1, backgroundColor: e.conflict ? p.bad : e.kind === 'event' ? (info.get(e.id)?.color ?? p.muted) : e.kind === 'habit' ? HABIT_COLOR : p.accent }]} />
+                    ))}
+                  </View>
+                  {dots.length > 4 ? <Text style={{ color: p.muted, fontSize: 9 }}>+{dots.length - 4}</Text> : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
+      </View>
+      <View style={[styles.dayCard, { borderColor: p.border, backgroundColor: p.card }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz dzień ${dayLabel(date)}`} onPress={() => onDay(date)} style={styles.row}>
+          <Text style={{ color: p.fg, fontSize: 14, fontWeight: '700', flex: 1 }}>{capitalized(dayLabel(date))}</Text>
+          <Text style={{ color: p.accent, fontSize: 13 }}>Oś dnia ›</Text>
+        </Pressable>
+        {selected.length ? selected.map((e) => <EntryRow key={e.key} entry={e} data={data} info={info} />) : <Text style={{ color: p.muted, fontSize: 12 }}>Nic nie zaplanowano.</Text>}
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  bar: { padding: 8, gap: 6, borderBottomWidth: StyleSheet.hairlineWidth },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  arrow: { paddingHorizontal: 12, paddingVertical: 2 },
+  box: { borderWidth: 1, borderRadius: 8, padding: 8, gap: 2 },
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  allDay: { borderWidth: StyleSheet.hairlineWidth, borderLeftWidth: 3, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, maxWidth: '100%' },
+  dayCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: 10, gap: 6 },
+  entry: { flexDirection: 'row', alignItems: 'center', gap: 6, borderLeftWidth: 3, paddingLeft: 8, paddingVertical: 4 },
+  week: { flexDirection: 'row', gap: 3, marginBottom: 3 },
+  weekday: { flex: 1, textAlign: 'center', fontSize: 11 },
+  cell: { flex: 1, minHeight: 54, borderWidth: StyleSheet.hairlineWidth, borderRadius: 6, padding: 3, alignItems: 'center', gap: 3 },
+  dots: { flexDirection: 'row', flexWrap: 'wrap', gap: 2, justifyContent: 'center' },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+});

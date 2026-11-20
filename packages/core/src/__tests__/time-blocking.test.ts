@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   addWallMinutes,
+  agendaDays,
   blockLanes,
   blocksForDay,
   calendarEntries,
@@ -22,6 +23,7 @@ import {
   type CalendarEventLike,
 } from '../time-blocking.ts';
 import type { HabitSlot } from '../habits.ts';
+import { monthWeeks } from '../dates.ts';
 
 const WAW = 'Europe/Warsaw';
 const DAY = '2026-11-19';
@@ -151,5 +153,36 @@ describe('nawyki z porą w planie dnia i kalendarzu', () => {
       { start: '2026-11-19T09:00', end: '2026-11-19T09:30' },
       { start: '2026-11-19T10:00', end: '2026-11-19T11:00' },
     ]);
+  });
+});
+
+describe('agenda i siatka miesiąca', () => {
+  it('agenda: wydarzenie wielodniowe w każdym dniu, o północy bez następnego dnia', () => {
+    const list = calendarEntries(
+      [task('a', { dueTime: '15:00' }), task('b', { dueDate: '2026-11-20', dueTime: null })],
+      [
+        { id: 'trip', title: 'Wyjazd', allDay: true, startDate: '2026-11-18', endDate: '2026-11-21' },
+        { id: 'late', title: 'Późne', allDay: false, startAt: '2026-11-19T21:00:00Z', endAt: '2026-11-19T23:00:00Z' },
+        { id: 'night', title: 'Noc', allDay: false, startAt: '2026-11-20T22:00:00Z', endAt: '2026-11-21T01:00:00Z' },
+      ],
+      DAY,
+      '2026-11-23',
+      { timeZone: WAW },
+    );
+    const days = agendaDays(list, DAY, '2026-11-23');
+    expect(days.map((d) => d.date)).toEqual(['2026-11-19', '2026-11-20', '2026-11-21', '2026-11-22']);
+    expect(days[0]!.entries.map((e) => e.id)).toEqual(['trip', 'a', 'late']);
+    expect(days[1]!.entries.map((e) => e.id)).toEqual(['trip', 'b', 'night']);
+    expect(days[2]!.entries.map((e) => e.id)).toEqual(['night']);
+    expect(days[3]!.entries).toEqual([]);
+  });
+
+  it('siatka miesiąca: pełne tygodnie od wybranego dnia tygodnia', () => {
+    const weeks = monthWeeks('2026-11-19');
+    expect(weeks).toHaveLength(6);
+    expect(weeks[0]![0]).toBe('2026-10-26');
+    expect(weeks[5]![6]).toBe('2026-12-06');
+    const sunday = monthWeeks('2026-02-10', 7);
+    expect(sunday.map((w) => w[0])).toEqual(['2026-02-01', '2026-02-08', '2026-02-15', '2026-02-22']);
   });
 });
