@@ -3,10 +3,14 @@
  * powtarzanie / postęp podzadań / lista. Gesty: przesunięcie w prawo = ukończ, w lewo = menu
  * terminu; długie przytrzymanie = zaznaczanie (potem dotknięcie dokłada kolejne), dotknięcie =
  * szczegóły zadania. Wirtualne wystąpienie serii (Nadchodzące) — tylko do odczytu.
+ *
+ * Szybkie otwarcie listy (`docs/WYDAJNOSC.md` § Telefon): gest przesunięcia (`Swipeable` — gest,
+ * wartości współdzielone i trzy widoki animowane na wiersz) dochodzi dopiero po pierwszym
+ * narysowaniu listy (`RowsInteractive` z `TaskSections`), a metadane to jeden `Text` z jednym zagnieżdżonym.
  */
 import { assigneeOf, collaboratorBadge, describeRecurrence, isOpen, PRIORITY, relativeDay, type LocalDate, type ViewTask } from '@taskplanner/core';
 import { router } from 'expo-router';
-import { memo, useRef } from 'react';
+import { createContext, memo, useContext, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Swipeable, { SwipeDirection, type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
@@ -35,6 +39,12 @@ export interface TaskRowProps {
   tagNames?: readonly string[];
 }
 
+/**
+ * `false` — wiersze bez gestu przesunięcia (pierwsze narysowanie listy); `TaskSections` przełącza na
+ * `true` w pierwszej wolnej chwili po nim. Poza listą (szczegóły, wyszukiwanie) — od razu `true`.
+ */
+export const RowsInteractive = createContext(true);
+
 export const TaskRow = memo(function TaskRow({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, tagNames }: TaskRowProps) {
   const p = usePalette();
   const actions = useTaskActions();
@@ -46,7 +56,8 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
   const date = virtualDate ?? task.dueDate;
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
-  const swipeable = !virtualDate && !selecting;
+  const interactive = useContext(RowsInteractive);
+  const swipeable = !virtualDate && !selecting && interactive;
   const assignee = assigneeOf(task.assigneeId, useAppData().collaborators);
 
   const meta = [
@@ -59,6 +70,9 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
     assignee ? { text: `👤 ${collaboratorBadge(assignee)}` } : null,
     ...(tagNames ?? []).map((t) => ({ text: `@${t}` })),
   ].filter(Boolean) as { text: string; bad?: boolean }[];
+  // Wyróżniony (zaległy termin) jest zawsze pierwszy: jeden zagnieżdżony `Text` zamiast jednego na pozycję.
+  const lead = meta[0]?.bad ? meta[0] : null;
+  const rest = (lead ? meta.slice(1) : meta).map((m) => m.text).join(' · ');
 
   const body = (
     <Pressable
@@ -105,12 +119,8 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
         </Text>
         {meta.length ? (
           <Text style={[styles.meta, { color: p.muted }]} numberOfLines={1}>
-            {meta.map((m, i) => (
-              <Text key={i} style={m.bad ? { color: p.bad, fontWeight: '600' } : undefined}>
-                {i ? ' · ' : ''}
-                {m.text}
-              </Text>
-            ))}
+            {lead ? <Text style={[styles.bad, { color: p.bad }]}>{lead.text}</Text> : null}
+            {lead && rest ? ` · ${rest}` : rest}
           </Text>
         ) : null}
       </View>
@@ -157,6 +167,7 @@ const styles = StyleSheet.create({
   text: { flex: 1, gap: 2 },
   title: { fontSize: 16, lineHeight: 21 },
   meta: { fontSize: 12.5 },
+  bad: { fontWeight: '600' },
   action: { flex: 1, justifyContent: 'center' },
   left: { alignItems: 'flex-start', paddingLeft: 20 },
   right: { alignItems: 'flex-end', paddingRight: 20 },

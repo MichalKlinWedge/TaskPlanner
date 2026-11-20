@@ -1,16 +1,18 @@
 /**
  * Ekran listy zadań: sekcje (Zaległe / Dziś / dni / grupy) na `SectionList` (wirtualizacja przy
  * tysiącach zadań), przycisk „+” szybkiego dodawania i pasek operacji na zaznaczonych.
+ * Otwarcie: najpierw ekran z pierwszymi wierszami bez gestów (`initialNumToRender`, `RowsInteractive`),
+ * reszta wierszy i gesty przesunięcia w pierwszej wolnej chwili po narysowaniu.
  */
 import { router, type Href } from 'expo-router';
-import { useMemo, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 
 import { useAppData } from '@/lib/app-data';
 
 import { useTaskActions } from './actions';
 import { bulkDate, pickList, pickPriority } from './task-menus';
-import { TaskRow, type TaskRowProps } from './task-row';
+import { RowsInteractive, TaskRow, type TaskRowProps } from './task-row';
 import { usePalette } from './ui';
 
 export interface RowItem extends TaskRowProps {
@@ -30,31 +32,41 @@ export interface TaskSection {
 export function TaskSections({ sections, header, empty, quickAdd }: { sections: TaskSection[]; header?: ReactElement; empty?: string; quickAdd?: QuickAddParams | null }) {
   const p = usePalette();
   const visible = useMemo(() => sections.filter((s) => s.data.length || s.footer), [sections]);
+  // Gesty przesunięcia wierszy dopiero po pierwszym narysowaniu (nikt nie przesuwa wiersza w trakcie otwierania ekranu).
+  const [interactive, setInteractive] = useState(false);
+  useEffect(() => {
+    // Pierwsza wolna chwila wątku JS po narysowaniu (najpóźniej po 500 ms).
+    const idle = requestIdleCallback(() => setInteractive(true), { timeout: 500 });
+    return () => cancelIdleCallback(idle);
+  }, []);
   return (
     <View style={{ flex: 1, backgroundColor: p.bg }}>
-      <SectionList
-        sections={visible}
-        keyExtractor={(item) => item.key}
-        // `key` tylko dla listy — nie w propsach wiersza (React nie pozwala na `key` w spreadzie).
-        renderItem={({ item: { key: _key, ...row } }) => <TaskRow {...row} />}
-        renderSectionHeader={({ section }) =>
-          section.title ? (
-            <View style={[styles.header, { backgroundColor: p.bg, borderColor: p.border }]}>
-              <Text style={[styles.headerText, { color: section.tone === 'bad' ? p.bad : p.fg }]}>{section.title}</Text>
-              {section.count ? <Text style={{ color: p.muted, fontSize: 12 }}>{section.count}</Text> : null}
-            </View>
-          ) : null
-        }
-        renderSectionFooter={({ section }) => (section.footer ? <View>{section.footer}</View> : null)}
-        ListHeaderComponent={header}
-        ListEmptyComponent={empty ? <Text style={[styles.empty, { color: p.muted }]}>{empty}</Text> : undefined}
-        ListFooterComponent={<View style={{ height: 120 }} />}
-        stickySectionHeadersEnabled
-        // Tyle, ile mieści ekran (wiersz ~60 dp): każdy wiersz więcej to dłuższe otwarcie listy (`docs/WYDAJNOSC.md`).
-        initialNumToRender={12}
-        windowSize={11}
-        keyboardShouldPersistTaps="handled"
-      />
+      <RowsInteractive.Provider value={interactive}>
+        <SectionList
+          sections={visible}
+          keyExtractor={(item) => item.key}
+          // `key` tylko dla listy — nie w propsach wiersza (React nie pozwala na `key` w spreadzie).
+          renderItem={({ item: { key: _key, ...row } }) => <TaskRow {...row} />}
+          renderSectionHeader={({ section }) =>
+            section.title ? (
+              <View style={[styles.header, { backgroundColor: p.bg, borderColor: p.border }]}>
+                <Text style={[styles.headerText, { color: section.tone === 'bad' ? p.bad : p.fg }]}>{section.title}</Text>
+                {section.count ? <Text style={{ color: p.muted, fontSize: 12 }}>{section.count}</Text> : null}
+              </View>
+            ) : null
+          }
+          renderSectionFooter={({ section }) => (section.footer ? <View>{section.footer}</View> : null)}
+          ListHeaderComponent={header}
+          ListEmptyComponent={empty ? <Text style={[styles.empty, { color: p.muted }]}>{empty}</Text> : undefined}
+          ListFooterComponent={<View style={{ height: 120 }} />}
+          stickySectionHeadersEnabled
+          // Pierwsza klatka: tyle wierszy, ile widać pod nagłówkiem (wiersz ~60 dp); reszta ekranu dochodzi
+          // w następnej porcji. Każdy wiersz więcej to dłuższe otwarcie listy (`docs/WYDAJNOSC.md`).
+          initialNumToRender={8}
+          windowSize={11}
+          keyboardShouldPersistTaps="handled"
+        />
+      </RowsInteractive.Provider>
       <BottomBar quickAdd={quickAdd} />
     </View>
   );

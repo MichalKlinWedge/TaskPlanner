@@ -241,7 +241,7 @@ Zebrane pozycje „Zostało” z etapów powyżej (szczegóły przy etapach). Po
 
 ### Kod
 - [ ] **Telefon — pomiar przyrostowego odświeżania** (nowe APK): ukończenie / „Cofnij” przy 10 000 zadań, było 0,66 s (`docs/WYDAJNOSC.md` § Telefon).
-- [ ] **Telefon (jeśli potrzebne):** „Dziś” (103 ms) i lista projektu (180–260 ms) nad progiem 100 ms — dane i obliczenia mieszczą się w nim, reszta to nawigacja i rysowanie React Native (`docs/WYDAJNOSC.md` § Uwagi).
+- [ ] **Telefon (jeśli potrzebne):** „Dziś” (103 ms) i lista projektu (180–260 ms) nad progiem 100 ms — dane i obliczenia mieszczą się w nim, reszta to nawigacja i rysowanie React Native (`docs/WYDAJNOSC.md` § Uwagi). Zrobione 20.11.2026: wiersze najpierw bez gestu przesunięcia, prostsze metadane, 8 wierszy w pierwszej porcji — zostaje pomiar na telefonie.
 
 ### Próby ręczne
 - [ ] **MVP-2:** start webu bez sieci na produkcji na prawdziwym urządzeniu, także z wygasłym tokenem.
