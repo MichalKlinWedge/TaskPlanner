@@ -2,12 +2,13 @@
  * Dane widoków z lokalnej bazy (MVP-3): przestrzenie, listy, tagi, zapisane filtry, współpracownicy,
  * zadania jako `ViewTask` (z tagami i odpowiedzialnym), dzisiejsze wykonania nawyków i ustawienia profilu. Jeden magazyn na
  * proces: zakładki, ekrany i widżet czytają ten sam wynik, a odświeżenie po zmianie tabel
- * (zapis, synchronizacja — także kilka stron pierwszej) łączy się w jedno zapytanie.
+ * (zapis, synchronizacja — także kilka stron pierwszej) łączy się w jedno zapytanie. Zadania
+ * odświeżają się przyrostowo (`createTaskCache`: tylko zmienione wiersze, gotowe `ViewTask` reszty zostają).
  * Reguły widoków liczy `@taskplanner/core` — tu jest tylko mapowanie wierszy, jak na webie
  * (`apps/web/src/lib/app-data.ts`).
  */
 import { FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type Collaborator, type HabitCompletion, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask } from '@taskplanner/core';
-import type { SqlRow, SyncEngine } from '@taskplanner/sync';
+import { createTaskCache, TASK_COLUMNS, type SqlRow, type SyncEngine, type TaskCache, type TaskEntry } from '@taskplanner/sync';
 import Storage from 'expo-sqlite/kv-store';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
@@ -97,10 +98,18 @@ const EMPTY: AppData = {
   loaded: false,
 };
 
-/** Kolumny wiersza dla `toViewTask` (alias `t`) — też kosz. Z `field_clock` tylko `status` (jak na webie): widoki nie czytają innych zegarów. */
-export const TASK_COLUMNS = `t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
-  t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count, t.assignee_id,
-  json_object('status', json_extract(t.field_clock, '$.status')) as field_clock`;
+/** Kolumny wiersza dla `toViewTask` (alias `t`) — też kosz (`@taskplanner/sync`). */
+export { TASK_COLUMNS };
+
+/** Gotowe `ViewTask` przy wpisach bufora — wpis niezmieniony od poprzedniego odczytu = ten sam obiekt. */
+const viewTasks = new WeakMap<TaskEntry, ViewTask>();
+const viewTask = (entry: TaskEntry): ViewTask => {
+  let task = viewTasks.get(entry);
+  if (!task) viewTasks.set(entry, (task = toViewTask(entry.row as unknown as LocalTaskRow, entry.tagIds as string[])));
+  return task;
+};
+/** Poprzednia lista zadań — bez zmian w zadaniach i listach zostaje ta sama tablica (widoki nie liczą od nowa). */
+let lastTasks: { entries: readonly TaskEntry[]; lists: string; tasks: ViewTask[] } | null = null;
 
 const loadSettings = async (engine: SyncEngine): Promise<ProfileSettings> =>
   parseSettings((await engine.db.all<SqlRow>('select settings from profiles where id = ?', [engine.userId]))[0]?.settings);
@@ -119,34 +128,28 @@ export async function loadTask(engine: SyncEngine, id: string): Promise<{ task: 
   return { task: row ? toViewTask(row as unknown as LocalTaskRow, tags.map((r) => String(r.tag_id))) : null, settings };
 }
 
-/** Wszystko naraz z lokalnej bazy — ekrany, przeplanowanie przypomnień, widżet, zadanie w tle. */
-export async function loadAppData(engine: SyncEngine): Promise<AppData> {
+/**
+ * Wszystko naraz z lokalnej bazy — ekrany, przeplanowanie przypomnień, widżet, zadanie w tle.
+ * Z buforem zadań (magazyn ekranów) czyta tylko zmienione zadania; bez niego — wszystkie.
+ */
+export async function loadAppData(engine: SyncEngine, cache: TaskCache = createTaskCache((sql, params) => engine.db.all(sql, params))): Promise<AppData> {
   const { db } = engine;
   const settings = await loadSettings(engine);
   const today = localDateAt(new Date(), settings.timeZone);
   const queried = Date.now();
-  const [workspaces, lists, tags, filters, collaborators, tasks, taskTags, habits] = await Promise.all([
+  const [workspaces, lists, tags, filters, collaborators, entries, habits] = await Promise.all([
     db.all<SqlRow>('select id, name, color, sort_key from workspaces where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs, project_status from lists where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, name, color, sort_key, workspace_ids from tags where deleted_at is null'),
     db.all<SqlRow>('select id, name, icon, query, sort_key from saved_filters where deleted_at is null'),
     db.all<SqlRow>('select id, name, email, acronym, archived_at, workspace_ids from collaborators where deleted_at is null'),
-    db.all<SqlRow>(`select ${TASK_COLUMNS} from tasks t where t.deleted_at is null`),
-    // Osobno i pogrupowane w JS: podzapytanie na każde zadanie było najdroższą częścią odczytu na telefonie.
-    db.all<SqlRow>('select task_id, tag_id from task_tags where deleted_at is null order by rowid'),
+    cache.read(),
     db.all<SqlRow>(
       `select c.task_id, c.occurrence_date, c.kind, c.value from task_completions c join tasks t on t.id = c.task_id
         where c.deleted_at is null and t.kind = 'habit' and t.deleted_at is null order by c.occurrence_date`,
     ),
   ]);
   perfLog('dane widoków: zapytania', Date.now() - queried);
-  const tagsOf = new Map<string, string[]>();
-  for (const r of taskTags) {
-    const id = String(r.task_id);
-    const list = tagsOf.get(id);
-    if (list) list.push(String(r.tag_id));
-    else tagsOf.set(id, [String(r.tag_id)]);
-  }
   const allLists = lists
     .map((r): List => {
       const prefs = ViewPrefs.safeParse(json(r.view_prefs) ?? {});
@@ -163,6 +166,11 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
     })
     .sort(byKey);
   const listIds = new Set(allLists.map((l) => l.id));
+  const listKey = allLists.map((l) => l.id).join();
+  // Zadania z zarchiwizowanych list nie trafiają do widoków.
+  const tasks =
+    lastTasks && lastTasks.entries === entries && lastTasks.lists === listKey ? lastTasks.tasks : entries.map(viewTask).filter((t) => listIds.has(t.listId));
+  lastTasks = { entries, lists: listKey, tasks };
   return {
     userId: engine.userId,
     workspaces: workspaces.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key) })).sort(byKey),
@@ -176,10 +184,7 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
       })
       .sort(byKey),
     collaborators: sortCollaborators(collaborators.map((r) => ({ id: String(r.id), name: String(r.name), email: (r.email as string | null) ?? null, acronym: (r.acronym as string | null) ?? null, archivedAt: (r.archived_at as string | null) ?? null, workspaceIds: tagWorkspaceIds(r.workspace_ids) }))),
-    // Zadania z zarchiwizowanych list nie trafiają do widoków.
-    tasks: tasks
-      .map((r) => toViewTask(r as unknown as LocalTaskRow, tagsOf.get(String(r.id)) ?? []))
-      .filter((t) => listIds.has(t.listId)),
+    tasks,
     habitsDoneToday: new Set(habits.filter((r) => r.occurrence_date === today && r.kind === 'done').map((r) => String(r.task_id))),
     habitCompletions: habits.reduce((map, r) => {
       const id = String(r.task_id);
@@ -205,6 +210,8 @@ let unwatch: (() => void) | undefined;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let loading = false;
 let dirty = false;
+/** Bufor zadań silnika bieżącej sesji (nowy po zmianie konta). */
+let cache: { engine: SyncEngine; tasks: TaskCache } | null = null;
 
 async function reload() {
   if (loading) {
@@ -216,7 +223,9 @@ async function reload() {
     do {
       dirty = false;
       const started = Date.now();
-      data = await loadAppData(await localEngine());
+      const engine = await localEngine();
+      if (cache?.engine !== engine) cache = { engine, tasks: createTaskCache((sql, params) => engine.db.all(sql, params)) };
+      data = await loadAppData(engine, cache.tasks);
       perfLog('dane widoków', Date.now() - started, `${data.tasks.length} zadań`);
       listeners.forEach((l) => l());
       perfEnd('ukończenie');
@@ -244,7 +253,10 @@ function attach() {
   listeners.forEach((l) => l());
   localEngine()
     .then((engine) => {
-      unwatch = engine.watch(WATCHED, () => refreshAppData());
+      unwatch = engine.watch(WATCHED, (changes) => {
+        if (cache?.engine === engine) cache.tasks.note(changes);
+        refreshAppData();
+      });
       void reload();
     })
     .catch((error) => console.warn('lokalna baza', error));

@@ -5,6 +5,7 @@
  */
 import { HlcClock, uuidv7, type Hlc } from '@taskplanner/core';
 
+import { addChange, type ChangeSet, type TableChanges } from './changes.ts';
 import type { LocalDb, SqlRow } from './local-db.ts';
 import { encodeRow, encodeValue, mergeClocks, mergeRemote, parseClock, rowChanged, type RemoteRow } from './merge.ts';
 import type { PullResult, PushResult, RejectedOp, Remote } from './remote.ts';
@@ -44,7 +45,8 @@ export interface PullProgress {
   mergeMs: number;
 }
 
-type Listener = () => void;
+/** Słuchacz zmian: dostaje wszystkie zmienione wiersze tej transakcji (też z innych tabel). */
+type Listener = (changes: TableChanges) => void;
 
 const PUSH_BATCH = 200;
 const PULL_PAGE = 1000;
@@ -141,7 +143,10 @@ export class SyncEngine {
 
   // ── Odczyt i powiadomienia ─────────────────────────────────────────────────────────────────
 
-  /** Zmiana danych w podanych tabelach (po zatwierdzeniu transakcji). */
+  /**
+   * Zmiana danych w podanych tabelach (po zatwierdzeniu transakcji). Słuchacz dostaje id zmienionych
+   * wierszy (`null` — nieznane, np. usunięcie zakresu) — widoki doczytują tylko je (`createTaskCache`).
+   */
   watch(tables: readonly string[], listener: Listener): () => void {
     for (const table of tables) {
       if (!this.listeners.has(table)) this.listeners.set(table, new Set());
@@ -150,13 +155,13 @@ export class SyncEngine {
     return () => tables.forEach((table) => this.listeners.get(table)?.delete(listener));
   }
 
-  private notify(tables: Iterable<string>) {
+  private notify(changes: TableChanges) {
     const called = new Set<Listener>();
-    for (const table of tables) {
+    for (const table of changes.keys()) {
       for (const listener of this.listeners.get(table) ?? []) {
         if (!called.has(listener)) {
           called.add(listener);
-          listener();
+          listener(changes);
         }
       }
     }
@@ -214,7 +219,9 @@ export class SyncEngine {
       await this.setMeta(tx, 'clock', this.clock.last);
       return out;
     });
-    this.notify([...new Set(ops.map((o) => o.table))]);
+    const changes: ChangeSet = new Map();
+    for (const { table, id } of ops) addChange(changes, table, id);
+    this.notify(changes);
     if (this.options.autoSync !== false) this.requestSync();
     return stamps;
   }
@@ -342,7 +349,7 @@ export class SyncEngine {
         ops.map((o) => ({ op: o.op_id, table: o.tbl as SyncedTable, id: o.row_id, set: JSON.parse(o.data), hlc: o.hlc })),
       );
       const rejected = new Map(result.rejected.map((r) => [r.op, r]));
-      const touched = new Set<string>();
+      const touched: ChangeSet = new Map();
       await this.db.transaction(async (tx) => {
         for (const op of ops) {
           const reason = rejected.get(op.op_id);
@@ -351,7 +358,7 @@ export class SyncEngine {
         }
         // Wersja serwera nadpisuje lokalną (odrzucona albo obcięta zmiana nie może zostać „nowsza”).
         for (const { table, id, row } of result.rows) {
-          touched.add(table);
+          addChange(touched, table, id);
           if (row) await this.upsert(tx, table, encodeRow(table, row));
           else await tx.run(`delete from ${table} where id = ?`, [id]);
         }
@@ -392,7 +399,7 @@ export class SyncEngine {
   async pull(): Promise<void> {
     // Słuchacze (odświeżenie widoków) dostają zmiany raz, po ostatniej stronie: odczyty między
     // stronami stawały w kolejce bazy przed zapisem kolejnej (na telefonie 16 s z 23 s pierwszej synchronizacji).
-    const touched = new Set<string>();
+    const touched: ChangeSet = new Map();
     try {
       for (let page = 0; ; page++) {
         const { more, ...timing } = await this.pullPage(touched);
@@ -404,7 +411,7 @@ export class SyncEngine {
     }
   }
 
-  private async pullPage(touched: Set<string>): Promise<{ more: boolean } & Omit<PullProgress, 'page' | 'done'>> {
+  private async pullPage(touched: ChangeSet): Promise<{ more: boolean } & Omit<PullProgress, 'page' | 'done'>> {
     const started = Date.now();
     const result: PullResult = await this.remote.pull(this.since, this.options.pullPageSize ?? PULL_PAGE);
     const fetched = Date.now();
@@ -429,7 +436,7 @@ export class SyncEngine {
           const { row, localWon } = mergeRemote(table, local, remote);
           (localWon ? won : plain).push(row);
           // Słuchacze tylko przy realnej zmianie (nie przy powrocie własnego zapisu z nową wersją).
-          if (!touched.has(table) && rowChanged(local, row)) touched.add(table);
+          if (rowChanged(local, row)) addChange(touched, table, String(row.id));
         }
         mergeMs += Date.now() - merging;
         await this.upsertMany(tx, table, plain);
@@ -441,7 +448,8 @@ export class SyncEngine {
       for (const table of READONLY_TABLES) {
         for (const remote of (result.tables[table] ?? []) as RemoteRow[]) {
           await this.applyReadonly(tx, table, remote);
-          touched.add(table);
+          // Usunięcie konta / kalendarza zabiera też wiersze dzieci — id nieznane.
+          addChange(touched, table, null);
         }
       }
       // Wydarzenia sprzed okna synchronizacji (serwer też je usuwa — `cron/renew`).
@@ -450,7 +458,10 @@ export class SyncEngine {
       // Zakres, do którego użytkownik stracił dostęp: jego wiersze znikają z urządzenia.
       for (const scope of Object.keys(this.since)) {
         if (!result.scopes[scope]) {
-          for (const table of [...SYNCED_TABLES, ...READONLY_TABLES]) await tx.run(`delete from ${table} where scope_id = ?`, [scope]);
+          for (const table of [...SYNCED_TABLES, ...READONLY_TABLES]) {
+            await tx.run(`delete from ${table} where scope_id = ?`, [scope]);
+            addChange(touched, table, null);
+          }
         }
       }
       this.since = Object.fromEntries(Object.entries(result.scopes).map(([id, info]) => [id, info.version]));

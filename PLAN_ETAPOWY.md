@@ -240,7 +240,7 @@ Przegląd wyników z `docs/POC_WYNIKI.md`, decyzje (D2 — web local-first, bibl
 Zebrane pozycje „Zostało” z etapów powyżej (szczegóły przy etapach). Pozycję zamyka się tutaj **i** przy etapie.
 
 ### Kod
-- [ ] **Etap 13 (jeśli potrzebne) — przyrostowe odświeżanie danych** po zmianie zamiast ponownego odczytu wszystkich zadań: ukończenie / „Cofnij” przy 10 000 zadań ~0,45 s na webie i 0,66 s na telefonie (z tego 0,41–0,46 s to sam odczyt).
+- [ ] **Telefon — pomiar przyrostowego odświeżania** (nowe APK): ukończenie / „Cofnij” przy 10 000 zadań, było 0,66 s (`docs/WYDAJNOSC.md` § Telefon).
 - [ ] **Telefon (jeśli potrzebne):** „Dziś” (103 ms) i lista projektu (180–260 ms) nad progiem 100 ms — dane i obliczenia mieszczą się w nim, reszta to nawigacja i rysowanie React Native (`docs/WYDAJNOSC.md` § Uwagi).
 
 ### Próby ręczne
@@ -260,6 +260,7 @@ Zebrane pozycje „Zostało” z etapów powyżej (szczegóły przy etapach). Po
 - [ ] **Etap 13 / v1.0:** dwa tygodnie codziennego używania na obu urządzeniach bez utraty danych; `check`, `test:db`, `test:sync`, E2E (Playwright i Maestro) zielone.
 
 ### Zrobione ostatnio (20.11.2026)
+- [x] Etap 13 — przyrostowe odświeżanie zadań (`createTaskCache`, web + telefon): na webie ukończenie / „Cofnij” 300 → 78 ms przy 10 000 zadań.
 - [x] Etap 5 — kalendarz na telefonie (dzień, tydzień, miesiąc, „Plan dnia” w „Dziś”); miesiąc 5–10 s → 0,94 s na 10 000 zadań, płynne przeciąganie bloku na osi dnia.
 - [x] Etap 6 — zależności na ekranie zadania na telefonie; na webie kliknięcie paska osi czasu otwiera panel, kolor projektu na pasku.
 - [x] Etap 7 — koniec etapu skupienia jako Web Push przy zamkniętej karcie (wdrożone w chmurze).

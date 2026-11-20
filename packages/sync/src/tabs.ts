@@ -10,6 +10,7 @@
  * `staleLeader` (UI prosi o odświeżenie tamtej karty), a zapis zbiorczy kończy się błędem zamiast
  * zgubić zmiany. Lider odrzuca operacje, których nie zna.
  */
+import { changesFromJson, changesToJson, wholeTables, type TableChanges } from './changes.ts';
 import type { SyncEngine } from './engine.ts';
 import type { SqlRow, SqlValue } from './local-db.ts';
 import { READONLY_TABLES, SYNCED_TABLES, type SyncedTable } from './specs.ts';
@@ -28,8 +29,8 @@ export interface TabStore {
   mutateMany(ops: readonly { table: SyncedTable; id: string; patch: Record<string, unknown> }[]): Promise<void>;
   sync(): Promise<void>;
   pendingCount(): Promise<number>;
-  /** Zmiana danych w tabelach (w tej albo innej karcie). */
-  watch(tables: readonly string[], listener: () => void): () => void;
+  /** Zmiana danych w tabelach (w tej albo innej karcie) z id zmienionych wierszy (`SyncEngine.watch`). */
+  watch(tables: readonly string[], listener: (changes: TableChanges) => void): () => void;
   /** Zmiana roli karty (lider / zwykła). */
   onRole(listener: (isLeader: boolean) => void): () => void;
   close(): void;
@@ -47,7 +48,8 @@ type Operation =
  * (nowa kolumna / tabela, której starszy lider nie ma). 1 = brak pola (do Etapu 7), 2 = `mutateMany`,
  * `profiles.focus`, `review_sessions` w przeglądzie, 3 = `collaborators`, `task_participants`,
  * `task_comments`, `tasks.assignee_id`, 4 = `collaborators.acronym`, `collaborators.archived_at`,
- * 5 = `tags.workspace_ids`, 6 = `collaborators.workspace_ids`.
+ * 5 = `tags.workspace_ids`, 6 = `collaborators.workspace_ids`. Pole `ids` w `changed` nie podbija wersji:
+ * jest opcjonalne w obie strony (bez niego widoki czytają całe tabele).
  */
 export const TAB_PROTOCOL = 6;
 
@@ -57,7 +59,8 @@ export const STALE_LEADER_MESSAGE = 'Aplikacja jest otwarta w innej karcie w sta
 type Message =
   | { kind: 'request'; id: string; from: string; body: Operation; v?: number }
   | { kind: 'reply'; id: string; to: string; result?: unknown; error?: string; v?: number }
-  | { kind: 'changed'; tables: string[] }
+  // `ids` — zmienione wiersze (starsza karta bierze tylko `tables` i czyta całe tabele).
+  | { kind: 'changed'; tables: string[]; ids?: Record<string, string[] | null> }
   | { kind: 'leader'; tab: string };
 
 export interface TabStoreOptions {
@@ -72,7 +75,7 @@ export interface TabStoreOptions {
 export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 4000 }: TabStoreOptions): TabStore {
   const tab = crypto.randomUUID();
   const channel = new BroadcastChannel(name);
-  const listeners = new Map<string, Set<() => void>>();
+  const listeners = new Map<string, Set<(changes: TableChanges) => void>>();
   const roleListeners = new Set<(isLeader: boolean) => void>();
   const waiting = new Map<string, { op: Operation['op']; resolve: (value: unknown) => void; reject: (error: Error) => void }>();
   let engine: SyncEngine | null = null;
@@ -87,9 +90,9 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
     staleListeners.forEach((listener) => listener(value));
   };
 
-  const notify = (tables: Iterable<string>) => {
-    const called = new Set<() => void>();
-    for (const table of tables) for (const listener of listeners.get(table) ?? []) if (!called.has(listener)) (called.add(listener), listener());
+  const notify = (changes: TableChanges) => {
+    const called = new Set<(changes: TableChanges) => void>();
+    for (const table of changes.keys()) for (const listener of listeners.get(table) ?? []) if (!called.has(listener)) (called.add(listener), listener(changes));
   };
 
   const execute = async (body: Operation): Promise<unknown> => {
@@ -118,15 +121,13 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
     ready = createEngine().then((created) => {
       engine = created;
       setStale(false);
-      for (const table of WATCHED) {
-        created.watch([table], () => {
-          notify([table]);
-          channel.postMessage({ kind: 'changed', tables: [table] } satisfies Message);
-        });
-      }
+      created.watch(WATCHED, (changes) => {
+        notify(changes);
+        channel.postMessage({ kind: 'changed', tables: [...changes.keys()], ids: changesToJson(changes) } satisfies Message);
+      });
       // Rola i odświeżenie widoków dopiero z gotowym silnikiem (`isLeader` = jest silnik).
       roleListeners.forEach((listener) => listener(true));
-      notify(WATCHED);
+      notify(wholeTables(WATCHED));
       return created;
     });
     channel.postMessage({ kind: 'leader', tab } satisfies Message);
@@ -135,11 +136,11 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
 
   channel.onmessage = async (event: MessageEvent<Message>) => {
     const message = event.data;
-    if (message.kind === 'changed') notify(message.tables);
+    if (message.kind === 'changed') notify(changesFromJson(message.tables, message.ids));
     else if (message.kind === 'leader' && message.tab !== tab) {
       // Nowy lider — wersję sprawdzi pierwsza odpowiedź.
       setStale(false);
-      notify(WATCHED);
+      notify(wholeTables(WATCHED));
     }
     else if (message.kind === 'request' && ready) {
       try {

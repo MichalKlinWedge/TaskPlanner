@@ -142,17 +142,27 @@ Próg §9 to 60 kl./s przy 2 000 zadań. Pomiar szedł na 10 000 zadań, czyli t
 - Średnią obniża jedna długa klatka na początku przeciągania. Wynosi ona 267 ms na tablicy i 83 ms w kalendarzu.
 - Uznane za spełnione z uwagą: sam ruch idzie w 60 kl./s; zostaje jedna dłuższa klatka przy chwyceniu karty (na tablicy 267 ms — zauważalne, do poprawy, jeśli będzie przeszkadzać).
 
-### Ukończenie i „Cofnij” (ok. 0,4–0,45 s)
+### Ukończenie i „Cofnij” — przyrostowe odświeżanie (20.11.2026)
 
-Każda zmiana w `tasks` uruchamia ponownie zapytanie wszystkich zadań i przelicza wszystkie `ViewTask`. Według profilu składa się na to:
+Do 20.11.2026 każda zmiana w `tasks` czytała ponownie wszystkie zadania i liczyła od nowa wszystkie `ViewTask` (odczyt SQL w workerze, deserializacja wiadomości ~30 ms, `toViewTask` ~25 ms, przeliczenie widoku, odśmiecanie) — 0,42–0,45 s.
 
-- odczyt SQL w workerze
-- deserializacja wiadomości (ok. 30 ms)
-- `toViewTask` (ok. 25 ms)
-- przeliczenie widoku
-- odśmiecanie pamięci
+Teraz:
 
-§9 nie stawia tu progu, a toast „Cofnij” pojawia się razem ze zmianą. Kolejny krok, jeśli będzie potrzebny, to przyrostowe odświeżanie, czyli odczyt tylko zmienionych wierszy z `watch` i ponowne użycie poprzednich `ViewTask`. To zmiana `useLocalQuery`, `connectTabs` i `app-data.ts`.
+- `SyncEngine.watch` (i `TabStore.watch` między kartami) podaje id zmienionych wierszy (`packages/sync/src/changes.ts`; `null` — nieznane albo > 1 000).
+- `createTaskCache` (`packages/sync/src/task-cache.ts`) czyta raz wszystko, potem tylko zmienione zadania i ich tagi (> 400 zmienionych — znów całość). Niezmienione wpisy zostają tymi samymi obiektami.
+- Web i telefon trzymają gotowe `ViewTask` w `WeakMap` przy wpisie — liczone są tylko zmienione.
+- Web: zapytanie wykonań nawyków jako `join` (było `in (select … from tasks)` — ~0,35 s przy 10 000 zadań, po każdej zmianie zadań i przy starcie przed „Dziś”).
+
+Pomiar `npm run perf` (ten sam komputer i dzień, build produkcyjny):
+
+| Pomiar | `main` przed zmianą | Po |
+|---|---|---|
+| Ukończenie zadania → widok | 300 ms (max 330) | **78 ms** (max 101) |
+| „Cofnij” → widok | 268 ms (max 310) | **77 ms** (max 79) |
+| Start: przeładowanie → „Dziś” | 876 ms (max 989) | 973 ms (max 1 003) |
+| „Dziś” / lista projektu / tablica | — | 38 / 32 / 42 ms |
+
+Start: pierwsza wersja bufora miała 1,23–1,36 s — pełny odczyt zadań stawał w kolejce bazy za zapytaniami nawyków i załączników; teraz idzie pierwszy. Różnica ~0,1 s wobec `main` to jeden pomiar na stronę (19.11.2026 `main` miał 1,17 s). Wyniki z 19.11.2026 (447 / 422 ms) były mierzone na innym obciążeniu komputera — porównuj kolumny tej tabeli.
 
 ### Kalendarz, oś czasu, pierwsza synchronizacja
 
@@ -215,7 +225,7 @@ Galaxy S22 Ultra (Android 16), release APK (`arm64-v8a`, Hermes), lokalny Supaba
 ### Uwagi
 
 - **Próg 100 ms dla „Dziś” i listy projektu** dotyczy danych z lokalnej bazy. Same dane i obliczenia mieszczą się w nim z zapasem (lista projektu: render ekranu zaczyna się ~32 ms po dotknięciu, obliczenia < 10 ms); resztę czasu zajmuje React Native: przejście nawigacji, pierwsze narysowanie wierszy (~60–90 ms) i zamontowanie widoków natywnych. Przełączenie najprostszej zakładki („Przeglądaj”, bez listy zadań) trwa tak samo ~90 ms, więc „Dziś” (103 ms) jest praktycznie na poziomie samej nawigacji.
-- **Ukończenie i „Cofnij” (0,66 s)** to dalej pełny odczyt 10 015 zadań po każdej zmianie (0,41–0,46 s) + przeliczenie widoku. Następny krok to przyrostowe odświeżanie (tylko zmienione wiersze) — jak na webie.
+- **Ukończenie i „Cofnij” (0,66 s)** to był pełny odczyt 10 015 zadań po każdej zmianie (0,41–0,46 s) + przeliczenie widoku. Od 20.11.2026 zadania odświeżają się przyrostowo (`createTaskCache`, jak na webie — sekcja wyżej); **na urządzeniu jeszcze niezmierzone** (wymaga nowego APK).
 - **Pierwsza synchronizacja (12,6 s)** — pobieranie i zapis po połowie; widoki odświeżają się raz, po ostatniej stronie.
 - **Przeciąganie bloku na osi dnia** rysuje klatkę tylko przy przeskoku o 15 min, więc „kl./s” nic tu nie mówi — liczy się, czy klatka przeskoku zdąży w 8,3 ms (120 Hz). Po poprawce 6 palcem zdąża 33 z 35. Pomiar przez `adb` tego nie pokazuje: wstrzykiwane zdarzenia przychodzą rzadko i bez podbicia zegara procesora, więc każda klatka trwa ~17 ms niezależnie od kodu. Zmiana długości (uchwyt) dalej animuje `height` — rzadsza, niemierzona.
 - **Niezmierzone**: wydajność przy 2 000 zadań poza startem.

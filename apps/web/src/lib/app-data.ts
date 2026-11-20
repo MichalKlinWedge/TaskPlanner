@@ -3,11 +3,14 @@
 /**
  * Dane powłoki aplikacji z lokalnej bazy: przestrzenie, listy, tagi, współpracownicy, zadania jako
  * `ViewTask` (z tagami i odpowiedzialnym) i dzisiejsze wykonania nawyków. Zapytania odświeżają się po każdej zmianie tabel
- * (także z innej karty i z synchronizacji); reguły widoków liczy `@taskplanner/core`.
+ * (także z innej karty i z synchronizacji) — zadania przyrostowo (`createTaskCache`: tylko zmienione
+ * wiersze, gotowe `ViewTask` reszty zostają); reguły widoków liczy `@taskplanner/core`.
  */
 import { AttachmentPreview, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type Collaborator, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ViewTask } from "@taskplanner/core";
-import type { SqlRow, TabStore } from "@taskplanner/sync";
+import { createTaskCache, type TabStore, type TaskEntry } from "@taskplanner/sync";
 import { useEffect, useMemo, useState } from "react";
+
+import { reportError } from "./error-log";
 
 import { useLocalQuery } from "./local-store";
 
@@ -112,6 +115,43 @@ export function useToday(timeZone?: string): LocalDate {
   return today;
 }
 
+/** Gotowe `ViewTask` przy wpisach bufora — wpis niezmieniony od poprzedniego odczytu = ten sam obiekt. */
+const viewTasks = new WeakMap<TaskEntry, ViewTask>();
+const viewTask = (entry: TaskEntry): ViewTask => {
+  let task = viewTasks.get(entry);
+  if (!task) viewTasks.set(entry, (task = toViewTask(entry.row as unknown as LocalTaskRow, entry.tagIds as string[])));
+  return task;
+};
+
+/**
+ * Zadania z lokalnej bazy: pierwszy odczyt — wszystkie, po zmianie — tylko zmienione (id z `watch`;
+ * starsza karta-lider bez id → całość). Bez zmian w zadaniach zostaje ta sama tablica.
+ */
+function useTaskEntries(store: TabStore): { entries: readonly TaskEntry[]; loaded: boolean } {
+  const [state, setState] = useState<{ entries: readonly TaskEntry[]; loaded: boolean }>({ entries: [], loaded: false });
+  useEffect(() => {
+    let alive = true;
+    const cache = createTaskCache((sql, params) => store.query(sql, params), { fullTags: "inline" });
+    const run = () =>
+      cache.read().then(
+        (entries) => alive && setState((prev) => (prev.loaded && prev.entries === entries ? prev : { entries, loaded: true })),
+        (error) => reportError("sync", error),
+      );
+    // Od razu, nie w mikrozadaniu: pełny odczyt zadań ma wejść do kolejki bazy przed resztą zapytań
+    // (inaczej „Dziś” czeka na wolniejsze zapytania nawyków i załączników — start +0,35 s).
+    void run();
+    const off = store.watch(["tasks", "task_tags"], (changes) => {
+      cache.note(changes);
+      void run();
+    });
+    return () => {
+      alive = false;
+      off();
+    };
+  }, [store]);
+  return state;
+}
+
 export function useAppData(store: TabStore, today: LocalDate): AppData {
   const workspaces = useLocalQuery<Row>(store, "select id, name, color, sort_key from workspaces where deleted_at is null and archived_at is null", [], ["workspaces"]);
   const lists = useLocalQuery<Row>(
@@ -123,22 +163,12 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
   const tags = useLocalQuery<Row>(store, "select id, name, color, sort_key, workspace_ids from tags where deleted_at is null", [], ["tags"]);
   const filters = useLocalQuery<Row>(store, "select id, name, icon, query, sort_key from saved_filters where deleted_at is null", [], ["saved_filters"]);
   const collaborators = useLocalQuery<Row>(store, "select id, name, email, acronym, archived_at, workspace_ids from collaborators where deleted_at is null", [], ["collaborators"]);
-  const tasks = useLocalQuery<SqlRow>(
-    store,
-    `select t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
-            t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count, t.assignee_id,
-            -- Z zegarów pól widoki potrzebują tylko statusu (\`statusChangedAt\`); cały JSON przy 10 000 zadań to ~5 MB na odczyt.
-            json_object('status', json_extract(t.field_clock, '$.status')) as field_clock,
-            (select group_concat(tt.tag_id) from task_tags tt where tt.task_id = t.id and tt.deleted_at is null) as tag_ids
-       from tasks t where t.deleted_at is null`,
-    [],
-    ["tasks", "task_tags"],
-  );
+  const tasks = useTaskEntries(store);
   const habits = useLocalQuery<Row>(
     store,
-    `select c.task_id, c.occurrence_date, c.kind, c.value from task_completions c
-       where c.deleted_at is null and c.task_id in (select id from tasks where kind = 'habit' and deleted_at is null)
-       order by c.occurrence_date`,
+    // `join` (jak na telefonie): `task_id in (select … from tasks)` przy 10 000 zadań to ~0,35 s, a zapytanie idzie po każdej zmianie zadań.
+    `select c.task_id, c.occurrence_date, c.kind, c.value from task_completions c join tasks t on t.id = c.task_id
+       where c.deleted_at is null and t.kind = 'habit' and t.deleted_at is null order by c.occurrence_date`,
     [],
     ["task_completions", "tasks"],
   );
@@ -149,27 +179,36 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
     ["attachments"],
   );
 
-  return useMemo(() => {
-    const listIds = new Set<string>();
-    const allLists = lists.rows
-      .map((r): List => {
-        const prefs = ViewPrefs.safeParse(json(r.view_prefs) ?? {});
-        return {
-          id: String(r.id),
-          workspaceId: String(r.scope_id),
-          kind: r.kind as ListKind,
-          name: String(r.name),
-          color: r.color as string | null,
-          sortKey: String(r.sort_key),
-          prefs: prefs.success ? prefs.data : {},
-          startDate: (r.start_date as LocalDate | null) ?? null,
-          endDate: (r.end_date as LocalDate | null) ?? null,
-          projectStatus: (r.project_status as ProjectStatus | null) ?? null,
-        };
-      })
-      .sort(byKey);
-    for (const l of allLists) listIds.add(l.id);
-    return {
+  const allLists = useMemo(
+    () =>
+      lists.rows
+        .map((r): List => {
+          const prefs = ViewPrefs.safeParse(json(r.view_prefs) ?? {});
+          return {
+            id: String(r.id),
+            workspaceId: String(r.scope_id),
+            kind: r.kind as ListKind,
+            name: String(r.name),
+            color: r.color as string | null,
+            sortKey: String(r.sort_key),
+            prefs: prefs.success ? prefs.data : {},
+            startDate: (r.start_date as LocalDate | null) ?? null,
+            endDate: (r.end_date as LocalDate | null) ?? null,
+            projectStatus: (r.project_status as ProjectStatus | null) ?? null,
+          };
+        })
+        .sort(byKey),
+    [lists.rows],
+  );
+  // Osobno od reszty: bez zmian w zadaniach i listach zostaje ta sama tablica `ViewTask`.
+  // Zadania z zarchiwizowanych list nie trafiają do widoków.
+  const viewTaskList = useMemo(() => {
+    const listIds = new Set(allLists.map((l) => l.id));
+    return tasks.entries.map(viewTask).filter((t) => listIds.has(t.listId));
+  }, [tasks.entries, allLists]);
+
+  return useMemo(
+    () => ({
       workspaces: workspaces.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key) })).sort(byKey),
       lists: allLists,
       tags: tags.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), workspaceIds: tagWorkspaceIds(r.workspace_ids) })).sort(byKey),
@@ -181,10 +220,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
         })
         .sort(byKey),
       collaborators: sortCollaborators(collaborators.rows.map((r) => ({ id: String(r.id), name: String(r.name), email: (r.email as string | null) ?? null, acronym: (r.acronym as string | null) ?? null, archivedAt: (r.archived_at as string | null) ?? null, workspaceIds: tagWorkspaceIds(r.workspace_ids) }))),
-      // Zadania z zarchiwizowanych list nie trafiają do widoków.
-      tasks: tasks.rows
-        .map((r) => toViewTask(r as unknown as LocalTaskRow, typeof r.tag_ids === "string" && r.tag_ids ? r.tag_ids.split(",") : []))
-        .filter((t) => listIds.has(t.listId)),
+      tasks: viewTaskList,
       habitsDoneToday: new Set(habits.rows.filter((r) => r.occurrence_date === today && r.kind === "done").map((r) => String(r.task_id))),
       habitCompletions: habits.rows.reduce((map, r) => {
         const id = String(r.task_id);
@@ -208,7 +244,8 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
         map.set(item.taskId, [...(map.get(item.taskId) ?? []), item]);
         return map;
       }, new Map<string, Attachment[]>()),
-      loaded: workspaces.ms !== null && lists.ms !== null && tasks.ms !== null,
-    };
-  }, [workspaces, lists, tags, filters, collaborators, tasks, habits, attachments, today]);
+      loaded: workspaces.ms !== null && lists.ms !== null && tasks.loaded,
+    }),
+    [workspaces, lists.ms, allLists, tags, filters, collaborators, tasks.loaded, viewTaskList, habits, attachments, today],
+  );
 }
