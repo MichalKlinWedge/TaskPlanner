@@ -8,7 +8,7 @@ import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 
-import { refreshTodayWidget } from '../widget/refresh';
+import { refreshWidgets } from '../widget/refresh';
 import { readJson, serverConfig, sessionUser, writeJson } from './config';
 import { flushErrors, reportError } from './error-log';
 import { fillLinkPreviews, flushFiles } from './files';
@@ -50,7 +50,7 @@ export async function runBackgroundSync(): Promise<BackgroundRun> {
   }
   await flushErrors();
   await scheduleReminders().catch(() => undefined);
-  await refreshTodayWidget().catch(() => undefined);
+  await refreshWidgets().catch(() => undefined);
   run.ms = Date.now() - start;
   writeJson(RUNS_KEY, [...backgroundRuns().slice(-49), run]);
   return run;

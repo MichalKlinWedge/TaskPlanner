@@ -23,7 +23,7 @@ import { completeTaskById, focusCommand, habitDoneById, postponeTaskById, pushNo
 import { ACTION, CATEGORY_ID, CHANNEL_ID, HABIT_CATEGORY_ID, scheduleReminders, snoozeNotification, type ReminderData } from './scheduler';
 import { createTask, reminderListId } from './tasks';
 import { toLocalDate, toLocalTime } from './time';
-import { refreshTodayWidget } from '../widget/refresh';
+import { refreshWidgets } from '../widget/refresh';
 
 export const NOTIFICATION_TASK = 'taskplanner-notification-response';
 export { ACTION, CATEGORY_ID, CHANNEL_ID, type ReminderData };
@@ -306,7 +306,7 @@ export async function handleResponse(response: Notifications.NotificationRespons
       await pushNow();
       await scheduleReminders().catch(() => undefined);
     }
-    await refreshTodayWidget().catch(() => undefined);
+    await refreshWidgets().catch(() => undefined);
   } catch (error) {
     entry.ok = false;
     entry.error = error instanceof Error ? error.message : String(error);
