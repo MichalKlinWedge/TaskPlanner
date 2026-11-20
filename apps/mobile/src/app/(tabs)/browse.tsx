@@ -63,6 +63,13 @@ export default function BrowseScreen() {
     return { byList, byTag, byFilter };
   }, [data.tasks, data.savedFilters, ctx, workspaceId]);
   const workspaces = data.workspaces.filter((w) => !workspaceId || w.id === workspaceId);
+  // Jak na webie: przy „Wszystkich przestrzeniach” zakładka Inbox to suma, więc Inbox każdej przestrzeni
+  // stoi na czele jej grupy; przy jednej przestrzeni zakładka Inbox jest właśnie nim — bez powtórki.
+  const sectionLists = (id: string) => {
+    const own = data.lists.filter((l) => l.workspaceId === id);
+    const inbox = workspaceId ? [] : own.filter((l) => l.kind === 'inbox');
+    return [...inbox, ...own.filter((l) => l.kind !== 'inbox')];
+  };
   // Tagi przypisane do innych przestrzeni chowają się.
   const tags = tagsForWorkspace(data.tags, workspaceId);
 
@@ -84,9 +91,7 @@ export default function BrowseScreen() {
 
       {workspaces.map((w) => (
         <Group key={w.id} title={w.name}>
-          {data.lists
-            .filter((l) => l.workspaceId === w.id)
-            .map((l) => (
+          {sectionLists(w.id).map((l) => (
               <Item
                 key={l.id}
                 title={l.kind === 'inbox' ? 'Inbox' : l.name}
@@ -95,7 +100,7 @@ export default function BrowseScreen() {
                 count={counts.byList.get(l.id)}
                 href={{ pathname: '/list/[id]', params: { id: l.id } }}
               />
-            ))}
+          ))}
         </Group>
       ))}
 
