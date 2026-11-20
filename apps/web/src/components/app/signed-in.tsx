@@ -245,12 +245,9 @@ function AppHeader({ store, email, settingsLink }: { store: TabStore; email: str
             aria-current={route.view === "settings" ? "page" : undefined}
             aria-label="Ustawienia"
             title="Ustawienia"
-            className={`flex items-center gap-1.5 rounded-md px-2 py-1 ${route.view === "settings" ? "bg-[var(--hover)] font-medium" : "hover:bg-[var(--hover)]"}`}
+            className={`px-1 text-base outline-none ${route.view === "settings" ? "opacity-100" : "opacity-70 hover:opacity-100"}`}
           >
             <span aria-hidden>⚙️</span>
-            <span aria-hidden className="hidden sm:inline">
-              Ustawienia
-            </span>
           </a>
         ) : null}
         <Button kind="ghost" onClick={() => void signOut()}>
