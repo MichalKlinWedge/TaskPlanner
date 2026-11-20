@@ -51,6 +51,16 @@ type CalendarView = "timeGridDay" | "timeGridWeek" | "dayGridMonth";
 
 const VIEWS: readonly CalendarView[] = ["timeGridDay", "timeGridWeek", "dayGridMonth"];
 const VIEW_KEY = "tp-calendar-view";
+/** Panel zadań zwinięty ręcznie (per przeglądarka); bez tego przy wejściu zwija się sam, gdy wszystkie źródła są puste. */
+const PANEL_KEY = "tp-calendar-panel-closed";
+
+function readPanelClosed(): boolean {
+  try {
+    return localStorage.getItem(PANEL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 /** Ile zadań panel rysuje (reszta — zawęź źródło albo filtr). */
 const PANEL_LIMIT = 100;
 
@@ -70,6 +80,8 @@ function readView(): CalendarView {
 /** Pola terminu do „Cofnij”. */
 const datesBefore = (t: ViewTask): Record<string, unknown> => ({ start_date: t.startDate, due_date: t.dueDate, due_time: t.dueTime, duration_min: t.durationMin });
 const pick = (all: Record<string, unknown>, keys: string[]) => Object.fromEntries(keys.map((k) => [k, all[k] ?? null]));
+
+const PANEL_SOURCES = (data: AppData) => ["today", "inbox", "none", ...data.savedFilters.map((f) => `filter:${f.id}`)];
 
 /** Źródło panelu: „Dziś i zaległe”, Inbox albo zapisany filtr (`filter:<id>`). */
 function panelTasks(source: string, data: AppData, ctx: ViewContext): ViewTask[] {
@@ -91,8 +103,12 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
   const [view, setView] = useState<CalendarView>(readView);
   const [range, setRange] = useState<{ from: LocalDate; to: LocalDate } | null>(null);
   const [source, setSource] = useState("today");
+  // Przy wejściu: zwinięty, gdy zwinięto go ręcznie albo wszystkie źródła są puste (potem nie znika sam,
+  // np. po przeciągnięciu ostatniego zadania — wtedy nadal przyjmuje blok do zdjęcia godziny).
+  const [panelOpen, setPanelOpen] = useState(() => !readPanelClosed() && PANEL_SOURCES(data).some((s) => panelTasks(s, data, ctx).length));
   const panel = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLUListElement>(null);
+  const calendar = useRef<FullCalendar>(null);
   const timeZone = ctx.timeZone;
   const duration = settings.defaultDurationMin;
 
@@ -139,16 +155,29 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
 
   const conflictCount = useMemo(() => events.filter((e) => e.extendedProps?.conflict).length, [events]);
   const candidates = useMemo(() => panelTasks(source, data, ctx), [source, data, ctx]);
+  const togglePanel = () => {
+    setPanelOpen(!panelOpen);
+    try {
+      localStorage.setItem(PANEL_KEY, panelOpen ? "1" : "0");
+    } catch {
+      // Bez pamięci przeglądarki — do odświeżenia.
+    }
+  };
+
+  // Inna szerokość panelu → FullCalendar przelicza kolumny.
+  useEffect(() => {
+    calendar.current?.getApi().updateSize();
+  }, [panelOpen]);
 
   // Zadania z panelu → przeciąganie do kalendarza (bez tworzenia zdarzenia — pojawi się z lokalnej bazy).
   useEffect(() => {
-    if (!list.current) return;
+    if (!panelOpen || !list.current) return;
     const draggable = new Draggable(list.current, {
       itemSelector: "[data-task]",
       eventData: (el) => ({ title: el.getAttribute("data-title") ?? "", duration: { minutes: Number(el.getAttribute("data-duration")) || duration }, create: false }),
     });
     return () => draggable.destroy();
-  }, [duration]);
+  }, [duration, panelOpen]);
 
   /** Zapis terminu z kalendarza; `false` — nic się nie zmienia. */
   const schedule = (task: ViewTask, start: Date, allDay: boolean, durationMin?: number): boolean => {
@@ -216,17 +245,45 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
 
   return (
     <div className="flex min-h-0 flex-col gap-3 lg:flex-row">
+      {/* Zwinięty: wąski pasek — nadal przyjmuje blok upuszczony do zdjęcia godziny. */}
+      {!panelOpen ? (
+        <aside ref={panel} className="flex shrink-0 rounded-lg bg-black/5 text-sm lg:w-9 dark:bg-white/5" aria-label="Zadania bez godziny" data-testid="calendar-panel">
+          <button
+            type="button"
+            onClick={togglePanel}
+            aria-expanded={false}
+            title="Pokaż zadania bez godziny"
+            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-[var(--muted)] hover:bg-black/5 hover:text-[var(--foreground)] lg:flex-col lg:py-2 dark:hover:bg-white/5"
+          >
+            <span aria-hidden>»</span>
+            <span className="lg:[writing-mode:vertical-rl]">Zadania bez godziny</span>
+            {candidates.length ? <span className="rounded-full border border-[var(--line)] bg-[var(--surface)] px-1.5 text-[10px] leading-4">{candidates.length}</span> : null}
+          </button>
+        </aside>
+      ) : (
       <aside ref={panel} className="flex shrink-0 flex-col gap-2 rounded-lg bg-black/5 p-2 text-sm lg:w-64 dark:bg-white/5" aria-label="Zadania bez godziny" data-testid="calendar-panel">
-        <Select aria-label="Źródło zadań" value={source} onChange={(e) => setSource(e.target.value)} className="py-1 text-xs">
-          <option value="today">Dziś i zaległe</option>
-          <option value="inbox">Inbox</option>
-          <option value="none">Bez terminu</option>
-          {data.savedFilters.map((f) => (
-            <option key={f.id} value={`filter:${f.id}`}>
-              {f.name}
-            </option>
-          ))}
-        </Select>
+        <div className="flex gap-1">
+          <Select aria-label="Źródło zadań" value={source} onChange={(e) => setSource(e.target.value)} className="min-w-0 flex-1 py-1 text-xs">
+            <option value="today">Dziś i zaległe</option>
+            <option value="inbox">Inbox</option>
+            <option value="none">Bez terminu</option>
+            {data.savedFilters.map((f) => (
+              <option key={f.id} value={`filter:${f.id}`}>
+                {f.name}
+              </option>
+            ))}
+          </Select>
+          <button
+            type="button"
+            onClick={togglePanel}
+            aria-expanded
+            aria-label="Zwiń panel zadań bez godziny"
+            title="Zwiń panel zadań bez godziny"
+            className="shrink-0 rounded-md px-2 text-[var(--muted)] hover:bg-black/5 hover:text-[var(--foreground)] dark:hover:bg-white/5"
+          >
+            «
+          </button>
+        </div>
         <p className="px-1 text-xs text-[var(--muted)]">Przeciągnij na godzinę. Blok upuszczony tutaj traci godzinę.</p>
         <ul ref={list} className="flex max-h-[40vh] flex-col gap-1 overflow-y-auto lg:max-h-[calc(100dvh-14rem)]">
           {candidates.slice(0, PANEL_LIMIT).map((t) => (
@@ -253,6 +310,7 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
           {candidates.length > PANEL_LIMIT ? <li className="px-1 text-xs text-[var(--muted)]">…i {candidates.length - PANEL_LIMIT} więcej — zawęź źródło.</li> : null}
         </ul>
       </aside>
+      )}
       <div className="tp-calendar min-w-0 flex-1" data-testid="calendar">
         {conflictCount ? (
           <p className="mb-2 text-xs text-[var(--danger)]" role="status">
@@ -260,6 +318,7 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
           </p>
         ) : null}
         <FullCalendar
+          ref={calendar}
           plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
           initialView={view}
           initialDate={ctx.today}
