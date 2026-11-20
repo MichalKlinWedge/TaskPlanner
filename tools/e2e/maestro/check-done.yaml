@@ -1,0 +1,16 @@
+# Podprzepływ: zadanie TASK jest w aplikacji ukończone (wyszukiwarka pokazuje je z „Przywróć”).
+# Wyszukiwarka zamiast przewijania „Dziś” — na koncie deweloperskim są setki zadań.
+appId: pl.taskplanner.app
+---
+# Bez zatrzymania aplikacji: zapis z widżetu / powiadomienia może jeszcze trwać w tle.
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: Dodaj zadanie
+    timeout: 20000
+- tapOn: Szukaj
+- inputText: ${TASK}
+- extendedWaitUntil:
+    visible: Przywróć „${TASK}”
+    timeout: 10000
+- pressKey: Back

@@ -1,0 +1,43 @@
+# Widżet „Dziś” (M20): zadanie z terminem 1.01.2020 jest pierwszym wierszem widżetu (zaległe od
+# najstarszych) → stuknięcie na ekranie głównym (aplikacja w tle) ukończa je → w aplikacji „Przywróć”.
+# Wymaganie: widżet „Dziś” na ekranie głównym (strona domyślna albo dalsze — przepływ je przegląda).
+appId: pl.taskplanner.app
+name: Widżet Dziś
+env:
+  RUN: ${RUN || 'reczny'}
+  TASK: Maestro ${RUN} Wid
+---
+- launchApp
+- extendedWaitUntil:
+    visible: Dodaj zadanie
+    timeout: 20000
+- tapOn: Dziś
+- tapOn: Dodaj zadanie
+- extendedWaitUntil:
+    visible: "Dodaj do: .*"
+    timeout: 5000
+- inputText: ${TASK} 1.01.2020
+- assertVisible: ${TASK} → .*
+- tapOn: Dodaj
+- extendedWaitUntil:
+    notVisible: "Dodaj do: .*"
+    timeout: 5000
+# Bez `stopApp`: po `am force-stop` launcher pokazuje zamiast widżetu układ zastępczy (docs/ETAP11_TELEFON.md, W4).
+- pressKey: Home
+# Widżet może leżeć na innej stronie niż domyślna — przewijanie stron w prawo, aż pojawi się wiersz.
+- repeat:
+    while:
+      notVisible: "Ukończ: ${TASK}"
+    times: 8
+    commands:
+      - swipe:
+          start: 90%, 50%
+          end: 10%, 50%
+          duration: 300
+      - waitForAnimationToEnd:
+          timeout: 1500
+- tapOn: "Ukończ: ${TASK}"
+# Zapis idzie w tle (`task-handler.ts`); aplikacja po otwarciu czyta lokalną bazę.
+- waitForAnimationToEnd:
+    timeout: 3000
+- runFlow: check-done.yaml

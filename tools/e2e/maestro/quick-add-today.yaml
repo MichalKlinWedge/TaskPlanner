@@ -1,0 +1,41 @@
+# Szybkie dodawanie i „Dziś”: „+” → wpis z parserem (chipy) → zadanie na górze „Dziś” (zaległe od
+# najstarszych, więc termin 2.01.2020) → ukończenie, „Cofnij”, ponowne ukończenie.
+# Serwer sprawdza `run.ts` (zadanie A: `done`, priorytet 1, termin 2020-01-02).
+appId: pl.taskplanner.app
+name: Szybkie dodawanie i Dziś
+env:
+  RUN: ${RUN || 'reczny'}
+  TASK: Maestro ${RUN} A
+---
+- launchApp
+- extendedWaitUntil:
+    visible: Dodaj zadanie
+    timeout: 20000
+- tapOn: Dziś
+- tapOn: Dodaj zadanie
+- extendedWaitUntil:
+    visible: "Dodaj do: .*"
+    timeout: 5000
+- inputText: ${TASK} 2.01.2020 !1
+# Podgląd parsera: tytuł bez daty i priorytetu, chipy daty i priorytetu do cofnięcia.
+- assertVisible: ${TASK} → .*
+- assertVisible: .*— cofnij rozpoznanie
+- tapOn: Dodaj
+- extendedWaitUntil:
+    notVisible: "Dodaj do: .*"
+    timeout: 5000
+- assertVisible: Dodano do .*
+- extendedWaitUntil:
+    visible: Ukończ „${TASK}”
+    timeout: 5000
+- tapOn: Ukończ „${TASK}”
+- assertVisible: Ukończono „${TASK}”
+- tapOn: Cofnij
+- extendedWaitUntil:
+    visible: Ukończ „${TASK}”
+    timeout: 5000
+- tapOn: Ukończ „${TASK}”
+- extendedWaitUntil:
+    notVisible: Ukończ „${TASK}”
+    timeout: 5000
+- runFlow: check-done.yaml

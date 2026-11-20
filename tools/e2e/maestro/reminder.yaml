@@ -1,0 +1,55 @@
+# Przypomnienie (M8): zadanie „dzis o HH:MM ^1m” → powiadomienie przy aplikacji w tle
+# (ekran główny) → akcja „Ukończ” z powiadomienia, bez otwierania aplikacji → zadanie ukończone.
+# Termin = teraz + 3 min w dół do minuty (zegar komputera = zegar telefonu), więc przypomnienie po 1–2 min.
+appId: pl.taskplanner.app
+name: Przypomnienie
+env:
+  RUN: ${RUN || 'reczny'}
+  TASK: Maestro ${RUN} R
+---
+- launchApp
+- extendedWaitUntil:
+    visible: Dodaj zadanie
+    timeout: 20000
+- tapOn: Dziś
+- tapOn: Dodaj zadanie
+- extendedWaitUntil:
+    visible: "Dodaj do: .*"
+    timeout: 5000
+- evalScript: ${output.remindAt = (function () { var d = new Date(Date.now() + 180000); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); })()}
+- inputText: ${TASK} dzis o ${output.remindAt} ^1m
+- assertVisible: ${TASK} → .*
+- tapOn: Dodaj
+- extendedWaitUntil:
+    notVisible: "Dodaj do: .*"
+    timeout: 5000
+- pressKey: Home
+# Panel powiadomień zostaje otwarty do przyjścia przypomnienia.
+- swipe:
+    start: 50%, 1%
+    end: 50%, 75%
+    duration: 400
+- extendedWaitUntil:
+    visible: ${TASK}
+    timeout: 150000
+# Powiadomienie bywa zwinięte w grupie (np. z odliczaniem skupienia) — rozwinięcie przeciągnięciem w dół.
+- swipe:
+    from:
+      text: ${TASK}
+    direction: DOWN
+- runFlow:
+    when:
+      notVisible: Ukończ
+    commands:
+      - swipe:
+          from:
+            text: ${TASK}
+          direction: DOWN
+- tapOn:
+    text: Ukończ
+    below: ${TASK}
+- extendedWaitUntil:
+    notVisible: ${TASK}
+    timeout: 10000
+- pressKey: Back
+- runFlow: check-done.yaml
