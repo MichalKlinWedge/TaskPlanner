@@ -62,7 +62,7 @@
             },
             {
               "name": "QuickAdd",
-              "label": "TaskPlanner — Szybkie dodawanie",
+              "label": "Task Planner — Szybkie dodawanie",
               "description": "Dodaj zadanie albo podyktuj je mikrofonem klawiatury",
               "minWidth": "250dp",
               "minHeight": "50dp",
@@ -73,7 +73,7 @@
             },
             {
               "name": "Habits",
-              "label": "TaskPlanner — Nawyki",
+              "label": "Task Planner — Nawyki",
               "description": "Dzisiejsze nawyki do odhaczenia",
               "minWidth": "250dp",
               "minHeight": "110dp",

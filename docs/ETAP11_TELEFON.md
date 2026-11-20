@@ -8,7 +8,7 @@ Widżety M20 w `apps/mobile/src/widget/`: „Dziś” (`today-widget.tsx`), „S
 
 - Jak w `docs/MVP3_TELEFON.md` (lokalny Supabase, `adb reverse tcp:54521 tcp:54521`, konto `dev@taskplanner.test` z `npm run seed:dev -- --load`). **Nowy APK obowiązkowy** — nowe widżety to nowe odbiorniki w manifeście (prebuild): release lokalnie według `docs/ANDROID_BUILD.md` (`gradlew assembleRelease`, `adb install -r …/app-release.apk` — bez utraty danych na dev buildzie).
 - Na webie (`npm run web:local`) to samo konto — do sprawdzania zmian z widżetów.
-- Widżety: długie przytrzymanie ekranu głównego → Widżety → TaskPlanner → „Dziś”, „Szybkie dodawanie”, „Nawyki” (albo przyciski „Dodaj widżet na ekran główny”: Przeglądaj → Narzędzia PoC → „Dziś i widżety”). Dziennik kliknięć na tym samym ekranie.
+- Widżety: długie przytrzymanie ekranu głównego → Widżety → Task Planner → „Dziś”, „Szybkie dodawanie”, „Nawyki” (albo przyciski „Dodaj widżet na ekran główny”: Przeglądaj → Narzędzia PoC → „Dziś i widżety” — systemowe okno „Dodać do ekranu startowego?”; launcher One UI kładzie widżet na pierwszej stronie z wolnym miejscem, nie na bieżącej — łatwiej dodać z listy widżetów na pustą stronę). Na czas testu: Opcje programisty → „Nie wygaszaj ekranu”, bo blokada przerywa sterowanie przez `adb`. Dziennik kliknięć na tym samym ekranie.
 - Co najmniej 2 nawyki na dziś, w tym jeden z celem ilościowym (np. „Woda”, cel 8 szklanek), i ≥ 12 zadań na dziś / zaległych.
 
 ## W1. „Dziś”: lista, limit, odhaczanie przy zamkniętej aplikacji
@@ -48,8 +48,8 @@ Widżety M20 w `apps/mobile/src/widget/`: „Dziś” (`today-widget.tsx`), „S
 
 | Scenariusz | Data | Wynik | Uwagi |
 | --- | --- | --- | --- |
-| W1 | | | |
-| W2 | | | |
-| W3 | | | |
-| W4 | | | |
-| W5 | | | |
+| W1 | | nie sprawdzone | |
+| W2 | | nie sprawdzone | |
+| W3 | 20.11.2026 | częściowo | release APK po rebase na c2907ee (`adb install -r`, bez utraty danych). Trzy widżety przypięte przyciskami z „Dziś i widżety” (systemowe okno, „Dodaj”); „Szybkie dodawanie” narysowany od razu z danymi z lokalnej bazy: pole „＋ Dodaj zadanie”, 🎤, licznik „146 Inbox”. Nie sprawdzone: otwarcie okna z pola i z 🎤, dyktowanie — launcher rozłożył widżety po różnych stronach, a telefon blokował się po wygaszeniu ekranu |
+| W4 | | nie sprawdzone | |
+| W5 | | nie sprawdzone | kryterium odbioru Etapu 11 — do zrobienia ręcznie |
