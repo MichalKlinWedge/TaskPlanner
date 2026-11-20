@@ -10,7 +10,7 @@ import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector, useExclusiveGestures, usePanGesture, useTapGesture } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import type { EventInfo } from '@/lib/calendar-events';
@@ -83,21 +83,25 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
   // Przesuwalne: zadanie (nie przyszłe wystąpienie serii), otwarte, mieszczące się w dniu.
   const draggable = !!(props.editable && task && !block.virtual && !block.passive && block.startMin >= from && block.endMin <= to);
 
+  // Przesuwanie zmienia tylko `shift` (`translateY` — bez przeliczania układu); `top` stoi do zapisu.
+  // Godzinę na żywo rysuje `BlockText` (`live` = 1 od chwytu do zapisu albo powrotu), więc blok
+  // z gestami nie renderuje się przy każdym przeskoku — nowe domknięcia workletów kosztowały klatkę.
   const top = useSharedValue(y(startMin));
   const height = useSharedValue(Math.max(18, y(endMin) - y(startMin) - 1));
+  const shift = useSharedValue(0);
   const base = useSharedValue(0);
   const active = useSharedValue(0);
-  const [live, setLive] = useState<string | null>(null);
+  const live = useSharedValue(0);
 
   const px = (min: number) => (min / 60) * hour;
   const step = px(SNAP);
   const limit = px(to - from);
   const toMin = (value: number) => from + snapMinutes((value / hour) * 60, SNAP);
-  const show = (t: number, h: number) => setLive(`${clock(toMin(t))}–${clock(toMin(t + h))}`);
   const reset = () => {
     top.value = y(startMin);
     height.value = Math.max(18, y(endMin) - y(startMin) - 1);
-    setLive(null);
+    shift.value = 0;
+    live.value = 0;
   };
   const commitMove = (t: number) => {
     const next = toMin(t);
@@ -116,19 +120,19 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
     activateAfterLongPress: 300,
     onActivate: () => {
       'worklet';
-      base.value = top.value;
+      shift.value = 0;
       active.value = 1;
+      live.value = 1;
       scheduleOnRN(buzz);
     },
     onUpdate: (e) => {
       'worklet';
-      top.value = Math.max(0, Math.min(limit - height.value, Math.round((base.value + e.translationY) / step) * step));
-      scheduleOnRN(show, top.value, height.value);
+      shift.value = Math.max(0, Math.min(limit - height.value, Math.round((top.value + e.translationY) / step) * step)) - top.value;
     },
     onDeactivate: () => {
       'worklet';
       active.value = 0;
-      scheduleOnRN(commitMove, top.value);
+      scheduleOnRN(commitMove, top.value + shift.value);
     },
   });
   const resize = usePanGesture({
@@ -137,11 +141,11 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
       'worklet';
       base.value = height.value;
       active.value = 1;
+      live.value = 1;
     },
     onUpdate: (e) => {
       'worklet';
       height.value = Math.max(step, Math.min(limit - top.value, Math.round((base.value + e.translationY) / step) * step));
-      scheduleOnRN(show, top.value, height.value);
     },
     onDeactivate: () => {
       'worklet';
@@ -151,13 +155,12 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
   });
   const tap = useTapGesture({ runOnJS: true, onActivate: () => props.onPress(block) });
   const gesture = useExclusiveGestures(move, tap);
-  const animated = useAnimatedStyle(() => ({ top: top.value, height: height.value, opacity: active.value ? 0.85 : 1, zIndex: active.value ? 10 : 1, elevation: active.value ? 6 : 0 }));
+  const animated = useAnimatedStyle(() => ({ top: top.value, height: height.value, transform: [{ translateY: shift.value }], opacity: active.value ? 0.85 : 1, zIndex: active.value ? 10 : 1, elevation: active.value ? 6 : 0 }));
 
   const color = task ? (PRIORITY[task.priority]?.color ?? p.border) : block.kind === 'habit' ? HABIT_COLOR : (source?.color ?? p.muted);
   const event = block.kind === 'event';
   const mark = block.kind === 'habit' ? (block.habitState === 'done' ? '✓ ' : '◎ ') : '';
   const label = `${hot ? '⚠ ' : ''}${mark}${block.title}`;
-  const time = live ?? `${clock(block.startMin)}–${clock(block.endMin)}`;
   const tall = y(endMin) - y(startMin) >= 34;
   const style = [
     styles.block,
@@ -174,17 +177,18 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
   ];
   const a11y = `${clock(block.startMin)}–${clock(block.endMin)} ${block.title}${hot ? ', konflikt' : ''}${source?.calendar ? `, ${source.calendar}` : ''}`;
   const body = (
-    <View style={{ flex: 1, paddingHorizontal: 5, paddingVertical: tall ? 2 : 0 }}>
-      <Text style={{ color: p.fg, fontSize: tall ? 12 : 11, lineHeight: tall ? 16 : 14, fontWeight: '600', textDecorationLine: block.passive && !event ? 'line-through' : 'none' }} numberOfLines={tall ? 2 : 1}>
-        {tall ? label : `${time} ${label}`}
-      </Text>
-      {tall ? (
-        <Text style={{ color: p.muted, fontSize: 11 }} numberOfLines={1}>
-          {time}
-          {source?.location ? ` · ${source.location}` : ''}
-        </Text>
-      ) : null}
-    </View>
+    <BlockText
+      label={label}
+      time={`${clock(block.startMin)}–${clock(block.endMin)}`}
+      location={source?.location}
+      tall={tall}
+      struck={!!block.passive && !event}
+      live={live}
+      top={top}
+      shift={shift}
+      height={height}
+      toMin={toMin}
+    />
   );
 
   if (!draggable)
@@ -205,6 +209,47 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
         </View>
       </GestureDetector>
     </Animated.View>
+  );
+}
+
+interface BlockTextProps {
+  label: string;
+  time: string;
+  location?: string | null;
+  tall: boolean;
+  struck: boolean;
+  live: SharedValue<number>;
+  top: SharedValue<number>;
+  shift: SharedValue<number>;
+  height: SharedValue<number>;
+  toMin: (px: number) => number;
+}
+
+/** Tytuł i godzina bloku; w trakcie przesuwania godzina idzie za blokiem (renderuje się tylko ten tekst). */
+function BlockText({ live, top, shift, height, toMin, ...props }: BlockTextProps) {
+  const p = usePalette();
+  const [moved, setMoved] = useState<string | null>(null);
+  const show = (t: number | null, h: number) => setMoved(t == null ? null : `${clock(toMin(t))}–${clock(toMin(t + h))}`);
+  useAnimatedReaction(
+    () => (live.value ? [top.value + shift.value, height.value] : null),
+    (now, before) => {
+      if (now?.[0] === before?.[0] && now?.[1] === before?.[1]) return;
+      scheduleOnRN(show, now ? now[0] : null, now ? now[1] : 0);
+    },
+  );
+  const time = moved ?? props.time;
+  return (
+    <View style={{ flex: 1, paddingHorizontal: 5, paddingVertical: props.tall ? 2 : 0 }}>
+      <Text style={{ color: p.fg, fontSize: props.tall ? 12 : 11, lineHeight: props.tall ? 16 : 14, fontWeight: '600', textDecorationLine: props.struck ? 'line-through' : 'none' }} numberOfLines={props.tall ? 2 : 1}>
+        {props.tall ? props.label : `${time} ${props.label}`}
+      </Text>
+      {props.tall ? (
+        <Text style={{ color: p.muted, fontSize: 11 }} numberOfLines={1}>
+          {time}
+          {props.location ? ` · ${props.location}` : ''}
+        </Text>
+      ) : null}
+    </View>
   );
 }
 
