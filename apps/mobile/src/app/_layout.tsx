@@ -192,7 +192,7 @@ export default function RootLayout() {
           <OnboardingGate />
           <BackgroundWork />
           <Stack screenOptions={{ headerStyle: { backgroundColor: p.card }, headerTintColor: p.fg, contentStyle: { backgroundColor: p.bg } }}>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'TaskPlanner' }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'Task Planner' }} />
             <Stack.Screen name="task/[id]" options={{ title: 'Zadanie' }} />
             <Stack.Screen name="quick-add" options={{ title: 'Szybkie dodawanie', presentation: 'formSheet', sheetAllowedDetents: 'fitToContents', headerShown: false }} />
             <Stack.Screen name="list/[id]" options={{ title: 'Lista' }} />
@@ -202,7 +202,7 @@ export default function RootLayout() {
             <Stack.Screen name="trash" options={{ title: 'Kosz' }} />
             <Stack.Screen name="workspaces" options={{ title: 'Przestrzenie i listy' }} />
             <Stack.Screen name="workspace/[id]" options={{ title: 'Przestrzeń' }} />
-            <Stack.Screen name="onboarding" options={{ title: 'Witaj w TaskPlanner', headerBackVisible: false, gestureEnabled: false }} />
+            <Stack.Screen name="onboarding" options={{ title: 'Witaj w Task Planner', headerBackVisible: false, gestureEnabled: false }} />
             <Stack.Screen name="auth-callback" options={{ title: 'Logowanie' }} />
             <Stack.Screen name="settings" options={{ title: 'Konto i synchronizacja' }} />
             <Stack.Screen name="dev" options={{ title: 'Narzędzia PoC' }} />

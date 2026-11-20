@@ -4,8 +4,8 @@
  *   POST google/start        (użytkownik)  → {url} zgody Google (calendar.readonly + calendar.app.created, offline)
  *   GET  google/callback     (Google)      → wymiana kodu, token odświeżania do Vault, kalendarze, pierwsza synchronizacja, `watch`
  *   POST google/webhook      (Google)      → powiadomienie kanału `watch` → synchronizacja przyrostowa (`syncToken`);
- *                                            kalendarz „TaskPlanner” → zmiany w zadaniach i uzgodnienie (`task-calendar.ts`)
- *   POST tasks/flush         (pg_net, sekret crona) → {userId?} uzgodnienie zadań z kalendarzem „TaskPlanner”
+ *                                            kalendarz „Task Planner” → zmiany w zadaniach i uzgodnienie (`task-calendar.ts`)
+ *   POST tasks/flush         (pg_net, sekret crona) → {userId?} uzgodnienie zadań z kalendarzem „Task Planner”
  *                                            (wyzwalacz na `tasks`/`profiles` po zatwierdzeniu zmiany)
  *   POST ics/add             (użytkownik)  → {url, label?} adres ICS do Vault, pierwsza synchronizacja
  *   POST accounts/sync       (użytkownik)  → {accountId} odśwież teraz
@@ -82,7 +82,7 @@ async function googleCallback(url: URL): Promise<Response> {
   const email = idTokenEmail(tokens.id_token) ?? 'Google';
   const scopes = tokens.scope?.split(' ').filter(Boolean) ?? [];
 
-  // `sync_state.scopes`: zgoda na zapis (kalendarz „TaskPlanner”) jest opcjonalna na ekranie zgody.
+  // `sync_state.scopes`: zgoda na zapis (kalendarz „Task Planner”) jest opcjonalna na ekranie zgody.
   const { data: account, error } = await db
     .from('calendar_accounts')
     .upsert({ user_id: st.user_id, provider: 'google', external_id: email, label: email, status: 'active', last_error: null, sync_state: { scopes } }, { onConflict: 'user_id,provider,external_id' })
@@ -95,7 +95,7 @@ async function googleCallback(url: URL): Promise<Response> {
   await flushTasks(cfg, st.user_id);
 
   if (st.redirect_to) return Response.redirect(`${st.redirect_to}${st.redirect_to.includes('?') ? '&' : '?'}account=${account.id}`, 302);
-  const write = scopes.includes(CALENDAR_WRITE_SCOPE) ? '' : ' Tylko odczyt — bez zgody na zapis zadania nie trafią do kalendarza „TaskPlanner”.';
+  const write = scopes.includes(CALENDAR_WRITE_SCOPE) ? '' : ' Tylko odczyt — bez zgody na zapis zadania nie trafią do kalendarza „Task Planner”.';
   return html('Połączono kalendarz Google', `${email}: ${results.length} kalendarzy, ${results.reduce((n, r) => n + r.upserted, 0)} wydarzeń.${write}`);
 }
 
@@ -200,7 +200,7 @@ async function calendarUpdate(req: Request): Promise<Response> {
   const db = admin();
   const { data: cal } = await db.from('calendars').select('id, account_id, visible, is_task_target').eq('id', body.calendarId).eq('user_id', user.id).maybeSingle();
   if (!cal) throw new HttpError(404, 'Nie ma takiego kalendarza');
-  if (cal.is_task_target) throw new HttpError(400, 'Kalendarz „TaskPlanner” wyłącza się wyborem przestrzeni.');
+  if (cal.is_task_target) throw new HttpError(400, 'Kalendarz „Task Planner” wyłącza się wyborem przestrzeni.');
   if (cal.visible !== body.visible) {
     const { error } = await db.from('calendars').update({ visible: body.visible }).eq('id', cal.id);
     if (error) throw error;

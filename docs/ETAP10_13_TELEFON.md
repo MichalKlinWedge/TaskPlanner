@@ -26,7 +26,7 @@ Część telefoniczna przechwytywania i załączników (Etap 10) i dziennika bł
 
 ## E3. Link z Chrome → zadanie z tytułem (kryterium Etapu 10)
 
-1. Chrome → strona → ⋮ → Udostępnij → TaskPlanner → „Dodaj”.
+1. Chrome → strona → ⋮ → Udostępnij → Task Planner → „Dodaj”.
 2. Oczekiwane: zadanie z załącznikiem-linkiem i `source = {kind:'link'}`; tytuł = tytuł z Chrome albo sam adres, który `link-preview` zastępuje tytułem strony (z siecią po kilku sekundach).
 3. To samo przy odciętym serwerze: zadanie z adresem w tytule, tytuł strony po powrocie sieci.
 

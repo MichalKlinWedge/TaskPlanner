@@ -87,7 +87,7 @@ export function LoginScreen() {
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-6">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">TaskPlanner</h1>
+        <h1 className="text-2xl font-semibold">Task Planner</h1>
         <p className="text-sm opacity-70">Zaloguj się, żeby zadania były na laptopie i telefonie. Działa też bez sieci.</p>
       </header>
       <Card className="flex flex-col gap-4">

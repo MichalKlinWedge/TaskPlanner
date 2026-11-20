@@ -1,5 +1,5 @@
 /**
- * Udostępnianie z innej aplikacji (Chrome: ⋮ → Udostępnij → TaskPlanner): pole szybkiego dodawania
+ * Udostępnianie z innej aplikacji (Chrome: ⋮ → Udostępnij → Task Planner): pole szybkiego dodawania
  * z tekstem z `core` `sharedText` (Chrome wkłada adres do `text`, czasem tytuł strony do tematu).
  * Link trafia do zadania jako załącznik i `source` (`withLinkOps`, jak Web Share Target na webie);
  * zadanie z samym adresem w tytule dostaje tytuł strony z `link-preview` — offline po synchronizacji.
@@ -32,7 +32,7 @@ export default function ShareScreen() {
           </Text>
         </View>
       ) : (
-        <Text style={{ color: p.muted }}>W Chrome: menu ⋮ → Udostępnij → TaskPlanner. Albo wpisz zadanie tutaj.</Text>
+        <Text style={{ color: p.muted }}>W Chrome: menu ⋮ → Udostępnij → Task Planner. Albo wpisz zadanie tutaj.</Text>
       )}
       <QuickAddField
         key={shared ? `${shared.url}|${shared.text}` : 'pusty'}

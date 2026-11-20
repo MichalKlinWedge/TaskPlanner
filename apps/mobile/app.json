@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "TaskPlanner",
+    "name": "Task Planner",
     "slug": "taskplanner",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -42,7 +42,7 @@
       [
         "expo-calendar",
         {
-          "calendarPermission": "TaskPlanner pokazuje wydarzenia z kalendarza obok zadań."
+          "calendarPermission": "Task Planner pokazuje wydarzenia z kalendarza obok zadań."
         }
       ],
       [
@@ -51,7 +51,7 @@
           "widgets": [
             {
               "name": "Today",
-              "label": "TaskPlanner — Dziś",
+              "label": "Task Planner — Dziś",
               "description": "Zadania na dziś z odhaczaniem",
               "minWidth": "250dp",
               "minHeight": "180dp",
@@ -75,7 +75,7 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "TaskPlanner robi zdjęcia do załączników zadań.",
+          "cameraPermission": "Task Planner robi zdjęcia do załączników zadań.",
           "microphonePermission": false
         }
       ],

@@ -1,4 +1,4 @@
-# Marka TaskPlanner
+# Marka Task Planner
 
 Znak: białe zaznaczenie (zrobione) i bursztynowa kropka (teraz / przypomnienie) na indygo.
 Źródłem wszystkich plików jest `scripts/brand.mjs` — zmiany w nim, potem:

@@ -156,7 +156,7 @@ export class FakeServices {
     cal.events.set(id, { ...ev, status: 'cancelled', etag: `"e${v}"`, version: v, updated: new Date().toISOString() });
   }
 
-  /** Kalendarz po nazwie (np. „TaskPlanner” utworzony przez aplikację). */
+  /** Kalendarz po nazwie (np. „Task Planner” utworzony przez aplikację). */
   calendarByName(summary: string) {
     return [...this.calendars.values()].find((c) => c.entry.summary === summary);
   }

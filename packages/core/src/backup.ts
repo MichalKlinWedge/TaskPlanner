@@ -106,7 +106,7 @@ const issueText = (error: z.ZodError) =>
  */
 export function readBackup(input: unknown): { backup: Backup; invalid: InvalidRow[] } {
   const head = z.object({ format: z.string(), version: z.unknown() }).safeParse(input);
-  if (!head.success || head.data.format !== BACKUP_FORMAT) throw new BackupError('To nie jest plik kopii TaskPlannera.');
+  if (!head.success || head.data.format !== BACKUP_FORMAT) throw new BackupError('To nie jest plik kopii Task Plannera.');
   if (typeof head.data.version === 'number' && head.data.version > BACKUP_VERSION) {
     throw new BackupError(`Kopia z nowszej wersji aplikacji (format ${head.data.version}) — zaktualizuj aplikację.`);
   }

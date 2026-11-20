@@ -27,7 +27,7 @@ async function call<T>(path: string, body: Record<string, unknown>): Promise<T> 
   return json;
 }
 
-/** Ekran zgody Google (odczyt kalendarzy + zapis w kalendarzu „TaskPlanner”); po zgodzie Google wraca do aplikacji. */
+/** Ekran zgody Google (odczyt kalendarzy + zapis w kalendarzu „Task Planner”); po zgodzie Google wraca do aplikacji. */
 export async function connectGoogle(): Promise<void> {
   const redirectTo = `${window.location.origin}/?${GOOGLE_RETURN_PARAM}=1`;
   const { url } = await call<{ url: string }>("google/start", { redirectTo });

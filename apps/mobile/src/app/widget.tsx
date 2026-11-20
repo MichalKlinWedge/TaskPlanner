@@ -75,7 +75,7 @@ export default function Today() {
           title="Dodaj widżet na ekran"
           onPress={async () => {
             const ok = await requestPinWidget({ widgetName: TODAY_WIDGET });
-            if (!ok) Alert.alert('Widżet', 'Launcher nie obsługuje przypinania — dodaj „TaskPlanner — Dziś” z listy widżetów (długie przytrzymanie ekranu głównego).');
+            if (!ok) Alert.alert('Widżet', 'Launcher nie obsługuje przypinania — dodaj „Task Planner — Dziś” z listy widżetów (długie przytrzymanie ekranu głównego).');
           }}
         />
         <Button kind="secondary" title="Odśwież widżet" onPress={() => void refreshTodayWidget()} />

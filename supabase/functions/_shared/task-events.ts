@@ -1,5 +1,5 @@
 /**
- * Zadanie ↔ wydarzenie kalendarza „TaskPlanner” (Etap 12, SPECYFIKACJA M18). Czysty moduł (bez Deno
+ * Zadanie ↔ wydarzenie kalendarza „Task Planner” (Etap 12, SPECYFIKACJA M18). Czysty moduł (bez Deno
  * i bazy) — testy w `tools/edge-tests`.
  *
  * Zadanie z godziną ma czas pływający (`due_date` + `due_time` w strefie z ustawień) albo przypięty
@@ -39,7 +39,7 @@ export interface TaskProjection {
 }
 
 export interface CalendarContext {
-  /** Strefa zadań bez `time_zone` (ustawienia → kalendarz „TaskPlanner” → Europe/Warsaw). */
+  /** Strefa zadań bez `time_zone` (ustawienia → kalendarz „Task Planner” → Europe/Warsaw). */
   zone: string;
   defaultDurationMin: number;
   /** Przestrzenie wysyłane do tego kalendarza (pusty = żadna). */
@@ -84,9 +84,9 @@ export const projectionRev = (p: TaskProjection) => hashText(JSON.stringify([p.t
 export const eventIdForTask = (taskId: string) => `tp${taskId.replace(/-/g, '').toLowerCase()}`;
 
 export const TASK_EVENT_DESCRIPTION =
-  'Zadanie z TaskPlanner. Przesunięcie, zmiana długości albo tytułu tutaj zmienia zadanie; usunięcie wydarzenia zostawia zadanie bez godziny.';
+  'Zadanie z Task Planner. Przesunięcie, zmiana długości albo tytułu tutaj zmienia zadanie; usunięcie wydarzenia zostawia zadanie bez godziny.';
 
-/** Treść wydarzenia (wstawienie i zmiana). Bez przypomnień Google — przypomina TaskPlanner. */
+/** Treść wydarzenia (wstawienie i zmiana). Bez przypomnień Google — przypomina Task Planner. */
 export function eventBody(taskId: string, p: TaskProjection): Record<string, unknown> {
   return {
     summary: p.title,

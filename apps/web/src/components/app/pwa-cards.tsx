@@ -36,7 +36,7 @@ export function InstallCard() {
       ) : (
         <p className="text-sm text-[var(--muted)]" data-testid="install-state">
           {dismissed ? "Instalacja anulowana. " : ""}
-          Chrome i Edge: ikona instalacji w pasku adresu albo menu ⋮ → „Zainstaluj TaskPlanner”. Jeśli jej nie ma, aplikacja jest już zainstalowana — otwórz ją z
+          Chrome i Edge: ikona instalacji w pasku adresu albo menu ⋮ → „Zainstaluj Task Planner”. Jeśli jej nie ma, aplikacja jest już zainstalowana — otwórz ją z
           pulpitu lub menu Start. Firefox nie instaluje aplikacji internetowych; Safari na macOS: Plik → Dodaj do Docka.
         </p>
       )}
@@ -50,7 +50,7 @@ const NEEDS_NETWORK: { what: string; detail: string }[] = [
   { what: "Synchronizacja z innymi urządzeniami", detail: "zmiany czekają w kolejce („Offline — N zmian czeka”) i wysyłają się po powrocie sieci." },
   {
     what: "Kalendarze zewnętrzne",
-    detail: "łączenie i odłączanie Google / ICS, wybór kalendarzy i odświeżenie wydarzeń (widać ostatnio pobrane); zadania trafiają do kalendarza „TaskPlanner” po synchronizacji.",
+    detail: "łączenie i odłączanie Google / ICS, wybór kalendarzy i odświeżenie wydarzeń (widać ostatnio pobrane); zadania trafiają do kalendarza „Task Planner” po synchronizacji.",
   },
   {
     what: "Przypomnienia push",

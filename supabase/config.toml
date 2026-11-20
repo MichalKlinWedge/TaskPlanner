@@ -247,7 +247,7 @@ otp_expiry = 3600
 
 # Link z maila z kodem do wpisania w aplikacji (telefon w Wi-Fi nie otworzy linku na 127.0.0.1).
 [auth.email.template.magic_link]
-subject = "Logowanie do TaskPlanner"
+subject = "Logowanie do Task Planner"
 content_path = "./supabase/templates/magic_link.html"
 
 # Uncomment to customize email template

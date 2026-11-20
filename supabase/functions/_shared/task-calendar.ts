@@ -1,5 +1,5 @@
 /**
- * Kalendarz „TaskPlanner” (Etap 12): zadania z godziną z wybranych przestrzeni ↔ wydarzenia jednego
+ * Kalendarz „Task Planner” (Etap 12): zadania z godziną z wybranych przestrzeni ↔ wydarzenia jednego
  * kalendarza Google utworzonego przez aplikację. Klient `service_role`, bez Deno — działa też w Node.
  *
  * Jeden przebieg (`syncTaskCalendar`, pod dzierżawą kalendarza):
@@ -45,9 +45,9 @@ import {
 } from './task-events.ts';
 import { DAY_MS, zonedParts } from './time.ts';
 
-export const TASK_CALENDAR_NAME = 'TaskPlanner';
+export const TASK_CALENDAR_NAME = 'Task Planner';
 export const DEFAULT_ZONE = 'Europe/Warsaw';
-export const WRITE_SCOPE_ERROR = 'Brak zgody na zapis w Google — połącz konto ponownie, żeby wysyłać zadania do kalendarza „TaskPlanner”.';
+export const WRITE_SCOPE_ERROR = 'Brak zgody na zapis w Google — połącz konto ponownie, żeby wysyłać zadania do kalendarza „Task Planner”.';
 /** Starsze zadania nie dostają nowych wydarzeń (istniejące są dalej uzgadniane). */
 const CREATE_FROM_DAYS = 30;
 
@@ -116,7 +116,7 @@ async function setWriteError(db: SupabaseClient, account: AccountRow, error: str
 }
 
 /**
- * Kalendarz „TaskPlanner” wybranego konta: istniejący wiersz, przejęty po znaczniku albo nowo utworzony
+ * Kalendarz „Task Planner” wybranego konta: istniejący wiersz, przejęty po znaczniku albo nowo utworzony
  * w Google. `null` = nic do wysyłania, brak konta albo brak zgody na zapis (wtedy komunikat na koncie).
  */
 export async function ensureTaskCalendar(db: SupabaseClient, cfg: GoogleConfig, profile: ProfileRow): Promise<CalendarRow | null> {
@@ -139,7 +139,7 @@ export async function ensureTaskCalendar(db: SupabaseClient, cfg: GoogleConfig, 
   const zone = profile.settings?.timeZone ?? entries.find((e) => e.primary)?.timeZone ?? DEFAULT_ZONE;
   const externalId = found?.id ?? (await insertCalendar(cfg, token, {
     summary: TASK_CALENDAR_NAME,
-    description: `Zadania z godziną z TaskPlanner — zmiany tutaj wracają do zadań. Nie zmieniaj tej linijki: ${marker}`,
+    description: `Zadania z godziną z Task Planner — zmiany tutaj wracają do zadań. Nie zmieniaj tej linijki: ${marker}`,
     timeZone: zone,
   })).id;
   const row = check(
@@ -277,7 +277,7 @@ class TaskCalendarRun {
       }
     } catch (error) {
       if (!(error instanceof GoogleError && error.missing)) throw error;
-      // Użytkownik usunął kalendarz „TaskPlanner” w Google: przestajemy wysyłać, zadania zostają.
+      // Użytkownik usunął kalendarz „Task Planner” w Google: przestajemy wysyłać, zadania zostają.
       check(await this.db.rpc('calendar_sync_disable', { p_user: this.calendar.user_id, p_account: this.calendar.account_id }), 'calendar_sync_disable');
       check(await this.db.from('calendars').delete().eq('id', this.calendar.id), 'calendars');
       this.result.gone = true;
@@ -340,7 +340,7 @@ class TaskCalendarRun {
     if (next) this.remember({ calendar_id: this.calendar.id, task_id: taskId, ...next });
   }
 
-  /** Wydarzenie dodane w Google w kalendarzu „TaskPlanner” → zadanie w Inboxie pierwszej wybranej przestrzeni. */
+  /** Wydarzenie dodane w Google w kalendarzu „Task Planner” → zadanie w Inboxie pierwszej wybranej przestrzeni. */
   private async importEvent(ev: GoogleEvent): Promise<void> {
     const workspace = this.profile.calendar_sync?.workspaceIds.find((id) => this.ctx.workspaceIds.has(id));
     if (!workspace || ev.status === 'cancelled') return;
