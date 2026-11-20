@@ -18,6 +18,8 @@ import {
   habitDayStatus,
   habitDraft,
   habitEntryOps,
+  habitFields,
+  habitMonthly,
   habitProgressLabel,
   habitSaveOps,
   habitsForDay,
@@ -25,6 +27,8 @@ import {
   habitWeeks,
   habitYear,
   habitYearRange,
+  previewDates,
+  WEEKDAY_CODES,
   isOpen,
   MAX_COUNT,
   MONTH_SHORT,
@@ -50,7 +54,9 @@ import {
   type IsoWeekday,
   type LocalDate,
   type LocalTime,
+  type MonthlyBy,
   type RecurrenceEnd,
+  type WeekdayCode,
   type ViewContext,
   type ViewTask,
 } from "@taskplanner/core";
@@ -576,6 +582,7 @@ function HeatRow({ weekday, year, habit }: { weekday: IsoWeekday; year: ReturnTy
 // ── Formularz nawyku ─────────────────────────────────────────────────────────────────────────
 
 type ScheduleKind = HabitDraft["schedule"]["kind"];
+const NTH: [number, string][] = [[1, "pierwszy"], [2, "drugi"], [3, "trzeci"], [4, "czwarty"], [-1, "ostatni"]];
 type Row = Record<string, string | number | null>;
 
 function listLabel(data: AppData, l: List) {
@@ -599,6 +606,7 @@ export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | 
   const [days, setDays] = useState<IsoWeekday[]>(initial.schedule.kind === "days" ? initial.schedule.days : [1, 2, 3, 4, 5]);
   const [times, setTimes] = useState(initial.schedule.kind === "goal" ? initial.schedule.times : 3);
   const [period, setPeriod] = useState<"week" | "month">(initial.schedule.kind === "goal" ? initial.schedule.period : "week");
+  const [monthly, setMonthly] = useState(initial.schedule.kind === "monthly" ? initial.schedule : habitMonthly(initial.start));
   const [quantity, setQuantity] = useState(initial.target !== null);
   const [target, setTarget] = useState(String(initial.target ?? 8));
   const [unit, setUnit] = useState(initial.unit ?? "");
@@ -619,12 +627,30 @@ export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | 
         )
       : []);
   const [error, setError] = useState<string | null>(null);
+  const currentSchedule = (): HabitDraft["schedule"] =>
+    kind === "days"
+      ? { kind, days }
+      : kind === "goal"
+        ? { kind, period, times }
+        : kind === "monthly"
+          ? monthly
+          : kind === "custom" && initial.schedule.kind === "custom"
+            ? initial.schedule
+            : { kind: "daily" };
+  // Podgląd najbliższych dni przy „co miesiąc” (np. 31. dnia omija krótsze miesiące).
+  const monthlyPreview = (() => {
+    if (kind !== "monthly") return null;
+    try {
+      return previewDates(habitFields({ schedule: monthly, start: start as LocalDate, target: null, unit: null, time: null }).recurrence, today, 3);
+    } catch {
+      return null;
+    }
+  })();
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     try {
-      const schedule: HabitDraft["schedule"] =
-        kind === "days" ? { kind, days } : kind === "goal" ? { kind, period, times } : kind === "custom" && initial.schedule.kind === "custom" ? initial.schedule : { kind: "daily" };
+      const schedule = currentSchedule();
       const end: RecurrenceEnd =
         endKind === "until" ? { kind: "until", date: endDate as LocalDate } : endKind === "count" && kind !== "goal" ? { kind: "count", n: Number(endCount) } : { kind: "never" };
       const draft: HabitDraft = { schedule, start, end, target: quantity ? Number(target.replace(",", ".")) : null, unit: quantity ? unit : null, time: (time || null) as LocalTime | null };
@@ -669,6 +695,7 @@ export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | 
             [
               ["daily", "Codziennie"],
               ["days", "W wybrane dni"],
+              ["monthly", "Co miesiąc"],
               ["goal", "N razy w okresie"],
               ...(initial.schedule.kind === "custom" ? [["custom", "Bez zmian (własna reguła)"]] : []),
             ] as [ScheduleKind, string][]
@@ -704,7 +731,50 @@ export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | 
               <option value="week">tygodniu</option>
               <option value="month">miesiącu</option>
             </Select>
-            <span className="text-xs text-[var(--muted)]">dowolne dni; passa liczy się w {period === "week" ? "tygodniach" : "miesiącach"}</span>
+            <span className="text-xs text-[var(--muted)]">
+              dowolne dni; passa liczy się w {period === "week" ? "tygodniach" : "miesiącach"}
+              {period === "month" ? (
+                <>
+                  {" · "}konkretny dzień?{" "}
+                  <button type="button" className="text-[var(--accent)] hover:underline" onClick={() => setKind("monthly")}>
+                    Co miesiąc
+                  </button>
+                </>
+              ) : null}
+            </span>
+          </div>
+        ) : null}
+        {kind === "monthly" ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Select aria-label="Którego dnia" value={monthly.by} onChange={(e) => setMonthly({ ...monthly, by: e.target.value as MonthlyBy })}>
+              <option value="day">dnia</option>
+              <option value="weekday">w dzień tygodnia</option>
+              <option value="last_day">ostatniego dnia</option>
+              <option value="last_workday">ostatniego dnia roboczego</option>
+            </Select>
+            {monthly.by === "day" ? (
+              <Input type="number" min={1} max={31} value={monthly.day || ""} onChange={(e) => setMonthly({ ...monthly, day: Number(e.target.value) })} aria-label="Dzień miesiąca" className="w-20" />
+            ) : null}
+            {monthly.by === "weekday" ? (
+              <>
+                <Select aria-label="Który" value={monthly.nth} onChange={(e) => setMonthly({ ...monthly, nth: Number(e.target.value) })}>
+                  {NTH.map(([n, label]) => (
+                    <option key={n} value={n}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+                <Select aria-label="Dzień tygodnia" value={monthly.weekday} onChange={(e) => setMonthly({ ...monthly, weekday: e.target.value as WeekdayCode })}>
+                  {WEEKDAY_CODES.map((d, i) => (
+                    <option key={d} value={d}>
+                      {WEEKDAY[(i + 1) as IsoWeekday].label}
+                    </option>
+                  ))}
+                </Select>
+              </>
+            ) : null}
+            <span>miesiąca</span>
+            {monthlyPreview?.length ? <span className="text-xs text-[var(--muted)]">najbliżej: {monthlyPreview.map((d) => dayChip(d)).join(" · ")}</span> : null}
           </div>
         ) : null}
       </fieldset>
