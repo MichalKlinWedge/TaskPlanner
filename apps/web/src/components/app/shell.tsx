@@ -326,6 +326,10 @@ export function Shell({
             id="sidebar"
             aria-label="Nawigacja"
             className={`${menuOpen ? "fixed inset-0 z-10 block" : "hidden"} w-full shrink-0 overflow-y-auto border-r border-[var(--line)] bg-[var(--surface)] p-3 text-sm md:static md:w-64 ${route.view === "focus" ? "md:hidden" : "md:block"}`}
+            // Każda pozycja panelu bocznego zamyka panel zadania (edycje zapisały się już przy `blur`).
+            onClickCapture={(e) => {
+              if (openTaskId && (e.target as Element).closest("a, button, select, [role=button]")) setOpenTaskId(null);
+            }}
           >
             <Select
               aria-label="Przestrzeń"
