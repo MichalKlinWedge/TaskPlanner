@@ -5,6 +5,7 @@ import { STALE_LEADER_MESSAGE, SYNCED_TABLES, type TabStore } from "@taskplanner
 import { useEffect, useMemo, useState } from "react";
 
 import { parseSettings } from "@/lib/app-data";
+import { routeHash, useRoute } from "@/lib/route";
 import { closeStore, storeFor, useLocalQuery, useStaleLeader, useStoreStatus } from "@/lib/local-store";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useTheme } from "@/lib/theme";
@@ -54,7 +55,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
   const theme = parseSettings(parseJson(profile?.settings ?? null)).theme;
   useTheme(theme);
 
-  const header = <AppHeader store={store} email={email} />;
+  const header = <AppHeader store={store} email={email} settingsLink={isOnboarded(parseJson(profile?.settings ?? null))} />;
   if (ms === null || (!profile && !syncTried)) {
     return (
       <>
@@ -161,9 +162,10 @@ function Onboarding({ store, userId, initial }: { store: TabStore; userId: strin
   );
 }
 
-/** Pasek: stan synchronizacji (sieć, zmiany w kolejce, błąd) i wylogowanie. */
-function AppHeader({ store, email }: { store: TabStore; email: string | null }) {
+/** Pasek: stan synchronizacji (sieć, zmiany w kolejce, błąd), ustawienia (po onboardingu) i wylogowanie. */
+function AppHeader({ store, email, settingsLink }: { store: TabStore; email: string | null; settingsLink: boolean }) {
   const status = useStoreStatus();
+  const [route] = useRoute();
   const stale = useStaleLeader(store);
   const [pending, setPending] = useState(0);
   const [online, setOnline] = useState(true);
@@ -237,6 +239,20 @@ function AppHeader({ store, email }: { store: TabStore; email: string | null }) 
         </span>
         <span className="flex-1" />
         {email ? <span className="hidden text-xs opacity-60 sm:inline">{email}</span> : null}
+        {settingsLink ? (
+          <a
+            href={routeHash({ view: "settings" })}
+            aria-current={route.view === "settings" ? "page" : undefined}
+            aria-label="Ustawienia"
+            title="Ustawienia"
+            className={`flex items-center gap-1.5 rounded-md px-2 py-1 ${route.view === "settings" ? "bg-[var(--hover)] font-medium" : "hover:bg-[var(--hover)]"}`}
+          >
+            <span aria-hidden>⚙️</span>
+            <span aria-hidden className="hidden sm:inline">
+              Ustawienia
+            </span>
+          </a>
+        ) : null}
         <Button kind="ghost" onClick={() => void signOut()}>
           Wyloguj
         </Button>

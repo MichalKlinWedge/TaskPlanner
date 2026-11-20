@@ -342,7 +342,6 @@ export function Shell({
     { route: { view: "review", id: "daily" }, icon: "🧭", label: "Przegląd dnia" },
     { route: { view: "review", id: "weekly" }, icon: "🗒️", label: "Przegląd tygodnia" },
     { route: { view: "trash" }, icon: "🗑️", label: "Kosz" },
-    { route: { view: "settings" }, icon: "⚙️", label: "Ustawienia" },
   ];
   const rail = collapsed && !peek;
   const openQuickFromSidebar = () => {
