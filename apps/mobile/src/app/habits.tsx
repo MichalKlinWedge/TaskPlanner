@@ -6,6 +6,7 @@ import { describeHabit, habitsForDay, habitStats, isOpen, plural, toHabit } from
 import { router, Stack } from 'expo-router';
 import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { completionsOf, HabitDayStrip, pct, STREAK_UNIT } from '@/components/habits';
 import { ScreenHeader } from '@/components/sync-banner';
@@ -15,6 +16,7 @@ import { useView } from '@/lib/app-data';
 
 export default function HabitsScreen() {
   const p = usePalette();
+  const insets = useSafeAreaInsets();
   const { data, today, workspaceId } = useView();
   const habits = useMemo(
     () => data.tasks.filter((t) => t.kind === 'habit' && (!workspaceId || t.workspaceId === workspaceId)).sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1)),
@@ -66,7 +68,7 @@ export default function HabitsScreen() {
         ) : null}
         <Text style={[styles.hint, { color: p.muted }]}>Dotknij dnia: zrobione → dzień wolny → wyczyść (do 7 dni wstecz).</Text>
       </ScrollView>
-      <Fab onPress={() => router.push('/habit-form')} />
+      <Fab label="Nowy nawyk" bottom={16 + insets.bottom} onPress={() => router.push('/habit-form')} />
     </View>
   );
 }

@@ -30,7 +30,7 @@ Części „telefon — z MVP-3” z `PLAN_ETAPOWY.md` w `apps/mobile`: edytor p
 
 1. Zadanie → „▶ Skup się” → Pomodoro: tarcza liczy, ekran nie gaśnie (`expo-keep-awake`), w nagłówku zakładek „⏱ mm:ss”.
 2. Trwałe powiadomienie „Praca · Pomodoro 1 — do HH:MM” z „Pauza / Pomiń / Stop”; „Pauza” z powiadomienia zatrzymuje timer (też na webie), „Wznów” wznawia.
-3. Długość pracy 1 min (ustawienia na ekranie skupienia) → zamknąć aplikację (usunąć z ostatnich) → po minucie powiadomienie „Koniec pracy” z wibracją; po przerwie „Koniec przerwy — wróć do pracy” z „Start pracy”. Po otwarciu aplikacji etap doliczony w chwili końca (web pokazuje ten sam stan).
+3. Krótka przerwa 1 min (ustawienia na ekranie skupienia; praca ma minimum 10 min) → Pomodoro → „Pomiń” (przerwa) → zamknąć aplikację (`adb shell am kill pl.taskplanner.app` albo usunąć z ostatnich) → po minucie „Koniec przerwy — wróć do pracy” z wibracją, w miejscu trwałego powiadomienia. Koniec pracy działa tak samo (alarm „Koniec pracy · Krótka przerwa — do …”; `adb shell dumpsys alarm` pokazuje oba alarmy `RTC_WAKEUP` z `exactAllowReason=policy_permission`). Po otwarciu aplikacji etap doliczony w chwili końca (web pokazuje ten sam stan).
 4. Stoper: start → stop → „Czas pracy” w zadaniu rośnie; „+ Dodaj czas” 15 min z „Cofnij”; „Ten tydzień” — słupki dni i zadania.
 
 ## E5. Nawyki (Etap 8)
@@ -65,12 +65,14 @@ Części „telefon — z MVP-3” z `PLAN_ETAPOWY.md` w `apps/mobile`: edytor p
 
 | Scenariusz | Data | Wynik | Uwagi |
 | --- | --- | --- | --- |
-| E1 Edytor powtarzania | | | |
-| E2 Pomiń / zakończ serię | | | |
-| E3 Tablica | | | |
-| E4 Tryb skupienia | | | |
-| E5 Nawyki | | | |
-| E6 Przypomnienie nawyku | | | |
-| E7 Przegląd dnia | | | |
-| E8 Przegląd tygodnia | | | |
-| E9 Offline | | | |
+| E1 Edytor powtarzania | 20.11.2026 | OK | release APK (Galaxy S22 Ultra, lokalny Supabase przez `adb reverse`). Szablony zmieniają podgląd i opis od razu; „ostatni dzień miesiąca” → 30.11, 31.12, 31.01, 28.02, 31.03; reguła słowami „co 3 dni” rozpoznana i zapisana |
+| E2 Pomiń / zakończ serię | 20.11.2026 | OK | „Pomiń to wystąpienie” → termin na ndz 22 lis, wpis `skipped` na serwerze; „Zakończ serię” po potwierdzeniu → `cancelled`, reguła zostaje. „Cofnij” nie sprawdzone (dymek zniknął przed stuknięciem) |
+| E3 Tablica | 20.11.2026 | OK | „↓ Niżej”, „→ W trakcie” (karta na górze kolumny, liczniki 675/131, dymek z „Cofnij”); na serwerze `in_progress` + `board_sort_key`. Poprawione w trakcie: zakładki kolumn przycięte w pionie (`flexShrink: 0`) |
+| E4 Tryb skupienia | 20.11.2026 | OK (po poprawce) | trwałe powiadomienie z Pauza / Pomiń / Stop; pauza z powiadomienia → `profiles.focus.paused` na serwerze; przerwa 1 min przy zabitej aplikacji → „Koniec przerwy — wróć do pracy” o czasie, stuknięcie otwiera `/focus` („Przerwa skończona”); `time_entries` — przerwa zamknięta dokładnie w chwili końca; wake lock aktywny; stoper działa. Poprawione: po końcu przerwy zostawało nieaktualne trwałe „Krótka przerwa — do …” (alarm podmienia je teraz tym samym id) |
+| E5 Nawyki | 20.11.2026 | OK | lista, odhaczenie z dymkiem i passą, formularz, szczegóły. Poprawione: FAB „Nowy nawyk” pod paskiem nawigacji systemu (inset) |
+| E6 Przypomnienie nawyku | 20.11.2026 | OK | przypomnienie o 06:17 przy zabitej aplikacji, „Zrobione” → wpis `done` na serwerze 06:17:34 bez otwierania aplikacji, powiadomienie znika |
+| E7 Przegląd dnia | 20.11.2026 | OK (po poprawce) | 4 gesty + przyciski; podsumowanie „4 z 160” w 48 s; `review_sessions` ze `stats {done:1, someday:1, reviewed:4, rescheduled:2}`. Poprawione: dolne przyciski pod paskiem nawigacji systemu („Dalej” nie reagował) |
+| E8 Przegląd tygodnia | 20.11.2026 | OK | 6 kroków, „Przenieś do…” (Inbox 147 → 146), nadchodzący tydzień, nawyki 7 dni, podsumowanie |
+| E9 Offline | 20.11.2026 | OK z uwagą | zamiast trybu samolotowego odcięty serwer (`adb reverse --remove tcp:54521` + `am force-stop`, jak T8 w MVP-3). Offline: odhaczenie „Warzywa do obiadu”, karta → „W trakcie”, dwie decyzje przeglądu dnia (gest „jutro”, przycisk „Dziś”), Pomodoro z pauzą — na serwerze nic. Po `adb reverse tcp:54521 tcp:54521` synchronizacja **zawisła** (gniazdo otwarte, brak odpowiedzi — klient bez limitu czasu na `fetch`, por. uwaga niżej); po ponownym starcie aplikacji wszystko na serwerze w ~1,2 s: 3 zadania, wpis nawyku, odcinek `time_entries`, `profiles.focus` z pauzą, wiersz `review_sessions`; bez duplikatów (1 wpis nawyku na dzień, 1 odcinek) |
+
+Uwaga do E9: zawieszenie po przywróceniu `adb reverse` to najpewniej artefakt przekierowania USB (połączenie otwarte w chwili jego dodania), ale pokazuje, że `fetch` w `lib/sync.ts` nie ma limitu czasu — jedno zawieszone żądanie blokuje synchronizację do restartu aplikacji. Do rozważenia: limit czasu (np. `AbortController`, 30 s) w `global.fetch` klienta Supabase.

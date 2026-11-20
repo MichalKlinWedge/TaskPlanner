@@ -262,11 +262,12 @@ async function syncOnce(given?: FocusNow) {
     const newId = focusEntryId(userId);
     const next = advanceFocus(state, end, { settings, newId }).state;
     if (state.phase === 'focus') {
-      // Koniec pracy: przerwa zaczyna się sama — podmienia trwałe powiadomienie, z dźwiękiem.
+      // Koniec pracy: przerwa zaczyna się sama — podmienia trwałe powiadomienie, z dźwiękiem. Bez
+      // „trwałości”: po końcu przerwy (osobny alarm) da się je zsunąć, gdy aplikacja jest zamknięta.
       const breakContent = focusContent(next, settings, title, end, timeZone);
       if (breakContent) {
         await Notifications.scheduleNotificationAsync(
-          request(ONGOING_ID, { ...breakContent, title: `Koniec pracy · ${breakContent.title}` }, focusStamp(next), FOCUS_END_CHANNEL, end.getTime()),
+          request(ONGOING_ID, { ...breakContent, title: `Koniec pracy · ${breakContent.title}`, sticky: false }, focusStamp(next), FOCUS_END_CHANNEL, end.getTime()),
         );
       }
       const breakEnd = phaseEndsAt(next, settings);
@@ -276,8 +277,9 @@ async function syncOnce(given?: FocusNow) {
         if (readyContent) await Notifications.scheduleNotificationAsync(request(BREAK_END_ID, readyContent, focusStamp(ready), FOCUS_END_CHANNEL, breakEnd.getTime()));
       }
     } else if (next.phase === 'ready') {
+      // Koniec przerwy: alarm podmienia trwałe powiadomienie (inaczej zostałoby „przerwa do …”).
       const readyContent = focusContent(next, settings, title, end, timeZone);
-      if (readyContent) await Notifications.scheduleNotificationAsync(request(BREAK_END_ID, readyContent, focusStamp(next), FOCUS_END_CHANNEL, end.getTime()));
+      if (readyContent) await Notifications.scheduleNotificationAsync(request(ONGOING_ID, readyContent, focusStamp(next), FOCUS_END_CHANNEL, end.getTime()));
     }
   }
   writeJson(SYNC_KEY, signature);

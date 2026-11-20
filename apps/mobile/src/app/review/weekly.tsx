@@ -21,6 +21,7 @@ import {
 import { router, Stack } from 'expo-router';
 import { useMemo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTaskActions } from '@/components/actions';
 import { STATE_LABEL, useStateColors } from '@/components/habits';
@@ -43,6 +44,7 @@ type Step = (typeof STEPS)[number]['id'];
 export default function WeeklyReviewScreen() {
   const p = usePalette();
   const colors = useStateColors();
+  const insets = useSafeAreaInsets();
   const { data, today, ctx } = useView();
   const decide = useDecide();
   const { run } = useTaskActions();
@@ -107,7 +109,7 @@ export default function WeeklyReviewScreen() {
     const stats = reviewStats(log);
     const clean = review.inbox.length === 0 && review.projectsWithoutNext.length === 0;
     return (
-      <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.body}>
+      <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={[styles.body, { paddingBottom: 48 + insets.bottom }]}>
         <Stack.Screen options={{ title: 'Przegląd tygodnia — gotowe' }} />
         <View style={styles.stats}>
           {(
@@ -243,7 +245,7 @@ export default function WeeklyReviewScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: p.bg }}>
       <Stack.Screen options={{ title: 'Przegląd tygodnia' }} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.steps} style={{ flexGrow: 0 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.steps} style={styles.stepBar}>
         {STEPS.map((s, i) => {
           const count = s.id === 'upcoming' || s.id === 'habits' ? '' : ` ${counts[s.id] || '✓'}`;
           return <Chip key={s.id} label={`${i + 1}. ${s.title}${count}`} selected={s.id === step} onPress={() => go(s.id)} />;
@@ -258,7 +260,7 @@ export default function WeeklyReviewScreen() {
           <Text style={{ color: p.muted, fontSize: 12 }}>{plural(review.needsDecision.length, ['zadanie przesuwane', 'zadania przesuwane', 'zadań przesuwanych'])} 3 razy lub więcej — oznaczone na żółto.</Text>
         ) : null}
       </ScrollView>
-      <View style={[styles.nav, { borderColor: p.border }]}>
+      <View style={[styles.nav, { borderColor: p.border, paddingBottom: 12 + insets.bottom }]}>
         <Button kind="secondary" title="← Wstecz" disabled={at === 0} onPress={() => go(STEPS[at - 1]!.id)} />
         {at < STEPS.length - 1 ? (
           <Button title="Dalej →" onPress={() => go(STEPS[at + 1]!.id)} />
@@ -278,6 +280,7 @@ export default function WeeklyReviewScreen() {
 
 const styles = StyleSheet.create({
   steps: { gap: 6, paddingHorizontal: 12, paddingVertical: 10 },
+  stepBar: { flexGrow: 0, flexShrink: 0 },
   body: { padding: 16, gap: 10, paddingBottom: 48 },
   h2: { fontSize: 17, fontWeight: '700' },
   empty: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 10, padding: 16, textAlign: 'center' },

@@ -21,6 +21,7 @@ import * as Haptics from 'expo-haptics';
 import { router, Stack } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { pickDate } from '@/components/pickers';
 import { DecisionButtons, useDecide, useReviewSession, type LogEntry, type ReviewKindKey } from '@/components/review';
@@ -37,6 +38,7 @@ const SWIPE_ACTION: Record<Swipe, ReviewAction> = { right: { kind: 'done' }, lef
 export default function DailyReviewScreen() {
   const p = usePalette();
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { data, today, ctx } = useView();
   const decide = useDecide();
   const finish = useReviewSession('daily');
@@ -150,7 +152,7 @@ export default function DailyReviewScreen() {
         ) : null}
       </View>
 
-      <View style={styles.bottom}>
+      <View style={[styles.bottom, { paddingBottom: 16 + insets.bottom }]}>
         <DecisionButtons onPick={(k) => void pick(k)} disabled={task?.recurrence ? ['someday'] : []} />
         <View style={styles.nav}>
           <Button kind="secondary" title="← Wstecz" disabled={index === 0} onPress={() => setIndex((i) => Math.max(0, i - 1))} />

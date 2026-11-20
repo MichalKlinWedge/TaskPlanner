@@ -11,6 +11,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import Storage from 'expo-sqlite/kv-store';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTaskActions } from '@/components/actions';
 import { pickOption, type Option } from '@/components/pickers';
@@ -25,6 +26,7 @@ type Move = { kind: 'column'; key: string } | { kind: 'up' } | { kind: 'down' };
 
 export default function BoardScreen() {
   const p = usePalette();
+  const insets = useSafeAreaInsets();
   const { list: listId } = useLocalSearchParams<{ list?: string }>();
   const { data, today, ctx } = useView();
   const { run, notify } = useTaskActions();
@@ -97,7 +99,7 @@ export default function BoardScreen() {
         </Pressable>
         {by === 'status' ? <Text style={{ color: p.muted, fontSize: 12 }}>„Gotowe” z ostatnich 7 dni</Text> : null}
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={styles.tabs}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={styles.tabs}>
         {columns.map((c) => (
           <Chip key={c.key} label={`${c.label} ${c.tasks.length}`} selected={c.key === column?.key} onPress={() => setSelected(c.key)} />
         ))}
@@ -124,7 +126,7 @@ export default function BoardScreen() {
             </View>
           )}
           ListEmptyComponent={<Text style={[styles.empty, { color: p.muted }]}>Pusta kolumna.</Text>}
-          contentContainerStyle={{ paddingBottom: 48 }}
+          contentContainerStyle={{ paddingBottom: 48 + insets.bottom }}
         />
       ) : (
         <Text style={[styles.empty, { color: p.muted }]}>{by === 'tag' ? 'Brak tagów.' : 'Brak kolumn.'}</Text>
@@ -137,6 +139,7 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingTop: 10 },
   by: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
   tabs: { gap: 6, paddingHorizontal: 12, paddingVertical: 10 },
+  tabBar: { flexGrow: 0, flexShrink: 0 },
   card: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth },
   move: { paddingHorizontal: 14, paddingVertical: 12 },
   empty: { padding: 24, textAlign: 'center' },
