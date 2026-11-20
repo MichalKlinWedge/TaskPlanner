@@ -29,7 +29,7 @@ function HabitsWidgetView({ model, palette, updatedAt, error }: { model: HabitsW
   return (
     <FlexWidget style={{ height: 'match_parent', width: 'match_parent', backgroundColor: palette.bg, borderRadius: 16, padding: 12, flexDirection: 'column' }}>
       <WidgetHeader title={`Nawyki · ${model.open}`} updatedAt={updatedAt} uri={APP_URI.today} palette={palette} />
-      <WidgetError error={error} palette={palette} />
+      {error ? <WidgetError error={error} palette={palette} /> : null}
       {model.items.length === 0 && !error ? <TextWidget text="Brak nawyków na dziś." style={{ fontSize: 13, color: palette.muted }} /> : null}
       <ListWidget style={{ height: 'match_parent', width: 'match_parent' }}>
         {model.items.map((h) => (

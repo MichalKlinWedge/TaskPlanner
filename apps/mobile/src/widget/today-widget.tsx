@@ -16,7 +16,7 @@ function TodayWidgetView({ model, palette, updatedAt, error }: { model: TodayWid
   return (
     <FlexWidget style={{ height: 'match_parent', width: 'match_parent', backgroundColor: palette.bg, borderRadius: 16, padding: 12, flexDirection: 'column' }}>
       <WidgetHeader title={`Dziś · ${model.open}`} updatedAt={updatedAt} uri={APP_URI.today} palette={palette} />
-      <WidgetError error={error} palette={palette} />
+      {error ? <WidgetError error={error} palette={palette} /> : null}
       {model.items.length === 0 && !error ? <TextWidget text="Nic na dziś." style={{ fontSize: 13, color: palette.muted }} /> : null}
       <ListWidget style={{ height: 'match_parent', width: 'match_parent' }}>
         {[

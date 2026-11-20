@@ -41,5 +41,11 @@ export function WidgetHeader({ title, updatedAt, uri, palette }: { title: string
   );
 }
 
-export const WidgetError = ({ error, palette }: { error?: string; palette: Palette }) =>
-  error ? <TextWidget text={error} style={{ fontSize: 12, color: palette.danger }} maxLines={3} /> : null;
+/**
+ * Komunikat błędu. Zawsze zwraca element: biblioteka pomija `null` jako dziecko, ale komponent
+ * zwracający `null` wywraca `buildWidgetTree` („Cannot read property 'type' of null”) i widżet
+ * zostaje pusty — warunek jest w miejscu użycia (`{error ? <WidgetError … /> : null}`).
+ */
+export const WidgetError = ({ error, palette }: { error: string; palette: Palette }) => (
+  <TextWidget text={error} style={{ fontSize: 12, color: palette.danger }} maxLines={3} />
+);
