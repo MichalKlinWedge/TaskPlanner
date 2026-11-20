@@ -55,7 +55,7 @@ import type { Route } from "@/lib/route";
 import { useAppEnv } from "./app-env";
 import { TaskItem, useTaskActions } from "./task-item";
 import { DescriptionEditor } from "./task-panel";
-import { Button, Input } from "./ui";
+import { Button, Input, navLinkClass } from "./ui";
 
 type Row = Record<string, string | number | null>;
 
@@ -408,8 +408,8 @@ export function FocusScreen({ taskId, ctx, onExit, navigate }: { taskId: string 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6" data-testid="focus-screen">
       <header className="flex items-center gap-2">
-        <button type="button" onClick={onExit} className="rounded-md px-2 py-1 text-sm text-[var(--muted)] hover:bg-[var(--hover)]">
-          ← Wyjdź <kbd className="ml-1 text-xs">Esc</kbd>
+        <button type="button" onClick={onExit} className={navLinkClass}>
+          ← Wyjdź <kbd className="ml-1 font-normal opacity-70">Esc</kbd>
         </button>
         <h1 className="ml-auto text-sm font-semibold text-[var(--muted)]">Tryb skupienia</h1>
       </header>

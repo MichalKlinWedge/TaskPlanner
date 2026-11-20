@@ -68,7 +68,7 @@ import { useRoute, type Route } from "@/lib/route";
 
 import { lastSortKey, useAppEnv } from "./app-env";
 import { useTaskActions } from "./task-item";
-import { Button, Card, Field, Input, Select } from "./ui";
+import { Button, Card, Field, Input, navLinkClass, Select } from "./ui";
 
 const EMPTY: readonly HabitCompletion[] = [];
 const completionsOf = (data: AppData, id: string) => data.habitCompletions.get(id) ?? EMPTY;
@@ -349,8 +349,8 @@ export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: App
 
   return (
     <>
-      <nav className="mb-1 text-sm">
-        <button type="button" className="text-[var(--muted)] hover:underline" onClick={() => navigate({ view: "habits" })}>
+      <nav className="mb-2">
+        <button type="button" className={navLinkClass} onClick={() => navigate({ view: "habits" })}>
           ← Nawyki
         </button>
       </nav>
