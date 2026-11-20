@@ -8,6 +8,7 @@
  * przy równoległych uruchomieniach), potem wysyła i zapisuje wynik. Subskrypcja 404/410 jest czyszczona
  * (`clear_push_subscription`), błąd przejściowy — ponowienie w następnej minucie (najwyżej 5 prób).
  * Nawyki (Etap 8): wpisy `task_completions` z ostatnich dni — bez przypomnienia o dniu już zaliczonym.
+ * Tryb skupienia (Etap 7): koniec etapu z `profiles.focus` na te same urządzenia (`fire_key` `<wpis>:focus`).
  *
  * `GET …/reminders-push/key` — klucz publiczny VAPID dla przeglądarki.
  *
@@ -66,7 +67,7 @@ serve(async (req, url) => {
       .is('deleted_at', null)
       .is('tasks.deleted_at', null)
       .not('tasks.status', 'in', '(done,cancelled)'),
-    db.from('profiles').select('id, settings').in('id', users),
+    db.from('profiles').select('id, settings, focus').in('id', users),
   ]);
   if (remError) throw remError;
   if (profError) throw profError;

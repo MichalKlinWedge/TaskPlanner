@@ -54,7 +54,7 @@ export function RemindersCard({ store, userId }: { store: TabStore; userId: stri
   return (
     <Card className="mt-4">
       <h2 className="mb-1 text-sm font-semibold">Przypomnienia</h2>
-      <p className="mb-3 text-xs text-[var(--muted)]">Przypomnienie przychodzi tylko na urządzenia z włączonymi przypomnieniami.</p>
+      <p className="mb-3 text-xs text-[var(--muted)]">Przypomnienie (i koniec etapu skupienia przy zamkniętej karcie) przychodzi tylko na urządzenia z włączonymi przypomnieniami.</p>
 
       <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
         <span>Ta przeglądarka:</span>

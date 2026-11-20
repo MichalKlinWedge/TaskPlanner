@@ -68,6 +68,39 @@ describe('planPushes', () => {
   });
 });
 
+describe('planPushes — koniec etapu skupienia (Etap 7)', () => {
+  // Praca 25 min od 08:05 UTC → koniec 08:30.
+  const focus = { phase: 'focus', taskId: 't1', segmentStartedAt: '2026-11-19T08:05:00.000Z', elapsedMs: 0, paused: false, completedFocus: 0, entryId: 'e1' };
+  const withFocus = (state: unknown, settings: Record<string, unknown> = {}) => [{ ...profiles[0]!, settings: { ...profiles[0]!.settings, ...settings }, focus: state }];
+
+  it('po końcu etapu → każde wybrane urządzenie, bez przypomnień; przed końcem i po 10 min — nic', () => {
+    const plan = planPushes({ devices: [device('d1'), device('d2')], reminders: [], profiles: withFocus(focus) }, { now: '2026-11-19T08:30:40Z' });
+    expect(plan.map((p) => [p.deviceId, p.fireKey, p.taskId, p.fireAt])).toEqual([
+      ['d1', 'e1:focus', 't1', AT],
+      ['d2', 'e1:focus', 't1', AT],
+    ]);
+    expect(plan[0]!.payload).toEqual({ key: 'e1:focus', title: 'Koniec pracy', body: 'Krótka przerwa — odpocznij.', url: '/#/focus/t1', focus: true });
+    const at = (iso: string) => planPushes({ devices: [device('d1')], reminders: [], profiles: withFocus(focus) }, { now: iso }).length;
+    expect(at('2026-11-19T08:29:50Z')).toBe(0);
+    expect(at('2026-11-19T08:39:59Z')).toBe(1);
+    expect(at('2026-11-19T08:40:01Z')).toBe(0);
+  });
+
+  it('długość etapu z ustawień; pauza, brak stanu i zły stan — bez wysyłki', () => {
+    const short = planPushes({ devices: [device('d1')], reminders: [], profiles: withFocus(focus, { focus: { focusMin: 10 } }) }, { now: '2026-11-19T08:15:10Z' });
+    expect(short.map((p) => p.fireAt)).toEqual(['2026-11-19T08:15:00.000Z']);
+    const none = (state: unknown) => planPushes({ devices: [device('d1')], reminders: [], profiles: withFocus(state) }, { now: '2026-11-19T08:31:00Z' });
+    expect(none({ ...focus, paused: true, segmentStartedAt: null, elapsedMs: 600_000 })).toEqual([]);
+    expect(none(null)).toEqual([]);
+    expect(none({ phase: 'nonsense' })).toEqual([]);
+  });
+
+  it('bez zadania → adres widoku skupienia, `taskId` null', () => {
+    const plan = planPushes({ devices: [device('d1')], reminders: [], profiles: withFocus({ ...focus, taskId: null }) }, { now: '2026-11-19T08:31:00Z' });
+    expect(plan[0]).toMatchObject({ taskId: null, payload: { url: '/#/focus', focus: true } });
+  });
+});
+
 describe('planPushes — nawyki (Etap 8)', () => {
   const habitTask = { id: 'h1', kind: 'habit', status: 'todo', title: 'Woda', due_date: null, due_time: null, recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY', anchor: '2026-11-01' }, habit: { time: '07:30', target: 8, unit: 'szklanek' }, time_zone: null, deleted_at: null };
   const habitReminder = reminder({ id: 'hr', task_id: 'h1', offset_min: 0, tasks: habitTask });

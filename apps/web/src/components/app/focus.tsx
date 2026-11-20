@@ -12,6 +12,7 @@
 import {
   advanceFocus,
   FOCUS_PHASE,
+  focusEndText,
   focusElapsed,
   focusEntryId,
   focusMinutes,
@@ -126,11 +127,6 @@ async function showNotification(title: string, body: string) {
   }
 }
 
-const endText = (finished: FocusPhase, next: FocusState) =>
-  finished === "focus"
-    ? { title: "Koniec pracy", body: `${FOCUS_PHASE[next.phase]} — odpocznij.` }
-    : { title: "Koniec przerwy", body: "Wróć do pracy, kiedy zechcesz." };
-
 // ── Stan timera ──────────────────────────────────────────────────────────────────────────────
 
 export function FocusProvider({ store, userId, settings, children }: { store: TabStore; userId: string; settings: ProfileSettings; children: ReactNode }) {
@@ -189,7 +185,7 @@ export function FocusProvider({ store, userId, settings, children }: { store: Ta
     const step = advanceFocus(state, new Date(now), { settings: focusSettings, newId: focusEntryId(userId) });
     write(step);
     if (now - endsAt < 60_000) {
-      const text = endText(state.phase, step.state);
+      const text = focusEndText(state.phase, step.state);
       if (document.visibilityState === "visible") {
         chime(state.phase !== "focus");
         notify(`⏱ ${text.title} — ${text.body}`);
