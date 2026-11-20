@@ -1,12 +1,14 @@
 /**
  * „Dziś” (M9): zaległe, dziś, trwające, nawyki, ukończone dziś — reguły z `selectToday` (core).
  * Nawyki jako blok (Etap 8): `habitsForDay` z odhaczeniem, celem ilościowym, dniem wolnym i passą;
- * o porze przeglądu (`reviewsDue`) — odnośnik do przeglądu dnia / tygodnia (Etap 9).
+ * o porze przeglądu (`reviewsDue`) — odnośnik do przeglądu dnia / tygodnia (Etap 9). Chipy filtra
+ * (jak na webie) zawężają zadania, nie nawyki; filtr trwa do zamknięcia aplikacji, nie jest zapisywany.
  */
-import { capitalized, dayLabel, habitsForDay, plural, selectToday, VIEW_SECTION } from '@taskplanner/core';
-import { useMemo } from 'react';
+import { applyFilter, capitalized, dayLabel, habitsForDay, isEmptyFilter, plural, selectToday, VIEW_SECTION, type FilterQuery } from '@taskplanner/core';
+import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
+import { FilterBar } from '@/components/filter-bar';
 import { HabitTodayItem } from '@/components/habits';
 import { ReviewNudge } from '@/components/review';
 import { ScreenHeader } from '@/components/sync-banner';
@@ -18,7 +20,8 @@ const TASKS = ['zadanie', 'zadania', 'zadań'] as const;
 
 export default function TodayScreen() {
   const { data, today, ctx, workspaceId } = useView();
-  const view = useMemo(() => selectToday(data.tasks, ctx), [data.tasks, ctx]);
+  const [filter, setFilter] = useState<FilterQuery>({});
+  const view = useMemo(() => selectToday(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx), [data.tasks, filter, today, ctx]);
   const habits = useMemo(() => habitsForDay(data.tasks, data.habitCompletions, today, today, workspaceId), [data.tasks, data.habitCompletions, today, workspaceId]);
   const row = rowMaker(data, today);
   const open = view.overdue.length + view.today.length;
@@ -48,6 +51,7 @@ export default function TodayScreen() {
       header={
         <ScreenHeader subtitle={`${capitalized(dayLabel(today))} · ${plural(open, TASKS)}`}>
           <ReviewNudge />
+          <FilterBar query={filter} onChange={setFilter} />
         </ScreenHeader>
       }
       empty={data.loaded ? 'Na dziś nic nie ma.' : 'Wczytywanie…'}

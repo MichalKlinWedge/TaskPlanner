@@ -1,6 +1,6 @@
 /**
  * Arkusze wyboru wywoływane z dowolnego miejsca (gest na wierszu, pasek zaznaczenia, szczegóły
- * zadania): `pickOption` — lista opcji, `pickMany` — kilka opcji z „Gotowe”, `pickDate` — gotowe dni + kalendarz miesiąca, `pickTime` —
+ * zadania): `pickOption` — lista opcji, `pickMany` — kilka opcji z „Zastosuj”, `pickDate` — gotowe dni + kalendarz miesiąca, `pickTime` —
  * gotowe godziny + wpisanie. Jeden `<PickerHost />` w układzie głównym; Promise kończy się wyborem
  * albo `undefined` po zamknięciu. Własne arkusze zamiast natywnego wyboru daty — bez dodatkowego
  * modułu natywnego, a gotowe dni („Jutro”, „Za tydzień”) są o jedno dotknięcie.
@@ -44,7 +44,7 @@ function open<T>(request: Pending): Promise<T> {
 export const pickOption = <T,>(title: string, options: Option<T>[]): Promise<T | undefined> =>
   open<T | undefined>({ kind: 'option', title, options: options as Option<unknown>[] });
 
-/** Wybór kilku opcji (`selected` = zaznaczone na starcie); „Gotowe” zwraca zaznaczone, zamknięcie — `undefined`. */
+/** Wybór kilku opcji (`selected` = zaznaczone na starcie); „Zastosuj” (nie „Gotowe” — to też status zadania) zwraca zaznaczone, zamknięcie — `undefined`. */
 export const pickMany = <T,>(title: string, options: Option<T>[]): Promise<T[] | undefined> =>
   open<T[] | undefined>({ kind: 'many', title, options: options as Option<unknown>[] });
 
@@ -157,7 +157,7 @@ function ManyList({ options }: { options: Option<unknown>[] }) {
         </Pressable>
       ))}
       <Pressable accessibilityRole="button" onPress={() => close(options.filter((_, i) => picked.has(i)).map((o) => o.value))} style={[styles.done, { backgroundColor: p.accent }]}>
-        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Gotowe</Text>
+        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Zastosuj</Text>
       </Pressable>
     </View>
   );
