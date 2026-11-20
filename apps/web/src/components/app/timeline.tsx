@@ -180,7 +180,7 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   const { today, workspaceId } = ctx;
 
   const projects = useMemo(
-    () => data.lists.filter((l) => l.kind === "project" && (!workspaceId || l.workspaceId === workspaceId)).map((l) => ({ id: l.id, name: l.name, startDate: l.startDate, endDate: l.endDate })),
+    () => data.lists.filter((l) => l.kind === "project" && (!workspaceId || l.workspaceId === workspaceId)).map((l) => ({ id: l.id, name: l.name, color: l.color, startDate: l.startDate, endDate: l.endDate })),
     [data.lists, workspaceId],
   );
   // Ukryty widok nie przelicza osi; po powrocie przelicza ją tylko, gdy dane się zmieniły (inaczej SVAR
@@ -382,6 +382,14 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   };
   const titleOf = (id: string) => data.tasks.find((t) => t.id === id)?.title ?? "?";
   const linkCss = model.violations.map((v) => `.tp-timeline [data-link-id=":${v.dependency.id}"] .wx-line-draw{stroke:var(--danger);stroke-width:2px}`).join("");
+  // Pasek projektu w kolorze projektu z paska bocznego (postęp pełnym kolorem, reszta jaśniej); bez koloru —
+  // szary jak znacznik w pasku bocznym.
+  const projectCss = projects
+    .map((p) => {
+      const color = p.color && /^#[0-9a-f]{3,8}$/i.test(p.color) ? p.color : "var(--muted)";
+      return `.tp-timeline .wx-bar[data-id=":${PROJECT}${p.id}"]{--wx-gantt-summary-color:color-mix(in srgb, ${color} 55%, white);--wx-gantt-summary-fill-color:${color};--wx-gantt-summary-font-color:#fff}`;
+    })
+    .join("");
 
   return (
     <section className="tp-timeline flex flex-col gap-2" aria-label="Oś czasu" data-testid="timeline">
@@ -428,7 +436,7 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
 
       {projects.length ? (
         <div className="h-[calc(100vh-11rem)] min-h-80 overflow-hidden rounded-md border border-[var(--line)]">
-          <style>{linkCss}</style>
+          <style>{linkCss + projectCss}</style>
           <Chart tasks={ganttTasks} links={ganttLinks} scale={scale} start={range.start} end={range.end} highlight={highlight} dark={dark} init={init} />
         </div>
       ) : (

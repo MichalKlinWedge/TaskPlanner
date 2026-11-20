@@ -62,7 +62,8 @@ const bySortKey = (a: TimelineTask, b: TimelineTask) => (a.sortKey < b.sortKey ?
 
 /**
  * Wiersze osi: projekty w podanej kolejności, pod nimi zadania i podzadania (bez nawyków i anulowanych)
- * w kolejności ręcznej. Zadanie bez terminu zostaje tylko wtedy, gdy ma potomka z paskiem.
+ * po dacie początku paska (zadanie bez paska — najwcześniejszy początek potomków; bez dat na końcu),
+ * przy równej dacie w kolejności ręcznej. Zadanie bez terminu zostaje tylko wtedy, gdy ma potomka z paskiem.
  */
 export function timelineModel(projects: readonly TimelineProject[], tasks: readonly TimelineTask[], deps: readonly Dependency[]): TimelineModel {
   const projectIds = new Set(projects.map((p) => p.id));
@@ -76,8 +77,24 @@ export function timelineModel(projects: readonly TimelineProject[], tasks: reado
     const key = parent ?? `list:${t.listId}`;
     children.set(key, [...(children.get(key) ?? []), t]);
   }
-  // Kolejność ręczna (`sort_key`, jak na liście) — wiersze nie przeskakują po przesunięciu paska.
-  for (const list of children.values()) list.sort(bySortKey);
+  // Początek do sortowania: własny pasek albo najwcześniejszy potomek (wiersz zadania bez terminu).
+  const starts = new Map<string, LocalDate | null>();
+  const startOf = (t: TimelineTask): LocalDate | null => {
+    if (starts.has(t.id)) return starts.get(t.id)!;
+    let start = spans.get(t.id)?.start ?? null;
+    for (const c of children.get(t.id) ?? []) {
+      const s = startOf(c);
+      if (s && (!start || s < start)) start = s;
+    }
+    starts.set(t.id, start);
+    return start;
+  };
+  const byStart = (a: TimelineTask, b: TimelineTask) => {
+    const x = startOf(a);
+    const y = startOf(b);
+    return x === y ? bySortKey(a, b) : !x ? 1 : !y ? -1 : x < y ? -1 : 1;
+  };
+  for (const list of children.values()) list.sort(byStart);
 
   // Widoczne: z paskiem albo z widocznym potomkiem.
   const visible = new Set<string>();

@@ -36,7 +36,7 @@ const applyOps = (tasks: TimelineTask[], ops: readonly TaskOp[]): TimelineTask[]
   });
 
 describe('wiersze osi', () => {
-  it('projekt → zadania → podzadania w kolejności ręcznej; bez terminu tylko z potomkiem z terminem', () => {
+  it('projekt → zadania → podzadania po początku; bez terminu tylko z potomkiem z terminem', () => {
     const tasks = [
       task('b', null, '2026-11-25', { sortKey: 'c' }),
       task('a', '2026-11-20', '2026-11-23', { sortKey: 'a' }),
@@ -59,6 +59,19 @@ describe('wiersze osi', () => {
     expect(model.undated).toBe(2);
     expect(model.links.map((l) => l.id)).toEqual(['a>b']);
     expect(model.violations[0]).toMatchObject({ earliestStart: '2026-11-26', days: 1 });
+  });
+
+  it('kolejność po dacie początku (bez paska — najwcześniejszy potomek), przy równej dacie ręczna', () => {
+    const tasks = [
+      task('late', '2027-01-23', '2027-02-17', { sortKey: 'a' }),
+      task('early', '2026-11-29', '2027-01-17', { sortKey: 'b' }),
+      task('group', null, null, { sortKey: 'c' }),
+      task('g2', null, '2026-12-10', { parentId: 'group', sortKey: 'a' }),
+      task('g1', '2026-11-23', '2026-11-23', { parentId: 'group', sortKey: 'b' }),
+      task('same2', '2026-11-29', '2026-11-29', { sortKey: 'd' }),
+    ];
+    const model = timelineModel([{ id: 'p1', name: 'Magazyn', startDate: null, endDate: null }], tasks, []);
+    expect(model.rows.map((r) => r.id)).toEqual(['p1', 'group', 'g1', 'g2', 'early', 'same2', 'late']);
   });
 
   it('projekt bez zadań z terminem — wiersz z datami projektu albo bez paska', () => {
