@@ -133,6 +133,7 @@ export function SavedFilterView({ data, ctx, filter, navigate }: { data: AppData
   const names = {
     tags: new Map(data.tags.map((t) => [t.id, t.name])),
     lists: new Map(data.lists.map((l) => [l.id, l.name])),
+    assignees: new Map(data.collaborators.map((c) => [c.id, c.name])),
   };
 
   return (

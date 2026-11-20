@@ -225,6 +225,10 @@ export type RelativeDate = z.infer<typeof RelativeDate>;
 
 const ids = z.array(z.uuid()).min(1);
 
+/** Odpowiedzialny w filtrze: id współpracownika albo `creator` — zadania bez wskazanej osoby (twórca). */
+export const ASSIGNEE_CREATOR = 'creator';
+export const ASSIGNEE_CREATOR_LABEL = 'Twórca zadania';
+
 /** Definicja filtra (M4, `saved_filters.query`): warunki łączone przez „i”; brak pola = bez warunku. */
 export const FilterQuery = z.object({
   tags: z.object({ ids, match: z.enum(['all', 'any']) }).optional(),
@@ -232,6 +236,8 @@ export const FilterQuery = z.object({
   lists: ids.optional(),
   workspaces: ids.optional(),
   statuses: z.array(TaskStatus).min(1).optional(),
+  /** Odpowiedzialny (v1.x): id współpracowników i/lub `creator`. */
+  assignees: z.array(z.union([z.literal(ASSIGNEE_CREATOR), z.uuid()])).min(1).optional(),
   due: z
     .discriminatedUnion('kind', [
       z.object({ kind: z.literal('none') }),
@@ -261,6 +267,7 @@ export function matchesFilter(query: FilterQuery, today: LocalDate): (task: View
     if (query.lists && !query.lists.includes(t.listId)) return false;
     if (query.workspaces && !query.workspaces.includes(t.workspaceId)) return false;
     if (query.statuses && !query.statuses.includes(t.status)) return false;
+    if (query.assignees && !query.assignees.includes(t.assigneeId ?? ASSIGNEE_CREATOR)) return false;
     if (due?.kind === 'none' && t.dueDate) return false;
     if (due?.kind === 'any' && !t.dueDate) return false;
     if (due?.kind === 'range' && (!t.dueDate || (from && t.dueDate < from) || (to && t.dueDate > to))) return false;
@@ -308,7 +315,7 @@ export interface FilterChip {
 }
 
 /** Warunki filtra po polsku — chipy nad widokiem i opis zapisanego filtra. */
-export function filterChips(query: FilterQuery, names: { lists?: ReadonlyMap<string, string>; workspaces?: ReadonlyMap<string, string>; tags?: ReadonlyMap<string, string> } = {}): FilterChip[] {
+export function filterChips(query: FilterQuery, names: { lists?: ReadonlyMap<string, string>; workspaces?: ReadonlyMap<string, string>; tags?: ReadonlyMap<string, string>; assignees?: ReadonlyMap<string, string> } = {}): FilterChip[] {
   const name = (map: ReadonlyMap<string, string> | undefined, ids: readonly string[]) => ids.map((id) => map?.get(id) ?? '?').join(', ');
   const chips: FilterChip[] = [];
   if (query.tags) chips.push({ field: 'tags', label: `${query.tags.ids.length > 1 ? (query.tags.match === 'all' ? 'Wszystkie tagi' : 'Dowolny tag') : 'Tag'}: ${name(names.tags, query.tags.ids)}` });
@@ -316,6 +323,10 @@ export function filterChips(query: FilterQuery, names: { lists?: ReadonlyMap<str
   if (query.lists) chips.push({ field: 'lists', label: `Lista: ${name(names.lists, query.lists)}` });
   if (query.workspaces) chips.push({ field: 'workspaces', label: `Przestrzeń: ${name(names.workspaces, query.workspaces)}` });
   if (query.statuses) chips.push({ field: 'statuses', label: `Status: ${query.statuses.map((s) => TASK_STATUS[s].toLowerCase()).join(', ')}` });
+  if (query.assignees) {
+    const people = query.assignees.map((id) => (id === ASSIGNEE_CREATOR ? ASSIGNEE_CREATOR_LABEL.toLowerCase() : (names.assignees?.get(id) ?? '?')));
+    chips.push({ field: 'assignees', label: `Odpowiedzialny: ${people.join(', ')}` });
+  }
   if (query.due) {
     const preset = duePreset(query.due);
     const label = preset

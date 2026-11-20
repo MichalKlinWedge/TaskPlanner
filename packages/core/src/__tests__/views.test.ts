@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { localDateAt, localDateTimeAt, weekStart } from '../dates.ts';
 import {
   applyFilter,
+  ASSIGNEE_CREATOR,
   buildTree,
   DUE_PRESETS,
   duePreset,
@@ -328,6 +329,24 @@ describe('wydajność', () => {
     selectToday(many, ctx);
     selectUpcoming(many, ctx);
     expect(performance.now() - start).toBeLessThan(50);
+  });
+});
+
+describe('filtr po odpowiedzialnym', () => {
+  const ANNA = '0190a000-0000-7000-8000-0000000000c1';
+  const PIOTR = '0190a000-0000-7000-8000-0000000000c2';
+  const tasks = [task({ id: 'a', assigneeId: ANNA }), task({ id: 'p', assigneeId: PIOTR }), task({ id: 't', assigneeId: null }), task({ id: 'u' })];
+  const run = (q: FilterQuery) => applyFilter(tasks, FilterQuery.parse(q), '2026-11-18').map((t) => t.id);
+
+  it('osoba, twórca (brak odpowiedzialnego) albo kilka naraz', () => {
+    expect(run({ assignees: [ANNA] })).toEqual(['a']);
+    expect(run({ assignees: [ASSIGNEE_CREATOR] })).toEqual(['t', 'u']);
+    expect(run({ assignees: [PIOTR, ASSIGNEE_CREATOR] })).toEqual(['p', 't', 'u']);
+    expect(FilterQuery.safeParse({ assignees: ['ktoś'] }).success).toBe(false);
+  });
+
+  it('chip z nazwami', () => {
+    expect(filterChips({ assignees: [ASSIGNEE_CREATOR, ANNA] }, { assignees: new Map([[ANNA, 'Anna Nowak']]) })[0]).toEqual({ field: 'assignees', label: 'Odpowiedzialny: twórca zadania, Anna Nowak' });
   });
 });
 

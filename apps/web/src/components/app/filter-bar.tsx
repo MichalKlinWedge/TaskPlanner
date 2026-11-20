@@ -1,22 +1,23 @@
 "use client";
 
 /**
- * Chipy filtrów nad widokiem (M4): tagi (wszystkie / dowolny), priorytet, lista, status, termin,
- * godzina. Aktywny warunek = chip z „×”; „+ Filtr” dodaje kolejny. Opis warunków i gotowe zakresy
+ * Chipy filtrów nad widokiem (M4): tagi (wszystkie / dowolny), priorytet, lista, status,
+ * odpowiedzialny, termin, godzina. Aktywny warunek = chip z „×”; „+ Filtr” dodaje kolejny. Opis warunków i gotowe zakresy
  * terminu są w `core` (`filterChips`, `DUE_PRESETS`).
  */
-import { DUE_PRESETS, duePreset, filterChips, isEmptyFilter, LIST_KIND, PRIORITY, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from "@taskplanner/core";
+import { ASSIGNEE_CREATOR, ASSIGNEE_CREATOR_LABEL, collaboratorsByStatus, DUE_PRESETS, duePreset, filterChips, isEmptyFilter, LIST_KIND, PRIORITY, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from "@taskplanner/core";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useAppEnv } from "./app-env";
 
-type Field = "tags" | "priorities" | "lists" | "statuses" | "due" | "hasTime";
+type Field = "tags" | "priorities" | "lists" | "statuses" | "assignees" | "due" | "hasTime";
 
 const FIELD_LABEL: Record<Field, string> = {
   tags: "Tagi",
   priorities: "Priorytet",
   lists: "Lista",
   statuses: "Status",
+  assignees: "Odpowiedzialny",
   due: "Termin",
   hasTime: "Godzina",
 };
@@ -61,6 +62,7 @@ export function FilterBar({ query, onChange, hide = [], children }: { query: Fil
     tags: new Map(data.tags.map((t) => [t.id, t.name])),
     lists: new Map(data.lists.map((l) => [l.id, l.kind === "inbox" ? `Inbox (${data.workspaces.find((w) => w.id === l.workspaceId)?.name})` : l.name])),
     workspaces: new Map(data.workspaces.map((w) => [w.id, w.name])),
+    assignees: new Map(data.collaborators.map((c) => [c.id, c.name])),
   };
   const set = (patch: Partial<FilterQuery>) => onChange({ ...query, ...patch });
   const chips = filterChips(query, names).filter((c) => !hide.includes(c.field as Field));
@@ -118,6 +120,20 @@ export function FilterBar({ query, onChange, hide = [], children }: { query: Fil
             {TASK_STATUS[s]}
           </Check>
         ));
+      case "assignees":
+        return (
+          <>
+            <Check checked={!!query.assignees?.includes(ASSIGNEE_CREATOR)} onChange={() => set({ assignees: toggle(query.assignees, ASSIGNEE_CREATOR) })}>
+              <span title="Zadania bez wskazanej osoby odpowiedzialnej">{ASSIGNEE_CREATOR_LABEL}</span>
+            </Check>
+            {collaboratorsByStatus(data.collaborators).map((c) => (
+              <Check key={c.id} checked={!!query.assignees?.includes(c.id)} onChange={() => set({ assignees: toggle(query.assignees, c.id) })}>
+                {c.name}
+                {c.archivedAt ? <span className="text-xs text-[var(--muted)]">nieaktywny</span> : null}
+              </Check>
+            ))}
+          </>
+        );
       case "due": {
         const current = duePreset(query.due);
         return (Object.keys(DUE_PRESETS) as DuePreset[]).map((k) => (

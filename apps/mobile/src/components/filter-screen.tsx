@@ -23,6 +23,7 @@ export function FilterResults({ query, header, onChange }: { query: FilterQuery;
     lists: new Map(data.lists.map((l) => [l.id, l.name])),
     workspaces: new Map(data.workspaces.map((w) => [w.id, w.name])),
     tags: new Map(data.tags.map((t) => [t.id, t.name])),
+    assignees: new Map(data.collaborators.map((c) => [c.id, c.name])),
   });
   return (
     <TaskSections

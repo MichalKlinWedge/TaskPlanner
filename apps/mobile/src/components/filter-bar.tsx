@@ -3,7 +3,7 @@
  * zmienia, „×” usuwa), „+ Filtr” dodaje kolejny, „Wyczyść” zdejmuje wszystkie. Wybór w arkuszach
  * `pickOption` / `pickMany`; opis warunków i gotowe zakresy terminu z `core`.
  */
-import { DUE_PRESETS, duePreset, filterChips, isEmptyFilter, PRIORITY, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from '@taskplanner/core';
+import { ASSIGNEE_CREATOR, ASSIGNEE_CREATOR_LABEL, collaboratorsByStatus, DUE_PRESETS, duePreset, filterChips, isEmptyFilter, PRIORITY, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from '@taskplanner/core';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useView } from '@/lib/app-data';
@@ -11,13 +11,14 @@ import { useView } from '@/lib/app-data';
 import { pickMany, pickOption } from './pickers';
 import { usePalette } from './ui';
 
-export type FilterField = 'tags' | 'priorities' | 'lists' | 'statuses' | 'due' | 'hasTime';
+export type FilterField = 'tags' | 'priorities' | 'lists' | 'statuses' | 'assignees' | 'due' | 'hasTime';
 
 const FIELD_LABEL: Record<FilterField, string> = {
   tags: 'Tagi',
   priorities: 'Priorytet',
   lists: 'Lista',
   statuses: 'Status',
+  assignees: 'Odpowiedzialny',
   due: 'Termin',
   hasTime: 'Godzina',
 };
@@ -31,6 +32,7 @@ export function FilterBar({ query, onChange, hide = [] }: { query: FilterQuery; 
     tags: new Map(data.tags.map((t) => [t.id, t.name])),
     lists: new Map(data.lists.map((l) => [l.id, l.kind === 'inbox' ? `Inbox (${data.workspaces.find((w) => w.id === l.workspaceId)?.name})` : l.name])),
     workspaces: new Map(data.workspaces.map((w) => [w.id, w.name])),
+    assignees: new Map(data.collaborators.map((c) => [c.id, c.name])),
   };
   const set = (patch: Partial<FilterQuery>) => onChange({ ...query, ...patch });
   const chips = filterChips(query, names).filter((c) => !hide.includes(c.field as FilterField));
@@ -72,6 +74,14 @@ export function FilterBar({ query, onChange, hide = [] }: { query: FilterQuery; 
       case 'statuses': {
         const values = await pickMany<TaskStatus>('Status', (Object.keys(TASK_STATUS) as TaskStatus[]).map((s) => ({ label: TASK_STATUS[s], value: s, selected: !!query.statuses?.includes(s) })));
         if (values) set({ statuses: orUndefined(values) });
+        return;
+      }
+      case 'assignees': {
+        const values = await pickMany<string>('Odpowiedzialny', [
+          { label: ASSIGNEE_CREATOR_LABEL, hint: 'bez wskazanej osoby', value: ASSIGNEE_CREATOR, selected: !!query.assignees?.includes(ASSIGNEE_CREATOR) },
+          ...collaboratorsByStatus(data.collaborators).map((c) => ({ label: c.name, hint: c.archivedAt ? 'nieaktywny' : undefined, value: c.id, selected: !!query.assignees?.includes(c.id) })),
+        ]);
+        if (values) set({ assignees: orUndefined(values) });
         return;
       }
       case 'due': {

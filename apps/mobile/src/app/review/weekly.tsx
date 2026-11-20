@@ -3,18 +3,23 @@
  * (z „Przenieś do…”), zaległe, aktywne projekty bez następnego kroku, „oczekuje” > 7 dni,
  * nadchodzący tydzień, nawyki z 7 dni. Kroki i liczniki — `weeklyReview` z core, decyzje przy
  * każdym zadaniu przez `bulkTaskOps` (z „Cofnij”), na końcu podsumowanie i zapis `review_sessions`.
+ * Chipy filtra zawężają zadania w krokach Inbox, Zaległe, Oczekuje i Nadchodzący tydzień (projekty
+ * i nawyki zostają całe); filtr trwa do opuszczenia ekranu, podsumowanie liczy wszystko.
  */
 import {
   addDays,
   bulkTaskOps,
   capitalized,
   dayLabel,
+  isEmptyFilter,
+  matchesFilter,
   needsDecision,
   plural,
   PRIORITY,
   relativeDay,
   reviewStats,
   weeklyReview,
+  type FilterQuery,
   type ReviewAction,
   type ViewTask,
 } from '@taskplanner/core';
@@ -24,6 +29,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTaskActions } from '@/components/actions';
+import { FilterBar } from '@/components/filter-bar';
 import { STATE_LABEL, useStateColors } from '@/components/habits';
 import { pickDate, pickOption } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
@@ -40,6 +46,8 @@ const STEPS = [
   { id: 'habits', title: 'Nawyki tygodnia' },
 ] as const;
 type Step = (typeof STEPS)[number]['id'];
+/** Kroki z pojedynczymi zadaniami — tylko w nich działa filtr. */
+const FILTERED: readonly Step[] = ['inbox', 'overdue', 'waiting', 'upcoming'];
 
 export default function WeeklyReviewScreen() {
   const p = usePalette();
@@ -52,10 +60,24 @@ export default function WeeklyReviewScreen() {
   const [step, setStep] = useState<Step>('inbox');
   const [log, setLog] = useState<LogEntry[]>([]);
   const [finished, setFinished] = useState(false);
+  const [filter, setFilter] = useState<FilterQuery>({});
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
 
   const lists = useMemo(() => data.lists.map((l) => ({ id: l.id, workspaceId: l.workspaceId, kind: l.kind, status: l.projectStatus })), [data.lists]);
-  const review = useMemo(() => weeklyReview({ tasks: data.tasks, lists, completions: data.habitCompletions }, ctx), [data.tasks, lists, data.habitCompletions, ctx]);
+  const full = useMemo(() => weeklyReview({ tasks: data.tasks, lists, completions: data.habitCompletions }, ctx), [data.tasks, lists, data.habitCompletions, ctx]);
+  // Filtr po wyliczeniu kroków: projekt nie staje się „bez następnego kroku”, bo filtr ukrył jego zadania.
+  const review = useMemo(() => {
+    if (isEmptyFilter(filter)) return full;
+    const match = matchesFilter(filter, today);
+    return {
+      ...full,
+      inbox: full.inbox.filter(match),
+      overdue: full.overdue.filter(match),
+      waiting: full.waiting.filter((w) => match(w.task)),
+      needsDecision: full.needsDecision.filter(match),
+      upcoming: { ...full.upcoming, days: full.upcoming.days.map((d) => ({ ...d, items: d.items.filter((it) => match(it.task)) })) },
+    };
+  }, [full, filter, today]);
   const counts: Record<Step, number> = {
     inbox: review.inbox.length,
     overdue: review.overdue.length,
@@ -107,7 +129,7 @@ export default function WeeklyReviewScreen() {
 
   if (finished) {
     const stats = reviewStats(log, ctx);
-    const clean = review.inbox.length === 0 && review.projectsWithoutNext.length === 0;
+    const clean = full.inbox.length === 0 && full.projectsWithoutNext.length === 0;
     return (
       <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={[styles.body, { paddingBottom: 48 + insets.bottom }]}>
         <Stack.Screen options={{ title: 'Przegląd tygodnia — gotowe' }} />
@@ -115,9 +137,9 @@ export default function WeeklyReviewScreen() {
           {(
             [
               ['Decyzje', stats.reviewed],
-              ['Inbox', review.inbox.length],
-              ['Projekty bez kroku', review.projectsWithoutNext.length],
-              ['Zaległe', review.overdue.length],
+              ['Inbox', full.inbox.length],
+              ['Projekty bez kroku', full.projectsWithoutNext.length],
+              ['Zaległe', full.overdue.length],
             ] as const
           ).map(([label, value]) => (
             <View key={label} style={[styles.stat, { borderColor: p.border, backgroundColor: p.card }]}>
@@ -255,6 +277,7 @@ export default function WeeklyReviewScreen() {
         <Text style={[styles.h2, { color: p.fg }]}>
           {at + 1}. {STEPS[at]!.title}
         </Text>
+        {FILTERED.includes(step) ? <FilterBar query={filter} onChange={setFilter} /> : null}
         {body}
         {review.needsDecision.length && (step === 'overdue' || step === 'inbox') ? (
           <Text style={{ color: p.muted, fontSize: 12 }}>{plural(review.needsDecision.length, ['zadanie przesuwane', 'zadania przesuwane', 'zadań przesuwanych'])} 3 razy lub więcej — oznaczone na żółto.</Text>
