@@ -340,6 +340,13 @@ export function Shell({
   );
 
   const workspaces = workspaceId ? data.workspaces.filter((w) => w.id === workspaceId) : data.workspaces;
+  // „Wszystkie przestrzenie”: górny Inbox to suma, więc Inbox każdej przestrzeni stoi też na czele jej sekcji.
+  // Przy jednej przestrzeni górny Inbox jest właśnie nim — bez powtórki.
+  const sectionLists = (id: string) => {
+    const own = data.lists.filter((l) => l.workspaceId === id);
+    const inbox = workspaceId ? [] : own.filter((l) => l.kind === "inbox");
+    return [...inbox, ...own.filter((l) => l.kind !== "inbox")];
+  };
   // Tagi przypisane do innych przestrzeni chowają się (otwarty zostaje do wyjścia z jego widoku).
   const sidebarTags = tagsForWorkspace(data.tags, workspaceId, route.view === "tag" ? [route.id] : []);
   const mainNav: NavEntry[] = [
@@ -476,7 +483,7 @@ export function Shell({
               ))}
             </nav>
             {workspaces.map((w) => (
-              <WorkspaceLists key={w.id} name={w.name} color={w.color} lists={data.lists.filter((l) => l.workspaceId === w.id && l.kind !== "inbox")} counts={counts.perList} route={route} navigate={navigate} />
+              <WorkspaceLists key={w.id} name={w.name} color={w.color} lists={sectionLists(w.id)} counts={counts.perList} route={route} navigate={navigate} />
             ))}
             {data.savedFilters.length ? (
               <SidebarSection title="Filtry">
