@@ -279,6 +279,7 @@ const EXTRA_SHORTCUTS: readonly { keys: readonly string[]; label: string }[] = [
   { keys: ["Ctrl+klik"], label: "Dodaj do zaznaczenia" },
   { keys: ["Shift+klik"], label: "Zaznacz zakres" },
   { keys: ["Ctrl+Spacja"], label: "Szybkie dodawanie (także w polu tekstowym)" },
+  { keys: ["["], label: "Zwiń / rozwiń panel boczny" },
 ];
 
 /** Lista skrótów (`?`): z `core/commands.ts` — tylko działające polecenia. */

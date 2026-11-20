@@ -82,6 +82,42 @@ export function Shell({
   const stored = useSyncExternalStore(subscribeWorkspace, readWorkspace, () => ALL);
   const workspaceId = stored !== ALL && data.workspaces.some((w) => w.id === stored) ? stored : null;
   const [menuOpen, setMenuOpen] = useState(false);
+  // Pasek boczny zwinięty do ikon (per przeglądarka); `peek` = rozwinięty chwilowo nad treścią, chowa się po wyborze.
+  const [collapsed, setCollapsedState] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [peek, setPeek] = useState(false);
+  const setCollapsed = useCallback((value: boolean) => {
+    setCollapsedState(value);
+    setPeek(false);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, value ? "1" : "0");
+    } catch {
+      // Bez pamięci przeglądarki — do odświeżenia.
+    }
+  }, []);
+  const asideRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!peek) return;
+    const onDown = (e: PointerEvent) => {
+      if (!asideRef.current?.contains(e.target as Node)) setPeek(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setPeek(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [peek]);
   // Etap 10: udostępnienie (Web Share Target) i zakładka: `/?share_title=…&share_text=…&share_url=…`.
   const [shared, setShared] = useState(() => (typeof window !== "undefined" ? readShare(new URLSearchParams(window.location.search)) : null));
   // Skrót „Szybkie dodawanie” z ikony aplikacji: `/?quick=1`.
@@ -185,6 +221,7 @@ export function Shell({
     mainRef.current?.scrollTo({ top: 0 });
     void Promise.resolve().then(() => {
       setMenuOpen(false);
+      setPeek(false);
       setSelected([]);
       setAdhoc({});
     });
@@ -291,6 +328,28 @@ export function Shell({
   );
 
   const workspaces = workspaceId ? data.workspaces.filter((w) => w.id === workspaceId) : data.workspaces;
+  const mainNav: NavEntry[] = [
+    { route: { view: "inbox" }, icon: "📥", label: "Inbox", count: counts.inbox },
+    { route: { view: "today" }, icon: "☀️", label: "Dziś", count: counts.today, alert: counts.overdue > 0 },
+    { route: { view: "upcoming" }, icon: "📅", label: "Nadchodzące" },
+    { route: { view: "board" }, icon: "▦", label: "Tablica" },
+    { route: { view: "calendar" }, icon: "🗓", label: "Kalendarz" },
+    { route: { view: "timeline" }, icon: "📊", label: "Oś czasu" },
+    { route: { view: "habits" }, icon: "🌱", label: "Nawyki", count: counts.habits || undefined },
+  ];
+  const bottomNav: NavEntry[] = [
+    { route: { view: "manage" }, icon: "🗂️", label: "Przestrzenie i listy" },
+    { route: { view: "review", id: "daily" }, icon: "🧭", label: "Przegląd dnia" },
+    { route: { view: "review", id: "weekly" }, icon: "🗒️", label: "Przegląd tygodnia" },
+    { route: { view: "trash" }, icon: "🗑️", label: "Kosz" },
+    { route: { view: "settings" }, icon: "⚙️", label: "Ustawienia" },
+  ];
+  const rail = collapsed && !peek;
+  const openQuickFromSidebar = () => {
+    setPeek(false);
+    setQuickOpen(true);
+  };
+  const sideButton = "hidden shrink-0 rounded-md px-2 text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)] md:block";
   // Okno szybkiego dodawania dodaje tam, skąd je wywołano (lista / „Dziś” z dzisiejszym terminem).
   const quickDefaults = list ? { listId: list.id } : route.view === "today" ? { listId: targetInbox?.id, dueDate: today } : { listId: targetInbox?.id };
 
@@ -309,8 +368,9 @@ export function Shell({
           openQuick={() => setQuickOpen(true)}
           openPalette={setPalette}
           openShortcuts={() => setShortcutsOpen(true)}
+          toggleSidebar={() => setCollapsed(!collapsed)}
         />
-        <div className="flex min-h-0 flex-1">
+        <div className="relative flex min-h-0 flex-1">
           {route.view === "focus" ? null : (
           <button
             type="button"
@@ -322,33 +382,74 @@ export function Shell({
             {menuOpen ? "Zamknij" : "Menu"}
           </button>
           )}
+          {collapsed && peek && route.view !== "focus" ? <div aria-hidden className="hidden w-14 shrink-0 border-r border-[var(--line)] bg-[var(--surface)] md:block" /> : null}
           <aside
             id="sidebar"
+            ref={asideRef}
             aria-label="Nawigacja"
-            className={`${menuOpen ? "fixed inset-0 z-10 block" : "hidden"} w-full shrink-0 overflow-y-auto border-r border-[var(--line)] bg-[var(--surface)] p-3 text-sm md:static md:w-64 ${route.view === "focus" ? "md:hidden" : "md:block"}`}
-            // Każda pozycja panelu bocznego zamyka panel zadania (edycje zapisały się już przy `blur`).
+            className={`${menuOpen ? "fixed inset-0 z-10 block" : "hidden"} w-full shrink-0 overflow-y-auto border-r border-[var(--line)] bg-[var(--surface)] p-3 text-sm ${route.view === "focus" ? "md:hidden" : "md:block"} ${rail ? "md:static md:w-14 md:px-2" : peek ? "md:absolute md:inset-y-0 md:left-0 md:z-30 md:w-64 md:shadow-xl" : "md:static md:w-64"}`}
+            // Każda pozycja panelu bocznego zamyka panel zadania (edycje zapisały się już przy `blur`), a rozwinięty chwilowo — też siebie.
             onClickCapture={(e) => {
-              if (openTaskId && (e.target as Element).closest("a, button, select, [role=button]")) setOpenTaskId(null);
+              const target = e.target as Element;
+              if (openTaskId && target.closest("a, button, select, [role=button]")) setOpenTaskId(null);
+              if (peek && target.closest("a")) setPeek(false);
             }}
           >
-            <Select
-              aria-label="Przestrzeń"
-              value={workspaceId ?? ALL}
-              onChange={(e) => writeWorkspace(e.target.value)}
-              className="mb-3 w-full"
-            >
-              <option value={ALL}>Wszystkie przestrzenie</option>
-              {data.workspaces.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </Select>
+            {rail ? (
+              <div className="hidden flex-col items-center gap-0.5 md:flex">
+                <button type="button" onClick={() => setPeek(true)} title="Rozwiń panel boczny ([)" aria-label="Rozwiń panel boczny" aria-expanded={false} className="mb-1 h-9 w-10 rounded-md text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]">
+                  »
+                </button>
+                <FocusIndicator navigate={navigate} compact />
+                <button
+                  type="button"
+                  onClick={openQuickFromSidebar}
+                  title="Dodaj zadanie (Q, Ctrl+Spacja)"
+                  aria-label="Dodaj zadanie"
+                  className="mb-2 flex h-9 w-10 items-center justify-center rounded-md bg-[var(--accent)] text-lg font-medium text-white hover:opacity-90"
+                >
+                  +
+                </button>
+                {mainNav.map((n) => (
+                  <NavItem key={routeHash(n.route)} {...n} current={route} navigate={navigate} compact />
+                ))}
+                <div className="my-2 w-8 border-t border-[var(--line)]" />
+                {bottomNav.map((n) => (
+                  <NavItem key={routeHash(n.route)} {...n} current={route} navigate={navigate} compact />
+                ))}
+              </div>
+            ) : null}
+            {/* Zwinięty: pełna treść tylko schowana — przypomnienia o przeglądzie i licznik skupienia działają dalej. */}
+            <div className={rail ? "md:hidden" : undefined}>
+            <div className="mb-3 flex gap-1">
+              <Select aria-label="Przestrzeń" value={workspaceId ?? ALL} onChange={(e) => writeWorkspace(e.target.value)} className="min-w-0 flex-1">
+                <option value={ALL}>Wszystkie przestrzenie</option>
+                {data.workspaces.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </Select>
+              {peek ? (
+                <button type="button" onClick={() => setCollapsed(false)} title="Przypnij panel boczny ([)" aria-label="Przypnij panel boczny" className={sideButton}>
+                  📌
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => (peek ? setPeek(false) : setCollapsed(true))}
+                title={peek ? "Schowaj panel boczny (Esc)" : "Zwiń panel boczny do ikon ([)"}
+                aria-label={peek ? "Schowaj panel boczny" : "Zwiń panel boczny"}
+                className={sideButton}
+              >
+                «
+              </button>
+            </div>
             <FocusIndicator navigate={navigate} />
             <ReviewNudge settings={settings} navigate={navigate} />
             <button
               type="button"
-              onClick={() => setQuickOpen(true)}
+              onClick={openQuickFromSidebar}
               title="Szybkie dodawanie (Q, Ctrl+Spacja)"
               className="mb-3 flex w-full items-center gap-2 rounded-md bg-[var(--accent)] px-3 py-1.5 font-medium text-white hover:opacity-90"
             >
@@ -356,13 +457,9 @@ export function Shell({
               <kbd className="ml-auto rounded bg-white/20 px-1.5 text-xs font-normal">Q</kbd>
             </button>
             <nav className="flex flex-col gap-0.5">
-              <NavItem route={{ view: "inbox" }} current={route} navigate={navigate} icon="📥" label="Inbox" count={counts.inbox} />
-              <NavItem route={{ view: "today" }} current={route} navigate={navigate} icon="☀️" label="Dziś" count={counts.today} alert={counts.overdue > 0} />
-              <NavItem route={{ view: "upcoming" }} current={route} navigate={navigate} icon="📅" label="Nadchodzące" />
-              <NavItem route={{ view: "board" }} current={route} navigate={navigate} icon="▦" label="Tablica" />
-              <NavItem route={{ view: "calendar" }} current={route} navigate={navigate} icon="🗓" label="Kalendarz" />
-              <NavItem route={{ view: "timeline" }} current={route} navigate={navigate} icon="📊" label="Oś czasu" />
-              <NavItem route={{ view: "habits" }} current={route} navigate={navigate} icon="🌱" label="Nawyki" count={counts.habits || undefined} />
+              {mainNav.map((n) => (
+                <NavItem key={routeHash(n.route)} {...n} current={route} navigate={navigate} />
+              ))}
             </nav>
             {workspaces.map((w) => (
               <WorkspaceLists key={w.id} name={w.name} color={w.color} lists={data.lists.filter((l) => l.workspaceId === w.id && l.kind !== "inbox")} counts={counts.perList} route={route} navigate={navigate} />
@@ -382,12 +479,11 @@ export function Shell({
               </SidebarSection>
             ) : null}
             <nav className="mt-4 flex flex-col gap-0.5 border-t border-[var(--line)] pt-3">
-              <NavItem route={{ view: "manage" }} current={route} navigate={navigate} icon="🗂️" label="Przestrzenie i listy" />
-              <NavItem route={{ view: "review", id: "daily" }} current={route} navigate={navigate} icon="🧭" label="Przegląd dnia" />
-              <NavItem route={{ view: "review", id: "weekly" }} current={route} navigate={navigate} icon="🗒️" label="Przegląd tygodnia" />
-              <NavItem route={{ view: "trash" }} current={route} navigate={navigate} icon="🗑️" label="Kosz" />
-              <NavItem route={{ view: "settings" }} current={route} navigate={navigate} icon="⚙️" label="Ustawienia" />
+              {bottomNav.map((n) => (
+                <NavItem key={routeHash(n.route)} {...n} current={route} navigate={navigate} />
+              ))}
             </nav>
+            </div>
           </aside>
           <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
             <div className={`mx-auto w-full p-4 pb-20 sm:p-6 ${wide ? "" : route.view === "today" ? "max-w-5xl" : "max-w-3xl"}`}>{content}</div>
@@ -424,6 +520,10 @@ export function Shell({
 }
 
 const sameRoute = (a: Route, b: Route) => routeHash(a) === routeHash(b);
+
+const COLLAPSED_KEY = "tp-sidebar-collapsed";
+
+type NavEntry = { route: Route; icon: string; label: string; count?: number; alert?: boolean };
 
 /** Sekcja paska bocznego zwijana kliknięciem w nagłówek (stan per przeglądarka). */
 /** Chipy filtra listy: zapis w `view_prefs.filter` tej listy (synchronizowany), więc wybór wraca po powrocie do listy. */
@@ -486,6 +586,7 @@ function NavItem({
   count,
   alert,
   project,
+  compact,
 }: {
   route: Route;
   current: Route;
@@ -497,8 +598,33 @@ function NavItem({
   alert?: boolean;
   /** Projekt: znacznik w kształcie rombu (lista — kropka). */
   project?: boolean;
+  /** Zwinięty pasek boczny: sama ikona, nazwa w podpowiedzi, licznik jako plakietka. */
+  compact?: boolean;
 }) {
   const active = sameRoute(route, current);
+  if (compact)
+    return (
+      <a
+        href={routeHash(route)}
+        onClick={(e) => {
+          e.preventDefault();
+          navigate(route);
+        }}
+        aria-current={active ? "page" : undefined}
+        title={count ? `${label} (${count})` : label}
+        className={`relative flex h-9 w-10 items-center justify-center rounded-md ${active ? "bg-[var(--hover)]" : "hover:bg-[var(--hover)]"}`}
+      >
+        <span aria-hidden>{icon}</span>
+        <span className="sr-only">{label}</span>
+        {count ? (
+          <span
+            className={`absolute -top-0.5 -right-1 min-w-4 rounded-full px-1 text-center text-[10px] leading-4 ${alert ? "bg-[var(--danger)] font-semibold text-white" : "border border-[var(--line)] bg-[var(--surface)] text-[var(--muted)]"}`}
+          >
+            {count > 99 ? "99+" : count}
+          </span>
+        ) : null}
+      </a>
+    );
   return (
     <a
       href={routeHash(route)}
@@ -613,6 +739,7 @@ function Keyboard({
   openQuick,
   openPalette,
   openShortcuts,
+  toggleSidebar,
 }: {
   blocked: boolean;
   selected: string[];
@@ -621,6 +748,7 @@ function Keyboard({
   openQuick: () => void;
   openPalette: (mode: PaletteMode) => void;
   openShortcuts: () => void;
+  toggleSidebar: () => void;
 }) {
   const { openTask, openTaskId } = useAppEnv();
   const bulk = useBulk(selected);
@@ -671,6 +799,7 @@ function Keyboard({
         q: openQuick,
         "/": () => openPalette("search"),
         "?": openShortcuts,
+        "[": toggleSidebar,
         j: () => move(1, event.shiftKey),
         k: () => move(-1, event.shiftKey),
         Enter: () => openTask(selected.at(-1)!),
@@ -694,7 +823,7 @@ function Keyboard({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [blocked, selected, setSelected, navigate, openQuick, openPalette, openShortcuts, openTask, openTaskId, bulk]);
+  }, [blocked, selected, setSelected, navigate, openQuick, openPalette, openShortcuts, toggleSidebar, openTask, openTaskId, bulk]);
 
   return null;
 }

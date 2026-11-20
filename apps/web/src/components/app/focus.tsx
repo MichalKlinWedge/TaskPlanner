@@ -254,12 +254,25 @@ function dial(api: FocusApi): string {
 // ── Wskaźnik w pasku bocznym ─────────────────────────────────────────────────────────────────
 
 /** Aktywny timer (także uruchomiony na innym urządzeniu) — klik otwiera tryb skupienia. */
-export function FocusIndicator({ navigate }: { navigate: (route: Route) => void }) {
+export function FocusIndicator({ navigate, compact }: { navigate: (route: Route) => void; compact?: boolean }) {
   const api = useFocus();
   const { data } = useAppEnv();
   const { state } = api;
   if (state.phase === "idle") return null;
   const task = state.taskId ? data.tasks.find((t) => t.id === state.taskId) : undefined;
+  // Zwinięty pasek boczny: ikona i czas, reszta w podpowiedzi.
+  if (compact)
+    return (
+      <button
+        type="button"
+        onClick={() => navigate({ view: "focus" })}
+        title={`${FOCUS_PHASE[state.phase]}${state.paused ? " · pauza" : ""} — ${task?.title ?? "Bez zadania"} (F)`}
+        className={`mb-1 flex w-10 flex-col items-center rounded-md border py-0.5 ${isBreak(state.phase) || state.phase === "ready" ? "border-green-500/50 bg-green-500/10" : "border-[var(--accent)]/50 bg-[var(--accent)]/10"}`}
+      >
+        <span aria-hidden>{state.paused ? "⏸" : state.phase === "ready" ? "✓" : "⏱"}</span>
+        <span className="font-mono text-[10px] tabular-nums">{state.phase === "ready" ? "" : dial(api)}</span>
+      </button>
+    );
   return (
     <button
       type="button"
