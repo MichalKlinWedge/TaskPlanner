@@ -45,6 +45,7 @@ Stan na **18.11.2026** (oficjalna dokumentacja i cenniki). Przed wprowadzeniem n
 | Artefakty | 500 MB (wspólnie z Packages), cache 10 GB na repozytorium | W | j.w. |
 | Retencja artefaktów i logów | domyślnie 90 dni; repozytorium publiczne 1–90, prywatne 1–400 | W | docs.github.com/en/organizations/managing-organization-settings/configuring-the-retention-period-for-github-actions-artifacts-and-logs-in-your-organization (19.11.2026) |
 | Pobieranie artefaktów | wymaga dostępu do odczytu repozytorium — w publicznym = artefakt traktować jak publiczny (kopia bazy tylko zaszyfrowana) | W | docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts (19.11.2026) |
+| REST API bez tokena (sprawdzanie aktualizacji APK w aplikacji: `GET /repos/…/releases`) | **60 zapytań/h na adres IP**; aplikacja pyta najwyżej co 6 h + ręcznie; pobranie pliku z Releases nie liczy się do limitu API | W | docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api; nagłówek `x-ratelimit-limit: 60` (20.11.2026) |
 | Zaplanowane workflow | w repozytorium publicznym wyłączane po 60 dniach bez aktywności w repozytorium | Ś | docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows (19.11.2026) |
 
 **Wniosek:** build APK na `ubuntu-latest` (najtańszy, bez problemu długich ścieżek Windows); szacunkowo 15–25 min na build bez cache Gradle → ok. 80–130 buildów/mies. w limicie. Artefakt z retencją 30 dni, starsze APK w Releases.

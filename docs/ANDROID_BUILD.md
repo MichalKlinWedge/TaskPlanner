@@ -44,6 +44,10 @@ Klucz podpisu jest na zawsze: APK podpisany innym kluczem nie zaktualizuje zains
 
 Bez sekretów workflow też działa, ale APK jest podpisany kluczem debug (ostrzeżenie w przebiegu).
 
+### Aktualizacja w aplikacji
+
+Od 0.1.3 aplikacja sama sprawdza GitHub Releases (przy starcie i powrocie, najwyżej co 6 h; „Ustawienia → Aktualizacje → Sprawdź teraz”): nowsze `android-v*` z plikiem `.apk` → baner „Nowa wersja” → pobranie do pamięci podręcznej z postępem → systemowy instalator (`REQUEST_INSTALL_PACKAGES`; Android pyta o zgodę, za pierwszym razem także „Instaluj nieznane aplikacje”). Działa tylko między APK podpisanymi tym samym kluczem (z Actions z sekretami). Wydanie = podbić `version` i `versionCode` w `app.json`, commit, tag `android-v<version>`; notki wydania to commity `apps/mobile` i `packages` od poprzedniego tagu. Kod: core `app-update.ts`, `apps/mobile/src/lib/app-update.ts`, `components/app-update.tsx`.
+
 ### Uwagi
 
 - APK lokalny (klucz debug) i z Actions (klucz release) mają różne podpisy — przy zmianie trzeba odinstalować aplikację (lokalne dane znikają).

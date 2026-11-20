@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 
+import { UpdateSection } from '@/components/app-update';
 import { BackgroundStatus } from '@/components/background-status';
 import { ErrorsSection } from '@/components/errors-section';
 import { SyncIndicator } from '@/components/sync-indicator';
@@ -154,6 +155,8 @@ export default function Settings() {
         )}
         {info ? <P tone={info.startsWith('Błąd') ? 'bad' : 'ok'}>{info}</P> : null}
       </Section>
+
+      <UpdateSection />
 
       <BackgroundStatus />
 
