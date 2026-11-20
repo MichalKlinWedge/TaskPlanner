@@ -3,10 +3,11 @@
  * (`boardColumns`) — jedna kolumna na ekranie, przełączana zakładkami z licznikami; kartę
  * przenosi menu „⇄” (do innej kolumny na początek, wyżej / niżej w kolumnie) przez `boardDropOps`,
  * jak przeciąganie na webie (atrybut kolumny + `board_sort_key`, z „Cofnij”).
- * `?list=` — tablica listy (kryterium w `view_prefs.boardBy`, zadania po filtrze listy `view_prefs.filter`), bez — bieżącej przestrzeni
+ * `?list=` — tablica listy (kryterium w `view_prefs.boardBy`, chipy filtra zapisane w `view_prefs.filter`
+ * jak na ekranie listy), bez — bieżącej przestrzeni (chipy filtra w pamięci do zamknięcia aplikacji)
  * (kryterium zapamiętane na urządzeniu).
  */
-import { applyFilter, BOARD_BY, boardColumns, isEmptyFilter, boardDropOps, type BoardBy, type BoardColumn, type ViewTask } from '@taskplanner/core';
+import { applyFilter, BOARD_BY, boardColumns, isEmptyFilter, type FilterQuery, boardDropOps, type BoardBy, type BoardColumn, type ViewTask } from '@taskplanner/core';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import Storage from 'expo-sqlite/kv-store';
 import { useMemo, useState } from 'react';
@@ -14,6 +15,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTaskActions } from '@/components/actions';
+import { FilterBar } from '@/components/filter-bar';
 import { pickOption, type Option } from '@/components/pickers';
 import { TaskRow } from '@/components/task-row';
 import { Chip, usePalette } from '@/components/ui';
@@ -21,6 +23,7 @@ import { listLabel, useView } from '@/lib/app-data';
 import { mutate } from '@/lib/sync';
 
 const BY_KEY = 'board.by';
+const NO_FILTER: FilterQuery = {};
 
 type Move = { kind: 'column'; key: string } | { kind: 'up' } | { kind: 'down' };
 
@@ -41,10 +44,18 @@ export default function BoardScreen() {
     }
   };
 
-  const filter = list?.prefs.filter;
+  const [localFilter, setLocalFilter] = useState<FilterQuery>({});
+  const filter = list ? (list.prefs.filter ?? NO_FILTER) : localFilter;
+  const setFilter = (next: FilterQuery) => {
+    if (!list) return setLocalFilter(next);
+    const prefs = { ...list.prefs };
+    delete prefs.filter;
+    if (!isEmptyFilter(next)) prefs.filter = next;
+    void mutate('lists', list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
+  };
   const tasks = useMemo(() => {
     const own = data.tasks.filter((t) => (listId ? t.listId === listId : !ctx.workspaceId || t.workspaceId === ctx.workspaceId));
-    return filter && !isEmptyFilter(filter) ? applyFilter(own, filter, today) : own;
+    return isEmptyFilter(filter) ? own : applyFilter(own, filter, today);
   }, [data.tasks, listId, ctx.workspaceId, filter, today]);
   const lists = useMemo(() => {
     const used = new Set(tasks.map((t) => t.listId));
@@ -100,6 +111,7 @@ export default function BoardScreen() {
         </Pressable>
         {by === 'status' ? <Text style={{ color: p.muted, fontSize: 12 }}>„Gotowe” z ostatnich 7 dni</Text> : null}
       </View>
+      <FilterBar query={filter} onChange={setFilter} hide={list ? ['lists'] : []} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={styles.tabs}>
         {columns.map((c) => (
           <Chip key={c.key} label={`${c.label} ${c.tasks.length}`} selected={c.key === column?.key} onPress={() => setSelected(c.key)} />
