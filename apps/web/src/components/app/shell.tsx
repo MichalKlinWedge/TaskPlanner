@@ -175,7 +175,7 @@ export function Shell({
     }
   };
 
-  // Filtr doraźny (chipy) nad Inbox / Dziś / Nadchodzące / listą — do zmiany widoku.
+  // Filtr doraźny (chipy) nad Inbox / Dziś / Nadchodzące — do zmiany widoku; lista pamięta swój w `view_prefs.filter`.
   const [adhoc, setAdhoc] = useState<FilterQuery>({});
 
   // Nowy widok: od góry, a na wąskim ekranie menu się chowa.
@@ -210,12 +210,15 @@ export function Shell({
   const filterable = ["inbox", "today", "upcoming", "list", "board"].includes(route.view);
   const wide = route.view === "board" || route.view === "calendar" || route.view === "timeline" || list?.prefs.view === "kanban";
   // Widoki dostają zadania po filtrze doraźnym; liczniki paska bocznego liczą się z pełnych danych.
-  const viewData = filterable && !isEmptyFilter(adhoc) ? { ...data, tasks: applyFilter(data.tasks, adhoc, today) } : data;
-  const toolbar = filterable ? (
-    <FilterBar query={adhoc} onChange={setAdhoc} hide={route.view === "list" ? ["lists"] : []}>
+  const query = list ? (list.prefs.filter ?? {}) : adhoc;
+  const viewData = filterable && !isEmptyFilter(query) ? { ...data, tasks: applyFilter(data.tasks, query, today) } : data;
+  const toolbar = !filterable ? null : list ? (
+    <ListFilterBar list={list} store={store} onSaved={(id) => navigate({ view: "filter", id })} />
+  ) : (
+    <FilterBar query={adhoc} onChange={setAdhoc}>
       <SaveFilter query={adhoc} onSaved={(id) => navigate({ view: "filter", id })} />
     </FilterBar>
-  ) : null;
+  );
   const props = { data: viewData, ctx, targetInbox, toolbar };
   const body =
     route.view === "inbox" ? (
@@ -419,6 +422,23 @@ export function Shell({
 const sameRoute = (a: Route, b: Route) => routeHash(a) === routeHash(b);
 
 /** Sekcja paska bocznego zwijana kliknięciem w nagłówek (stan per przeglądarka). */
+/** Chipy filtra listy: zapis w `view_prefs.filter` tej listy (synchronizowany), więc wybór wraca po powrocie do listy. */
+function ListFilterBar({ list, store, onSaved }: { list: List; store: TabStore; onSaved: (id: string) => void }) {
+  const { notify } = useTaskActions();
+  const query = list.prefs.filter ?? {};
+  const onChange = (next: FilterQuery) => {
+    const prefs = { ...list.prefs };
+    delete prefs.filter;
+    if (!isEmptyFilter(next)) prefs.filter = next;
+    void store.mutate("lists", list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
+  };
+  return (
+    <FilterBar query={query} onChange={onChange} hide={["lists"]}>
+      <SaveFilter query={query} onSaved={onSaved} />
+    </FilterBar>
+  );
+}
+
 function SidebarSection({ title, children }: { title: string; children: ReactNode }) {
   const key = `tp-section-${title}`;
   const [open, setOpen] = useState(() => {

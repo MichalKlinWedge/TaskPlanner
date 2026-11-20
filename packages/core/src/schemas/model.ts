@@ -45,6 +45,8 @@ export const ViewPrefs = z.object({
   groupBy: GroupBy.optional(),
   sortBy: SortBy.optional(),
   completed: CompletedMode.optional(),
+  /** Filtr z chipów „+ Filtr” zapamiętany dla listy; uszkodzony nie psuje reszty ustawień. */
+  filter: FilterQuery.optional().catch(undefined),
 });
 export type ViewPrefs = z.infer<typeof ViewPrefs>;
 

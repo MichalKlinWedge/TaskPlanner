@@ -78,6 +78,11 @@ describe('lista', () => {
     expect(ViewPrefs.parse({ view: 'kanban', groupBy: 'priority', sortBy: 'due', completed: 'today' })).toBeTruthy();
     expect(ViewPrefs.safeParse({ groupBy: 'kolor' }).success).toBe(false);
   });
+  it('zapamiętany filtr listy; uszkodzony nie kasuje reszty ustawień', () => {
+    const filter = { priorities: [1 as const], due: { kind: 'any' as const } };
+    expect(ViewPrefs.parse({ completed: 'hidden', filter })).toEqual({ completed: 'hidden', filter });
+    expect(ViewPrefs.parse({ completed: 'hidden', filter: { priorities: [] } })).toEqual({ completed: 'hidden' });
+  });
 });
 
 describe('pozostałe tabele', () => {
