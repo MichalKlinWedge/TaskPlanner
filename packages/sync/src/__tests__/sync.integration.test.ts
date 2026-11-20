@@ -51,6 +51,24 @@ afterEach(async () => {
 });
 
 describe('PoC-1: synchronizacja w obie strony', () => {
+  it('powrót własnej zmiany z serwera nie budzi słuchaczy (widoki nie czytają drugi raz)', async () => {
+    const id = await sharedTask('Echo');
+    await phone.engine.sync();
+    let calls = 0;
+    const off = phone.engine.watch(['tasks'], () => calls++);
+    await phone.engine.mutate('tasks', id, { status: 'done', completed_at: new Date().toISOString() });
+    expect(calls).toBe(1);
+    const before = await row(phone, 'tasks', id);
+    await phone.engine.sync();
+    // Serwer zwraca ten sam wiersz z nową wersją, `updated_at` i `completed_at` w zapisie `+00:00`.
+    expect((await row(phone, 'tasks', id))?.row_version).toBeGreaterThan(Number(before?.row_version));
+    expect(calls).toBe(1);
+    await phone.engine.mutate('tasks', id, { status: 'todo', completed_at: null });
+    await phone.engine.sync();
+    expect(calls).toBe(2);
+    off();
+  });
+
   it('zadanie z telefonu offline trafia na web po powrocie sieci', async () => {
     phone.net.online = false;
     const id = uuidv7();

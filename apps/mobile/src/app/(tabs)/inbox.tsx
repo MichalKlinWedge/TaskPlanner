@@ -9,12 +9,14 @@ import { FilterBar } from '@/components/filter-bar';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections } from '@/components/task-list';
 import { targetInbox, useView } from '@/lib/app-data';
+import { usePerfReady } from '@/lib/perf';
 import { rowMaker } from '@/lib/rows';
 
 const TASKS = ['zadanie', 'zadania', 'zadań'] as const;
 
 export default function InboxScreen() {
   const { data, today, ctx, workspaceId } = useView();
+  usePerfReady('tab:inbox', data.loaded);
   const inboxIds = useMemo(() => new Set(data.lists.filter((l) => l.kind === 'inbox').map((l) => l.id)), [data.lists]);
   const [filter, setFilter] = useState<FilterQuery>({});
   const tasks = useMemo(() => {

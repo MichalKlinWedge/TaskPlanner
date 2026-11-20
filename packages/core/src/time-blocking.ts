@@ -5,6 +5,7 @@
  * blok liczy się w strefie urządzenia (albo strefie przypiętej do zadania), wydarzenia są chwilami.
  */
 import { addDays, isoWeekday, localDateTimeAt, zonedInstant } from './dates.ts';
+import { compareCode, compareText } from './format.ts';
 import type { DayState, HabitSlot } from './habits.ts';
 import { occurrences, type Recurrence } from './recurrence.ts';
 import type { LocalDate, LocalTime } from './schemas/primitives.ts';
@@ -130,7 +131,7 @@ export function blocksForDay(
     timed.push({ kind: 'event', id: event.id, title: event.title, startMin: minutes(start), endMin: minutes(end), startAt: event.startAt, endAt: event.endAt, passive: event.busy === false });
   }
 
-  timed.sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin || (a.kind === b.kind ? 0 : a.kind === 'event' ? -1 : 1) || a.id.localeCompare(b.id));
+  timed.sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin || (a.kind === b.kind ? 0 : a.kind === 'event' ? -1 : 1) || compareCode(a.id, b.id));
   return { date, dayMinutes: minutes(dayEnd), timed, allDay };
 }
 
@@ -304,7 +305,7 @@ export function agendaDays(entries: readonly CalendarEntry[], from: LocalDate, t
   return [...days].map(([date, list]) => {
     const startOn = (e: CalendarEntry) => (e.allDay ? '' : e.start.slice(0, 10) < date ? `${date}T00:00` : e.start);
     const eventFirst = (e: CalendarEntry) => (e.allDay && e.kind === 'event' ? 0 : 1);
-    return { date, entries: list.sort((a, b) => Number(b.allDay) - Number(a.allDay) || eventFirst(a) - eventFirst(b) || startOn(a).localeCompare(startOn(b)) || a.title.localeCompare(b.title, 'pl')) };
+    return { date, entries: list.sort((a, b) => Number(b.allDay) - Number(a.allDay) || eventFirst(a) - eventFirst(b) || compareCode(startOn(a), startOn(b)) || compareText(a.title, b.title)) };
   });
 }
 

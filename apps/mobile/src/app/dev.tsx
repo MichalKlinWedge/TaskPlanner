@@ -1,10 +1,11 @@
 import { Link, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, Text } from 'react-native';
+import { Pressable, Switch, Text, View } from 'react-native';
 
 import { SyncIndicator } from '@/components/sync-indicator';
 import { P, Screen, Section, usePalette } from '@/components/ui';
 import { serverConfig, sessionUser } from '@/lib/config';
+import { perfEnabled, setPerfEnabled } from '@/lib/perf';
 import { onSessionChange } from '@/lib/sync';
 
 const ITEMS: { href: Href; title: string; hint: string }[] = [
@@ -18,6 +19,7 @@ const ITEMS: { href: Href; title: string; hint: string }[] = [
 export default function DevTools() {
   const p = usePalette();
   const [user, setUser] = useState(sessionUser());
+  const [perf, setPerf] = useState(perfEnabled());
   useEffect(() => onSessionChange(() => setUser(sessionUser())), []);
 
   return (
@@ -35,6 +37,19 @@ export default function DevTools() {
           </Pressable>
         </Link>
       ))}
+      <Section title="Pomiary czasu">
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{ color: p.muted, flex: 1 }}>Start, zakładki, lista, kalendarz, ukończenie i „Cofnij”, odczyt danych, synchronizacja → logcat `[perf]` (docs/WYDAJNOSC.md)</Text>
+          <Switch
+            accessibilityLabel="Pomiary czasu"
+            value={perf}
+            onValueChange={(on) => {
+              setPerfEnabled(on);
+              setPerf(perfEnabled());
+            }}
+          />
+        </View>
+      </Section>
     </Screen>
   );
 }

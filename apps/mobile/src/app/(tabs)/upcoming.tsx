@@ -12,6 +12,7 @@ import { ScreenHeader } from '@/components/sync-banner';
 import { openQuickAdd, TaskSections, type TaskSection } from '@/components/task-list';
 import { usePalette } from '@/components/ui';
 import { targetInbox, useView } from '@/lib/app-data';
+import { usePerfReady } from '@/lib/perf';
 import { rowMaker } from '@/lib/rows';
 
 function AddOnDay({ date, listId }: { date: string; listId?: string }) {
@@ -25,6 +26,7 @@ function AddOnDay({ date, listId }: { date: string; listId?: string }) {
 
 export default function UpcomingScreen() {
   const { data, today, ctx, workspaceId } = useView();
+  usePerfReady('tab:upcoming', data.loaded);
   const [filter, setFilter] = useState<FilterQuery>({});
   const view = useMemo(() => selectUpcoming(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx), [data.tasks, filter, today, ctx]);
   const row = rowMaker(data, today);

@@ -16,6 +16,7 @@ import { ReviewNudge } from '@/components/review';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
 import { targetInbox, useView } from '@/lib/app-data';
+import { perfOnce, usePerfReady } from '@/lib/perf';
 import { rowMaker } from '@/lib/rows';
 
 const TASKS = ['zadanie', 'zadania', 'zadań'] as const;
@@ -28,6 +29,8 @@ export default function TodayScreen() {
   const row = rowMaker(data, today);
   const open = view.overdue.length + view.today.length;
   const habitsLeft = habits.filter((h) => !h.settled).length;
+  usePerfReady('tab:index', data.loaded);
+  if (data.loaded) perfOnce('start: Dziś', `${data.tasks.length} zadań`);
   const sections: TaskSection[] = [
     { key: 'plan', data: [], footer: data.loaded ? <DayPlanCard data={data} today={today} workspaceId={workspaceId} /> : undefined },
     { key: 'overdue', title: VIEW_SECTION.overdue, count: view.overdue.length, tone: 'bad', data: view.overdue.map((t) => row(t, { withList: true })) },

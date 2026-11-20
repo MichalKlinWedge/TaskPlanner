@@ -4,6 +4,7 @@ import { Text, type ColorValue } from 'react-native';
 
 import { HeaderRight } from '@/components/header';
 import { usePalette } from '@/components/ui';
+import { perfStart } from '@/lib/perf';
 
 const icon = (glyph: string) =>
   function TabIcon({ color }: { color: ColorValue }) {
@@ -14,6 +15,7 @@ export default function TabsLayout() {
   const p = usePalette();
   return (
     <Tabs
+      screenListeners={({ route }) => ({ tabPress: () => perfStart(`tab:${route.name}`) })}
       screenOptions={{
         headerRight: () => <HeaderRight />,
         headerStyle: { backgroundColor: p.card },

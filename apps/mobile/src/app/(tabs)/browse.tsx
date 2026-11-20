@@ -11,13 +11,17 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SyncBanner } from '@/components/sync-banner';
 import { ColorDot, usePalette } from '@/components/ui';
 import { useView } from '@/lib/app-data';
+import { perfStart, usePerfReady } from '@/lib/perf';
 
 function Item({ title, hint, count, color, href, indent }: { title: string; hint?: string; count?: number; color?: string | null; href: Href; indent?: boolean }) {
   const p = usePalette();
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={() => router.push(href)}
+      onPress={() => {
+        perfStart(typeof href === 'string' ? href : href.pathname);
+        router.push(href);
+      }}
       style={({ pressed }) => [styles.item, { borderColor: p.border, backgroundColor: pressed ? p.border : 'transparent', paddingLeft: indent ? 34 : 14 }]}
     >
       {color !== undefined ? <ColorDot color={color} /> : null}
@@ -46,6 +50,7 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 export default function BrowseScreen() {
   const p = usePalette();
   const { data, ctx, workspaceId } = useView();
+  usePerfReady('tab:browse', data.loaded);
   const counts = useMemo(() => {
     const byList = new Map<string, number>();
     const byTag = new Map<string, number>();

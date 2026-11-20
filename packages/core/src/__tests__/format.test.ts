@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { authErrorMessage, capitalized, dayChip, dayLabel, dayMonth, formatMinutes, monthLabel, plural, pluralForm, quickAddChip, relativeDay, reminderOffset, shortDate } from '../format.ts';
+import { authErrorMessage, capitalized, compareCode, compareText, dayChip, dayLabel, dayMonth, formatMinutes, monthLabel, plural, pluralForm, quickAddChip, relativeDay, reminderOffset, shortDate } from '../format.ts';
 import { parseQuickAdd } from '../quick-add.ts';
 import { AUTH_ERROR, PRIORITY, REMINDER_KIND, TASK_STATUS, WEEKDAY } from '../labels.ts';
 import { LocalTime, Priority } from '../schemas/primitives.ts';
@@ -128,5 +128,13 @@ describe('miesiąc', () => {
   it('nazwa miesiąca z rokiem', () => {
     expect(monthLabel('2026-11-18')).toBe('listopad 2026');
     expect(monthLabel('2027-01-01')).toBe('styczeń 2027');
+  });
+});
+
+describe('porównanie napisów', () => {
+  it('compareText — kolejność polska, compareCode — kolejność znaków', () => {
+    expect(['Żaba', 'ala', 'Łódź', 'Ćma', 'Cyna', 'lato'].sort(compareText)).toEqual(['ala', 'Cyna', 'Ćma', 'lato', 'Łódź', 'Żaba']);
+    expect(['2026-11-20T10:00', '2026-11-20', '2026-11-19T23:00'].sort(compareCode)).toEqual(['2026-11-19T23:00', '2026-11-20', '2026-11-20T10:00']);
+    expect(compareCode('a', 'a')).toBe(0);
   });
 });

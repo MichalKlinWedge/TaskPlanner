@@ -50,7 +50,8 @@ export function TaskSections({ sections, header, empty, quickAdd }: { sections: 
         ListEmptyComponent={empty ? <Text style={[styles.empty, { color: p.muted }]}>{empty}</Text> : undefined}
         ListFooterComponent={<View style={{ height: 120 }} />}
         stickySectionHeadersEnabled
-        initialNumToRender={20}
+        // Tyle, ile mieści ekran (wiersz ~60 dp): każdy wiersz więcej to dłuższe otwarcie listy (`docs/WYDAJNOSC.md`).
+        initialNumToRender={12}
         windowSize={11}
         keyboardShouldPersistTaps="handled"
       />

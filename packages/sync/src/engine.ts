@@ -6,7 +6,7 @@
 import { HlcClock, uuidv7, type Hlc } from '@taskplanner/core';
 
 import type { LocalDb, SqlRow } from './local-db.ts';
-import { encodeRow, encodeValue, mergeClocks, mergeRemote, parseClock, type RemoteRow } from './merge.ts';
+import { encodeRow, encodeValue, mergeClocks, mergeRemote, parseClock, rowChanged, type RemoteRow } from './merge.ts';
 import type { PullResult, PushResult, RejectedOp, Remote } from './remote.ts';
 import { localColumns, localSchema, READONLY, READONLY_TABLES, readonlyColumnsOf, SYNCED_TABLES, TABLES, writableFields, type ReadonlyTable, type SyncedTable } from './specs.ts';
 
@@ -407,14 +407,16 @@ export class SyncEngine {
         const remotes = (result.tables[table] ?? []) as RemoteRow[];
         if (!remotes.length) continue;
         count += remotes.length;
-        touched.add(table);
         const locals = await this.loadMany(tx, table, remotes.map((r) => r.id as string));
         const plain: SqlRow[] = [];
         const won: SqlRow[] = [];
         const merging = Date.now();
         for (const remote of remotes) {
-          const { row, localWon } = mergeRemote(table, locals.get(remote.id as string), remote);
+          const local = locals.get(remote.id as string);
+          const { row, localWon } = mergeRemote(table, local, remote);
           (localWon ? won : plain).push(row);
+          // Słuchacze tylko przy realnej zmianie (nie przy powrocie własnego zapisu z nową wersją).
+          if (!touched.has(table) && rowChanged(local, row)) touched.add(table);
         }
         mergeMs += Date.now() - merging;
         await this.upsertMany(tx, table, plain);

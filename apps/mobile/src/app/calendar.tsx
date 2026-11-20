@@ -7,7 +7,8 @@
  * z liczbą pozycji, dotknięcie dnia → agenda dnia. Wydarzenia: kalendarze połączone na serwerze
  * i wybrane kalendarze telefonu (`lib/calendar-events.ts`). Wszystkie zmiany z „Cofnij”. Chipy filtra
  * zawężają zadania we wszystkich widokach (wydarzenia i nawyki zostają); bez terminu i godziny, bo o nich
- * decyduje kalendarz; filtr trwa do opuszczenia ekranu, nie jest zapisywany.
+ * decyduje kalendarz; filtr trwa do opuszczenia ekranu, nie jest zapisywany. Listy dnia w tygodniu
+ * i miesiącu są stronicowane (`EntryList`): przy 10 000 zadań dzień ma ~100 pozycji (`docs/WYDAJNOSC.md`).
  */
 import {
   addDays,
@@ -59,6 +60,7 @@ import { Chip, usePalette } from '@/components/ui';
 import { useView, type AppData } from '@/lib/app-data';
 import { deviceCalendars, setDeviceCalendarIds, useCalendarEvents, useDeviceCalendarIds, type EventInfo } from '@/lib/calendar-events';
 import { useDayPlan, useNowMinute } from '@/lib/day-plan';
+import { perfMeasure, usePerfReady } from '@/lib/perf';
 
 type Mode = 'day' | 'week' | 'month';
 const MODE_KEY = 'calendar.mode';
@@ -83,6 +85,7 @@ export default function CalendarScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ date?: string; mode?: string }>();
   const { data: all, today, workspaceId } = useView();
+  usePerfReady('/calendar', all.loaded);
   const [filter, setFilter] = useState<FilterQuery>({});
   const data = useMemo((): AppData => {
     if (isEmptyFilter(filter)) return all;
@@ -327,27 +330,45 @@ function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; da
 }
 
 /** Pozycje kalendarza dla `[from, to)` z wydarzeniami i nawykami bieżącej przestrzeni. */
-function useEntries(data: AppData, from: LocalDate, to: LocalDate, today: LocalDate, workspaceId: string | null): { entries: CalendarEntry[]; info: Map<string, EventInfo> } {
+function useEntries(data: AppData, from: LocalDate, to: LocalDate, today: LocalDate, workspaceId: string | null): { entries: CalendarEntry[]; info: Map<string, EventInfo>; tasks: Map<string, ViewTask> } {
   const { timeZone, defaultDurationMin } = data.settings;
   const range = useMemo(() => ({ from, to }), [from, to]);
   const events = useCalendarEvents(range, timeZone);
-  return useMemo(() => {
+  const tasks = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
+  const result = useMemo(() => {
     const own = data.tasks.filter((t) => !workspaceId || t.workspaceId === workspaceId);
     const habits = habitSlots(own, data.habitCompletions, from, to, today);
-    const entries = calendarEntries(
-      own.filter((t) => t.kind === 'task'),
-      events.list,
-      from,
-      to,
-      { timeZone, defaultDurationMin, habits },
+    const entries = perfMeasure(
+      'kalendarz: pozycje',
+      () => calendarEntries(own.filter((t) => t.kind === 'task'), events.list, from, to, { timeZone, defaultDurationMin, habits }),
+      (list) => `${list.length} w ${from}…${to}`,
     );
     return { entries, info: events.info };
   }, [data.tasks, data.habitCompletions, events, from, to, today, workspaceId, timeZone, defaultDurationMin]);
+  return { ...result, tasks };
 }
 
-function EntryRow({ entry, data, info }: { entry: CalendarEntry; data: AppData; info: Map<string, EventInfo> }) {
+/** Pierwsze `limit` pozycji dnia i „Pokaż więcej” (jak `Paged` na webie): bez tego tydzień to ~700 wierszy naraz. */
+function EntryList({ entries, tasks, info, limit }: { entries: readonly CalendarEntry[]; tasks: Map<string, ViewTask>; info: Map<string, EventInfo>; limit: number }) {
   const p = usePalette();
-  const task = entry.kind === 'task' ? data.tasks.find((t) => t.id === entry.id) : undefined;
+  const [shown, setShown] = useState(limit);
+  if (!entries.length) return <Text style={{ color: p.muted, fontSize: 12 }}>Nic nie zaplanowano.</Text>;
+  return (
+    <>
+      {entries.slice(0, shown).map((e) => (
+        <EntryRow key={e.key} entry={e} task={e.kind === 'task' ? tasks.get(e.id) : undefined} info={info} />
+      ))}
+      {entries.length > shown ? (
+        <Pressable accessibilityRole="button" hitSlop={6} onPress={() => setShown(shown + 100)}>
+          <Text style={{ color: p.accent, fontSize: 13 }}>Pokaż więcej ({entries.length - shown})</Text>
+        </Pressable>
+      ) : null}
+    </>
+  );
+}
+
+function EntryRow({ entry, task, info }: { entry: CalendarEntry; task: ViewTask | undefined; info: Map<string, EventInfo> }) {
+  const p = usePalette();
   const color = task ? (PRIORITY[task.priority]?.color ?? p.border) : entry.kind === 'habit' ? HABIT_COLOR : (info.get(entry.id)?.color ?? p.muted);
   const time = entry.allDay ? (entry.kind === 'event' ? 'cały dzień' : 'bez godziny') : `${entry.start.slice(11, 16)}–${entry.end.slice(11, 16)}`;
   const mark = entry.kind === 'habit' ? (entry.habitState === 'done' ? '✓ ' : '◎ ') : '';
@@ -371,8 +392,8 @@ function EntryRow({ entry, data, info }: { entry: CalendarEntry; data: AppData; 
 
 function RangeAgenda({ data, from, to, today, workspaceId, onDay, bottom }: { data: AppData; from: LocalDate; to: LocalDate; today: LocalDate; workspaceId: string | null; onDay: (d: LocalDate) => void; bottom: number }) {
   const p = usePalette();
-  const { entries, info } = useEntries(data, from, to, today, workspaceId);
-  const days = useMemo(() => agendaDays(entries, from, to), [entries, from, to]);
+  const { entries, info, tasks } = useEntries(data, from, to, today, workspaceId);
+  const days = useMemo(() => perfMeasure('kalendarz: agenda', () => agendaDays(entries, from, to)), [entries, from, to]);
   return (
     <ScrollView contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: bottom + 24 }}>
       {days.map((d) => (
@@ -381,7 +402,7 @@ function RangeAgenda({ data, from, to, today, workspaceId, onDay, bottom }: { da
             <Text style={{ color: d.date === today ? p.accent : p.fg, fontSize: 14, fontWeight: '700', flex: 1 }}>{capitalized(dayLabel(d.date))}</Text>
             <Text style={{ color: p.muted, fontSize: 18 }}>›</Text>
           </Pressable>
-          {d.entries.length ? d.entries.map((e) => <EntryRow key={e.key} entry={e} data={data} info={info} />) : <Text style={{ color: p.muted, fontSize: 12 }}>Nic nie zaplanowano.</Text>}
+          <EntryList key={`${d.date}:${workspaceId}`} entries={d.entries} tasks={tasks} info={info} limit={10} />
         </View>
       ))}
     </ScrollView>
@@ -394,8 +415,8 @@ function MonthView({ data, date, today, workspaceId, onSelect, onDay, bottom }: 
   const weeks = useMemo(() => monthWeeks(date, firstDay), [date, firstDay]);
   const from = weeks[0]![0]!;
   const to = addDays(weeks[weeks.length - 1]![6]!, 1);
-  const { entries, info } = useEntries(data, from, to, today, workspaceId);
-  const days = useMemo(() => new Map(agendaDays(entries, from, to).map((d) => [d.date, d.entries])), [entries, from, to]);
+  const { entries, info, tasks } = useEntries(data, from, to, today, workspaceId);
+  const days = useMemo(() => new Map(perfMeasure('kalendarz: agenda', () => agendaDays(entries, from, to)).map((d) => [d.date, d.entries])), [entries, from, to]);
   const month = date.slice(0, 7);
   const selected = days.get(date) ?? [];
   return (
@@ -442,7 +463,7 @@ function MonthView({ data, date, today, workspaceId, onSelect, onDay, bottom }: 
           <Text style={{ color: p.fg, fontSize: 14, fontWeight: '700', flex: 1 }}>{capitalized(dayLabel(date))}</Text>
           <Text style={{ color: p.accent, fontSize: 13 }}>Oś dnia ›</Text>
         </Pressable>
-        {selected.length ? selected.map((e) => <EntryRow key={e.key} entry={e} data={data} info={info} />) : <Text style={{ color: p.muted, fontSize: 12 }}>Nic nie zaplanowano.</Text>}
+        <EntryList key={`${date}:${workspaceId}`} entries={selected} tasks={tasks} info={info} limit={30} />
       </View>
     </ScrollView>
   );

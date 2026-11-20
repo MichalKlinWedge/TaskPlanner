@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { decodeRow, encodeRow, mergeClocks, mergeRemote } from '../merge.ts';
+import { decodeRow, encodeRow, mergeClocks, mergeRemote, rowChanged } from '../merge.ts';
 
 const h = (wall: number, node = 'dev') => `${String(wall).padStart(15, '0')}:00000:${node}`;
 
@@ -46,5 +46,35 @@ describe('scalanie wiersza z serwera', () => {
 
   it('zegary pól łączone maksimum', () => {
     expect(mergeClocks({ a: h(1), b: h(5) }, { a: h(2), c: h(3) })).toEqual({ a: h(2), b: h(5), c: h(3) });
+  });
+});
+
+describe('rowChanged — czy pobrany wiersz zmienia coś dla widoków', () => {
+  const local = encodeRow('tasks', {
+    id: 't1',
+    scope_id: 'w1',
+    list_id: 'l1',
+    title: 'Mleko',
+    recurrence: { rrule: 'FREQ=DAILY', mode: 'schedule' },
+    row_version: 3,
+    updated_at: '2026-11-20T10:00:00Z',
+    field_clock: { title: h(2000), status: h(1000) },
+  });
+
+  it('powrót własnego zapisu: nowa wersja i updated_at, klucze JSON w innej kolejności — bez zmiany', () => {
+    const echo = { ...local, row_version: 4, updated_at: '2026-11-20T10:00:01Z', recurrence: '{"mode":"schedule","rrule":"FREQ=DAILY"}', field_clock: `{"status":"${h(1000)}","title":"${h(2000)}"}` };
+    expect(rowChanged(local, echo)).toBe(false);
+    const done = { ...local, completed_at: '2026-11-20T12:43:59.119Z' };
+    expect(rowChanged(done, { ...done, completed_at: '2026-11-20T12:43:59.119+00:00' })).toBe(false);
+    expect(rowChanged(done, { ...done, completed_at: '2026-11-20T12:43:59.120+00:00' })).toBe(true);
+    expect(rowChanged(local, mergeRemote('tasks', local, { ...decodeRow('tasks', echo) }).row)).toBe(false);
+  });
+
+  it('zmienione pole, zegar albo usunięcie — zmiana; brak wiersza lokalnego — zmiana', () => {
+    expect(rowChanged(local, { ...local, title: 'Chleb' })).toBe(true);
+    expect(rowChanged(local, { ...local, field_clock: JSON.stringify({ title: h(3000), status: h(1000) }) })).toBe(true);
+    expect(rowChanged(local, { ...local, deleted_at: '2026-11-20T10:00:02Z' })).toBe(true);
+    expect(rowChanged(local, { ...local, priority: 1 })).toBe(true);
+    expect(rowChanged(undefined, local)).toBe(true);
   });
 });
