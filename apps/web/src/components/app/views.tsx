@@ -64,7 +64,8 @@ export interface ViewProps {
 function Header({ title, subtitle, children }: { title: string; subtitle?: string; children?: ReactNode }) {
   return (
     <header className="mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
-      <div className="min-w-0 flex-1">
+      {/* `min-w-48`: przy wąskim ekranie przyciski schodzą do nowego wiersza, zamiast ścisnąć tytuł do zera. */}
+      <div className="min-w-48 flex-1">
         <h1 className="text-xl font-semibold">{title}</h1>
         {subtitle ? <p className="text-sm text-[var(--muted)]">{subtitle}</p> : null}
       </div>
