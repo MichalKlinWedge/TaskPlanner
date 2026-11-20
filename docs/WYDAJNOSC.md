@@ -176,6 +176,7 @@ Galaxy S22 Ultra (Android 16), release APK (`arm64-v8a`, Hermes), lokalny Supaba
 - `lib/perf.ts`: `perfStart` przy akcji (dotknięcie zakładki — `tabPress` w `(tabs)/_layout.tsx`, wiersza w „Przeglądaj”, „Ukończ”, „Cofnij”), `usePerfReady` / `perfEnd` na ekranie docelowym po wczytaniu danych, koniec po klatce (rAF + `setTimeout`), jak na webie. `perfMeasure` mierzy obliczenie (`kalendarz: pozycje`, `kalendarz: agenda`), `perfLog` — odczyt danych (`dane widoków`) i synchronizację (`pull`).
 - **Zimny start**: `am force-stop`, `am start -W`, czas od wpisu `ActivityManager: Start proc …` do `[perf] start: Dziś` (oba w logcat z zegara telefonu).
 - Dotknięcia przez `adb shell input` — skrypt przed każdym stuknięciem sprawdza, czy na wierzchu jest Task Planner (`dumpsys window` → `mCurrentFocus`), i przerywa, jeśli nie (ślepe stuknięcie po utracie połączenia trafiło raz w inną aplikację).
+- **Przeciąganie bloku na osi dnia**: `dumpsys gfxinfo pl.taskplanner.app reset`, potem w jednym `adb shell`: `input motionevent DOWN`, 0,6 s (przytrzymanie, gest startuje po 300 ms), 40 ruchów co 8 px w dół, `dumpsys gfxinfo` (tylko klatki ruchu), powrót na miejsce i `UP` — blok wraca na swoją godzinę, dane się nie zmieniają. Z upuszczeniem: `input draganddrop … 1500` i „Cofnij”. Ekran 120 Hz (budżet klatki 8,3 ms).
 
 ### Wyniki
 
@@ -193,6 +194,8 @@ Galaxy S22 Ultra (Android 16), release APK (`arm64-v8a`, Hermes), lokalny Supaba
 | Lista projektu („Raporty kwartalne”, 176 otwartych) | 190 ms (172–276) | 180–260 ms | < 100 ms — patrz uwagi |
 | Kalendarz, miesiąc (2 964 pozycji w 6 tygodniach) | 5–10 s | **0,94 s** (940–943 ms) | |
 | Kalendarz, tydzień / dzień | — | 0,30 s / 0,19 s | |
+| Przeciąganie bloku na osi dnia (perf@, dzień z 22 blokami) | — | klatka na każdy skok o 15 min: p50 17 ms, p95 22–27 ms (3 pomiary, 24–31 klatek) | 60 kl./s — patrz uwagi |
+| Przeciąganie z upuszczeniem i zapisem | — | 22 klatki, p50 18 ms, p95 28 ms, p99 42 ms | |
 
 ¹ Pierwsza wersja pomiaru (`useIsFocused`) sama przerysowywała ekran przy wejściu — stąd część różnicy.
 
@@ -212,4 +215,5 @@ Galaxy S22 Ultra (Android 16), release APK (`arm64-v8a`, Hermes), lokalny Supaba
 - **Próg 100 ms dla „Dziś” i listy projektu** dotyczy danych z lokalnej bazy. Same dane i obliczenia mieszczą się w nim z zapasem (lista projektu: render ekranu zaczyna się ~32 ms po dotknięciu, obliczenia < 10 ms); resztę czasu zajmuje React Native: przejście nawigacji, pierwsze narysowanie wierszy (~60–90 ms) i zamontowanie widoków natywnych. Przełączenie najprostszej zakładki („Przeglądaj”, bez listy zadań) trwa tak samo ~90 ms, więc „Dziś” (103 ms) jest praktycznie na poziomie samej nawigacji.
 - **Ukończenie i „Cofnij” (0,66 s)** to dalej pełny odczyt 10 015 zadań po każdej zmianie (0,41–0,46 s) + przeliczenie widoku. Następny krok to przyrostowe odświeżanie (tylko zmienione wiersze) — jak na webie.
 - **Pierwsza synchronizacja (12,6 s)** — pobieranie i zapis po połowie; widoki odświeżają się raz, po ostatniej stronie.
-- **Niezmierzone**: przeciąganie bloku na osi dnia (kl./s; `dumpsys gfxinfo`), wydajność przy 2 000 zadań poza startem.
+- **Przeciąganie bloku na osi dnia** rysuje klatkę tylko przy przeskoku o 15 min (`top` przyciągany w workletcie), więc „kl./s” nic tu nie mówi — liczy się czas klatki przeskoku. Ten (p50 17 ms) mieści się w 60 Hz na styk, ale przy 120 Hz każdy przeskok spóźnia się o 1–2 odświeżenia; gfxinfo przypisuje to wątkowi UI (`Slow UI thread` w ~każdej klatce). Prawdopodobne przyczyny w `components/day-timeline.tsx`: animowane `top`/`height` (właściwości układu — przeliczenie Yogi) zamiast `transform: translateY` oraz `setLive` (render Reacta z godziną) przy każdym przeskoku. Do poprawy, jeśli przesuwanie będzie odczuwalnie ciężkie.
+- **Niezmierzone**: wydajność przy 2 000 zadań poza startem.
