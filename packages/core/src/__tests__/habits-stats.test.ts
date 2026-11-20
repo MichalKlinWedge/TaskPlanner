@@ -27,6 +27,7 @@ import {
   habitStats,
   habitWeeks,
   habitYear,
+  habitYearRange,
   nextHabitEntry,
   toHabit,
   toHabitCompletion,
@@ -129,6 +130,30 @@ describe('Etap 8: statystyki na 90-dniowych historiach policzonych ręcznie', ()
     expect(year.weeks.flat().filter((d) => d.planned).map((d) => d.date)).toEqual(['2026-11-20', '2026-11-23', '2026-11-25', '2026-11-27']);
     expect(year.weeks.at(-3)!.map((d) => d.future)).toEqual([false, false, false, true, true, true, true]);
     expect(habitYear({ ...thrice }, [], today, { ahead: 2 }).weeks.flat().some((d) => d.planned)).toBe(false);
+  });
+
+  it('rok kalendarzowy: tygodnie od 1.01 do 31.12, dni spoza roku puste, zaplanowane do końca roku, liczniki z tego roku', () => {
+    const mwf: Habit = { recurrence: { mode: 'schedule', rrule: 'FREQ=WEEKLY;BYDAY=MO,WE,FR', anchor: '2026-11-02' } };
+    const y = habitYear(mwf, [{ date: '2026-11-02', kind: 'done' }], today, { year: 2026 });
+    // 1.01.2026 = czwartek, 31.12.2026 = czwartek → 53 kolumny od 29.12.2025 do 3.01.2027.
+    expect(y.weeks).toHaveLength(53);
+    expect(y.weeks[0]!.map((d) => d.outside)).toEqual([true, true, true, false, false, false, false]);
+    expect(y.weeks.at(-1)!.map((d) => d.outside)).toEqual([false, false, false, false, true, true, true]);
+    expect(y.months.map((m) => m.month)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    const planned = y.weeks.flat().filter((d) => d.planned).map((d) => d.date);
+    expect([planned[0], planned.at(-1), planned.length]).toEqual(['2026-11-20', '2026-12-30', 18]);
+    expect(y.counts.done).toBe(1);
+    const next = habitYear(mwf, [], today, { year: 2027 });
+    expect(next.weeks.flat().filter((d) => d.planned && d.date.startsWith('2027-01')).length).toBe(13);
+    expect(next.weeks[0]![0]!.planned).toBe(false);
+    expect(habitYear(mwf, [], today, { year: 2025 }).weeks.flat().some((d) => d.planned || d.state !== 'off')).toBe(false);
+  });
+
+  it('zakres lat: od początku albo najstarszego wpisu, do przyszłego roku albo roku końca', () => {
+    expect(habitYearRange(daily, [], today)).toEqual({ min: 2026, max: 2027 });
+    expect(habitYearRange(daily, [{ date: '2024-05-01', kind: 'done' }], today)).toEqual({ min: 2024, max: 2027 });
+    expect(habitYearRange({ recurrence: { ...daily.recurrence, rrule: 'FREQ=DAILY;UNTIL=20261231' } }, [], today)).toEqual({ min: 2026, max: 2026 });
+    expect(habitYearRange({ recurrence: { ...daily.recurrence, rrule: 'FREQ=DAILY;UNTIL=20290101' } }, [], today)).toEqual({ min: 2026, max: 2029 });
   });
 });
 
