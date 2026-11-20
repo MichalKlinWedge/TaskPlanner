@@ -226,7 +226,8 @@ describe('quickAddTaskOps', () => {
     const newTag = tagId('u1', 'Hurtownia');
     expect(ops.slice(1)).toEqual([
       { table: 'task_tags', id: taskTagId(taskId, 'g-tel'), patch: { task_id: taskId, tag_id: 'g-tel', deleted_at: null } },
-      { table: 'tags', id: newTag, patch: { name: 'Hurtownia', color: null, sort_key: expect.any(String) } },
+      // Nowy tag — tylko w przestrzeni zadania (lista „Remont kuchni” jest w „Dom”).
+      { table: 'tags', id: newTag, patch: { name: 'Hurtownia', color: null, sort_key: expect.any(String), workspace_ids: ['w-dom'] } },
       { table: 'task_tags', id: taskTagId(taskId, newTag), patch: { task_id: taskId, tag_id: newTag, deleted_at: null } },
       { table: 'reminders', id: expect.any(String), patch: { task_id: taskId, kind: 'relative', offset_min: 15, at_date: null, at_time: null } },
     ]);

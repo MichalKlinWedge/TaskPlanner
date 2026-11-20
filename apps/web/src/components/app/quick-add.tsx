@@ -102,7 +102,7 @@ export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dod
       if (defaults?.priority && !parsed.fields.priority) result.ops[0]!.patch.priority = defaults.priority;
       // Adres w tytule (wklejony) albo z udostępnienia → załącznik-link; podgląd strony dociągnie tytuł.
       ops.push(...withLinkOps(result, { title: parsed.title, url: added.length === 0 ? link?.url : null, shared: added.length === 0 && Boolean(link) }));
-      if (defaults?.tagNames?.length) ops.push(...taskTagOps({ userId, tags: data.tags }, result.taskId, defaults.tagNames).filter((op) => !ops.some((o) => o.table === op.table && o.id === op.id)));
+      if (defaults?.tagNames?.length) ops.push(...taskTagOps({ userId, tags: data.tags }, result.taskId, defaults.tagNames, data.lists.find((l) => l.id === result.listId)?.workspaceId).filter((op) => !ops.some((o) => o.table === op.table && o.id === op.id)));
       added.push(result);
     }
     if (!added.length) return notify("Zadanie musi mieć tytuł.");

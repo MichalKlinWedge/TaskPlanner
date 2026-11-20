@@ -703,7 +703,7 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
     const value = name.trim().replace(/^[@#]/, "");
     if (!value) return;
     setName("");
-    void run(taskTagOps({ userId, tags: data.tags }, task.id, [value]));
+    void run(taskTagOps({ userId, tags: data.tags }, task.id, [value], task.workspaceId));
   };
   return (
     <Block title="Tagi">

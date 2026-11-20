@@ -268,7 +268,7 @@ export function quickAddTaskOps(result: QuickAddResult, text: string, scope: Qui
     },
   });
 
-  ops.push(...taskTagOps(scope, taskId, fields.tags ?? []));
+  ops.push(...taskTagOps(scope, taskId, fields.tags ?? [], scope.lists.find((l) => l.id === listId)?.workspaceId));
 
   for (const reminder of fields.reminders ?? []) {
     ops.push({
@@ -286,8 +286,10 @@ export function quickAddTaskOps(result: QuickAddResult, text: string, scope: Qui
 /**
  * Tagi zadania po nazwach: istniejący tag (bez wielkości liter i polskich znaków) albo nowy
  * z id deterministycznym z nazwy (dwa urządzenia tworzą ten sam tag jednym wierszem).
+ * `workspaceId` — przestrzeń zadania: nowy tag jest widoczny tylko w niej (`tags.workspace_ids`);
+ * istniejącego tagu nie zmienia.
  */
-export function taskTagOps(scope: Pick<QuickAddScope, 'userId' | 'tags'>, taskId: string, names: readonly string[]): TaskOp[] {
+export function taskTagOps(scope: Pick<QuickAddScope, 'userId' | 'tags'>, taskId: string, names: readonly string[], workspaceId?: string | null): TaskOp[] {
   const ops: TaskOp[] = [];
   let lastTagKey = scope.tags.reduce<string | undefined>((max, t) => (!max || t.sortKey > max ? t.sortKey : max), undefined);
   for (const name of new Set(names.map((n) => n.trim()).filter(Boolean))) {
@@ -295,7 +297,7 @@ export function taskTagOps(scope: Pick<QuickAddScope, 'userId' | 'tags'>, taskId
     if (!id) {
       id = tagId(scope.userId, name);
       lastTagKey = keyBetween(lastTagKey);
-      ops.push({ table: 'tags', id, patch: { name: name.slice(0, 60), color: null, sort_key: lastTagKey } });
+      ops.push({ table: 'tags', id, patch: { name: name.slice(0, 60), color: null, sort_key: lastTagKey, workspace_ids: workspaceId ? [workspaceId] : null } });
     }
     ops.push({ table: 'task_tags', id: taskTagId(taskId, id), patch: { task_id: taskId, tag_id: id, deleted_at: null } });
   }
