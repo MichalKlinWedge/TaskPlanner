@@ -21,6 +21,7 @@ import {
   type BlockTask,
   type CalendarEventLike,
 } from '../time-blocking.ts';
+import type { HabitSlot } from '../habits.ts';
 
 const WAW = 'Europe/Warsaw';
 const DAY = '2026-11-19';
@@ -122,5 +123,33 @@ describe('przeciąganie', () => {
     expect(resizeBlockPatch(600, 602)).toEqual({ duration_min: 5 });
     expect(unscheduleBlockPatch()).toEqual({ due_time: null });
     expect(minutesToTime(-30)).toBe('23:30');
+  });
+});
+
+describe('nawyki z porą w planie dnia i kalendarzu', () => {
+  const slot = (over: Partial<HabitSlot> = {}): HabitSlot => ({ id: 'h', title: 'Basen', date: DAY, time: '09:30', state: 'pending', future: false, ...over });
+
+  it('blok nawyku o domyślnej długości; konflikt z zadaniem; zrobiony — bez konfliktu i zajętości', () => {
+    const plan = blocksForDay([task('a')], [], DAY, { timeZone: WAW, habits: [slot(), slot({ id: 'inny', date: '2026-11-20' })] });
+    expect(plan.timed.map((b) => [b.kind, b.id, b.startMin, b.endMin, b.passive])).toEqual([
+      ['task', 'a', 540, 600, false],
+      ['habit', 'h', 570, 600, false],
+    ]);
+    expect(conflicts(plan.timed).map((c) => [c.a.id, c.b.id, c.overlapMin])).toEqual([['a', 'h', 30]]);
+    const done = blocksForDay([task('a')], [], DAY, { timeZone: WAW, habits: [slot({ state: 'done' })] });
+    expect(conflicts(done.timed)).toEqual([]);
+    expect(done.timed[1]!.habitState).toBe('done');
+  });
+
+  it('kalendarz: pozycje `habit:<id>:<dzień>` jako zegar ścienny, przyszłe dni wirtualne', () => {
+    const entries = calendarEntries([], [], DAY, '2026-11-21', { timeZone: WAW, habits: [slot(), slot({ date: '2026-11-20', future: true })] });
+    expect(entries.map((e) => [e.key, e.kind, e.start, e.end, e.virtual, e.habitState])).toEqual([
+      ['habit:h:2026-11-19', 'habit', '2026-11-19T09:30', '2026-11-19T10:00', false, 'pending'],
+      ['habit:h:2026-11-20', 'habit', '2026-11-20T09:30', '2026-11-20T10:00', true, 'pending'],
+    ]);
+    expect(freeSlotTimes([], [], DAY, { days: [4], start: '09:00', end: '11:00' }, { timeZone: WAW, habits: [slot()] })).toEqual([
+      { start: '2026-11-19T09:00', end: '2026-11-19T09:30' },
+      { start: '2026-11-19T10:00', end: '2026-11-19T11:00' },
+    ]);
   });
 });

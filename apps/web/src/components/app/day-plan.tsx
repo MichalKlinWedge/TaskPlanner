@@ -6,7 +6,7 @@
  * Wszystko z `core/time-blocking.ts` (`blocksForDay`, `conflicts`, `freeSlots`, `blockLanes`); układanie
  * bloków przeciąganiem — w kalendarzu (`#/calendar`).
  */
-import { addDays, blockLanes, blocksForDay, conflictIds, conflicts, freeSlots, localDateTimeAt, plural, PRIORITY, zonedInstant, type Block, type ProfileSettings, type ViewContext } from "@taskplanner/core";
+import { addDays, blockLanes, blocksForDay, conflictIds, conflicts, freeSlots, habitSlots, localDateTimeAt, plural, PRIORITY, zonedInstant, type Block, type ProfileSettings, type ViewContext } from "@taskplanner/core";
 import { useEffect, useMemo, useState } from "react";
 
 import type { AppData } from "@/lib/app-data";
@@ -39,11 +39,16 @@ export function DayPlan({ data, ctx, settings }: { data: AppData; ctx: ViewConte
   const dayStart = zonedInstant(today, "00:00", timeZone).getTime();
   const nowMin = useNowMinute(dayStart);
 
+  const habits = useMemo(
+    () => habitSlots(data.tasks.filter((t) => !ctx.workspaceId || t.workspaceId === ctx.workspaceId), data.habitCompletions, today, addDays(today, 1), today),
+    [data.tasks, data.habitCompletions, ctx.workspaceId, today],
+  );
+
   const plan = useMemo(() => {
-    const day = blocksForDay(tasks, events.list, today, { timeZone, defaultDurationMin: settings.defaultDurationMin });
+    const day = blocksForDay(tasks, events.list, today, { timeZone, defaultDurationMin: settings.defaultDurationMin, habits });
     const list = conflicts(day.timed);
     return { day, list, hot: conflictIds(list), free: freeSlots(day, settings.workHours, { timeZone }), lanes: blockLanes(day.timed) };
-  }, [tasks, events.list, today, timeZone, settings.defaultDurationMin, settings.workHours]);
+  }, [tasks, habits, events.list, today, timeZone, settings.defaultDurationMin, settings.workHours]);
 
   const { day } = plan;
   // Oś: godziny pracy, poszerzone o bloki spoza nich (pełne godziny).
@@ -122,9 +127,16 @@ export function DayPlan({ data, ctx, settings }: { data: AppData; ctx: ViewConte
             width: `calc(${100 / lane.lanes}% - 2px)`,
             borderLeftColor: task ? PRIORITY[task.priority]?.color : (source?.color ?? undefined),
           };
-          const label = `${clock(b)} ${b.title}`;
+          const label = `${clock(b)} ${b.kind === "habit" ? (b.habitState === "done" ? "✓ " : "◎ ") : ""}${b.title}`;
           const cls = `absolute ml-0.5 overflow-hidden rounded border border-l-4 px-1 text-left text-[11px] leading-tight ${b.kind === "event" ? "tp-plan-event border-[var(--line)]" : "border-[var(--line)] bg-[var(--surface)] shadow-sm"} ${b.passive ? "opacity-50 line-through" : ""} ${b.virtual ? "border-dashed opacity-70" : ""} ${hot ? "outline-2 outline-[var(--danger)]" : ""}`;
           const title = `${label}${source ? `\n${[source.calendar, source.location].filter(Boolean).join(" · ")}` : ""}`;
+          if (b.kind === "habit")
+            return (
+              <a key={`habit:${b.id}`} href={`#/habit/${b.id}`} className={`${cls} border-l-emerald-600`} style={style} title={`${title}\nNawyk`}>
+                {hot ? "⚠ " : ""}
+                {label}
+              </a>
+            );
           return b.kind === "task" ? (
             <button key={`task:${b.id}`} type="button" className={cls} style={style} title={title} onClick={() => open(b.id)}>
               {hot ? "⚠ " : ""}

@@ -68,6 +68,16 @@ body {
 .tp-calendar .fc-event.tp-task {
   border-left-width: 4px;
 }
+/* Nawyki z porą: do odczytu, zielona ramka (kolor nawyków). */
+.tp-calendar .fc-event.tp-habit {
+  border-width: 1px 1px 1px 4px;
+  border-color: #059669;
+  background: color-mix(in srgb, #059669 12%, var(--surface));
+  cursor: pointer;
+}
+.tp-calendar .fc-event.tp-habit .fc-event-main {
+  color: var(--foreground);
+}
 .tp-calendar .fc-event.tp-passive {
   opacity: 0.5;
   text-decoration: line-through;

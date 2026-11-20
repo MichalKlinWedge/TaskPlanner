@@ -5,6 +5,7 @@
  * blok liczy się w strefie urządzenia (albo strefie przypiętej do zadania), wydarzenia są chwilami.
  */
 import { addDays, isoWeekday, localDateTimeAt, zonedInstant } from './dates.ts';
+import type { DayState, HabitSlot } from './habits.ts';
 import { occurrences, type Recurrence } from './recurrence.ts';
 import type { LocalDate, LocalTime } from './schemas/primitives.ts';
 import type { ViewTask } from './views.ts';
@@ -29,7 +30,8 @@ export interface CalendarEventLike {
 }
 
 export interface Block {
-  kind: 'task' | 'event';
+  /** `habit` — nawyk z porą (`habitSlots`), blok o domyślnej długości, nieprzesuwalny. */
+  kind: 'task' | 'event' | 'habit';
   id: string;
   title: string;
   /** Minuty od północy dnia (może być < 0 albo > długości dnia dla bloków przechodzących przez północ). */
@@ -41,6 +43,18 @@ export interface Block {
   passive: boolean;
   /** Przyszłe wystąpienie serii (do odczytu, jak w „Nadchodzących”). */
   virtual?: boolean;
+  /** Stan dnia nawyku (tylko `kind = 'habit'`). */
+  habitState?: DayState;
+}
+
+/** Nawyk zrobiony albo z dniem wolnym — jak ukończone zadanie (bez konfliktów i zajętości). */
+const habitSettled = (state: DayState) => state === 'done' || state === 'skipped';
+
+interface PlanOptions {
+  timeZone?: string;
+  defaultDurationMin?: number;
+  /** Nawyki z porą (`habitSlots`) — bloki obok zadań; brane tylko te z danego dnia. */
+  habits?: readonly HabitSlot[];
 }
 
 export interface AllDayItem {
@@ -77,7 +91,7 @@ export function blocksForDay(
   tasks: readonly BlockTask[],
   events: readonly CalendarEventLike[],
   date: LocalDate,
-  { timeZone, defaultDurationMin = DEFAULT_BLOCK_MIN }: { timeZone?: string; defaultDurationMin?: number } = {},
+  { timeZone, defaultDurationMin = DEFAULT_BLOCK_MIN, habits = [] }: PlanOptions = {},
 ): DayPlan {
   const dayStart = zonedInstant(date, '00:00', timeZone).getTime();
   const dayEnd = zonedInstant(addDays(date, 1), '00:00', timeZone).getTime();
@@ -95,6 +109,13 @@ export function blocksForDay(
     const start = zonedInstant(date, task.dueTime, task.timeZone ?? timeZone).getTime();
     const end = start + (task.durationMin ?? defaultDurationMin) * 60_000;
     timed.push({ kind: 'task', id: task.id, title: task.title, startMin: minutes(start), endMin: minutes(end), startAt: new Date(start).toISOString(), endAt: new Date(end).toISOString(), passive: closed(task), ...(virtual && { virtual }) });
+  }
+
+  for (const slot of habits) {
+    if (slot.date !== date) continue;
+    const start = zonedInstant(date, slot.time, timeZone).getTime();
+    const end = start + defaultDurationMin * 60_000;
+    timed.push({ kind: 'habit', id: slot.id, title: slot.title, startMin: minutes(start), endMin: minutes(end), startAt: new Date(start).toISOString(), endAt: new Date(end).toISOString(), passive: habitSettled(slot.state), ...(slot.future && { virtual: true }), habitState: slot.state });
   }
 
   for (const event of events) {
@@ -184,9 +205,9 @@ export function addWallMinutes(wall: string, minutes: number): string {
 
 /** Pozycja kalendarza (FullCalendar na webie, oś dnia na telefonie) — czas jako zegar ścienny. */
 export interface CalendarEntry {
-  /** Unikalne w zakresie: `task:<id>:<dzień>` / `event:<id>`. */
+  /** Unikalne w zakresie: `task:<id>:<dzień>` / `habit:<id>:<dzień>` / `event:<id>`. */
   key: string;
-  kind: 'task' | 'event';
+  kind: 'task' | 'event' | 'habit';
   id: string;
   title: string;
   /** Dzień wystąpienia (wydarzenie — pierwszy dzień w zakresie). */
@@ -199,6 +220,8 @@ export interface CalendarEntry {
   virtual: boolean;
   /** Nakłada się z innym aktywnym blokiem (zadanie ↔ zadanie / wydarzenie). */
   conflict: boolean;
+  /** Stan dnia nawyku (tylko `kind = 'habit'`). */
+  habitState?: DayState;
 }
 
 const notCancelled = (t: BlockTask) => t.status !== 'cancelled';
@@ -214,7 +237,7 @@ export function calendarEntries(
   events: readonly CalendarEventLike[],
   from: LocalDate,
   to: LocalDate,
-  { timeZone, defaultDurationMin = DEFAULT_BLOCK_MIN }: { timeZone?: string; defaultDurationMin?: number } = {},
+  { timeZone, defaultDurationMin = DEFAULT_BLOCK_MIN, habits = [] }: PlanOptions = {},
 ): CalendarEntry[] {
   const candidates = tasks.filter((t) => notCancelled(t) && t.dueDate && t.dueDate < to && (t.dueDate >= from || (t.recurrence?.mode === 'schedule' && !closed(t))));
   const byId = new Map(candidates.map((t) => [t.id, t]));
@@ -222,7 +245,7 @@ export function calendarEntries(
   const eventEntries = new Map<string, CalendarEntry>();
 
   for (let date = from; date < to; date = addDays(date, 1)) {
-    const plan = blocksForDay(candidates, events, date, { timeZone, defaultDurationMin });
+    const plan = blocksForDay(candidates, events, date, { timeZone, defaultDurationMin, habits });
     const hot = conflictIds(conflicts(plan.timed));
     for (const item of plan.allDay) {
       if (item.kind === 'task') {
@@ -234,6 +257,11 @@ export function calendarEntries(
       }
     }
     for (const block of plan.timed) {
+      if (block.kind === 'habit') {
+        const start = localDateTimeAt(block.startAt, timeZone);
+        out.push({ key: `habit:${block.id}:${date}`, kind: 'habit', id: block.id, title: block.title, date, allDay: false, start, end: addWallMinutes(start, block.endMin - block.startMin), passive: block.passive, virtual: block.virtual === true, conflict: hot.has(block.id), habitState: block.habitState! });
+        continue;
+      }
       if (block.kind === 'task') {
         const task = byId.get(block.id)!;
         const start = `${date}T${task.dueTime}`;
@@ -256,9 +284,9 @@ export function freeSlotTimes(
   events: readonly CalendarEventLike[],
   date: LocalDate,
   work: WorkHours,
-  { timeZone, defaultDurationMin, minMinutes }: { timeZone?: string; defaultDurationMin?: number; minMinutes?: number } = {},
+  { timeZone, defaultDurationMin, minMinutes, habits }: PlanOptions & { minMinutes?: number } = {},
 ): { start: string; end: string }[] {
-  const plan = blocksForDay(tasks.filter(notCancelled), events, date, { timeZone, defaultDurationMin });
+  const plan = blocksForDay(tasks.filter(notCancelled), events, date, { timeZone, defaultDurationMin, habits });
   const dayStart = zonedInstant(date, '00:00', timeZone).getTime();
   const wall = (min: number) => localDateTimeAt(new Date(dayStart + min * 60_000), timeZone);
   return freeSlots(plan, work, { timeZone, minMinutes }).map((s) => ({ start: wall(s.startMin), end: wall(s.endMin) }));

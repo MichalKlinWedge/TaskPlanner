@@ -23,6 +23,7 @@ import {
   habitProgressLabel,
   habitSaveOps,
   habitsForDay,
+  habitSlots,
   habitStats,
   habitWeeks,
   habitYear,
@@ -118,6 +119,16 @@ describe('Etap 8: statystyki na 90-dniowych historiach policzonych ręcznie', ()
     expect(year.counts).toEqual({ done: 84, partial: 0, skipped: 2, missed: 3, pending: 1, off: 275 });
     // 1.11 to niedziela — należy do tygodnia 26.10 (kolumna 49; 52 = 16.11).
     expect(year.months.at(-1)).toEqual({ column: 49, month: 11 });
+    expect(last.map((d) => d.planned)).toEqual(last.map((d) => d.future && c.habit.goal === undefined && occurrences(c.habit.recurrence, { from: d.date, to: d.date, limit: 1 }).length > 0));
+  });
+
+  it('mapa roku naprzód: zaplanowane dni według reguły do końca nawyku; przy celu „N razy” bez planu', () => {
+    const mwf: Habit = { recurrence: { mode: 'schedule', rrule: 'FREQ=WEEKLY;BYDAY=MO,WE,FR;UNTIL=20261127', anchor: '2026-11-02' } };
+    const year = habitYear(mwf, [], today, { ahead: 2 });
+    expect(year.weeks).toHaveLength(55);
+    expect(year.weeks.flat().filter((d) => d.planned).map((d) => d.date)).toEqual(['2026-11-20', '2026-11-23', '2026-11-25', '2026-11-27']);
+    expect(year.weeks.at(-3)!.map((d) => d.future)).toEqual([false, false, false, true, true, true, true]);
+    expect(habitYear({ ...thrice }, [], today, { ahead: 2 }).weeks.flat().some((d) => d.planned)).toBe(false);
   });
 });
 
@@ -338,5 +349,30 @@ describe('Etap 8: zapis nawyku i blok „Dziś”', () => {
       ['b', false, 0],
       ['c', true, 1],
     ]);
+  });
+});
+
+describe('nawyki w kalendarzu (habitSlots)', () => {
+  const view = (id: string, over: Partial<ViewTask>): ViewTask => ({
+    id, workspaceId: 'w', listId: 'l', parentId: null, kind: 'habit', title: id, status: 'todo', priority: 4, startDate: null, dueDate: null, dueTime: null, durationMin: null,
+    recurrence: { mode: 'schedule', rrule: 'FREQ=WEEKLY;BYDAY=TU', anchor: '2026-11-03' }, habit: { time: '14:00' }, completedAt: null, createdAt: NOW, sortKey: '0', boardSortKey: null, tagIds: [], postponeCount: 0, statusChangedAt: null, ...over,
+  });
+
+  it('dni według reguły z porą i stanem; wpis spoza reguły też; bez pory, celu „N razy”, zakończonych i zwykłych zadań', () => {
+    const tasks = [
+      view('basen', {}),
+      view('bez-pory', { habit: {} }),
+      view('cel', { habit: { time: '07:00', goal: { period: 'week', times: 2 } }, recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY', anchor: '2026-11-01' } }),
+      view('koniec', { status: 'cancelled' }),
+      view('zadanie', { kind: 'task' }),
+    ];
+    const done = new Map<string, HabitCompletion[]>([['basen', [{ date: '2026-11-10', kind: 'done' }, { date: '2026-11-12', kind: 'done' }]]]);
+    expect(habitSlots(tasks, done, '2026-11-09', '2026-11-30', today).map((s) => [s.date, s.time, s.state, s.future])).toEqual([
+      ['2026-11-10', '14:00', 'done', false],
+      ['2026-11-12', '14:00', 'done', false],
+      ['2026-11-17', '14:00', 'missed', false],
+      ['2026-11-24', '14:00', 'pending', true],
+    ]);
+    expect(habitSlots(tasks, done, '2026-11-10', '2026-11-10', today)).toEqual([]);
   });
 });

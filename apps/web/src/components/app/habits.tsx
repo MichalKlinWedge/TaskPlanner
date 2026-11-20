@@ -311,7 +311,7 @@ export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: App
   // React Compiler zapamiętuje wyniki między renderami; bez ręcznego `useMemo`.
   const stats = habit ? habitStats(habit, completions, today) : null;
   const weeks = habit ? habitWeeks(habit, completions, today, 12) : [];
-  const year = habit ? habitYear(habit, completions, today) : null;
+  const year = habit ? habitYear(habit, completions, today, { ahead: YEAR_AHEAD_WEEKS }) : null;
 
   if (!task || !habit || !stats || !year) {
     return (
@@ -475,15 +475,24 @@ function WeeklyChart({ weeks, habit }: { weeks: ReturnType<typeof habitWeeks>; h
 }
 
 const LEGEND: DayState[] = ["done", "partial", "skipped", "missed", "off"];
+/** Tygodnie naprzód na mapie roku — zaplanowane dni nawyku. */
+const YEAR_AHEAD_WEEKS = 8;
+const PLANNED_CLASS = "ring-1 ring-inset ring-[var(--accent)] bg-[var(--surface)]";
 
-/** Mapa cieplna roku: 53 kolumny tygodni (pon–ndz). */
+/** Mapa cieplna roku: 53 kolumny tygodni (pon–ndz) do bieżącego i kilka naprzód z zaplanowanymi dniami. */
 function Heatmap({ year, habit }: { year: ReturnType<typeof habitYear>; habit: Habit }) {
   const legend = LEGEND.filter((s) => s !== "partial" || habit.target !== undefined).filter((s) => s !== "missed" || !habit.goal);
   // Na wąskim ekranie mapa się przewija — zaczyna od bieżącego tygodnia (prawa krawędź).
   const scroller = useRef<HTMLDivElement>(null);
+  const columns = year.weeks.length;
   useEffect(() => {
-    if (scroller.current) scroller.current.scrollLeft = scroller.current.scrollWidth;
-  }, []);
+    // Po ułożeniu siatki (klatka później) — inaczej szerokość bywa jeszcze zerowa i mapa stoi na początku.
+    const frame = requestAnimationFrame(() => {
+      if (scroller.current) scroller.current.scrollLeft = scroller.current.scrollWidth;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [columns]);
+  const planned = !habit.goal && year.weeks.some((w) => w.some((d) => d.planned));
   return (
     <figure>
       <div ref={scroller} className="overflow-x-auto pb-1">
@@ -508,6 +517,11 @@ function Heatmap({ year, habit }: { year: ReturnType<typeof habitYear>; habit: H
             <span className={`inline-block h-[11px] w-[11px] rounded-sm ${STATE_CLASS[s]}`} /> {STATE_LABEL[s]} {year.counts[s] && s !== "off" ? `(${year.counts[s]})` : ""}
           </span>
         ))}
+        {planned ? (
+          <span className="inline-flex items-center gap-1">
+            <span className={`inline-block h-[11px] w-[11px] rounded-sm ${PLANNED_CLASS}`} /> zaplanowane
+          </span>
+        ) : null}
       </figcaption>
     </figure>
   );
@@ -519,7 +533,11 @@ function HeatRow({ weekday, year, habit }: { weekday: IsoWeekday; year: ReturnTy
       <span className="pr-1 text-right text-[10px] leading-[11px] text-[var(--muted)]">{weekday % 2 ? WEEKDAY[weekday].short : ""}</span>
       {year.weeks.map((week) => {
         const d = week[weekday - 1]!;
-        if (d.future) return <span key={d.date} />;
+        if (d.future) {
+          if (!d.planned) return <span key={d.date} />;
+          const label = `${dayChip(d.date)}: zaplanowane`;
+          return <span key={d.date} title={label} aria-label={label} className={`rounded-sm ${PLANNED_CLASS}`} />;
+        }
         const label = `${dayChip(d.date)}: ${STATE_LABEL[d.state]}${d.value !== null && habit.target !== undefined ? ` (${d.value} / ${habit.target})` : ""}`;
         return <span key={d.date} title={label} aria-label={label} className={`rounded-sm ${STATE_CLASS[d.state]} ${d.state === "off" ? "opacity-60" : ""}`} />;
       })}

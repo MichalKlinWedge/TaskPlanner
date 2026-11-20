@@ -19,6 +19,7 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import {
   applyFilter,
   calendarEntries,
+  habitSlots,
   datesPatch,
   freeSlotTimes,
   isOpen,
@@ -40,6 +41,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { AppData } from "@/lib/app-data";
 import { useCalendarEvents } from "@/lib/calendar-events";
+import { useRoute } from "@/lib/route";
 
 import { useAppEnv } from "./app-env";
 import { useTaskActions } from "./task-item";
@@ -84,6 +86,7 @@ function panelTasks(source: string, data: AppData, ctx: ViewContext): ViewTask[]
 
 export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: ViewContext; settings: ProfileSettings }) {
   const { openTask, select, store } = useAppEnv();
+  const [, navigate] = useRoute();
   const { run } = useTaskActions();
   const [view, setView] = useState<CalendarView>(readView);
   const [range, setRange] = useState<{ from: LocalDate; to: LocalDate } | null>(null);
@@ -95,13 +98,18 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
 
   const tasks = useMemo(() => data.tasks.filter((t) => t.kind === "task" && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId)), [data.tasks, ctx.workspaceId]);
   const byId = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
+  // Nawyki z porą — bloki do odczytu (odhacza się je w „Dziś” / „Nawyki”); klik otwiera nawyk.
+  const habits = useMemo(
+    () => (range ? habitSlots(data.tasks.filter((t) => !ctx.workspaceId || t.workspaceId === ctx.workspaceId), data.habitCompletions, range.from, range.to, ctx.today) : []),
+    [data.tasks, data.habitCompletions, range, ctx.workspaceId, ctx.today],
+  );
 
   // Wydarzenia z kalendarzy zewnętrznych (widoczne kalendarze) nachodzące na zakres widoku.
   const calendarEvents = useCalendarEvents(store, range, timeZone);
 
   const events = useMemo<EventInput[]>(() => {
     if (!range) return [];
-    const entries = calendarEntries(tasks, calendarEvents.list, range.from, range.to, { timeZone, defaultDurationMin: duration });
+    const entries = calendarEntries(tasks, calendarEvents.list, range.from, range.to, { timeZone, defaultDurationMin: duration, habits });
     const out: EventInput[] = entries.map((e) => {
       const task = e.kind === "task" ? byId.get(e.id) : undefined;
       const source = e.kind === "event" ? calendarEvents.info.get(e.id) : undefined;
@@ -109,7 +117,7 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
       return {
         ...(source && { backgroundColor: "var(--surface)", textColor: "var(--foreground)" }),
         id: e.key,
-        title: `${e.conflict ? "⚠ " : ""}${e.virtual ? "↻ " : ""}${e.title}`,
+        title: `${e.conflict ? "⚠ " : ""}${e.kind === "habit" ? (e.habitState === "done" ? "✓ " : "◎ ") : e.virtual ? "↻ " : ""}${e.title}`,
         start: e.start,
         end: e.end,
         allDay: e.allDay,
@@ -117,17 +125,17 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
         durationEditable: e.kind === "task" && !e.virtual && !e.passive && !e.allDay,
         borderColor: e.conflict ? "var(--danger)" : color,
         classNames: [`tp-${e.kind}`, e.passive ? "tp-passive" : "", e.virtual ? "tp-virtual" : "", e.conflict ? "tp-conflict" : ""].filter(Boolean),
-        extendedProps: { taskId: e.kind === "task" ? e.id : null, conflict: e.conflict, hint: source ? [source.calendar, source.location].filter(Boolean).join(" · ") : null },
+        extendedProps: { taskId: e.kind === "task" ? e.id : null, habitId: e.kind === "habit" ? e.id : null, conflict: e.conflict, hint: source ? [source.calendar, source.location].filter(Boolean).join(" · ") : e.kind === "habit" ? "Nawyk" : null },
       };
     });
     // Wolne okna w godzinach pracy — tylko w widoku dnia (M11).
     if (view === "timeGridDay") {
-      for (const slot of freeSlotTimes(tasks, calendarEvents.list, range.from, settings.workHours, { timeZone, defaultDurationMin: duration })) {
+      for (const slot of freeSlotTimes(tasks, calendarEvents.list, range.from, settings.workHours, { timeZone, defaultDurationMin: duration, habits })) {
         out.push({ id: `free:${slot.start}`, start: slot.start, end: slot.end, display: "background", classNames: ["tp-free"], title: "Wolne" });
       }
     }
     return out;
-  }, [range, tasks, byId, calendarEvents, timeZone, duration, view, settings.workHours]);
+  }, [range, tasks, byId, habits, calendarEvents, timeZone, duration, view, settings.workHours]);
 
   const conflictCount = useMemo(() => events.filter((e) => e.extendedProps?.conflict).length, [events]);
   const candidates = useMemo(() => panelTasks(source, data, ctx), [source, data, ctx]);
@@ -186,6 +194,8 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
   };
 
   const onClick = (info: EventClickArg) => {
+    const habitId = info.event.extendedProps.habitId as string | null;
+    if (habitId) return navigate({ view: "habit", id: habitId });
     const id = info.event.extendedProps.taskId as string | null;
     if (!id) return;
     select(id);
