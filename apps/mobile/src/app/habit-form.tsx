@@ -72,7 +72,8 @@ export default function HabitFormScreen() {
     try {
       const schedule: HabitDraft['schedule'] =
         kind === 'days' ? { kind, days } : kind === 'goal' ? { kind, period, times } : kind === 'custom' && initial.schedule.kind === 'custom' ? initial.schedule : { kind: 'daily' };
-      const draft: HabitDraft = { schedule, start, target: quantity ? Number(target.replace(',', '.')) : null, unit: quantity ? unit : null, time };
+      // `...initial` — pola draftu, których formularz nie edytuje, zostają (np. koniec reguły).
+      const draft: HabitDraft = { ...initial, schedule, start, target: quantity ? Number(target.replace(',', '.')) : null, unit: quantity ? unit : null, time };
       if (remind && !draft.time) throw new Error('Przypomnienie wymaga pory.');
       const { taskId, ops } = habitSaveOps({ id: task?.id, title, listId, draft, remind, reminderIds, lastSortKey: lastSortKey(data, listId), now: new Date() });
       await run(ops, { text: task ? `Zapisano „${title.trim()}”` : `Dodano nawyk „${title.trim()}”` });
