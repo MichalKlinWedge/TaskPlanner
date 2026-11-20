@@ -303,6 +303,8 @@ export function startFocusWork(onPhaseEnd?: (finished: FocusState, next: FocusSt
   forgetFocusNotifications();
   const off = onFocusData((d) => {
     if (!d.loaded) return;
+    // Tryb skupienia wyłączony w Ustawieniach (też na innym urządzeniu): aktywny timer zatrzymany.
+    if (!d.settings.enabled && d.state.phase !== 'idle') void focusCommand({ kind: 'stop' }).catch((error) => console.warn('timer skupienia', error));
     void syncFocusNotifications(d);
     if (endTimer) clearTimeout(endTimer);
     const end = phaseEndsAt(d.state, d.settings);

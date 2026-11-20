@@ -17,7 +17,6 @@ import {
   PRIORITY,
   selectToday,
   WEEKDAY,
-  type FocusSettings,
   type IsoWeekday,
 } from '@taskplanner/core';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -48,7 +47,9 @@ function useNow(ticking: boolean) {
   return now;
 }
 
-const LENGTHS: { key: keyof FocusSettings; label: string; values: number[] }[] = [
+/** Długości etapów (pola liczbowe ustawień skupienia). */
+type LengthKey = 'focusMin' | 'shortBreakMin' | 'longBreakMin' | 'longBreakEvery';
+const LENGTHS: { key: LengthKey; label: string; values: number[] }[] = [
   { key: 'focusMin', label: 'Praca', values: [10, 15, 20, 25, 30, 40, 45, 50, 60, 90] },
   { key: 'shortBreakMin', label: 'Krótka przerwa', values: [1, 3, 5, 10, 15] },
   { key: 'longBreakMin', label: 'Długa przerwa', values: [10, 15, 20, 25, 30] },
@@ -103,7 +104,7 @@ export default function FocusScreen() {
     ]).then((id) => id !== undefined && setChosen(id || null));
   };
 
-  const setLength = (key: keyof FocusSettings, values: number[], label: string) =>
+  const setLength = (key: LengthKey, values: number[], label: string) =>
     void pickOption<number>(label, values.map((v) => ({ label: key === 'longBreakEvery' ? `co ${v} etapy` : formatMinutes(v), value: v, selected: settings[key] === v }))).then((v) => {
       if (v === undefined || v === settings[key]) return;
       void mutate('profiles', data.userId, { settings: { ...data.settings, focus: { ...settings, [key]: v } } }).catch((e: unknown) => notify(String(e)));

@@ -70,7 +70,7 @@ export function FocusChip() {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [ticking]);
-  if (state.phase === 'idle') return null;
+  if (state.phase === 'idle' || !settings.enabled) return null;
   const at = new Date(now);
   const text = state.phase === 'ready' ? '☕ koniec' : formatTimer(focusRemaining(state, at, settings) ?? focusElapsed(state, at));
   const color = state.phase === 'focus' || state.phase === 'stopwatch' ? p.accent : p.ok;

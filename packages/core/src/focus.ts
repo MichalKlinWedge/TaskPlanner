@@ -23,6 +23,8 @@ export const FocusSettings = z.object({
   longBreakMin: z.number().int().min(1).max(90).default(15),
   /** Długa przerwa po tylu etapach pracy. */
   longBreakEvery: z.number().int().min(1).max(12).default(4),
+  /** Tryb skupienia włączony (Ustawienia); wyłączony = bez timera, skrótu F, „▶ Skup się” i wskaźnika. */
+  enabled: z.boolean().default(true),
 });
 export type FocusSettings = z.infer<typeof FocusSettings>;
 export const DEFAULT_FOCUS: FocusSettings = FocusSettings.parse({});

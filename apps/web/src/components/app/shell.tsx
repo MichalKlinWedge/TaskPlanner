@@ -20,7 +20,7 @@ import { DayPlan } from "./day-plan";
 import { CommandPalette, ShortcutsDialog, type PaletteMode, type PalettePick } from "./command-palette";
 import { TaskExportButton } from "./export";
 import { FilterBar } from "./filter-bar";
-import { FocusIndicator, FocusProvider, FocusScreen } from "./focus";
+import { FocusIndicator, FocusProvider, FocusScreen, useFocus } from "./focus";
 import { DailyReview, ReviewNudge, WeeklyReview } from "./review";
 import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-views";
 import { AttachmentsProvider } from "./attachments";
@@ -296,7 +296,11 @@ export function Shell({
       <HabitsView data={data} ctx={ctx} targetInbox={targetInbox} navigate={navigate} />
     ) : route.view === "habit" ? (
       <HabitDetail key={route.id} id={route.id} data={data} ctx={ctx} navigate={navigate} />
-    ) : route.view === "timeline" ? null : route.view === "focus" ? (
+    ) : route.view === "timeline" ? null : route.view === "focus" && !settings.focus.enabled ? (
+      <p className="p-6 text-sm text-[var(--muted)]" data-testid="focus-disabled">
+        Tryb skupienia jest wyłączony — włącz go w <a href="#/settings" className="text-[var(--accent)] underline">Ustawieniach</a>.
+      </p>
+    ) : route.view === "focus" ? (
       <FocusScreen key={route.id ?? ""} taskId={route.id ?? null} ctx={ctx} onExit={() => navigate(lastRoute)} navigate={navigate} />
     ) : route.view === "review" ? (
       route.id === "weekly" ? (
@@ -761,6 +765,7 @@ function Keyboard({
   toggleSidebar: () => void;
 }) {
   const { openTask, openTaskId } = useAppEnv();
+  const focusOn = useFocus().settings.enabled;
   const bulk = useBulk(selected);
   const pendingG = useRef(0);
 
@@ -823,7 +828,7 @@ function Keyboard({
         "2": () => bulk({ kind: "priority", priority: 2 }, "Priorytet wysoki"),
         "3": () => bulk({ kind: "priority", priority: 3 }, "Priorytet średni"),
         "4": () => bulk({ kind: "priority", priority: 4 }, "Priorytet niski"),
-        f: () => navigate(focusRoute(selected.at(-1) ?? openTaskId)),
+        ...(focusOn && { f: () => navigate(focusRoute(selected.at(-1) ?? openTaskId)) }),
       };
       const handler = handlers[key];
       // Enter bez zaznaczenia zostaje przyciskom i linkom.
@@ -833,7 +838,7 @@ function Keyboard({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [blocked, selected, setSelected, navigate, openQuick, openPalette, openShortcuts, toggleSidebar, openTask, openTaskId, bulk]);
+  }, [blocked, selected, setSelected, navigate, openQuick, openPalette, openShortcuts, toggleSidebar, openTask, openTaskId, bulk, focusOn]);
 
   return null;
 }

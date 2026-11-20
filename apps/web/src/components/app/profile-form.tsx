@@ -63,6 +63,7 @@ export function ProfileForm({
     longBreakMin: String(start.focus.longBreakMin),
     longBreakEvery: String(start.focus.longBreakEvery),
   }));
+  const [focusEnabled, setFocusEnabled] = useState(start.focus.enabled);
   const [error, setError] = useState<string | null>(null);
   const zones = useMemo(() => timeZones(timeZone), [timeZone]);
 
@@ -83,6 +84,7 @@ export function ProfileForm({
         shortBreakMin: Number(focus.shortBreakMin),
         longBreakMin: Number(focus.longBreakMin),
         longBreakEvery: Number(focus.longBreakEvery),
+        enabled: focusEnabled,
       },
     });
     if (!parsed.success) {
@@ -174,10 +176,14 @@ export function ProfileForm({
       </fieldset>
       <fieldset className="flex flex-col gap-2 text-sm">
         <legend className="mb-1 font-medium">Tryb skupienia (Pomodoro)</legend>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={focusEnabled} onChange={(e) => setFocusEnabled(e.target.checked)} data-testid="focus-enabled" />
+          Włącz tryb skupienia (timer, skrót F, „▶ Skup się” w zadaniu)
+        </label>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {FOCUS_FIELDS.map(([key, label, min, max]) => (
             <Field key={key} label={label}>
-              <Input type="number" min={min} max={max} value={focus[key]} onChange={(e) => setFocus({ ...focus, [key]: e.target.value })} />
+              <Input type="number" min={min} max={max} value={focus[key]} disabled={!focusEnabled} onChange={(e) => setFocus({ ...focus, [key]: e.target.value })} />
             </Field>
           ))}
         </div>

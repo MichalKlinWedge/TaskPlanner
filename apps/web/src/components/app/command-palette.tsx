@@ -18,9 +18,10 @@ import {
   type SearchItem,
   type SearchKind,
 } from "@taskplanner/core";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useAppEnv } from "./app-env";
+import { useFocus } from "./focus";
 import { inputClass } from "./ui";
 
 /** Polecenia, które już działają (reszta przyjdzie z kolejnymi etapami — bez martwych pozycji). */
@@ -50,6 +51,12 @@ export const AVAILABLE_COMMANDS = new Set([
   "app.palette",
   "app.shortcuts",
 ]);
+
+/** Polecenia dostępne teraz: bez „Tryb skupienia”, gdy wyłączony w Ustawieniach. */
+function useAvailable(): (id: string) => boolean {
+  const focusOn = useFocus().settings.enabled;
+  return useCallback((id: string) => AVAILABLE_COMMANDS.has(id) && (focusOn || !id.startsWith("focus.")), [focusOn]);
+}
 
 const RECENT_KEY = "tp-recent";
 const readRecent = (): Map<string, string> => {
@@ -112,6 +119,7 @@ function highlighted(title: string, ranges: [number, number][]): ReactNode {
 
 export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; onClose: () => void; onPick: (pick: PalettePick) => void }) {
   const { data, selectedIds, today } = useAppEnv();
+  const available = useAvailable();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const list = useRef<HTMLUListElement>(null);
@@ -128,9 +136,9 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
     for (const w of data.workspaces) items.push({ id: `workspace:${w.id}`, kind: "workspace", title: w.name });
     for (const t of data.tags) items.push({ id: `tag:${t.id}`, kind: "tag", title: t.name, keywords: ["tag"] });
     for (const f of data.savedFilters) items.push({ id: `filter:${f.id}`, kind: "filter", title: f.name, keywords: ["filtr"] });
-    if (mode === "all") items.push(...commandSearchItems(selectedIds.size).filter((c) => AVAILABLE_COMMANDS.has(c.id)));
+    if (mode === "all") items.push(...commandSearchItems(selectedIds.size).filter((c) => available(c.id)));
     return buildSearchIndex(items);
-  }, [mode, data.tasks, data.lists, data.workspaces, data.tags, data.savedFilters, listName, tagName, names, selectedIds.size]);
+  }, [mode, data.tasks, data.lists, data.workspaces, data.tags, data.savedFilters, listName, tagName, names, selectedIds.size, available]);
 
   const options: Option[] = useMemo(() => {
     if (mode === "priority") {
@@ -284,13 +292,14 @@ const EXTRA_SHORTCUTS: readonly { keys: readonly string[]; label: string }[] = [
 
 /** Lista skrótów (`?`): z `core/commands.ts` — tylko działające polecenia. */
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  const available = useAvailable();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   const rows = [
-    ...COMMANDS.filter((c) => c.keys && AVAILABLE_COMMANDS.has(c.id)).map((c) => ({ keys: c.keys!, label: c.label })),
+    ...COMMANDS.filter((c) => c.keys && available(c.id)).map((c) => ({ keys: c.keys!, label: c.label })),
     ...LIST_SHORTCUTS,
     ...EXTRA_SHORTCUTS,
   ];

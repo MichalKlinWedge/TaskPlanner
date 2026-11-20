@@ -1,18 +1,44 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Switch, Text, View } from 'react-native';
 
 import { UpdateSection } from '@/components/app-update';
 import { BackgroundStatus } from '@/components/background-status';
 import { ErrorsSection } from '@/components/errors-section';
 import { SyncIndicator } from '@/components/sync-indicator';
-import { Button, Field, P, Row, Screen, Section } from '@/components/ui';
+import { Button, Field, P, Row, Screen, Section, usePalette } from '@/components/ui';
+import { useView } from '@/lib/app-data';
 import { sendMagicLink, signInWithGoogle, signOut, verifyEmailCode } from '@/lib/auth';
 import { CLOUD_SERVER, saveServerConfig, serverConfig, sessionUser } from '@/lib/config';
 import { useSyncStatus } from '@/lib/local-query';
-import { onSessionChange, type PullPerf } from '@/lib/sync';
+import { mutate, onSessionChange, type PullPerf } from '@/lib/sync';
 
 const seconds = (ms: number) => `${(ms / 1000).toLocaleString('pl-PL', { maximumFractionDigits: 1, minimumFractionDigits: 1 })} s`;
+
+/** Przełącznik trybu skupienia (`settings.focus.enabled`); wyłączenie zatrzymuje trwający timer. */
+function FocusSection() {
+  const p = usePalette();
+  const { data } = useView();
+  const [error, setError] = useState<string | null>(null);
+  if (!data.userId) return null;
+  const on = data.settings.focus.enabled;
+  return (
+    <Section title="Tryb skupienia">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Text style={{ color: p.muted, flex: 1 }}>Pomodoro i stoper: „▶ Skup się” w zadaniu, wskaźnik timera w nagłówku. Wyłączenie zatrzymuje trwający timer (też na komputerze).</Text>
+        <Switch
+          accessibilityLabel="Tryb skupienia"
+          value={on}
+          onValueChange={(enabled) => {
+            setError(null);
+            void mutate('profiles', data.userId, { settings: { ...data.settings, focus: { ...data.settings.focus, enabled } } }).catch((e: unknown) => setError(String(e)));
+          }}
+        />
+      </View>
+      {error ? <P tone="bad">{error}</P> : null}
+    </Section>
+  );
+}
 
 /** Pomiar ostatniego pobrania: czas zapytania `pull_changes` kontra zapis do lokalnej bazy. */
 function PullPerfInfo({ perf }: { perf: PullPerf }) {
@@ -157,6 +183,8 @@ export default function Settings() {
       </Section>
 
       <UpdateSection />
+
+      <FocusSection />
 
       <BackgroundStatus />
 

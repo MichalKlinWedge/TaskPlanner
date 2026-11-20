@@ -178,7 +178,7 @@ export function FocusProvider({ store, userId, settings, children }: { store: Ta
   const advanced = useRef<string | null>(null);
   const endsAt = phaseEndsAt(state, focusSettings)?.getTime() ?? null;
   useEffect(() => {
-    if (!loaded || endsAt === null || endsAt > now) return;
+    if (!loaded || !focusSettings.enabled || endsAt === null || endsAt > now) return;
     const key = `${state.entryId}:${endsAt}`;
     if (advanced.current === key) return;
     advanced.current = key;
@@ -192,6 +192,11 @@ export function FocusProvider({ store, userId, settings, children }: { store: Ta
       } else void showNotification(text.title, text.body);
     }
   }, [loaded, endsAt, now, state, focusSettings, userId, write, notify]);
+
+  // Tryb skupienia wyłączony w Ustawieniach (też na innym urządzeniu): aktywny timer zatrzymany.
+  useEffect(() => {
+    if (loaded && !focusSettings.enabled && state.phase !== "idle") write(stopFocus(state, new Date()));
+  }, [loaded, focusSettings.enabled, state, write]);
 
   // Wpisy porzucone przez równoległą zmianę timera na innym urządzeniu (po chwili na synchronizację).
   useEffect(() => {
@@ -211,7 +216,7 @@ export function FocusProvider({ store, userId, settings, children }: { store: Ta
 
   // Pozostały czas w tytule karty.
   useEffect(() => {
-    if (state.phase === "idle") return;
+    if (state.phase === "idle" || !focusSettings.enabled) return;
     const original = document.title;
     const remaining = focusRemaining(state, new Date(now), focusSettings);
     document.title = `${state.phase === "ready" ? "✓" : formatTimer(remaining ?? focusElapsed(state, new Date(now)))} · ${FOCUS_PHASE[state.phase]}${state.paused ? " (pauza)" : ""}`;
@@ -258,7 +263,7 @@ export function FocusIndicator({ navigate, compact }: { navigate: (route: Route)
   const api = useFocus();
   const { data } = useAppEnv();
   const { state } = api;
-  if (state.phase === "idle") return null;
+  if (state.phase === "idle" || !api.settings.enabled) return null;
   const task = state.taskId ? data.tasks.find((t) => t.id === state.taskId) : undefined;
   // Zwinięty pasek boczny: ikona i czas, reszta w podpowiedzi.
   if (compact)
@@ -321,9 +326,11 @@ export function TaskTimeField({ task }: { task: ViewTask }) {
         </span>
         {active ? <span className="rounded bg-[var(--accent)]/10 px-1.5 text-xs">⏱ {FOCUS_PHASE[api.state.phase]} {api.state.phase === "ready" ? "" : dial(api)}</span> : null}
         <span className="ml-auto flex gap-1">
-          <a href={`#/focus/${task.id}`} className="rounded-md border border-[var(--line)] px-2 py-0.5 text-xs hover:bg-[var(--hover)]">
-            ▶ Skup się
-          </a>
+          {api.settings.enabled ? (
+            <a href={`#/focus/${task.id}`} className="rounded-md border border-[var(--line)] px-2 py-0.5 text-xs hover:bg-[var(--hover)]">
+              ▶ Skup się
+            </a>
+          ) : null}
           <button type="button" className="rounded-md px-2 py-0.5 text-xs text-[var(--accent)] hover:bg-[var(--hover)]" onClick={() => setAdding((a) => !a)}>
             + Dodaj czas
           </button>

@@ -376,7 +376,7 @@ function TimeField({ task }: { task: ViewTask }) {
           <View style={{ width: `${Math.min(100, (spent / estimate) * 100)}%`, height: '100%', backgroundColor: spent > estimate ? p.bad : p.accent }} />
         </View>
       ) : null}
-      {isOpen(task) && task.kind === 'task' ? (
+      {isOpen(task) && task.kind === 'task' && focus.settings.enabled ? (
         <View style={styles.pills}>
           <Pill label={current ? '⏱ Timer trwa — otwórz' : '▶ Skup się'} color={p.accent} onPress={() => router.push({ pathname: '/focus', params: { task: task.id } })} />
         </View>

@@ -76,7 +76,7 @@ export default function BrowseScreen() {
       <Group title="Planowanie">
         <Item title="Kalendarz" hint="Dzień z przeciąganiem bloków, tydzień, miesiąc" href="/calendar" />
         <Item title="Nawyki" hint="Passa, regularność, historia" href="/habits" />
-        <Item title="Skupienie" hint="Pomodoro i stoper, czas pracy" href="/focus" />
+        {data.settings.focus.enabled ? <Item title="Skupienie" hint="Pomodoro i stoper, czas pracy" href="/focus" /> : null}
         <Item title="Tablica" hint="Kanban bieżącej przestrzeni" href="/board" />
         <Item title="Przegląd dnia" hint="Zaległe i dzisiejsze — gesty na karcie" href="/review/daily" />
         <Item title="Przegląd tygodnia" hint="Inbox, projekty, oczekujące, tydzień, nawyki" href="/review/weekly" />

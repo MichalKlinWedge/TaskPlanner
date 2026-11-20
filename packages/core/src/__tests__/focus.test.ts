@@ -17,7 +17,8 @@ const describeOps = (ops: EntryOp[]) => ops.map((o) => (o.op === 'open' ? `open 
 
 describe('ustawienia', () => {
   it('domyślne 25/5/15 co 4 i walidacja', () => {
-    expect(DEFAULT_FOCUS).toEqual({ focusMin: 25, shortBreakMin: 5, longBreakMin: 15, longBreakEvery: 4 });
+    expect(DEFAULT_FOCUS).toEqual({ focusMin: 25, shortBreakMin: 5, longBreakMin: 15, longBreakEvery: 4, enabled: true });
+    expect(FocusSettings.parse({ enabled: false })).toMatchObject({ enabled: false, focusMin: 25 });
     expect(FocusSettings.safeParse({ focusMin: 0 }).success).toBe(false);
   });
 });

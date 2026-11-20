@@ -113,7 +113,7 @@ describe('ustawienia profilu', () => {
       workHours: { days: [1, 2, 3, 4, 5], start: '09:00', end: '17:00' },
       defaultReminderTime: '09:00',
       defaultDurationMin: 30,
-      focus: { focusMin: 25, shortBreakMin: 5, longBreakMin: 15, longBreakEvery: 4 },
+      focus: { focusMin: 25, shortBreakMin: 5, longBreakMin: 15, longBreakEvery: 4, enabled: true },
       dailyReview: { enabled: false, time: '20:00' },
       weeklyReview: { enabled: false, weekday: 7, time: '18:00' },
       theme: 'system',
