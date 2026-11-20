@@ -280,6 +280,15 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
         }
         return false;
       });
+      // Pojedyncze kliknięcie paska albo wiersza też otwiera panel zadania. SVAR wysyła `select-task`
+      // z `toggle`/`range` tylko z kliknięcia myszą (nie po przeciągnięciu paska, nie ze strzałek ani
+      // menu kontekstowego); Ctrl / Shift zostawiamy na zaznaczanie w SVAR.
+      gantt.on("select-task", (ev: { id: string | number; toggle?: boolean; range?: boolean }) => {
+        const id = String(ev.id);
+        if (typeof ev.toggle !== "boolean" || ev.toggle || ev.range || id.startsWith(PROJECT)) return;
+        select(id);
+        openTask(id);
+      });
       gantt.on("open-task", (ev: { id: string | number; mode: boolean }) =>
         setClosed((all) => {
           const next = new Set(all);
@@ -425,7 +434,7 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
       ) : (
         <p className="py-6 text-sm text-[var(--muted)]">Brak projektów — oś czasu pokazuje listy typu „projekt” z ich zadaniami. Projekt utworzysz w „Przestrzenie i listy”.</p>
       )}
-      <p className="text-xs text-[var(--muted)]">Przeciągnij pasek, żeby zmienić daty, krawędź — żeby zmienić początek albo koniec. Zależność: z prawego końca paska na lewy koniec następnego; kliknij strzałkę, żeby ją usunąć. Dwuklik otwiera zadanie.</p>
+      <p className="text-xs text-[var(--muted)]">Przeciągnij pasek, żeby zmienić daty, krawędź — żeby zmienić początek albo koniec. Zależność: z prawego końca paska na lewy koniec następnego; kliknij strzałkę, żeby ją usunąć. Kliknięcie paska albo wiersza otwiera zadanie.</p>
     </section>
   );
 }
