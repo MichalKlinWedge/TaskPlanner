@@ -7,7 +7,7 @@ import { P, Screen, Section } from '@/components/ui';
 import { deviceEvents, taskBlocks, type DeviceEvents } from '@/lib/day-items';
 import { moveTaskBlock } from '@/lib/tasks';
 import { toLocalDate, toLocalTime } from '@/lib/time';
-import { refreshTodayWidget } from '@/widget/refresh';
+import { refreshWidgets } from '@/widget/refresh';
 
 /** PoC-4: widok dnia z @howljs/calendar-kit — wydarzenia telefonu + zadania; przeciągnięcie bloku zadania zmienia jego czas. */
 export default function CalendarScreen() {
@@ -50,7 +50,7 @@ export default function CalendarScreen() {
     await moveTaskBlock(event.id.slice(5), toLocalDate(start), toLocalTime(start), (end.getTime() - start.getTime()) / 60_000);
     setLast(`Zapisano ${toLocalTime(start)}–${toLocalTime(end)} (${Date.now() - started} ms, lokalna baza + outbox)`);
     await load();
-    await refreshTodayWidget().catch(() => undefined);
+    await refreshWidgets().catch(() => undefined);
   };
 
   return (

@@ -1,40 +1,83 @@
 /**
- * Dane widżetu „Dziś” z lokalnej bazy — reguły widoku z core (`selectToday`: zaległe, dziś,
- * ukończone dziś), bieżąca przestrzeń jak w aplikacji. Wywoływane z obsługi widżetu (bez ekranu),
- * po akcji z powiadomienia, po zmianie w aplikacji i z zadania w tle.
+ * Dane i odświeżanie widżetów „Dziś”, „Nawyki”, „Szybkie dodawanie” z lokalnej bazy — modele z core
+ * (`todayWidgetModel`, `habitsWidgetModel`, `inboxCount`), bieżąca przestrzeń jak w aplikacji.
+ * Odświeżenie (M20): po każdej zmianie danych w aplikacji, po akcji z powiadomienia i z widżetu,
+ * z zadania w tle oraz co 30 min (`updatePeriodMillis` → `WIDGET_UPDATE` w `task-handler.ts`).
  */
-import { localDateAt, selectToday } from '@taskplanner/core';
+import { habitsWidgetModel, inboxCount, localDateAt, todayWidgetModel, type HabitsWidgetModel, type TodayWidgetModel, type ViewContext } from '@taskplanner/core';
 import { Platform } from 'react-native';
-import { requestWidgetUpdate } from 'react-native-android-widget';
+import { getWidgetInfo, requestWidgetUpdate, type WidgetRepresentation } from 'react-native-android-widget';
 
 import { currentWorkspace, type AppData } from '../lib/app-data';
 import { headlessData } from '../lib/headless';
 import { toLocalTime } from '../lib/time';
-import { TODAY_WIDGET, todayWidget, type WidgetTask } from './today-widget';
+import { HABITS_WIDGET, habitsWidget } from './habits-widget';
+import { QUICK_ADD_WIDGET, quickAddWidget } from './quick-add-widget';
+import { TODAY_WIDGET, todayWidget } from './today-widget';
 
-/** `given` — już wczytane dane widoków (ekran); bez nich odczyt z bazy. */
-export async function renderTodayWidget(given?: AppData) {
+export const WIDGETS = [TODAY_WIDGET, HABITS_WIDGET, QUICK_ADD_WIDGET] as const;
+export type WidgetName = (typeof WIDGETS)[number];
+
+export const isWidgetName = (name: string): name is WidgetName => (WIDGETS as readonly string[]).includes(name);
+
+export interface WidgetView {
+  today: TodayWidgetModel | null;
+  habits: HabitsWidgetModel | null;
+  inbox: number | null;
+  updatedAt: string;
+  error?: string;
+}
+
+/** Wszystkie modele naraz — jeden odczyt bazy na odświeżenie. `given` — już wczytane dane widoków (ekran). */
+export async function loadWidgetView(given?: AppData): Promise<WidgetView> {
   const updatedAt = toLocalTime(new Date());
   try {
     const data = given ?? (await headlessData());
     const today = localDateAt(new Date(), data.settings.timeZone);
-    const workspaceId = currentWorkspace();
-    const view = selectToday(data.tasks, { today, timeZone: data.settings.timeZone, workspaceId: data.workspaces.some((w) => w.id === workspaceId) ? workspaceId : null });
-    const tasks: WidgetTask[] = [...view.overdue, ...view.today, ...view.done].map((t) => ({
-      id: t.id,
-      title: t.title,
-      done: t.status === 'done',
-      time: t.dueTime,
-      overdue: !!t.dueDate && t.dueDate < today && t.status !== 'done',
-    }));
-    return todayWidget(tasks, updatedAt);
+    const selected = currentWorkspace();
+    const ctx: ViewContext = {
+      today,
+      timeZone: data.settings.timeZone,
+      workspaceId: data.workspaces.some((w) => w.id === selected) ? selected : null,
+      firstDayOfWeek: data.settings.firstDayOfWeek,
+    };
+    const inboxIds = new Set(data.lists.filter((l) => l.kind === 'inbox').map((l) => l.id));
+    return {
+      today: todayWidgetModel(data.tasks, ctx),
+      habits: habitsWidgetModel(data.tasks, data.habitCompletions, ctx),
+      inbox: inboxCount(data.tasks, inboxIds, ctx),
+      updatedAt,
+    };
   } catch (error) {
-    return todayWidget([], updatedAt, `Błąd bazy: ${error instanceof Error ? error.message : String(error)}`);
+    return { today: null, habits: null, inbox: null, updatedAt, error: `Błąd bazy: ${error instanceof Error ? error.message : String(error)}` };
   }
 }
 
-export async function refreshTodayWidget(data?: AppData) {
+export function renderWidgetView(name: WidgetName, view: WidgetView): WidgetRepresentation {
+  switch (name) {
+    case TODAY_WIDGET:
+      return todayWidget(view.today, view.updatedAt, view.error);
+    case HABITS_WIDGET:
+      return habitsWidget(view.habits, view.updatedAt, view.error);
+    case QUICK_ADD_WIDGET:
+      return quickAddWidget(view.inbox);
+  }
+}
+
+/** Widżety położone na ekranie głównym (bez żadnego — bez odczytu bazy). */
+async function placedWidgets(): Promise<WidgetName[]> {
+  const placed = await Promise.all(WIDGETS.map(async (name) => ((await getWidgetInfo(name)).length > 0 ? name : null)));
+  return placed.filter((name): name is WidgetName => name !== null);
+}
+
+/**
+ * Odświeżenie położonych widżetów (wszystkich albo bez `except` — ten rysuje obsługa kliknięcia).
+ * `view` — już policzone modele (obsługa widżetu), inaczej odczyt z `given` albo z bazy.
+ */
+export async function refreshWidgets(given?: AppData, { except, view }: { except?: WidgetName; view?: WidgetView } = {}): Promise<void> {
   if (Platform.OS !== 'android') return;
-  const widget = await renderTodayWidget(data);
-  await requestWidgetUpdate({ widgetName: TODAY_WIDGET, renderWidget: () => widget });
+  const placed = (await placedWidgets()).filter((name) => name !== except);
+  if (!placed.length) return;
+  const current = view ?? (await loadWidgetView(given));
+  await Promise.all(placed.map((name) => requestWidgetUpdate({ widgetName: name, renderWidget: () => renderWidgetView(name, current) })));
 }

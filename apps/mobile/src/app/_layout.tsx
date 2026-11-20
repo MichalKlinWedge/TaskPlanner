@@ -20,7 +20,7 @@ import { loadProfile, onboardingGateHeld, onOnboardingGateRelease } from '@/lib/
 import { handleResponse, setupNotifications } from '@/lib/reminders';
 import { scheduleReminders } from '@/lib/scheduler';
 import { localEngine, onSessionChange, onSynced, startOnlineSync } from '@/lib/sync';
-import { refreshTodayWidget } from '@/widget/refresh';
+import { refreshWidgets } from '@/widget/refresh';
 
 /** Głęboki link (skrót aplikacji, powiadomienie) do ekranu nad zakładkami — pod spodem zawsze zakładki. */
 export const unstable_settings = { anchor: '(tabs)' };
@@ -137,7 +137,7 @@ function BackgroundWork() {
       if (pending) clearTimeout(pending.timer);
       pending = null;
       void scheduleReminders(data);
-      void refreshTodayWidget(data).catch(() => undefined);
+      void refreshWidgets(data).catch(() => undefined);
     };
     const offData = onAppData((data) => {
       if (!data.loaded) return;
@@ -171,7 +171,7 @@ function useAppStart() {
     });
     registerBackgroundSync().catch((error) => console.warn('synchronizacja w tle', error));
     startOnlineSync().catch((error) => console.warn('synchronizacja', error));
-    refreshTodayWidget().catch(() => undefined);
+    refreshWidgets().catch(() => undefined);
     // Wpisy z poprzedniego uruchomienia (np. błąd krytyczny) i po każdej udanej synchronizacji.
     void flushErrors();
     startCapture();

@@ -19,7 +19,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { saveSessionUser, sessionUser } from './config';
 import { scheduleReminders } from './scheduler';
 import { notifySessionChange, resetLocal, startOnlineSync, supabaseClient } from './sync';
-import { refreshTodayWidget } from '../widget/refresh';
+import { refreshWidgets } from '../widget/refresh';
 
 /** `taskplanner://auth-callback` (schemat z `app.json`; w dev buildzie i w release taki sam). */
 export const authRedirectUrl = () => Linking.createURL('auth-callback');
@@ -141,5 +141,5 @@ export async function signOut() {
   // `resetLocal` czyści bazę z pominięciem silnika — słuchacze danych o tym nie wiedzą, a przypomnienia
   // i widżet starego konta zostałyby w systemie. Przeliczenie z pustej bazy je usuwa.
   await scheduleReminders().catch(() => null);
-  await refreshTodayWidget().catch(() => undefined);
+  await refreshWidgets().catch(() => undefined);
 }

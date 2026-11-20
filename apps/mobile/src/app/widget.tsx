@@ -7,9 +7,18 @@ import { Button, P, Row, Screen, Section, usePalette } from '@/components/ui';
 import { localEngine } from '@/lib/sync';
 import { seedDemoTasks, todayTasks, toggleTask, type TaskRow } from '@/lib/tasks';
 import { formatClock, localToday } from '@/lib/time';
-import { refreshTodayWidget } from '@/widget/refresh';
+import { refreshWidgets } from '@/widget/refresh';
 import { widgetLog, type WidgetLog } from '@/widget/task-handler';
+import { HABITS_WIDGET } from '@/widget/habits-widget';
+import { QUICK_ADD_WIDGET } from '@/widget/quick-add-widget';
 import { TODAY_WIDGET } from '@/widget/today-widget';
+
+/** Nazwy z `app.json` (plugin `react-native-android-widget`). */
+const PIN = [
+  { name: TODAY_WIDGET, title: 'Dziś', label: 'TaskPlanner — Dziś' },
+  { name: QUICK_ADD_WIDGET, title: 'Szybkie dodawanie', label: 'TaskPlanner — Szybkie dodawanie' },
+  { name: HABITS_WIDGET, title: 'Nawyki', label: 'TaskPlanner — Nawyki' },
+];
 
 export default function Today() {
   const p = usePalette();
@@ -39,7 +48,7 @@ export default function Today() {
   const toggle = async (id: string) => {
     await toggleTask(id);
     await load();
-    await refreshTodayWidget();
+    await refreshWidgets();
   };
 
   const today = localToday();
@@ -67,24 +76,31 @@ export default function Today() {
           onPress={async () => {
             await seedDemoTasks();
             await load();
-            await refreshTodayWidget();
+            await refreshWidgets();
           }}
         />
-        <Button
-          kind="secondary"
-          title="Dodaj widżet na ekran"
-          onPress={async () => {
-            const ok = await requestPinWidget({ widgetName: TODAY_WIDGET });
-            if (!ok) Alert.alert('Widżet', 'Launcher nie obsługuje przypinania — dodaj „Task Planner — Dziś” z listy widżetów (długie przytrzymanie ekranu głównego).');
-          }}
-        />
-        <Button kind="secondary" title="Odśwież widżet" onPress={() => void refreshTodayWidget()} />
+        <Button kind="secondary" title="Odśwież widżety" onPress={() => void refreshWidgets()} />
       </Row>
-      <Section title="Dziennik widżetu (zdarzenia bez ekranu)">
+      <Section title="Dodaj widżet na ekran główny">
+        <Row>
+          {PIN.map((w) => (
+            <Button
+              key={w.name}
+              kind="secondary"
+              title={w.title}
+              onPress={async () => {
+                const ok = await requestPinWidget({ widgetName: w.name });
+                if (!ok) Alert.alert('Widżet', `Launcher nie obsługuje przypinania — dodaj „${w.label}” z listy widżetów (długie przytrzymanie ekranu głównego).`);
+              }}
+            />
+          ))}
+        </Row>
+      </Section>
+      <Section title="Dziennik widżetów (zdarzenia bez ekranu)">
         {log.length === 0 ? <P muted>Brak zdarzeń.</P> : null}
         {log.map((l) => (
           <P key={l.at} mono tone={l.ok ? undefined : 'bad'}>
-            {formatClock(l.at)} {l.action} {l.ms} ms {l.error ?? ''}
+            {formatClock(l.at)} {l.widget} {l.action}{l.changed === false ? ' (bez zmian)' : ''} {l.ms} ms {l.error ?? ''}
           </P>
         ))}
       </Section>

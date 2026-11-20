@@ -9,7 +9,7 @@ import { P, Section, usePalette } from '@/components/ui';
 import { deviceEvents, taskBlocks, type DayItem } from '@/lib/day-items';
 import { moveTaskBlock } from '@/lib/tasks';
 import { localToday, toLocalTime } from '@/lib/time';
-import { refreshTodayWidget } from '@/widget/refresh';
+import { refreshWidgets } from '@/widget/refresh';
 
 const HOUR = 64;
 const SNAP_MIN = 5;
@@ -121,7 +121,7 @@ export default function Timeline() {
     const t = Date.now();
     await moveTaskBlock(taskId, localToday(), fmt(startMin), durationMin);
     setLast(`Zapisano ${fmt(startMin)} na ${durationMin} min (${Date.now() - t} ms)`);
-    await refreshTodayWidget().catch(() => undefined);
+    await refreshWidgets().catch(() => undefined);
   };
 
   const now = minutesOf(new Date());

@@ -22,10 +22,12 @@ import {
   startFocus,
   stopFocus,
   toHabit,
+  sameHabitEntry,
   toHabitCompletion,
   type FocusSettings,
   type FocusState,
   type FocusStep,
+  type HabitEntry,
   type LocalDate,
   type ProfileSettings,
   type TaskOp,
@@ -187,3 +189,31 @@ export async function focusCommand(command: FocusCommand, stamp?: string): Promi
   if (changed) await mutateMany(focusStepOps(userId, step));
   return { userId, settings, timeZone, state: step.state, changed };
 }
+
+// ── Widżety (Etap 11) ────────────────────────────────────────────────────────────────────────
+
+/**
+ * Odhaczenie z widżetu „Dziś”. Kliknięcie niesie stan docelowy (`done`), więc powtórzona obsługa
+ * nic nie zmienia: ukończenie idzie jak z powiadomienia (z wystąpieniem serii), przywrócenie
+ * tylko zadania, które nadal jest ukończone.
+ */
+export const setTaskDoneById = (id: string, done: boolean, occurrence?: LocalDate | null) =>
+  done ? completeTaskById(id, occurrence) : withTask(id, async (task) => (task.kind === 'task' && task.status === 'done' ? [{ table: 'tasks', id, patch: reopenTaskPatch() }] : null));
+
+/**
+ * Wpis dnia nawyku z widżetu „Nawyki” (zrobione, wyczyszczenie albo wartość po „+1” — `habitEntryOps`
+ * z core, id deterministyczne). Tylko dla dziś: kliknięcie w widżet narysowany przed północą
+ * odświeża go zamiast zmieniać wczorajszy dzień. Wpis taki jak żądany (powtórzona obsługa) — bez zapisu.
+ */
+export const setHabitEntryById = (id: string, date: LocalDate, entry: HabitEntry) =>
+  withTask(id, async (task, settings) => {
+    const habit = task.kind === 'habit' && isOpen(task) ? toHabit(task) : null;
+    const now = new Date();
+    const today = localDateAt(now, settings.timeZone);
+    if (!habit || date !== today) return null;
+    const engine = await localEngine();
+    const rows = await engine.db.all<SqlRow>('select occurrence_date, kind, value from task_completions where task_id = ? and occurrence_date = ? and deleted_at is null', [id, date]);
+    const previous = rows[0] ? toHabitCompletion({ occurrence_date: rows[0].occurrence_date, kind: rows[0].kind, value: rows[0].value }) : null;
+    if (sameHabitEntry(previous, entry)) return null;
+    return habitEntryOps(habit, id, date, entry, { now, today, previous }).ops;
+  });

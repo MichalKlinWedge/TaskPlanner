@@ -8,7 +8,7 @@ import { serverConfig, sessionUser } from '@/lib/config';
 import { onSessionChange } from '@/lib/sync';
 
 const ITEMS: { href: Href; title: string; hint: string }[] = [
-  { href: '/widget', title: 'Dziś i widżet', hint: 'Lista „Dziś” z lokalnej bazy, dane przykładowe, dodanie widżetu' },
+  { href: '/widget', title: 'Dziś i widżety', hint: 'Lista „Dziś” z lokalnej bazy, dane przykładowe, dodanie widżetów, dziennik kliknięć' },
   { href: '/reminders', title: 'Przypomnienia', hint: '50 przypomnień / 3 dni, dokładne alarmy, akcje, pomiar opóźnień' },
   { href: '/share', title: 'Szybkie dodawanie', hint: 'Cel udostępniania z Chrome (Udostępnij → Task Planner)' },
   { href: '/calendar', title: 'Kalendarz', hint: 'expo-calendar + @howljs/calendar-kit, przeciąganie bloku' },

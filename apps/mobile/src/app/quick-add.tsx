@@ -1,6 +1,7 @@
 /**
- * Okno szybkiego dodawania (przycisk „+”, skrót aplikacji z ekranu głównego, `taskplanner://quick-add`).
- * Parametry: `listId`, `dueDate`, `parentId` (podzadanie), `text` (początkowy tekst).
+ * Okno szybkiego dodawania (przycisk „+”, skrót aplikacji z ekranu głównego, widżet, `taskplanner://quick-add`).
+ * Parametry: `listId`, `dueDate`, `parentId` (podzadanie), `text` (początkowy tekst), `voice=1`
+ * (mikrofon z widżetu: podpowiedź dyktowania — mikrofon jest na klawiaturze, która otwiera się od razu).
  */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
@@ -15,7 +16,8 @@ export default function QuickAddScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const data = useAppData();
-  const params = useLocalSearchParams<{ listId?: string; dueDate?: string; parentId?: string; text?: string }>();
+  const params = useLocalSearchParams<{ listId?: string; dueDate?: string; parentId?: string; text?: string; voice?: string }>();
+  const voice = params.voice === '1';
   const [more, setMore] = useState(false);
   const parentTask = params.parentId ? data.tasks.find((t) => t.id === params.parentId) : undefined;
   const parent = parentTask ? { id: parentTask.id, listId: parentTask.listId } : undefined;
@@ -39,12 +41,17 @@ export default function QuickAddScreen() {
           parent={parent}
           initialText={params.text ?? ''}
           submitLabel="Dodaj"
-          placeholder="np. Zapłacić rachunek jutro o 10 #dom !2 @telefon"
+          placeholder={voice ? 'Dotknij 🎤 na klawiaturze i powiedz zadanie' : 'np. Zapłacić rachunek jutro o 10 #dom !2 @telefon'}
           onAdded={() => !more && close()}
         />
       ) : (
         <Text style={{ color: p.muted }}>Wczytywanie…</Text>
       )}
+      {voice ? (
+        <Text style={{ color: p.accent, fontSize: 13 }}>
+          Dyktowanie: dotknij mikrofonu na klawiaturze. Słowa jak „jutro o 10” albo „co tydzień” zostaną rozpoznane tak samo jak wpisane.
+        </Text>
+      ) : null}
       <View style={styles.more}>
         <Switch value={more} onValueChange={setMore} />
         <Text style={{ color: p.muted, fontSize: 13, flex: 1 }}>Dodawaj kolejne (okno zostaje otwarte)</Text>
