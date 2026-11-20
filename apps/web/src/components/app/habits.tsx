@@ -25,10 +25,14 @@ import {
   habitWeeks,
   habitYear,
   isOpen,
+  MAX_COUNT,
   MONTH_SHORT,
   nextHabitEntry,
   plural,
   pluralForm,
+  relativeDay,
+  REMINDER_PRESETS,
+  reminderOffset,
   reopenTaskPatch,
   shortDate,
   toHabit,
@@ -40,10 +44,12 @@ import {
   type HabitDraft,
   type HabitEntry,
   type HabitForDay,
+  type HabitReminderDraft,
   type HabitStreak,
   type IsoWeekday,
   type LocalDate,
   type LocalTime,
+  type RecurrenceEnd,
   type ViewContext,
   type ViewTask,
 } from "@taskplanner/core";
@@ -534,7 +540,12 @@ function listLabel(data: AppData, l: List) {
 export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | null; defaultListId?: string; onDone: (id?: string) => void }) {
   const { data, store, today } = useAppEnv();
   const { run } = useTaskActions();
-  const { rows: reminderRows } = useLocalQuery<Row>(store, "select id from reminders where task_id = ? and deleted_at is null", [task?.id ?? ""], ["reminders"]);
+  const { rows: reminderRows } = useLocalQuery<Row>(
+    store,
+    "select id, kind, offset_min, at_date, at_time from reminders where task_id = ? and deleted_at is null order by kind desc, offset_min, at_date, at_time",
+    [task?.id ?? ""],
+    ["reminders"],
+  );
   const initial = useMemo(() => habitDraft(task, today), [task, today]);
   const [title, setTitle] = useState(task?.title ?? "");
   const [listId, setListId] = useState(task?.listId ?? defaultListId ?? data.lists[0]?.id ?? "");
@@ -547,8 +558,20 @@ export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | 
   const [unit, setUnit] = useState(initial.unit ?? "");
   const [start, setStart] = useState(initial.start);
   const [time, setTime] = useState<string>(initial.time ?? "");
-  const [remindChoice, setRemind] = useState<boolean | null>(null);
-  const remind = remindChoice ?? (task ? reminderRows.length > 0 : false);
+  const [endKind, setEndKind] = useState<RecurrenceEnd["kind"]>(initial.end?.kind ?? "never");
+  const [endDate, setEndDate] = useState<string>(initial.end?.kind === "until" ? initial.end.date : addDays(initial.start, 29));
+  const [endCount, setEndCount] = useState(String(initial.end?.kind === "count" ? initial.end.n : 30));
+  // Lista przypomnień: z bazy, dopóki użytkownik jej nie zmieni (zapis dopiero przy „Zapisz”).
+  const [reminderList, setReminderList] = useState<HabitReminderDraft[] | null>(null);
+  const reminders: HabitReminderDraft[] =
+    reminderList ??
+    (task
+      ? reminderRows.map((r) =>
+          r.kind === "absolute"
+            ? { id: String(r.id), kind: "absolute", atDate: String(r.at_date) as LocalDate, atTime: String(r.at_time).slice(0, 5) as LocalTime }
+            : { id: String(r.id), kind: "relative", offsetMin: Number(r.offset_min) },
+        )
+      : []);
   const [error, setError] = useState<string | null>(null);
 
   const submit = (e: FormEvent) => {
@@ -556,14 +579,16 @@ export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | 
     try {
       const schedule: HabitDraft["schedule"] =
         kind === "days" ? { kind, days } : kind === "goal" ? { kind, period, times } : kind === "custom" && initial.schedule.kind === "custom" ? initial.schedule : { kind: "daily" };
-      const draft: HabitDraft = { schedule, start, target: quantity ? Number(target.replace(",", ".")) : null, unit: quantity ? unit : null, time: (time || null) as LocalTime | null };
-      if (remind && !draft.time) throw new Error("Przypomnienie wymaga godziny.");
+      const end: RecurrenceEnd =
+        endKind === "until" ? { kind: "until", date: endDate as LocalDate } : endKind === "count" && kind !== "goal" ? { kind: "count", n: Number(endCount) } : { kind: "never" };
+      const draft: HabitDraft = { schedule, start, end, target: quantity ? Number(target.replace(",", ".")) : null, unit: quantity ? unit : null, time: (time || null) as LocalTime | null };
+      if (reminders.some((r) => r.kind === "relative") && !draft.time) throw new Error("Przypomnienie przed porą nawyku wymaga pory — ustaw ją albo dodaj przypomnienie na dzień i godzinę.");
       const { taskId, ops } = habitSaveOps({
         id: task?.id,
         title,
         listId,
         draft,
-        remind,
+        reminders,
         reminderIds: reminderRows.map((r) => String(r.id)),
         lastSortKey: lastSortKey(data, listId),
         now: new Date(),
@@ -656,11 +681,24 @@ export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | 
         <Field label="Pora (opcjonalnie)">
           <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
         </Field>
-        <label className="inline-flex items-center gap-1.5 pb-2">
-          <input type="checkbox" checked={remind} onChange={(e) => setRemind(e.target.checked)} /> Przypomnij o tej porze
-        </label>
+        <Field label="Koniec">
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={endKind === "count" && kind === "goal" ? "never" : endKind} onChange={(e) => setEndKind(e.target.value as RecurrenceEnd["kind"])} aria-label="Koniec nawyku">
+              <option value="never">nigdy</option>
+              <option value="until">w dniu…</option>
+              {kind !== "goal" ? <option value="count">po liczbie razy…</option> : null}
+            </Select>
+            {endKind === "until" ? <Input type="date" value={endDate} min={start} onChange={(e) => setEndDate(e.target.value)} aria-label="Dzień końca" required /> : null}
+            {endKind === "count" && kind !== "goal" ? (
+              <>
+                <Input type="number" min={1} max={MAX_COUNT} value={endCount} onChange={(e) => setEndCount(e.target.value)} aria-label="Liczba powtórzeń" className="w-20" />
+                <span>{pluralForm(Number(endCount) || 0, ["raz", "razy", "razy"])}</span>
+              </>
+            ) : null}
+          </div>
+        </Field>
       </div>
-      {remind ? <p className="text-xs text-[var(--muted)]">Powiadomienie przychodzi w dni nawyku, chyba że już odhaczony; ma przycisk „Zrobione”. Powiadomienia przeglądarki włączysz w Ustawieniach.</p> : null}
+      <HabitRemindersField reminders={reminders} onChange={setReminderList} start={start} hasTime={!!time} />
       {error ? (
         <p role="alert" className="text-sm text-[var(--danger)]">
           {error}
@@ -675,6 +713,77 @@ export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | 
         </Button>
       </div>
     </form>
+  );
+}
+
+/** Przypomnienia nawyku w formularzu: przed porą (w każdy dzień nawyku) albo jednorazowo w dniu i godzinie. */
+function HabitRemindersField({ reminders, onChange, start, hasTime }: { reminders: HabitReminderDraft[]; onChange: (list: HabitReminderDraft[]) => void; start: LocalDate; hasTime: boolean }) {
+  const { today } = useAppEnv();
+  const [choice, setChoice] = useState("");
+  const [at, setAt] = useState({ date: start > today ? start : today, time: "09:00" });
+  const label = (r: HabitReminderDraft) =>
+    r.kind === "relative" ? (r.offsetMin === 0 ? "o porze nawyku" : `${reminderOffset(r.offsetMin)} porą nawyku`) : `jednorazowo: ${relativeDay(r.atDate, today)}, ${r.atTime}`;
+  const offsets = REMINDER_PRESETS.filter((m) => m < 1440 && !reminders.some((r) => r.kind === "relative" && r.offsetMin === m));
+
+  return (
+    <fieldset className="flex flex-col gap-1.5 text-sm">
+      <legend className="mb-1 font-medium">Przypomnienia</legend>
+      {reminders.length ? (
+        <ul className="flex flex-col gap-1">
+          {reminders.map((r, i) => (
+            <li key={r.id ?? `new-${i}`} className="flex items-center gap-2">
+              <span>🔔 {label(r)}</span>
+              <button type="button" aria-label="Usuń przypomnienie" className="rounded px-1 text-[var(--muted)] hover:bg-[var(--hover)]" onClick={() => onChange(reminders.filter((_, j) => j !== i))}>
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-[var(--muted)]">Brak przypomnień</p>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Select
+          aria-label="Dodaj przypomnienie"
+          value={choice}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value.startsWith("rel:")) onChange([...reminders, { kind: "relative", offsetMin: Number(value.slice(4)) }]);
+            setChoice(value === "abs" ? "abs" : "");
+          }}
+          className="py-1 text-xs"
+        >
+          <option value="">+ Dodaj przypomnienie…</option>
+          {offsets.map((m) => (
+            <option key={m} value={`rel:${m}`} disabled={!hasTime}>
+              {m === 0 ? "o porze nawyku" : `${reminderOffset(m)} porą nawyku`}
+              {hasTime ? "" : " (ustaw porę)"}
+            </option>
+          ))}
+          <option value="abs">Jednorazowo: dzień i godzina…</option>
+        </Select>
+        {choice === "abs" ? (
+          <span className="flex gap-1">
+            <Input type="date" aria-label="Dzień przypomnienia" value={at.date} onChange={(e) => setAt({ ...at, date: e.target.value as LocalDate })} className="py-0.5 text-xs" />
+            <Input type="time" aria-label="Godzina przypomnienia" value={at.time} onChange={(e) => setAt({ ...at, time: e.target.value })} className="py-0.5 text-xs" />
+            <Button
+              onClick={() => {
+                if (!at.date || !at.time) return;
+                onChange([...reminders, { kind: "absolute", atDate: at.date, atTime: at.time as LocalTime }]);
+                setChoice("");
+              }}
+            >
+              Dodaj
+            </Button>
+          </span>
+        ) : null}
+      </div>
+      {reminders.length ? (
+        <p className="text-xs text-[var(--muted)]">
+          Przed porą — w każdy dzień nawyku, chyba że już odhaczony; jednorazowe — raz, w wybranym dniu. Powiadomienie ma przycisk „Zrobione”. Powiadomienia przeglądarki włączysz w Ustawieniach.
+        </p>
+      ) : null}
+    </fieldset>
   );
 }
 

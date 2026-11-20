@@ -9,7 +9,8 @@
  * - Bezwzględne: konkretny dzień i godzina lokalna, raz (bez powtarzania z serią).
  * - Zamknięte zadania nie przypominają (serwer sprawdza też status w chwili wysyłki).
  * - Nawyk (Etap 8): względne przypomnienie w każdy dzień reguły przed porą nawyku (`habit.time`) albo
- *   domyślną godziną; z `habitCompletions` pomija dni już zaliczone, wolne i okresy z osiągniętym celem.
+ *   domyślną godziną; jednorazowe (`absolute`) — w wybranym dniu i godzinie; z `habitCompletions`
+ *   pomija dni już zaliczone, wolne i okresy z osiągniętym celem.
  */
 import { addDays, localDateAt, zonedInstant } from './dates.ts';
 import { relativeDay } from './format.ts';
@@ -100,9 +101,17 @@ export function reminderFireTimes(tasks: readonly ReminderTask[], rules: readonl
     const zone = task.timeZone ?? window.timeZone;
 
     if (task.kind === 'habit') {
-      if (rule.kind !== 'relative' || rule.offsetMin === null || task.recurrence?.mode !== 'schedule') continue;
+      if (task.recurrence?.mode !== 'schedule') continue;
       const habit = { ...(task.habit ?? {}), recurrence: task.recurrence };
       const done = window.habitCompletions?.get(task.id);
+      if (rule.kind === 'absolute') {
+        // Jednorazowe przypomnienie nawyku: dzień i godzina; pomijane, gdy ten dzień jest już zaliczony.
+        if (!rule.atDate || !rule.atTime) continue;
+        if (!habitNeedsReminder(habit, done ?? [], rule.atDate)) continue;
+        push({ key: `${rule.id}:${rule.atDate}`, taskId: task.id, reminderId: rule.id, occurrenceDate: rule.atDate, fireAt: zonedInstant(rule.atDate, rule.atTime, zone).getTime(), dueAt: null });
+        continue;
+      }
+      if (rule.offsetMin === null) continue;
       const since = localDateAt(new Date(from - 86_400_000), zone);
       const until = localDateAt(new Date(to + rule.offsetMin * 60_000 + 86_400_000), zone);
       for (const date of occurrences(task.recurrence, { from: since, to: until, limit: 400 })) {

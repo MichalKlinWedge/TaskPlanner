@@ -12,7 +12,8 @@ import { addDays, daysBetween, isoWeekday } from './dates.ts';
 import { pluralForm } from './format.ts';
 import { completionId, uuidv7 } from './ids.ts';
 import { WEEKDAY } from './labels.ts';
-import { describeRecurrence, occurrences, parseRrule, WEEKDAY_CODES, type Recurrence, type ScheduleRecurrence } from './recurrence.ts';
+import { describeRecurrence, formatRrule, occurrences, parseRrule, WEEKDAY_CODES, type Recurrence, type RRule, type ScheduleRecurrence } from './recurrence.ts';
+import { MAX_COUNT, type RecurrenceEnd } from './recurrence-editor.ts';
 import { LocalTime, type IsoWeekday, type LocalDate } from './schemas/primitives.ts';
 import { keyBetween } from './sort-key.ts';
 import type { TaskOp } from './tasks.ts';
@@ -75,16 +76,20 @@ export function habitPeriods(habit: Habit, completions: readonly HabitCompletion
   }
   const { period, times } = habit.goal;
   const periods: HabitPeriod[] = [];
-  for (let start = periodStart(habit.recurrence.anchor, period); start <= today; start = addDays(periodEnd(start, period), 1)) {
+  // Nawyk z końcem (`UNTIL`): okresy do dnia końca; ostatni kończy się wraz z nawykiem.
+  const last = habitEndDate(habit);
+  const stop = last !== null && last < today ? last : today;
+  for (let start = periodStart(habit.recurrence.anchor, period); start <= stop; start = addDays(periodEnd(start, period), 1)) {
     const end = periodEnd(start, period);
     let done = 0;
     let skipped = 0;
-    for (let d = start; d <= end && d <= today; d = addDays(d, 1)) {
+    for (let d = start; d <= end && d <= stop; d = addDays(d, 1)) {
       const c = byDate.get(d);
       if (counts(c)) done++;
       else if (c?.kind === 'skipped') skipped++;
     }
-    const state: PeriodState = done >= times ? 'done' : end >= today ? 'pending' : done + skipped >= times ? 'skipped' : 'missed';
+    const open = end >= today && (last === null || last >= today);
+    const state: PeriodState = done >= times ? 'done' : open ? 'pending' : done + skipped >= times ? 'skipped' : 'missed';
     periods.push({ start, end, state, done });
   }
   return periods;
@@ -128,6 +133,7 @@ export type DayState = 'done' | 'partial' | 'skipped' | 'missed' | 'pending' | '
 export function habitDays(habit: Habit, completions: readonly HabitCompletion[], from: LocalDate, to: LocalDate, today: LocalDate): { date: LocalDate; state: DayState }[] {
   const { byDate, counts } = index(habit, completions);
   const scheduled = new Set(habit.goal ? [] : occurrences(habit.recurrence, { from, to, limit: 5000 }));
+  const last = habit.goal ? habitEndDate(habit) : null;
   const days: { date: LocalDate; state: DayState }[] = [];
   for (let date = from; date <= to; date = addDays(date, 1)) {
     const c = byDate.get(date);
@@ -135,7 +141,7 @@ export function habitDays(habit: Habit, completions: readonly HabitCompletion[],
     if (counts(c)) state = 'done';
     else if (c?.kind === 'done') state = 'partial';
     else if (c?.kind === 'skipped') state = 'skipped';
-    else if (habit.goal ? date > today : !scheduled.has(date) || date > today) state = 'off';
+    else if (habit.goal ? date > today || (last !== null && date > last) : !scheduled.has(date) || date > today) state = 'off';
     else state = date === today ? 'pending' : habit.goal ? 'off' : 'missed';
     days.push({ date, state });
   }
@@ -202,6 +208,7 @@ export function habitDayStatus(habit: Habit, completions: readonly HabitCompleti
  * „N razy” — gdy cel okresu jest już osiągnięty. Częściowa wartość (3 z 8) przypomina dalej.
  */
 export function habitNeedsReminder(habit: Habit, completions: readonly HabitCompletion[], date: LocalDate): boolean {
+  if (habitEnded(habit, date)) return false;
   const { byDate, counts } = index(habit, completions);
   const c = byDate.get(date);
   if (counts(c) || c?.kind === 'skipped') return false;
@@ -308,6 +315,7 @@ export interface HabitWeek {
 export function habitWeeks(habit: Habit, completions: readonly HabitCompletion[], today: LocalDate, count = 12): HabitWeek[] {
   const { byDate, counts } = index(habit, completions);
   const current = addDays(today, 1 - isoWeekday(today));
+  const last = habitEndDate(habit);
   const weeks: HabitWeek[] = [];
   for (let i = count - 1; i >= 0; i--) {
     const start = addDays(current, -7 * i);
@@ -321,7 +329,7 @@ export function habitWeeks(habit: Habit, completions: readonly HabitCompletion[]
       value += habit.target === undefined ? 1 : (c.value ?? habit.target);
     }
     const from = start < habit.recurrence.anchor ? habit.recurrence.anchor : start;
-    const target = habit.goal ? (habit.goal.period === 'week' ? habit.goal.times : null) : from > end ? 0 : occurrences(habit.recurrence, { from, to: end, limit: 7 }).length;
+    const target = habit.goal ? (habit.goal.period !== 'week' ? null : last !== null && start > last ? 0 : habit.goal.times) : from > end ? 0 : occurrences(habit.recurrence, { from, to: end, limit: 7 }).length;
     weeks.push({ start, end, done, target, value });
   }
   return weeks;
@@ -383,6 +391,8 @@ export interface HabitDraft {
   schedule: HabitSchedule;
   /** Początek nawyku (kotwica reguły). */
   start: LocalDate;
+  /** Koniec: nigdy, w dniu (`UNTIL`) albo po N wystąpieniach (`COUNT`; nie przy „N razy w okresie”). Brak = nigdy. */
+  end?: RecurrenceEnd;
   target: number | null;
   unit: string | null;
   time: LocalTime | null;
@@ -391,17 +401,18 @@ export interface HabitDraft {
 /** Formularz z pól zadania (nowy nawyk: codziennie od dziś). */
 export function habitDraft(task: { recurrence: Recurrence | null; habit: HabitSettings | null } | null, today: LocalDate): HabitDraft {
   const habit = task ? toHabit(task) : null;
-  const base: HabitDraft = { schedule: { kind: 'daily' }, start: habit?.recurrence.anchor ?? today, target: habit?.target ?? null, unit: habit?.unit ?? null, time: habit?.time ?? null };
+  const base: HabitDraft = { schedule: { kind: 'daily' }, start: habit?.recurrence.anchor ?? today, end: { kind: 'never' }, target: habit?.target ?? null, unit: habit?.unit ?? null, time: habit?.time ?? null };
   if (!habit) return base;
+  const { count, until, ...rule } = parseRrule(habit.recurrence.rrule);
+  base.end = until ? { kind: 'until', date: until } : count ? { kind: 'count', n: count } : { kind: 'never' };
   if (habit.goal) return { ...base, schedule: { kind: 'goal', ...habit.goal } };
-  const rule = parseRrule(habit.recurrence.rrule);
-  const simple = rule.interval === 1 && rule.count === undefined && rule.until === undefined && !rule.byMonthDay.length && !rule.byMonth.length && !rule.bySetPos.length;
+  const simple = rule.interval === 1 && !rule.byMonthDay.length && !rule.byMonth.length && !rule.bySetPos.length;
   if (simple && rule.freq === 'DAILY' && !rule.byDay.length) return base;
   if (simple && rule.freq === 'WEEKLY' && rule.byDay.length && rule.byDay.every((d) => d.n === undefined)) {
     const days = rule.byDay.map((d) => (WEEKDAY_CODES.indexOf(d.day) + 1) as IsoWeekday).sort();
     return { ...base, schedule: days.length === 7 ? { kind: 'daily' } : { kind: 'days', days } };
   }
-  return { ...base, schedule: { kind: 'custom', rrule: habit.recurrence.rrule } };
+  return { ...base, schedule: { kind: 'custom', rrule: formatRrule(rule as RRule) } };
 }
 
 /** Formularz → pola zadania `recurrence` i `habit`. Błąd przy pustych dniach albo złym celu. */
@@ -413,8 +424,11 @@ export function habitFields(draft: HabitDraft): { recurrence: ScheduleRecurrence
     if (!schedule.days.length) throw new Error('Wybierz co najmniej jeden dzień tygodnia.');
     const days = [...new Set(schedule.days)].sort();
     if (days.length < 7) rrule = `FREQ=WEEKLY;BYDAY=${days.map((d) => WEEKDAY_CODES[d - 1]).join(',')}`;
-  } else if (schedule.kind === 'custom') rrule = schedule.rrule;
-  else if (schedule.kind === 'goal') {
+  } else if (schedule.kind === 'custom') {
+    // Koniec reguły ustawia pole „Koniec” — własna reguła bez COUNT/UNTIL.
+    const { count: _count, until: _until, ...rule } = parseRrule(schedule.rrule);
+    rrule = formatRrule(rule as RRule);
+  } else if (schedule.kind === 'goal') {
     const max = schedule.period === 'week' ? 7 : 31;
     if (!Number.isInteger(schedule.times) || schedule.times < 1 || schedule.times > max) throw new Error(`Liczba razy: od 1 do ${max}.`);
     habit.goal = { period: schedule.period, times: schedule.times };
@@ -426,18 +440,53 @@ export function habitFields(draft: HabitDraft): { recurrence: ScheduleRecurrence
     if (unit) habit.unit = unit.slice(0, 20);
   }
   if (draft.time) habit.time = draft.time;
+  const end = draft.end ?? { kind: 'never' };
+  if (end.kind === 'until') {
+    if (!end.date) throw new Error('Podaj dzień końca.');
+    if (end.date < draft.start) throw new Error('Koniec nie może być przed początkiem.');
+    rrule += `;UNTIL=${end.date.replace(/-/g, '')}`;
+  } else if (end.kind === 'count') {
+    if (schedule.kind === 'goal') throw new Error('Przy „N razy w okresie” koniec ustaw datą.');
+    if (!Number.isInteger(end.n) || end.n < 1 || end.n > MAX_COUNT) throw new Error(`Liczba powtórzeń: od 1 do ${MAX_COUNT}.`);
+    rrule += `;COUNT=${end.n}`;
+  }
+  parseRrule(rrule);
   return { recurrence: { mode: 'schedule', rrule, anchor: draft.start }, habit: HabitSettings.parse(habit) };
 }
 
 const TIMES: readonly [string, string, string] = ['raz', 'razy', 'razy'];
 
+/**
+ * Ostatni dzień nawyku: `UNTIL` albo ostatnie z `COUNT` wystąpień; `null` = bez końca.
+ * Przy „N razy w okresie” reguła jest dzienna, więc `UNTIL` to ostatni dzień ostatniego okresu.
+ */
+export function habitEndDate(habit: Pick<Habit, 'recurrence'>): LocalDate | null {
+  const rule = parseRrule(habit.recurrence.rrule);
+  if (rule.until) return rule.until;
+  if (!rule.count) return null;
+  return occurrences(habit.recurrence, { limit: rule.count }).at(-1) ?? habit.recurrence.anchor;
+}
+
+/** Nawyk zakończony przed dniem `date` (po końcu reguły). */
+export const habitEnded = (habit: Pick<Habit, 'recurrence'>, date: LocalDate): boolean => {
+  const last = habitEndDate(habit);
+  return last !== null && last < date;
+};
+
+const endText = (rrule: string): string => {
+  const rule = parseRrule(rrule);
+  if (rule.count) return `, ${rule.count} ${pluralForm(rule.count, TIMES)}`;
+  if (rule.until) return `, do ${Number(rule.until.slice(8))}.${rule.until.slice(5, 7)}.${rule.until.slice(0, 4)}`;
+  return '';
+};
+
 /** „codziennie”, „pon, śr, pt”, „3 razy w tygodniu” + „· cel 8 szklanek”. */
 export function describeHabit(habit: Habit): string {
   let text: string;
-  if (habit.goal) text = `${habit.goal.times} ${pluralForm(habit.goal.times, TIMES)} w ${habit.goal.period === 'week' ? 'tygodniu' : 'miesiącu'}`;
+  if (habit.goal) text = `${habit.goal.times} ${pluralForm(habit.goal.times, TIMES)} w ${habit.goal.period === 'week' ? 'tygodniu' : 'miesiącu'}${endText(habit.recurrence.rrule)}`;
   else {
     const { schedule } = habitDraft({ recurrence: habit.recurrence, habit }, habit.recurrence.anchor);
-    text = schedule.kind === 'days' && schedule.days.length < 5 ? schedule.days.map((d) => WEEKDAY[d].short).join(', ') : describeRecurrence(habit.recurrence);
+    text = schedule.kind === 'days' && schedule.days.length < 5 ? schedule.days.map((d) => WEEKDAY[d].short).join(', ') + endText(habit.recurrence.rrule) : describeRecurrence(habit.recurrence);
   }
   if (habit.target !== undefined) text += ` · cel ${habit.target}${habit.unit ? ` ${habit.unit}` : ''}`;
   return text;
@@ -454,16 +503,26 @@ export function habitProgressLabel(habit: Habit, status: HabitDayStatus): string
 /** Dni od początku nawyku (włącznie z dziś). */
 export const habitAgeDays = (habit: Habit, today: LocalDate): number => Math.max(0, daysBetween(habit.recurrence.anchor, today) + 1);
 
+/** Przypomnienie nawyku w formularzu: względne (przed porą nawyku, w każdy jego dzień) albo jednorazowe. */
+export type HabitReminderDraft =
+  | { id?: string; kind: 'relative'; offsetMin: number }
+  | { id?: string; kind: 'absolute'; atDate: LocalDate; atTime: LocalTime };
+
 export interface HabitSaveInput {
   /** Brak = nowy nawyk. */
   id?: string;
   title: string;
   listId: string;
   draft: HabitDraft;
-  /** Przypomnienie o porze nawyku (względne, 0 min przed). */
-  remind: boolean;
+  /** Przypomnienie o porze nawyku (względne, 0 min przed); ignorowane, gdy jest `reminders`. */
+  remind?: boolean;
   /** Obecne przypomnienia nawyku — przy wyłączeniu usuwane, przy włączeniu nie dublowane. */
   reminderIds?: readonly string[];
+  /**
+   * Pełna lista przypomnień z formularza (zamiast `remind`): pozycje z `id` zostają, obecne spoza
+   * listy są usuwane, pozycje bez `id` dodawane.
+   */
+  reminders?: readonly HabitReminderDraft[];
   /** Ostatni klucz kolejności na liście (nowy nawyk trafia na koniec). */
   lastSortKey?: string;
   now: Date | string;
@@ -490,6 +549,22 @@ export function habitSaveOps(input: HabitSaveInput): { taskId: string; ops: Task
     },
   ];
   const existing = input.reminderIds ?? [];
+  if (input.reminders) {
+    const now = new Date(input.now).toISOString();
+    const kept = new Set(input.reminders.flatMap((r) => (r.id ? [r.id] : [])));
+    for (const id of existing) if (!kept.has(id)) ops.push({ table: 'reminders', id, patch: { deleted_at: now } });
+    for (const r of input.reminders) {
+      if (r.id) continue;
+      if (r.kind === 'relative') {
+        if (!Number.isInteger(r.offsetMin) || r.offsetMin < 0 || r.offsetMin > 40320) throw new Error('Wyprzedzenie przypomnienia: od 0 do 28 dni.');
+        ops.push({ table: 'reminders', id: newId(), patch: { task_id: taskId, kind: 'relative', offset_min: r.offsetMin, at_date: null, at_time: null } });
+      } else {
+        if (!r.atDate || !r.atTime) throw new Error('Podaj dzień i godzinę przypomnienia.');
+        ops.push({ table: 'reminders', id: newId(), patch: { task_id: taskId, kind: 'absolute', offset_min: null, at_date: r.atDate, at_time: r.atTime } });
+      }
+    }
+    return { taskId, ops };
+  }
   if (input.remind && !existing.length) ops.push({ table: 'reminders', id: newId(), patch: { task_id: taskId, kind: 'relative', offset_min: 0, at_date: null, at_time: null } });
   if (!input.remind) for (const id of existing) ops.push({ table: 'reminders', id, patch: { deleted_at: new Date(input.now).toISOString() } });
   return { taskId, ops };
