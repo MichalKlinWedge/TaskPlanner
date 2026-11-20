@@ -24,6 +24,7 @@ import {
   habitStats,
   habitWeeks,
   habitYear,
+  habitYearRange,
   isOpen,
   MAX_COUNT,
   MONTH_SHORT,
@@ -304,6 +305,7 @@ function HabitRow({ task, data, today, navigate }: { task: ViewTask; data: AppDa
 export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: AppData; ctx: ViewContext; navigate: (route: Route) => void }) {
   const { run } = useTaskActions();
   const [editing, setEditing] = useState(false);
+  const [shownYear, setShownYear] = useState<number | null>(null);
   const task = data.tasks.find((t) => t.id === id && t.kind === "habit");
   const habit = task ? toHabit(task) : null;
   const completions = task ? completionsOf(data, task.id) : EMPTY;
@@ -311,7 +313,10 @@ export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: App
   // React Compiler zapamiętuje wyniki między renderami; bez ręcznego `useMemo`.
   const stats = habit ? habitStats(habit, completions, today) : null;
   const weeks = habit ? habitWeeks(habit, completions, today, 12) : [];
-  const year = habit ? habitYear(habit, completions, today, { ahead: YEAR_AHEAD_WEEKS }) : null;
+  // Mapa roku: rok kalendarzowy (domyślnie bieżący), strzałkami w zakresie `habitYearRange`.
+  const range = habit ? habitYearRange(habit, completions, today) : null;
+  const yearShown = Math.min(Math.max(shownYear ?? Number(today.slice(0, 4)), range?.min ?? 0), range?.max ?? 9999);
+  const year = habit ? habitYear(habit, completions, today, { year: yearShown }) : null;
 
   if (!task || !habit || !stats || !year) {
     return (
@@ -399,8 +404,24 @@ export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: App
       </section>
 
       <section className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold">Rok</h2>
-        <Heatmap year={year} habit={habit} />
+        <div className="mb-2 flex items-center gap-1">
+          <h2 className="text-sm font-semibold">Rok</h2>
+          <button type="button" aria-label="Poprzedni rok" disabled={yearShown <= range!.min} onClick={() => setShownYear(yearShown - 1)} className="rounded px-1.5 text-[var(--muted)] hover:bg-[var(--hover)] disabled:opacity-30">
+            ‹
+          </button>
+          <span className="min-w-[3rem] text-center text-sm tabular-nums" aria-live="polite">
+            {yearShown}
+          </span>
+          <button type="button" aria-label="Następny rok" disabled={yearShown >= range!.max} onClick={() => setShownYear(yearShown + 1)} className="rounded px-1.5 text-[var(--muted)] hover:bg-[var(--hover)] disabled:opacity-30">
+            ›
+          </button>
+          {yearShown !== Number(today.slice(0, 4)) ? (
+            <button type="button" onClick={() => setShownYear(null)} className="ml-1 text-xs text-[var(--accent)] hover:underline">
+              Bieżący
+            </button>
+          ) : null}
+        </div>
+        <Heatmap key={yearShown} year={year} habit={habit} today={today} />
       </section>
     </>
   );
@@ -475,23 +496,25 @@ function WeeklyChart({ weeks, habit }: { weeks: ReturnType<typeof habitWeeks>; h
 }
 
 const LEGEND: DayState[] = ["done", "partial", "skipped", "missed", "off"];
-/** Tygodnie naprzód na mapie roku — zaplanowane dni nawyku. */
-const YEAR_AHEAD_WEEKS = 8;
 const PLANNED_CLASS = "ring-1 ring-inset ring-[var(--accent)] bg-[var(--surface)]";
 
-/** Mapa cieplna roku: 53 kolumny tygodni (pon–ndz) do bieżącego i kilka naprzód z zaplanowanymi dniami. */
-function Heatmap({ year, habit }: { year: ReturnType<typeof habitYear>; habit: Habit }) {
+/** Mapa cieplna roku kalendarzowego: kolumny tygodni (pon–ndz), przyszłe dni nawyku jako zaplanowane. */
+function Heatmap({ year, habit, today }: { year: ReturnType<typeof habitYear>; habit: Habit; today: LocalDate }) {
   const legend = LEGEND.filter((s) => s !== "partial" || habit.target !== undefined).filter((s) => s !== "missed" || !habit.goal);
   // Na wąskim ekranie mapa się przewija — zaczyna od bieżącego tygodnia (prawa krawędź).
   const scroller = useRef<HTMLDivElement>(null);
-  const columns = year.weeks.length;
   useEffect(() => {
-    // Po ułożeniu siatki (klatka później) — inaczej szerokość bywa jeszcze zerowa i mapa stoi na początku.
+    // Po ułożeniu siatki (klatka później — inaczej szerokość bywa zerowa): dziś pod prawą krawędzią,
+    // rok miniony — koniec, przyszły — początek.
     const frame = requestAnimationFrame(() => {
-      if (scroller.current) scroller.current.scrollLeft = scroller.current.scrollWidth;
+      const box = scroller.current;
+      if (!box) return;
+      const cell = box.querySelector<HTMLElement>(`[data-date="${today}"]`);
+      if (cell) box.scrollLeft += cell.getBoundingClientRect().left - box.getBoundingClientRect().left - box.clientWidth * 0.75;
+      else box.scrollLeft = year.weeks[0]![0]!.date > today ? 0 : box.scrollWidth;
     });
     return () => cancelAnimationFrame(frame);
-  }, [columns]);
+  }, [today, year]);
   const planned = !habit.goal && year.weeks.some((w) => w.some((d) => d.planned));
   return (
     <figure>
@@ -533,13 +556,14 @@ function HeatRow({ weekday, year, habit }: { weekday: IsoWeekday; year: ReturnTy
       <span className="pr-1 text-right text-[10px] leading-[11px] text-[var(--muted)]">{weekday % 2 ? WEEKDAY[weekday].short : ""}</span>
       {year.weeks.map((week) => {
         const d = week[weekday - 1]!;
+        if (d.outside) return <span key={d.date} />;
         if (d.future) {
           if (!d.planned) return <span key={d.date} />;
           const label = `${dayChip(d.date)}: zaplanowane`;
           return <span key={d.date} title={label} aria-label={label} className={`rounded-sm ${PLANNED_CLASS}`} />;
         }
         const label = `${dayChip(d.date)}: ${STATE_LABEL[d.state]}${d.value !== null && habit.target !== undefined ? ` (${d.value} / ${habit.target})` : ""}`;
-        return <span key={d.date} title={label} aria-label={label} className={`rounded-sm ${STATE_CLASS[d.state]} ${d.state === "off" ? "opacity-60" : ""}`} />;
+        return <span key={d.date} data-date={d.date} title={label} aria-label={label} className={`rounded-sm ${STATE_CLASS[d.state]} ${d.state === "off" ? "opacity-60" : ""}`} />;
       })}
     </>
   );

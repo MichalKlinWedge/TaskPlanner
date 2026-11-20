@@ -343,14 +343,16 @@ export interface HabitHeatDay {
   future: boolean;
   /** Przyszły dzień nawyku według reguły (nie przy celu „N razy w okresie” — tam dni nie są ustalone). */
   planned: boolean;
+  /** Dzień spoza wybranego roku kalendarzowego (`year`) — pusta komórka w pierwszym / ostatnim tygodniu. */
+  outside: boolean;
 }
 
 export interface HabitYear {
-  /** Kolumny = tygodnie (pon–ndz), od najstarszego; 53 kolumny, ostatnia z dziś. */
+  /** Kolumny = tygodnie (pon–ndz), od najstarszego; bez `year` 53 kolumny (+ `ahead`), ostatnia z dziś. */
   weeks: HabitHeatDay[][];
   /** Kolumny, w których zaczyna się miesiąc (etykiety nad mapą). */
   months: { column: number; month: number }[];
-  /** Dni w każdym stanie w ostatnich 365 dniach (do dziś). */
+  /** Dni w każdym stanie w ostatnich 365 dniach (z `year` — w tym roku) do dziś. */
   counts: Record<DayState, number>;
 }
 
@@ -361,26 +363,56 @@ export function habitDayCounts(days: readonly { state: DayState }[]): Record<Day
   return counts;
 }
 
-/** Mapa cieplna roku: 53 tygodnie do bieżącego włącznie. */
-export function habitYear(habit: Habit, completions: readonly HabitCompletion[], today: LocalDate, { ahead = 0 }: { ahead?: number } = {}): HabitYear {
+/**
+ * Mapa cieplna roku. Bez `year`: 53 tygodnie do bieżącego włącznie (+ `ahead` tygodni naprzód z
+ * zaplanowanymi dniami). Z `year`: rok kalendarzowy — tygodnie pon–ndz od tego z 1 stycznia do tego
+ * z 31 grudnia; dni spoza roku są `outside`.
+ */
+export function habitYear(habit: Habit, completions: readonly HabitCompletion[], today: LocalDate, { ahead = 0, year }: { ahead?: number; year?: number } = {}): HabitYear {
   const { byDate } = index(habit, completions);
-  const current = addDays(today, 7 - isoWeekday(today));
-  const from = addDays(current, -53 * 7 + 1);
-  // `ahead` — dodatkowe tygodnie po bieżącym z zaplanowanymi dniami.
-  const end = addDays(current, ahead * 7);
+  let from: LocalDate;
+  let end: LocalDate;
+  let first: LocalDate;
+  let lastDay: LocalDate;
+  if (year === undefined) {
+    const current = addDays(today, 7 - isoWeekday(today));
+    from = addDays(current, -53 * 7 + 1);
+    end = addDays(current, ahead * 7);
+    first = addDays(today, -364);
+    lastDay = end;
+  } else {
+    first = `${String(year).padStart(4, '0')}-01-01` as LocalDate;
+    lastDay = `${String(year).padStart(4, '0')}-12-31` as LocalDate;
+    from = addDays(first, 1 - isoWeekday(first));
+    end = addDays(lastDay, 7 - isoWeekday(lastDay));
+  }
   const days = habitDays(habit, completions, from, end, today);
-  const planned = new Set(habit.goal ? [] : occurrences(habit.recurrence, { from: addDays(today, 1), to: end, limit: 1000 }));
+  const after = addDays(today, 1);
+  const planned = new Set(habit.goal || end < after ? [] : occurrences(habit.recurrence, { from: from > after ? from : after, to: end, limit: 1000 }));
   const weeks: HabitHeatDay[][] = [];
   const months: HabitYear['months'] = [];
   days.forEach((d, i) => {
     const column = Math.floor(i / 7);
     if (i % 7 === 0) weeks.push([]);
     const c = byDate.get(d.date);
-    weeks[column]!.push({ date: d.date, state: d.state, value: c?.kind === 'done' ? (c.value ?? null) : null, future: d.date > today, planned: planned.has(d.date) });
-    if (d.date.endsWith('-01')) months.push({ column, month: Number(d.date.slice(5, 7)) });
+    const outside = year !== undefined && (d.date < first || d.date > lastDay);
+    weeks[column]!.push({ date: d.date, state: d.state, value: c?.kind === 'done' ? (c.value ?? null) : null, future: d.date > today, planned: !outside && planned.has(d.date), outside });
+    if (d.date.endsWith('-01') && !outside) months.push({ column, month: Number(d.date.slice(5, 7)) });
   });
-  const yearAgo = addDays(today, -365);
-  return { weeks, months, counts: habitDayCounts(days.filter((d) => d.date <= today && d.date > yearAgo)) };
+  return { weeks, months, counts: habitDayCounts(days.filter((d) => d.date <= today && d.date >= first && d.date <= lastDay)) };
+}
+
+/**
+ * Lata do przeglądania mapy nawyku: od roku początku (albo najstarszego wpisu) do roku końca nawyku,
+ * a bez końca — do przyszłego roku (zaplanowane dni); zawsze z bieżącym.
+ */
+export function habitYearRange(habit: Habit, completions: readonly HabitCompletion[], today: LocalDate): { min: number; max: number } {
+  const year = (d: LocalDate) => Number(d.slice(0, 4));
+  const now = year(today);
+  const oldest = completions.reduce((m, c) => (c.date < m ? c.date : m), habit.recurrence.anchor);
+  const last = habitEndDate(habit);
+  const min = Math.min(year(oldest), now);
+  return { min, max: last === null ? now + 1 : Math.max(now, year(last)) };
 }
 
 // ── Nawyki w kalendarzu i planie dnia ────────────────────────────────────────────────────────
