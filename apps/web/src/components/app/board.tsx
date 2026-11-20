@@ -141,7 +141,9 @@ function Column({
       aria-label={`Kolumna ${column.label}`}
     >
       <header className="mb-2 flex items-center gap-2 px-1 text-sm font-semibold">
-        <span className="min-w-0 flex-1 truncate">{column.label}</span>
+        <span className={`min-w-0 flex-1 truncate ${column.hint ? "cursor-help" : ""}`} title={column.hint}>
+          {column.label}
+        </span>
         <span className="text-xs font-normal text-[var(--muted)]">{column.tasks.length}</span>
         <button type="button" className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]" onClick={() => setCollapsed(true)} aria-label={`Zwiń kolumnę ${column.label}`} title="Zwiń">
           ⟨

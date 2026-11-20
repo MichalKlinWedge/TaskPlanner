@@ -20,6 +20,15 @@ export const TASK_STATUS: Record<TaskStatus, string> = {
   cancelled: 'Anulowane',
 };
 
+/** Znaczenie statusów — podpowiedź (np. dymek nad kolumną tablicy). */
+export const TASK_STATUS_HINT: Record<TaskStatus, string> = {
+  todo: 'Otwarte, jeszcze nie zaczęte — domyślny status nowego zadania.',
+  in_progress: 'Zaczęte, właśnie nad nim pracujesz. Działa jak „Do zrobienia”, tylko informuje.',
+  waiting: 'Zablokowane przez kogoś lub coś z zewnątrz (odpowiedź, dostawa, decyzja). Nadal otwarte; przegląd tygodnia pokazuje czekające dłużej niż 7 dni.',
+  done: 'Ukończone (to samo co odhaczenie; w serii przesuwa termin na następne wystąpienie). Na tablicy — z ostatnich 7 dni.',
+  cancelled: 'Zamknięte bez wykonania — znika z widoków i nie liczy się do ukończonych.',
+};
+
 export const LIST_KIND: Record<ListKind, string> = {
   inbox: 'Inbox',
   project: 'Projekt',

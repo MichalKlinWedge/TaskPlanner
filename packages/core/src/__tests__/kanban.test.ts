@@ -52,6 +52,8 @@ describe('kolumny', () => {
       ['waiting', []],
       ['done', ['c']],
     ]);
+    expect(cols.every((c) => c.hint)).toBe(true);
+    expect(boardColumns(tasks, 'priority', ctx).some((c) => c.hint)).toBe(false);
   });
 
   it('dzień tygodnia: bieżący tydzień od poniedziałku + bez terminu; tylko otwarte', () => {

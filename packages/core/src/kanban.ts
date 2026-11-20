@@ -6,7 +6,7 @@
  */
 import { addDays, weekStart } from './dates.ts';
 import { dayChip } from './format.ts';
-import { PRIORITY, TASK_STATUS, VIEW_SECTION } from './labels.ts';
+import { PRIORITY, TASK_STATUS, TASK_STATUS_HINT, VIEW_SECTION } from './labels.ts';
 import { taskTagId } from './ids.ts';
 import { reschedulePatch } from './review.ts';
 import type { LocalDate, Priority, TaskStatus } from './schemas/primitives.ts';
@@ -33,6 +33,8 @@ export interface BoardColumn {
   /** Wartość kolumny: status, priorytet, data, id tagu / listy albo `none`. */
   key: string;
   label: string;
+  /** Opis wartości kolumny (dymek) — przy kolumnach statusów. */
+  hint?: string;
   tasks: ViewTask[];
 }
 
@@ -73,7 +75,7 @@ export function boardColumns(
   };
 
   if (by === 'status') {
-    for (const s of BOARD_STATUSES) column(s, TASK_STATUS[s]);
+    for (const s of BOARD_STATUSES) column(s, TASK_STATUS[s]).hint = TASK_STATUS_HINT[s];
     for (const t of cards) columns.get(t.status)?.tasks.push(t);
   } else if (by === 'priority') {
     for (const p of [1, 2, 3, 4] as Priority[]) column(String(p), PRIORITY[p].label);
