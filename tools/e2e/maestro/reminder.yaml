@@ -1,0 +1,55 @@
+# Przypomnienie (M8): zadanie „dzis o REMIND_AT ^1m” → powiadomienie przy zamkniętej aplikacji
+# (ekran główny) → akcja „Ukończ” z powiadomienia, bez otwierania aplikacji → zadanie ukończone.
+# REMIND_AT = teraz + 3 min (ustawia `run.ts`), więc przypomnienie przychodzi po ~2 min.
+appId: pl.taskplanner.app
+name: Przypomnienie
+env:
+  RUN: ${RUN || 'reczny'}
+  REMIND_AT: ${REMIND_AT || '23:59'}
+  TASK: Maestro ${RUN} R
+---
+- launchApp
+- extendedWaitUntil:
+    visible: Dodaj zadanie
+    timeout: 20000
+- tapOn: Dziś
+- tapOn: Dodaj zadanie
+- extendedWaitUntil:
+    visible: "Dodaj do: .*"
+    timeout: 5000
+- inputText: ${TASK} dzis o ${REMIND_AT} ^1m
+- assertVisible: ${TASK} → .*
+- tapOn: Dodaj
+- extendedWaitUntil:
+    notVisible: "Dodaj do: .*"
+    timeout: 5000
+- pressKey: Home
+# Panel powiadomień zostaje otwarty do przyjścia przypomnienia.
+- swipe:
+    start: 50%, 1%
+    end: 50%, 75%
+    duration: 400
+- extendedWaitUntil:
+    visible: ${TASK}
+    timeout: 200000
+# Powiadomienie bywa zwinięte w grupie (np. z odliczaniem skupienia) — rozwinięcie przeciągnięciem w dół.
+- swipe:
+    from:
+      text: ${TASK}
+    direction: DOWN
+- runFlow:
+    when:
+      notVisible: Ukończ
+    commands:
+      - swipe:
+          from:
+            text: ${TASK}
+          direction: DOWN
+- tapOn:
+    text: Ukończ
+    below: ${TASK}
+- extendedWaitUntil:
+    notVisible: ${TASK}
+    timeout: 10000
+- pressKey: Back
+- runFlow: check-done.yaml

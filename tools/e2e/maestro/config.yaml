@@ -1,0 +1,12 @@
+# Maestro (Etap 13): przepływy na telefonie z Androidem i zainstalowanym APK Task Planner.
+# Uruchamiać przez `npm run test:mobile` (ustawia RUN, REMIND_AT, adb reverse i sprawdza serwer).
+flows:
+  - quick-add-today.yaml
+  - reminder.yaml
+  - widget.yaml
+executionOrder:
+  continueOnFailure: false
+  flowsOrder:
+    - quick-add-today
+    - reminder
+    - widget
