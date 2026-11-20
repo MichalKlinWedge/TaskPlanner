@@ -35,3 +35,7 @@ tools/edge-tests/out/
 
 # SQLite WASM kopiowany przed next dev/build (scripts/copy-sqlite-wasm.mjs)
 apps/web/public/sqlite-wasm/
+
+# Klucze podpisu Androida — nigdy w repozytorium (docs/ANDROID_BUILD.md)
+*.jks
+*.keystore

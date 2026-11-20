@@ -1,7 +1,9 @@
 /**
  * Adres serwera i zalogowany użytkownik w `expo-sqlite/kv-store` (synchronicznie, działa też
- * w zadaniu w tle bez ekranu). Adres domyślnie z `EXPO_PUBLIC_SUPABASE_*`; na PoC można go
- * zmienić w aplikacji (telefon nie widzi 127.0.0.1 komputera — lokalny Supabase przez IP w LAN).
+ * w zadaniu w tle bez ekranu). Adres domyślnie z `EXPO_PUBLIC_SUPABASE_*` (build lokalny, `.env.local`),
+ * a bez nich — produkcyjny projekt w chmurze (`CLOUD_SERVER`), więc APK z GitHub Actions loguje się od
+ * razu. Można go zmienić w aplikacji (telefon nie widzi 127.0.0.1 komputera — lokalny Supabase przez
+ * `adb reverse` albo IP w LAN).
  */
 import Storage from 'expo-sqlite/kv-store';
 
@@ -15,6 +17,15 @@ export interface ServerConfig {
   key: string;
 }
 
+/**
+ * Produkcyjny Supabase (projekt `sakjrlpfbclcjlnpjcrt`). Klucz „publishable” jest publiczny z założenia
+ * (ten sam jest w bundlu weba) — dostęp do danych chronią RLS i logowanie.
+ */
+export const CLOUD_SERVER: ServerConfig = {
+  url: 'https://sakjrlpfbclcjlnpjcrt.supabase.co',
+  key: 'sb_publishable_3srH-dGVsfBkJNCzlLqJZg__9gFYEFL',
+};
+
 export interface SessionUser {
   id: string;
   email: string | null;
@@ -22,8 +33,9 @@ export interface SessionUser {
 }
 
 export function serverConfig(): ServerConfig | null {
-  const url = Storage.getItemSync(KEYS.url) || process.env.EXPO_PUBLIC_SUPABASE_URL;
-  const key = Storage.getItemSync(KEYS.key) || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+  const env = process.env.EXPO_PUBLIC_SUPABASE_URL && process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ? { url: process.env.EXPO_PUBLIC_SUPABASE_URL, key: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY } : CLOUD_SERVER;
+  const url = Storage.getItemSync(KEYS.url) || env.url;
+  const key = Storage.getItemSync(KEYS.key) || env.key;
   return url && key ? { url: url.replace(/\/+$/, ''), key } : null;
 }
 

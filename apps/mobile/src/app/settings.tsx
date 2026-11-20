@@ -7,7 +7,7 @@ import { ErrorsSection } from '@/components/errors-section';
 import { SyncIndicator } from '@/components/sync-indicator';
 import { Button, Field, P, Row, Screen, Section } from '@/components/ui';
 import { sendMagicLink, signInWithGoogle, signOut, verifyEmailCode } from '@/lib/auth';
-import { saveServerConfig, serverConfig, sessionUser } from '@/lib/config';
+import { CLOUD_SERVER, saveServerConfig, serverConfig, sessionUser } from '@/lib/config';
 import { useSyncStatus } from '@/lib/local-query';
 import { onSessionChange, type PullPerf } from '@/lib/sync';
 
@@ -161,7 +161,7 @@ export default function Settings() {
 
       <Section title="Serwer Supabase">
         <P muted>
-          Lokalny Supabase przez USB: `adb reverse tcp:54521 tcp:54521` (i 54524 dla Inbucket) — wtedy adres http://127.0.0.1:54521 działa na telefonie, także w linku z maila. W
+          Domyślnie serwer w chmurze ({CLOUD_SERVER.url}) — nic nie trzeba wpisywać. Lokalny Supabase przez USB: `adb reverse tcp:54521 tcp:54521` (i 54524 dla Inbucket) — wtedy adres http://127.0.0.1:54521 działa na telefonie, także w linku z maila. W
           sieci Wi-Fi: http://IP-komputera:54521 (link z maila wskazuje wtedy 127.0.0.1 — użyj kodu). Klucz: PUBLISHABLE_KEY z `npm run supabase -- status`.
         </P>
         <Field label="Adres" value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" editable={!user.online} />
@@ -178,6 +178,18 @@ export default function Settings() {
             }}
           />
         )}
+        {!user.online && (url !== CLOUD_SERVER.url || key !== CLOUD_SERVER.key) ? (
+          <Button
+            kind="secondary"
+            title="Serwer w chmurze"
+            onPress={() => {
+              setUrl(CLOUD_SERVER.url);
+              setKey(CLOUD_SERVER.key);
+              saveServerConfig(CLOUD_SERVER);
+              Alert.alert('Zapisano', 'Adres serwera w chmurze działa od następnego logowania.');
+            }}
+          />
+        ) : null}
       </Section>
     </Screen>
   );

@@ -40,7 +40,7 @@ Klucz podpisu jest na zawsze: APK podpisany innym kluczem nie zaktualizuje zains
    - `ANDROID_KEYSTORE_PASSWORD` — hasło magazynu,
    - `ANDROID_KEY_ALIAS` — `taskplanner`,
    - `ANDROID_KEY_PASSWORD` — hasło klucza (przy PKCS12 to samo co magazynu).
-4. Opcjonalnie (zakładka *Variables*): `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` — wartości domyślne w APK (w aplikacji i tak można je zmienić na ekranie „Konto i serwer”).
+4. Opcjonalnie (zakładka *Variables*): `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` — inny serwer domyślny w APK. Bez nich APK łączy się z produkcyjnym projektem w chmurze (`CLOUD_SERVER` w `apps/mobile/src/lib/config.ts`); na ekranie „Konto i serwer” można go zmienić (wylogowany) i wrócić przyciskiem „Serwer w chmurze”.
 
 Bez sekretów workflow też działa, ale APK jest podpisany kluczem debug (ostrzeżenie w przebiegu).
 
