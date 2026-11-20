@@ -1,8 +1,10 @@
 /**
  * Udostępnianie z innej aplikacji (Chrome: ⋮ → Udostępnij → TaskPlanner): pole szybkiego dodawania
- * z tekstem lub tytułem strony, link trafia do opisu (`[tytuł](url)`) i do `source`. Bez tytułu —
- * tytuł strony albo sam adres.
+ * z tekstem z `core` `sharedText` (Chrome wkłada adres do `text`, czasem tytuł strony do tematu).
+ * Link trafia do zadania jako załącznik i `source` (`withLinkOps`, jak Web Share Target na webie);
+ * zadanie z samym adresem w tytule dostaje tytuł strony z `link-preview` — offline po synchronizacji.
  */
+import { sharedText } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { useShareIntentContext } from 'expo-share-intent';
 import { useState } from 'react';
@@ -11,32 +13,19 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { QuickAddField } from '@/components/quick-add-field';
 import { Button, usePalette } from '@/components/ui';
 
-interface Shared {
-  url: string | null;
-  title: string | null;
-  text: string;
-}
-
-const linkTitle = (shared: Shared) => shared.title || shared.url || 'Udostępniony link';
-
 export default function ShareScreen() {
   const p = usePalette();
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
   // Komunikat poza polem: reset udostępnienia zmienia `key` i montuje pole od nowa.
   const [saved, setSaved] = useState<string | null>(null);
-  // Chrome wysyła sam URL (czasem tytuł strony w `meta.title`).
-  const shared: Shared | null = hasShareIntent ? { url: shareIntent.webUrl ?? null, title: shareIntent.meta?.title ?? null, text: shareIntent.text ?? '' } : null;
-  const initialText = !shared ? '' : shared.url ? shared.title ?? shared.text.replace(shared.url, '').trim() : shared.text;
-  const extra = shared?.url
-    ? { description_md: `[${linkTitle(shared)}](${shared.url})`, source: { kind: 'link', url: shared.url, title: shared.title }, fallbackTitle: linkTitle(shared) }
-    : undefined;
+  const shared = hasShareIntent ? sharedText({ title: shareIntent.meta?.title, text: shareIntent.text, url: shareIntent.webUrl }) : null;
 
   return (
     <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
       {shared?.url ? (
         <View style={[styles.link, { borderColor: p.border, backgroundColor: p.card }]}>
           <Text style={{ color: p.fg, fontWeight: '600' }} numberOfLines={2}>
-            {shared.title ?? 'Udostępniony link'}
+            {shared.text !== shared.url ? shared.text : 'Udostępniony link — tytuł strony uzupełni się sam'}
           </Text>
           <Text style={{ color: p.muted, fontSize: 12 }} numberOfLines={2}>
             {shared.url}
@@ -48,12 +37,12 @@ export default function ShareScreen() {
       <QuickAddField
         key={shared ? `${shared.url}|${shared.text}` : 'pusty'}
         autoFocus
-        initialText={initialText}
-        extra={extra}
+        initialText={shared?.text ?? ''}
+        link={shared?.url}
         placeholder="np. Przeczytać artykuł jutro o 20 !2"
         submitLabel="Dodaj"
         onAdded={() => {
-          setSaved(shared?.url ? `Dodano „${initialText || linkTitle(shared)}”.` : 'Dodano.');
+          setSaved(shared ? `Dodano „${shared.text}”.` : 'Dodano.');
           resetShareIntent();
         }}
       />

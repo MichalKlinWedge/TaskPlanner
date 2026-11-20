@@ -72,6 +72,13 @@
           "disableIOS": true
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "TaskPlanner robi zdjęcia do załączników zadań.",
+          "microphonePermission": false
+        }
+      ],
       "expo-web-browser",
       "expo-background-task",
       "./plugins/app-shortcuts",

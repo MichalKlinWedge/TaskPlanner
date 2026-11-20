@@ -9,4 +9,6 @@ process.env.EXPO_ROUTER_APP_ROOT = path.join(root, 'src/app');
 // `@expo/router-server` jest zależnością `@expo/cli` (nie aplikacji) — szukany obok niego.
 const cli = path.dirname(require.resolve('@expo/cli/package.json', { paths: [root] }));
 const typedRoutes = require(require.resolve('@expo/router-server/build/typed-routes', { paths: [cli, root] }));
+// Świeży checkout nie ma `.expo/types` — generator sam katalogu nie tworzy.
+require('node:fs').mkdirSync(path.join(root, '.expo/types'), { recursive: true });
 typedRoutes.regenerateDeclarations(path.join(root, '.expo/types'), {});
