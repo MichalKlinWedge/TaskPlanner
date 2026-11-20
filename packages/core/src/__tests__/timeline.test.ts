@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { addDays } from '../dates.ts';
 import { violations, type Dependency } from '../dependencies.ts';
 import type { TaskOp } from '../tasks.ts';
-import { addDependencyOps, dependencyErrorText, projectFilterLabel, removeDependencyOps, shiftProjectOps, taskLinks, timelineChangeOps, timelineFileName, timelineModel, timelineSheet, visibleProjects, type TimelineProject, type TimelineTask } from '../timeline.ts';
+import { addDependencyOps, dependencyErrorText, projectFilterLabel, removeDependencyOps, shiftProjectOps, taskLinks, timelineChangeOps, timelineFileName, timelineGridSheet, timelineModel, timelinePeriods, timelineSheet, visibleProjects, lighten, type TimelineProject, type TimelineTask } from '../timeline.ts';
 
 const W = 'ws-1';
 const task = (id: string, startDate: string | null, dueDate: string | null, over: Partial<TimelineTask> = {}): TimelineTask => ({
@@ -232,5 +232,53 @@ describe('filtr projektów i eksport', () => {
     ]);
     expect(sheet.indents).toEqual([0, 1, 1, 2, 0]);
     expect(timelineFileName('2026-11-20')).toBe('os-czasu-2026-11-20.xlsx');
+  });
+
+  it('okresy skali: dni, tygodnie od pierwszego dnia tygodnia, miesiące', () => {
+    expect(timelinePeriods('2026-11-29', '2026-12-01', 'day').map((p) => [p.label, p.group])).toEqual([
+      ['29', 'listopad 2026'],
+      ['30', 'listopad 2026'],
+      ['1', 'grudzień 2026'],
+    ]);
+    expect(timelinePeriods('2026-11-20', '2026-11-30', 'week')).toEqual([
+      { start: '2026-11-16', end: '2026-11-22', label: '16.11', group: 'listopad 2026' },
+      { start: '2026-11-23', end: '2026-11-29', label: '23.11', group: 'listopad 2026' },
+      { start: '2026-11-30', end: '2026-12-06', label: '30.11', group: 'listopad 2026' },
+    ]);
+    expect(timelinePeriods('2026-11-20', '2026-11-20', 'week', 7)[0]!.start).toBe('2026-11-15');
+    expect(timelinePeriods('2026-12-31', '2027-01-01', 'month').map((p) => [p.start, p.end, p.label, p.group])).toEqual([
+      ['2026-12-01', '2026-12-31', 'grudzień', '2026'],
+      ['2027-01-01', '2027-01-31', 'styczeń', '2027'],
+    ]);
+    expect(lighten('#ff0000', 0.35)).toBe('#ff5959');
+  });
+
+  it('siatka osi: kolumna na okres, pasek = komórki z tłem, miesiąc nad dniami, dziś w nagłówku', () => {
+    const tasks = [
+      task('a', '2026-11-20', '2026-11-23', { title: 'Projekt wnętrza', sortKey: 'a' }),
+      task('b', null, '2026-11-24', { title: 'Zakupy', sortKey: 'b' }),
+      task('kid', null, '2026-11-24', { title: 'Płytki', parentId: 'b', status: 'done' }),
+    ];
+    const model = timelineModel(visibleProjects(projects, new Set(['p2'])), tasks, [dep('a', 'b', 2)]);
+    const sheet = timelineGridSheet(model, { scale: 'day', today: '2026-11-22', colors: new Map([['p1', '#ff0000']]) });
+    expect(sheet.columns.map((c) => c.header)).toEqual(['Zadanie', 'Początek', 'Koniec', 'Postęp', '20', '21', '22', '23', '24']);
+    expect(sheet.columns.slice(4).map((c) => c.fill)).toEqual([undefined, '#e5e7eb', '#fde68a', undefined, undefined]);
+    expect(sheet.headerRows).toEqual([[null, null, null, null, 'listopad 2026', null, null, null, null]]);
+    expect(sheet.merges).toEqual(['E1:I1']);
+    expect(sheet.freezeColumns).toBe(4);
+    const bars = sheet.rows.map((r) => r.slice(4).map((c) => (c && typeof c === 'object' && 'fill' in c ? c.fill : '·')));
+    expect(bars).toEqual([
+      ['#ff0000', '#ff0000', '#ff0000', '#ff0000', '#ff0000'],
+      ['#ff5959', '#ff5959', '#ff5959', '#ff5959', '·'],
+      ['·', '·', '·', '·', '#f87171'],
+      ['·', '·', '·', '·', '#d1d5db'],
+      ['·', '·', '·', '·', '·'],
+    ]);
+    expect(sheet.rows[1]!.slice(0, 4)).toEqual(['Projekt wnętrza', { date: '2026-11-20' }, { date: '2026-11-23' }, { percent: 0 }]);
+    expect(sheet.indents).toEqual([0, 1, 1, 2, 0]);
+    const months = timelineGridSheet(model, { scale: 'month', today: '2026-11-22' });
+    expect(months.columns.slice(4).map((c) => c.header)).toEqual(['listopad']);
+    expect(months.rows[0]![4]).toEqual({ fill: '#6366f1' });
+    expect(timelineGridSheet(timelineModel([], [], []), { scale: 'week', today: '2026-11-22' })).toMatchObject({ rows: [], headerRows: undefined, merges: [] });
   });
 });

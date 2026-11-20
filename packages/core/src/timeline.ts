@@ -6,14 +6,14 @@
  * Każda operacja wraca z „Cofnij”. Reguły (`taskSpan`, `detectCycle`, `violations`, `shiftSuccessors`,
  * `projectSpan`) są w `dependencies.ts`.
  */
-import { addDays, daysBetween } from './dates.ts';
+import { addDays, addMonths, daysBetween, isoWeekday, weekStart } from './dates.ts';
 import { detectCycle, projectSpan, shiftSuccessors, taskSpan, violations, type Dependency, type ScheduledTask, type Span, type Violation } from './dependencies.ts';
 import { plural } from './format.ts';
 import { uuidv7 } from './ids.ts';
-import { PRIORITY, TASK_STATUS } from './labels.ts';
+import { MONTH_NAME, PRIORITY, TASK_STATUS } from './labels.ts';
 import type { LocalDate, Priority, TaskStatus } from './schemas/primitives.ts';
 import type { TaskOp } from './tasks.ts';
-import type { XlsxCell, XlsxSheet } from './xlsx.ts';
+import { columnName, type XlsxCell, type XlsxSheet } from './xlsx.ts';
 
 export interface TimelineTask extends ScheduledTask {
   listId: string;
@@ -221,6 +221,128 @@ export function timelineSheet(
 
 /** Nazwa pliku eksportu osi z dniem. */
 export const timelineFileName = (today: LocalDate): string => `os-czasu-${today}.xlsx`;
+
+// ── Eksport osi jako siatka okresów ─────────────────────────────────────────────────────────
+
+/** Skala osi: kolumna = dzień, tydzień albo miesiąc. */
+export type TimelineScale = 'day' | 'week' | 'month';
+
+export interface TimelinePeriod {
+  start: LocalDate;
+  /** Ostatni dzień okresu (włącznie). */
+  end: LocalDate;
+  /** Etykieta kolumny: dzień miesiąca, „16.11” (początek tygodnia) albo nazwa miesiąca. */
+  label: string;
+  /** Grupa nad kolumną: „listopad 2026” (dni, tygodnie) albo rok (miesiące). */
+  group: string;
+}
+
+/** Najwięcej kolumn okresów (limit Excela to 16 384 kolumny). */
+export const MAX_TIMELINE_PERIODS = 4000;
+
+const firstOfMonth = (date: LocalDate) => `${date.slice(0, 7)}-01` as LocalDate;
+const monthGroup = (date: LocalDate) => `${MONTH_NAME[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}`;
+
+/** Okresy skali od okresu z `from` do okresu z `to` (tydzień od `firstDayOfWeek`, 1 = poniedziałek). */
+export function timelinePeriods(from: LocalDate, to: LocalDate, scale: TimelineScale, firstDayOfWeek = 1): TimelinePeriod[] {
+  const periods: TimelinePeriod[] = [];
+  let start = scale === 'day' ? from : scale === 'week' ? weekStart(from, firstDayOfWeek) : firstOfMonth(from);
+  while (start <= to && periods.length < MAX_TIMELINE_PERIODS) {
+    const next = scale === 'day' ? addDays(start, 1) : scale === 'week' ? addDays(start, 7) : addMonths(start, 1);
+    periods.push({
+      start,
+      end: addDays(next, -1),
+      label: scale === 'day' ? String(Number(start.slice(8, 10))) : scale === 'week' ? `${start.slice(8, 10)}.${start.slice(5, 7)}` : MONTH_NAME[Number(start.slice(5, 7)) - 1]!,
+      group: scale === 'month' ? start.slice(0, 4) : monthGroup(start),
+    });
+    start = next;
+  }
+  return periods;
+}
+
+const BAR_DEFAULT = '#6366f1';
+const BAR_DONE = '#d1d5db';
+const BAR_LATE = '#f87171';
+const HEADER_TODAY = '#fde68a';
+const HEADER_WEEKEND = '#e5e7eb';
+
+/** Kolor rozjaśniony w stronę bieli (`amount` 0–1) — paski zadań jaśniejsze od paska projektu. */
+export function lighten(color: string, amount: number): string {
+  const hex = /^#?([0-9a-f]{6})$/i.exec(color)?.[1];
+  if (!hex) return color;
+  const mix = (i: number) => Math.round(parseInt(hex.slice(i, i + 2), 16) + (255 - parseInt(hex.slice(i, i + 2), 16)) * amount);
+  return `#${[0, 2, 4].map((i) => mix(i).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/**
+ * Arkusz osi jak na ekranie: wiersz na projekt / zadanie / podzadanie (wcięcie poziomu), po lewej daty
+ * i postęp, dalej jedna kolumna na okres skali (dzień / tydzień / miesiąc) — pasek to komórki z tłem
+ * w kolorze projektu (zadania jaśniej, ukończone szaro, naruszenie zależności na czerwono). Nad
+ * kolumnami okresów scalone miesiące (albo lata); dzisiejszy okres w nagłówku na żółto, weekendy szaro.
+ */
+export function timelineGridSheet(
+  model: TimelineModel,
+  options: { scale: TimelineScale; today: LocalDate; colors?: ReadonlyMap<string, string | null>; firstDayOfWeek?: number; name?: string },
+): XlsxSheet {
+  const spans = model.rows.flatMap((r) => (r.span ? [r.span] : []));
+  const from = spans.reduce<LocalDate | null>((m, s) => (!m || s.start < m ? s.start : m), null);
+  const to = spans.reduce<LocalDate | null>((m, s) => (!m || s.end > m ? s.end : m), null);
+  const periods = from && to ? timelinePeriods(from, to, options.scale, options.firstDayOfWeek) : [];
+  const left = [
+    { header: 'Zadanie', width: 40 },
+    { header: 'Początek', width: 11 },
+    { header: 'Koniec', width: 11 },
+    { header: 'Postęp', width: 8 },
+  ];
+  const lead = left.length;
+  const width = options.scale === 'day' ? 3.6 : options.scale === 'week' ? 6.5 : 11;
+  const columns = [
+    ...left,
+    ...periods.map((p) => ({
+      header: p.label,
+      width,
+      center: true,
+      fill: p.start <= options.today && options.today <= p.end ? HEADER_TODAY : options.scale === 'day' && isoWeekday(p.start) >= 6 ? HEADER_WEEKEND : undefined,
+    })),
+  ];
+
+  // Wiersz grup nad okresami: jedna scalona komórka na miesiąc (rok).
+  const groups: XlsxCell[] = Array.from({ length: lead }, () => null);
+  const merges: string[] = [];
+  for (let i = 0; i < periods.length; ) {
+    let j = i;
+    while (j + 1 < periods.length && periods[j + 1]!.group === periods[i]!.group) j++;
+    groups[lead + i] = periods[i]!.group;
+    for (let k = i + 1; k <= j; k++) groups[lead + k] = null;
+    if (j > i) merges.push(`${columnName(lead + i)}1:${columnName(lead + j)}1`);
+    i = j + 1;
+  }
+
+  const depth = new Map<string, number>();
+  const rows: XlsxCell[][] = [];
+  const indents: number[] = [];
+  for (const r of model.rows) {
+    const level = r.kind === 'project' ? 0 : (depth.get(r.parentId ?? '') ?? 0) + 1;
+    depth.set(r.id, level);
+    const base = options.colors?.get(r.projectId) || BAR_DEFAULT;
+    const color = r.kind === 'project' ? base : r.violated ? BAR_LATE : r.done ? BAR_DONE : lighten(base, level === 1 ? 0.35 : 0.55);
+    const cells: XlsxCell[] = [r.title, r.span ? { date: r.span.start } : null, r.span ? { date: r.span.end } : null, { percent: r.progress / 100 }];
+    for (const p of periods) cells.push(r.span && r.span.start <= p.end && r.span.end >= p.start ? { fill: color } : null);
+    rows.push(cells);
+    indents.push(level);
+  }
+  return {
+    name: options.name ?? 'Oś czasu',
+    columns,
+    rows,
+    indents,
+    indentColumn: 0,
+    headerRows: periods.length ? [groups] : undefined,
+    merges,
+    freezeColumns: lead,
+    autoFilter: false,
+  };
+}
 
 export interface TimelineResult {
   ops: TaskOp[];

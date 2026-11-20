@@ -156,6 +156,7 @@ export const COLORS: readonly { value: string; label: string }[] = [
 
 /** Skróty miesięcy (od stycznia). */
 export const MONTH_SHORT = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'] as const;
+export const MONTH_NAME = ['styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec', 'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'] as const;
 
 /**
  * Błędy Supabase Auth po polsku (kody `ErrorCode` z GoTrue i `error_code` z adresu powrotu).

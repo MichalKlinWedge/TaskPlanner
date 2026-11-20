@@ -11,6 +11,7 @@ import type { AppData, SavedFilter, Tag } from "@/lib/app-data";
 import type { Route } from "@/lib/route";
 
 import { useAppEnv } from "./app-env";
+import { TaskExportButton } from "./export";
 import { FilterBar } from "./filter-bar";
 import { TaskItem, useTaskActions } from "./task-item";
 import { Button, Input } from "./ui";
@@ -99,6 +100,7 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
         )}
         <span className="text-sm text-[var(--muted)]">{plural(count, ["zadanie", "zadania", "zadań"])}</span>
         <span className="flex-1" />
+        <TaskExportButton title={`@${tag.name}`} data={data} ctx={ctx} count={count} rows={() => sortTasks(filtered(data.tasks, query, ctx), "due").map((task) => ({ task }))} />
         <div className="flex gap-1" role="radiogroup" aria-label="Kolor tagu">
           {COLORS.map((c) => (
             <button key={c.value} type="button" role="radio" aria-checked={c.value === tag.color} aria-label={c.label} title={c.label} onClick={() => void update({ color: c.value })} className="h-4 w-4 rounded-full ring-offset-1 aria-checked:ring-2 aria-checked:ring-[var(--accent)]" style={{ background: c.value }} />
@@ -185,6 +187,7 @@ export function SavedFilterView({ data, ctx, filter, navigate }: { data: AppData
         )}
         <span className="text-sm text-[var(--muted)]">{plural(count, ["zadanie", "zadania", "zadań"])}</span>
         <span className="flex-1" />
+        <TaskExportButton title={filter.name} data={data} ctx={ctx} count={count} rows={() => sortTasks(filtered(data.tasks, query, ctx), "due").map((task) => ({ task }))} />
         {changed ? (
           <>
             <Button kind="primary" onClick={() => void update({ query })} disabled={isEmptyFilter(query)}>

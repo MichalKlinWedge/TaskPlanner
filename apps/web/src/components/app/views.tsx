@@ -12,6 +12,7 @@ import {
   capitalized,
   COMPLETED_MODE,
   dayLabel,
+  dayMonth,
   flattenTree,
   GROUP_BY,
   groupTasks,
@@ -45,6 +46,7 @@ import { useLocalQuery } from "@/lib/local-store";
 
 import { Board } from "./board";
 import { DayDnd, DayDrop, DraggableTaskItem, SortableTaskItem, SortableTaskList } from "./dnd";
+import { TaskExportButton } from "./export";
 import { HabitTodayItem } from "./habits";
 import { QuickAdd } from "./quick-add";
 import { TaskItem, useTaskActions } from "./task-item";
@@ -120,7 +122,9 @@ export function InboxView({ data, ctx, targetInbox, toolbar }: ViewProps) {
   const all = !ctx.workspaceId;
   return (
     <>
-      <Header title="Inbox" subtitle={plural(tasks.length, ["zadanie", "zadania", "zadań"])} />
+      <Header title="Inbox" subtitle={plural(tasks.length, ["zadanie", "zadania", "zadań"])}>
+        <TaskExportButton title="Inbox" data={data} ctx={ctx} count={tasks.length} rows={() => tasks.map((task) => ({ task }))} />
+      </Header>
       {toolbar}
       <QuickAdd listId={targetInbox?.id} placeholder={targetInbox && all ? `Dodaj do Inboxu („${workspaceName.get(targetInbox.workspaceId)}”)` : "Dodaj do Inboxu"} />
       {tasks.length ? (
@@ -147,7 +151,17 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
   return (
     <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-8">
       <div className="min-w-0">
-        <Header title="Dziś" subtitle={`${capitalized(dayLabel(ctx.today))} · ${plural(open, ["zadanie", "zadania", "zadań"])}`} />
+        <Header title="Dziś" subtitle={`${capitalized(dayLabel(ctx.today))} · ${plural(open, ["zadanie", "zadania", "zadań"])}`}>
+          <TaskExportButton
+            title="Dziś"
+            data={data}
+            ctx={ctx}
+            count={open + view.ongoing.length + view.done.length}
+            rows={() =>
+              (["overdue", "today", "ongoing", "done"] as const).flatMap((key) => view[key].map((task) => ({ task, section: VIEW_SECTION[key] })))
+            }
+          />
+        </Header>
         {toolbar}
         <QuickAdd listId={targetInbox?.id} dueDate={ctx.today} placeholder="Dodaj zadanie na dziś" />
         {view.overdue.length ? (
@@ -191,7 +205,18 @@ export function UpcomingView({ data, ctx, targetInbox, toolbar }: ViewProps) {
   const names = listNames(data);
   return (
     <>
-      <Header title="Nadchodzące" subtitle="14 dni, dalej tygodniami" />
+      <Header title="Nadchodzące" subtitle="14 dni, dalej tygodniami">
+        <TaskExportButton
+          title="Nadchodzące"
+          data={data}
+          ctx={ctx}
+          count={view.days.reduce((n, d) => n + d.items.length, 0) + view.later.reduce((n, w) => n + w.items.length, 0)}
+          rows={() => [
+            ...view.days.flatMap(({ date, items }) => items.map((item) => ({ task: item.task, section: capitalized(dayLabel(date)), date: item.virtual ? item.date : undefined }))),
+            ...view.later.flatMap(({ weekStart, items }) => items.map((item) => ({ task: item.task, section: `Tydzień od ${dayMonth(weekStart)}` }))),
+          ]}
+        />
+      </Header>
       {toolbar}
       <DayDnd>
         {view.days.map(({ date, items }) => (
@@ -316,6 +341,17 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
     <>
       <Header title={list.name} subtitle={`${LIST_KIND[list.kind]} · ${plural(openCount, ["otwarte", "otwarte", "otwartych"])}`}>
         <div className="flex flex-wrap gap-2">
+          <TaskExportButton
+            title={list.name}
+            data={data}
+            ctx={ctx}
+            count={tasks.length}
+            rows={() =>
+              !kanban && groups
+                ? groups.flatMap((g) => g.tasks.map((task) => ({ task, section: g.label || undefined })))
+                : flattenTree(buildTree(tasks)).map((n) => ({ task: n.task, depth: n.depth }))
+            }
+          />
           <div className="flex overflow-hidden rounded-md border border-[var(--line)] text-xs" role="radiogroup" aria-label="Widok">
             {(["list", "kanban"] as const).map((v) => (
               <button key={v} type="button" role="radio" aria-checked={(list.prefs.view ?? "list") === v} onClick={() => setPrefs({ view: v })} className={`px-2.5 py-1 ${(list.prefs.view ?? "list") === v ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--hover)]"}`}>

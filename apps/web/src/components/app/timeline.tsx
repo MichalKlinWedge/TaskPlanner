@@ -28,11 +28,10 @@ import {
   shiftProjectOps,
   timelineChangeOps,
   timelineFileName,
+  timelineGridSheet,
   timelineModel,
   timelineSheet,
   visibleProjects,
-  XLSX_MIME,
-  xlsxWorkbook,
   type Dependency,
   type LocalDate,
   type Span,
@@ -46,6 +45,7 @@ import { useDependencies } from "@/lib/dependencies";
 import { GANTT_PL } from "@/lib/gantt-locale";
 
 import { useAppEnv } from "./app-env";
+import { ExportButton } from "./export";
 import { Check, Popover } from "./filter-bar";
 import { useTaskActions } from "./task-item";
 
@@ -287,17 +287,13 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
     remember(HIDDEN_KEY, JSON.stringify([...next]));
   };
 
-  const exportXlsx = () => {
-    const blob = new Blob([xlsxWorkbook([timelineSheet(model, data.tasks)])], { type: XLSX_MIME });
-    const url = URL.createObjectURL(blob);
-    const link = Object.assign(document.createElement("a"), { href: url, download: timelineFileName(today) });
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    const rows = model.rows.filter((r) => r.kind === "task").length;
-    notify(`Zapisano ${timelineFileName(today)}: ${plural(projects.length, ["projekt", "projekty", "projektów"])}, ${plural(rows, ["zadanie", "zadania", "zadań"])}.`);
-  };
+  // Eksport: karta „Oś czasu” = siatka okresów bieżącej skali (komórka na dzień / tydzień / miesiąc,
+  // pasek w kolorze projektu), karta „Szczegóły” = tabela wierszy z poprzednikami i naruszeniami.
+  const exportSheets = () => [
+    timelineGridSheet(model, { scale, today, colors: new Map(projects.map((p) => [p.id, p.color])), firstDayOfWeek: ctx.firstDayOfWeek }),
+    timelineSheet(model, data.tasks, "Szczegóły"),
+  ];
+  const exportSummary = () => `${plural(projects.length, ["projekt", "projekty", "projektów"])}, ${plural(model.rows.filter((r) => r.kind === "task").length, ["zadanie", "zadania", "zadań"])}, skala: ${SCALES[scale].label.toLowerCase()}`;
 
   const ganttTasks = useMemo<ITask[]>(() => {
     const kinds = new Map(model.rows.map((r) => [r.id, r.kind]));
@@ -504,9 +500,14 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
           Przesuń zależne
         </label>
         {allProjects.length ? <ProjectFilter projects={allProjects} hidden={hidden} onChange={setHidden} /> : null}
-        <button type="button" disabled={!model.rows.length} className="rounded-md border border-[var(--line)] px-2.5 py-1 text-xs hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/10" title="Zapisz widoczne wiersze osi (po filtrze projektów) do pliku Excel" onClick={exportXlsx} data-testid="timeline-export">
-          Eksport XLSX
-        </button>
+        <ExportButton
+          fileName={timelineFileName(today)}
+          build={exportSheets}
+          summary={exportSummary}
+          disabled={!model.rows.length}
+          title="Zapisz widoczne wiersze osi (po filtrze projektów) do pliku Excel — kolumna na każdy dzień / tydzień / miesiąc bieżącej skali"
+          testId="timeline-export"
+        />
         <span className="ml-auto text-xs text-[var(--muted)]">
           {projects.length === allProjects.length ? plural(projects.length, ["projekt", "projekty", "projektów"]) : `${projects.length} z ${plural(allProjects.length, ["projektu", "projektów", "projektów"])}`} · {plural(model.links.length, ["zależność", "zależności", "zależności"])}
           {model.undated ? ` · ${plural(model.undated, ["zadanie", "zadania", "zadań"])} bez terminu poza osią` : ""}

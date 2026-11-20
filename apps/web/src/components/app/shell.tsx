@@ -18,6 +18,7 @@ import { Board } from "./board";
 import { CalendarScreen } from "./calendar";
 import { DayPlan } from "./day-plan";
 import { CommandPalette, ShortcutsDialog, type PaletteMode, type PalettePick } from "./command-palette";
+import { TaskExportButton } from "./export";
 import { FilterBar } from "./filter-bar";
 import { FocusIndicator, FocusProvider, FocusScreen } from "./focus";
 import { DailyReview, ReviewNudge, WeeklyReview } from "./review";
@@ -258,6 +259,7 @@ export function Shell({
     </FilterBar>
   );
   const props = { data: viewData, ctx, targetInbox, toolbar };
+  const boardTasks = route.view === "board" ? viewData.tasks.filter((t) => !workspaceId || t.workspaceId === workspaceId) : [];
   const body =
     route.view === "inbox" ? (
       <InboxView {...props} />
@@ -267,15 +269,18 @@ export function Shell({
       <UpcomingView {...props} />
     ) : route.view === "board" ? (
       <>
-        <header className="mb-2">
-          <h1 className="text-xl font-semibold">Tablica</h1>
-          <p className="text-sm text-[var(--muted)]">{workspaceId ? data.workspaces.find((w) => w.id === workspaceId)?.name : "Wszystkie przestrzenie"} — zawęź chipami filtrów</p>
+        <header className="mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-semibold">Tablica</h1>
+            <p className="text-sm text-[var(--muted)]">{workspaceId ? data.workspaces.find((w) => w.id === workspaceId)?.name : "Wszystkie przestrzenie"} — zawęź chipami filtrów</p>
+          </div>
+          <TaskExportButton title="Tablica" data={data} ctx={ctx} count={boardTasks.length} rows={() => boardTasks.map((task) => ({ task }))} />
         </header>
         {toolbar}
         <Board
           data={data}
           ctx={ctx}
-          tasks={viewData.tasks.filter((t) => !workspaceId || t.workspaceId === workspaceId)}
+          tasks={boardTasks}
           by={boardBy}
           onBy={setBoardBy}
           listId={targetInbox?.id}

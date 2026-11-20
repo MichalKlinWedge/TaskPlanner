@@ -1,7 +1,7 @@
 /** Zapis .xlsx: ZIP bez kompresji (CRC, katalog centralny), arkusz z tekstem, datami i procentami. */
 import { describe, expect, it } from 'vitest';
 
-import { columnName, crc32, excelSerial, sheetName, xlsxWorkbook, zipStored } from '../xlsx.ts';
+import { argb, columnName, crc32, excelSerial, sheetName, xlsxWorkbook, zipStored } from '../xlsx.ts';
 
 /** Odczyt ZIP-a „stored” z katalogu centralnego (tylko do testu). */
 function unzip(zip: Uint8Array): Map<string, string> {
@@ -72,6 +72,37 @@ describe('xlsx', () => {
     expect(sheet).toContain('<autoFilter ref="A1:D3"/>');
     expect(sheet).toContain('<col min="1" max="1" width="30" customWidth="1"/>');
     expect(files.get('xl/styles.xml')).toContain('<alignment indent="2"/>');
+  });
+
+  it('kolorowe komórki, wiersz nagłówka nad kolumnami, scalenia, zamrożone kolumny, bez autofiltra', () => {
+    expect([argb('#a1b2c3'), argb('fff'), argb('zły')]).toEqual(['FFA1B2C3', 'FFFFFFFF', 'FFD1D5DB']);
+    const files = unzip(
+      xlsxWorkbook([
+        {
+          name: 'Oś',
+          columns: [{ header: 'Zadanie' }, { header: '20', center: true }, { header: '21', fill: '#fde68a' }],
+          headerRows: [[null, 'listopad 2026', null]],
+          merges: ['B1:C1'],
+          freezeColumns: 1,
+          autoFilter: false,
+          rows: [['A', { fill: '#ff0000' }, { fill: '#FF0000', text: 'x' }]],
+        },
+      ]),
+    );
+    const sheet = files.get('xl/worksheets/sheet1.xml')!;
+    // Style: 13 nagłówek wyśrodkowany, kolory w kolejności użycia (żółty = 14/15, czerwony = 16/17).
+    expect(sheet).toContain('<row r="1"><c r="B1" s="13" t="inlineStr"><is><t xml:space="preserve">listopad 2026</t></is></c></row>');
+    expect(sheet).toContain('<c r="B2" s="13" t="inlineStr">');
+    expect(sheet).toContain('<c r="C2" s="15" t="inlineStr"><is><t xml:space="preserve">21</t></is></c>');
+    expect(sheet).toContain('<row r="3"><c r="A3" t="inlineStr"><is><t xml:space="preserve">A</t></is></c><c r="B3" s="16"/><c r="C3" s="16" t="inlineStr"><is><t xml:space="preserve">x</t></is></c></row>');
+    expect(sheet).toContain('<pane xSplit="1" ySplit="2" topLeftCell="B3" activePane="bottomRight" state="frozen"/>');
+    expect(sheet).toContain('<mergeCells count="1"><mergeCell ref="B1:C1"/></mergeCells>');
+    expect(sheet).not.toContain('autoFilter');
+    expect(files.get('xl/workbook.xml')).not.toContain('_FilterDatabase');
+    const styles = files.get('xl/styles.xml')!;
+    expect(styles).toContain('<fills count="4">');
+    expect(styles).toContain('<fgColor rgb="FFFDE68A"/>');
+    expect(styles).toContain('<cellXfs count="18">');
   });
 
   it('powtórzone nazwy kart dostają numer', () => {
