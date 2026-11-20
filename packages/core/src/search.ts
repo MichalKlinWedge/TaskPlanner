@@ -6,6 +6,7 @@
  * zamkniętymi, ostatnio używane wyżej. Działa na wierszach z lokalnej bazy (offline) — przy kilku
  * tysiącach zadań przegląd w pamięci wystarcza; FTS5 może później zawęzić kandydatów.
  */
+import { compareText } from './format.ts';
 import { normalizeWord } from './quick-add.ts';
 import type { ViewTask } from './views.ts';
 
@@ -148,7 +149,7 @@ export function search(index: SearchIndex, query: string, { limit = 20, recent, 
   }
   // Remis: krótszy tytuł (bliższy zapytaniu), potem alfabetycznie. Podświetlenia tylko dla pokazanych.
   return results
-    .sort((a, b) => b.score - a.score || a.entry.title.length - b.entry.title.length || a.entry.title.localeCompare(b.entry.title, 'pl'))
+    .sort((a, b) => b.score - a.score || a.entry.title.length - b.entry.title.length || compareText(a.entry.title, b.entry.title))
     .slice(0, limit)
     .map(({ entry, score }) => ({ item: entry.item, score, highlights: highlights(entry.item.title, entry.title, terms) }));
 }

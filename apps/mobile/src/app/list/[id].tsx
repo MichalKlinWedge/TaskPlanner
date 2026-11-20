@@ -35,6 +35,7 @@ import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
 import { usePalette } from '@/components/ui';
 import { useView } from '@/lib/app-data';
+import { usePerfReady } from '@/lib/perf';
 import { rowMaker } from '@/lib/rows';
 import { mutate } from '@/lib/sync';
 
@@ -60,6 +61,7 @@ export default function ListScreen() {
   const p = usePalette();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data, today, ctx } = useView();
+  usePerfReady('/list/[id]', data.loaded);
   const { notify } = useTaskActions();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const list = data.lists.find((l) => l.id === id);

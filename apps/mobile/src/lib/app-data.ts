@@ -10,7 +10,9 @@ import { FilterQuery, localDateAt, ProfileSettings, toHabitCompletion, toViewTas
 import type { SqlRow, SyncEngine } from '@taskplanner/sync';
 import Storage from 'expo-sqlite/kv-store';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { AppState } from 'react-native';
 
+import { perfEnd, perfLog } from './perf';
 import { localEngine, onSessionChange } from './sync';
 
 export interface Workspace {
@@ -91,7 +93,8 @@ const EMPTY: AppData = {
 };
 
 const TASK_COLUMNS = `t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
-  t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count, t.field_clock`;
+  t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count,
+  json_object('status', json_extract(t.field_clock, '$.status')) as field_clock`;
 
 const loadSettings = async (engine: SyncEngine): Promise<ProfileSettings> =>
   parseSettings((await engine.db.all<SqlRow>('select settings from profiles where id = ?', [engine.userId]))[0]?.settings);
@@ -129,7 +132,7 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
         where c.deleted_at is null and t.kind = 'habit' and t.deleted_at is null order by c.occurrence_date`,
     ),
   ]);
-  if (__DEV__) console.info('dane widoków: zapytania', `${Date.now() - queried} ms`);
+  perfLog('dane widoków: zapytania', Date.now() - queried);
   const tagsOf = new Map<string, string[]>();
   for (const r of taskTags) {
     const id = String(r.task_id);
@@ -206,8 +209,10 @@ async function reload() {
       dirty = false;
       const started = Date.now();
       data = await loadAppData(await localEngine());
-      if (__DEV__) console.info('dane widoków', `${data.tasks.length} zadań, ${Date.now() - started} ms`);
+      perfLog('dane widoków', Date.now() - started, `${data.tasks.length} zadań`);
       listeners.forEach((l) => l());
+      perfEnd('ukończenie');
+      perfEnd('cofnij');
     } while (dirty);
   } catch (error) {
     console.warn('dane widoków', error);
@@ -248,6 +253,29 @@ function subscribe(listener: () => void) {
 }
 
 export const useAppData = (): AppData => useSyncExternalStore(subscribe, () => data);
+
+/**
+ * Dane dla przypomnień i widżetu bez drugiego pełnego odczytu: gdy na ekranie działa magazyn —
+ * jego wynik (po zaległym odświeżeniu); bez ekranów albo w tle (timery JS stoją) — odczyt z bazy.
+ * Przy starcie trzy równoległe odczyty 10 000 zadań (ekrany, przypomnienia, widżet) wydłużały
+ * odczyt dla „Dziś” z ~0,4 do ~0,9 s (`docs/WYDAJNOSC.md`).
+ */
+export async function sharedAppData(engine: SyncEngine): Promise<AppData> {
+  if (!started || AppState.currentState !== 'active' || (data.loaded && engine.userId !== data.userId)) return loadAppData(engine);
+  if (data.loaded && !loading && !timer) return data;
+  return new Promise<AppData>((resolve) => {
+    const fallback = setTimeout(() => {
+      off();
+      resolve(loadAppData(engine));
+    }, 10_000);
+    const off = subscribe(() => {
+      if (!data.loaded) return;
+      clearTimeout(fallback);
+      off();
+      resolve(data);
+    });
+  });
+}
 
 /**
  * Zmiany danych poza Reactem — dla pracy, która musi ruszyć także w tle (przypomnienia, widżet):

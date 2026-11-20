@@ -18,6 +18,7 @@ import { AppState } from 'react-native';
 
 import { readJson, serverConfig, sessionUser, writeJson } from './config';
 import { reportError } from './error-log';
+import { perfLog } from './perf';
 
 export const DB_NAME = 'taskplanner.db';
 
@@ -125,7 +126,7 @@ function recordPullPage(page: PullProgress) {
   perf.mergeMs += page.mergeMs;
   perf.totalMs = Date.now() - perf.at;
   if (page.fetchMs + page.writeMs > perf.slowest.fetchMs + perf.slowest.writeMs) perf.slowest = { fetchMs: page.fetchMs, writeMs: page.writeMs };
-  if (__DEV__ && page.done) console.info('pull', JSON.stringify(perf));
+  if (page.done) perfLog('pull', perf.totalMs, JSON.stringify(perf));
   // Drobne pobrania (pojedyncza zmiana z webu) nie nadpisują pomiaru dużego.
   if (page.done && perf.rows >= 100) {
     writeJson(PULL_PERF_KEY, perf);

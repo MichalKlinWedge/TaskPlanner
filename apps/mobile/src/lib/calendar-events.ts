@@ -5,7 +5,7 @@
  * „Kalendarze telefonu”). Domyślnie żaden kalendarz telefonu nie jest wybrany: ten sam Google
  * połączony na serwerze i zsynchronizowany w telefonie pokazałby każde wydarzenie dwa razy.
  */
-import { zonedInstant, type CalendarEventLike, type LocalDate } from '@taskplanner/core';
+import { compareText, zonedInstant, type CalendarEventLike, type LocalDate } from '@taskplanner/core';
 import * as Calendar from 'expo-calendar';
 import { useFocusEffect } from 'expo-router';
 import Storage from 'expo-sqlite/kv-store';
@@ -82,7 +82,7 @@ export async function deviceCalendars(): Promise<DeviceCalendar[] | null> {
   const calendars = await Calendar.getCalendars(Calendar.EntityTypes.EVENT);
   return calendars
     .map((c) => ({ id: c.id, title: c.title || '(bez nazwy)', account: c.source?.name ?? c.ownerAccount ?? '', color: c.color ?? null }))
-    .sort((a, b) => a.account.localeCompare(b.account, 'pl') || a.title.localeCompare(b.title, 'pl'));
+    .sort((a, b) => compareText(a.account, b.account) || compareText(a.title, b.title));
 }
 
 /** Data całodniowego wydarzenia z Androida (północ UTC) — bez przesuwania przez strefę urządzenia. */

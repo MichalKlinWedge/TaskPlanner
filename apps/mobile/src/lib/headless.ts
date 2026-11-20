@@ -35,7 +35,7 @@ import {
 } from '@taskplanner/core';
 import type { SqlRow } from '@taskplanner/sync';
 
-import { loadAppData, loadTask, parseSettings, type AppData } from './app-data';
+import { loadTask, parseSettings, sharedAppData, type AppData } from './app-data';
 import { serverConfig, sessionUser } from './config';
 import { localEngine, mutateMany, syncNow } from './sync';
 
@@ -52,7 +52,8 @@ export async function pushNow(): Promise<void> {
   await syncNow().catch(() => undefined);
 }
 
-export const headlessData = async (): Promise<AppData> => loadAppData(await localEngine());
+/** Dane jak dla ekranów; w procesie z ekranami — wspólny wynik magazynu (`sharedAppData`). */
+export const headlessData = async (): Promise<AppData> => sharedAppData(await localEngine());
 
 type Ops = readonly TaskOp[] | null;
 

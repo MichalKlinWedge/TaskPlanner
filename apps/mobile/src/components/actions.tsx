@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppData } from '@/lib/app-data';
 import { applyOps } from '@/lib/headless';
+import { perfStart } from '@/lib/perf';
 import { mutate } from '@/lib/sync';
 
 import { usePalette } from './ui';
@@ -96,6 +97,7 @@ export function TaskActionsProvider({ children }: { children: ReactNode }) {
 
   const toggle = useCallback(
     async (task: ViewTask, { habitDone }: { habitDone?: boolean } = {}) => {
+      perfStart('ukończenie');
       try {
         if (task.kind === 'habit' && habitDone) {
           await applyOps(completeTaskOps(task, { now: new Date(), timeZone }).undo);
@@ -170,6 +172,7 @@ export function TaskActionsProvider({ children }: { children: ReactNode }) {
   const undo = async () => {
     if (!toast?.undo) return;
     const ops = toast.undo;
+    perfStart('cofnij');
     setToast(null);
     await applyOps(ops).catch(fail);
   };

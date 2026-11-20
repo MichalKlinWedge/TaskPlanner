@@ -1,6 +1,6 @@
 # Wydajność na 10 000 zadań (Etap 13, SPECYFIKACJA §9)
 
-Pomiar 19.11.2026 na webie (build produkcyjny, lokalny Supabase). Telefon nie był mierzony; zimny start telefonu < 2 s czeka na MVP-3.
+Pomiar 19.11.2026 na webie (build produkcyjny, lokalny Supabase); telefon 20.11.2026 — sekcja [Telefon](#telefon-20112026) na końcu.
 
 ## Jak powtórzyć
 
@@ -166,9 +166,49 @@ Nie mają progu w §9.
 
 1,17 s od przeładowania do „Dziś” z zadaniami (otwarcie SQLite WASM z OPFS, lokalne zapytania, synchronizacja w tle). §9 stawia próg 2 s tylko dla zimnego startu telefonu.
 
-### Telefon
+## Telefon (20.11.2026)
 
-Nie był mierzony; wymaga to sprawdzenia na urządzeniu.
+Galaxy S22 Ultra (Android 16), release APK (`arm64-v8a`, Hermes), lokalny Supabase przez `adb reverse`, konto `perf@taskplanner.test` z tym samym zestawem 10 015 zadań. Punkt odniesienia: konto `dev@…` z 2 025 zadaniami.
 
-- Indeksy z `localSchema` obejmują też expo-sqlite.
-- Poprawki `core` działają tak samo w Hermes.
+### Jak powtórzyć
+
+- W aplikacji: Przeglądaj → Narzędzia PoC → „Pomiary czasu” (kv `perf.log`; w buildzie dev zawsze włączone). Wyniki idą do logcat: `adb logcat -s ReactNativeJS:I | grep '\[perf\]'`.
+- `lib/perf.ts`: `perfStart` przy akcji (dotknięcie zakładki — `tabPress` w `(tabs)/_layout.tsx`, wiersza w „Przeglądaj”, „Ukończ”, „Cofnij”), `usePerfReady` / `perfEnd` na ekranie docelowym po wczytaniu danych, koniec po klatce (rAF + `setTimeout`), jak na webie. `perfMeasure` mierzy obliczenie (`kalendarz: pozycje`, `kalendarz: agenda`), `perfLog` — odczyt danych (`dane widoków`) i synchronizację (`pull`).
+- **Zimny start**: `am force-stop`, `am start -W`, czas od wpisu `ActivityManager: Start proc …` do `[perf] start: Dziś` (oba w logcat z zegara telefonu).
+- Dotknięcia przez `adb shell input` — skrypt przed każdym stuknięciem sprawdza, czy na wierzchu jest Task Planner (`dumpsys window` → `mCurrentFocus`), i przerywa, jeśli nie (ślepe stuknięcie po utracie połączenia trafiło raz w inną aplikację).
+
+### Wyniki
+
+| Pomiar | Przed | Po | Próg |
+|---|---|---|---|
+| Zimny start → „Dziś” z zadaniami (10 015) | 1,59 s | **1,10 s** (1,04–1,14) | < 2 s ✔ |
+| Zimny start (dev@, 2 025 zadań) | 0,90–0,96 s | — | |
+| Pierwsza synchronizacja (25 441 wierszy, 26 stron) | 12,6 s (pobieranie 6,8 s, zapis 6,3 s) | — | |
+| Odczyt danych widoków (`loadAppData`) | 0,88 s przy starcie (3 odczyty naraz), 0,52 s po zmianie | **0,39 s** przy starcie, 0,41–0,46 s po zmianie | |
+| Ukończenie zadania → widok | 0,96 s | **0,66 s** | |
+| „Cofnij” → widok | 0,97 s | **0,67 s** | |
+| Zakładka „Dziś” (już otwarta) | 179 ms ¹ | **103 ms** (max 116) | < 100 ms — patrz uwagi |
+| Zakładki Inbox / Nadchodzące / Przeglądaj | 121 / 100 / 90 ms ¹ | 105 / 115 / 91 ms | |
+| Pierwsze wejście w zakładkę (montowanie) | 200–312 ms | 99–231 ms | |
+| Lista projektu („Raporty kwartalne”, 176 otwartych) | 190 ms (172–276) | 180–260 ms | < 100 ms — patrz uwagi |
+| Kalendarz, miesiąc (2 964 pozycji w 6 tygodniach) | 5–10 s | do zmierzenia po poprawce 5 | |
+
+¹ Pierwsza wersja pomiaru (`useIsFocused`) sama przerysowywała ekran przy wejściu — stąd część różnicy.
+
+### Poprawki
+
+1. **Jeden odczyt danych przy starcie** (`apps/mobile/src/lib/app-data.ts` `sharedAppData`, `lib/headless.ts` `headlessData`). Przypomnienia i widżet czytały całą bazę równolegle z ekranami — trzy odczyty 10 000 zadań naraz (0,35 / 0,76 / 0,48 s). Teraz w procesie z ekranami biorą wynik magazynu; w tle (zadanie z `index.ts`, timery JS stoją) dalej czytają same. Start 1,59 → 1,10 s.
+2. **Z `field_clock` tylko `status`** (`TASK_COLUMNS`, jak na webie): `json_object('status', json_extract(…))` zamiast całego JSON-a każdego zadania. Zapytania 0,35 → 0,30 s.
+3. **Powrót własnej zmiany nie odświeża widoków** (`packages/sync` `rowChanged` w `merge.ts`, użyte w `pullPage`). Po każdym zapisie Realtime przynosi ten sam wiersz z nową `row_version`, `updated_at` i `completed_at` w zapisie `+00:00` zamiast `Z` — silnik zgłaszał zmianę i widoki czytały wszystko drugi raz (na telefonie ~0,5 s pracy po każdym dotknięciu, na webie tak samo). Teraz słuchacze dostają tabelę tylko, gdy coś poza `row_version`/`updated_at` naprawdę się zmieniło (JSON porównywany bez kolejności kluczy, `timestamptz` jako chwila). Test integracyjny „powrót własnej zmiany z serwera nie budzi słuchaczy”.
+4. **Lista: 12 wierszy na start** (`TaskSections`, było 20 — ekran mieści ~10). Pierwsze narysowanie listy ~30 ms szybciej.
+5. **Kalendarz** (`apps/mobile/src/app/calendar.tsx`, `packages/core` `format.ts`):
+   - `EntryRow` szukał zadania przez `data.tasks.find` — dla każdego wiersza przegląd 10 000 zadań; teraz mapa po id.
+   - Lista dnia w miesiącu (30) i dni tygodnia (po 10) stronicowane „Pokaż więcej (N)” — dzień ma tu ~100 pozycji, tydzień ~750.
+   - `compareText` / `compareCode` w `core/format.ts` zamiast `localeCompare`: w Hermes na Androidzie `localeCompare(…, 'pl')` tworzy kolator przy każdym wywołaniu, a sortowanie agendy (`agendaDays`) i bloków (`blocksForDay`) porównywało napisy dziesiątki tysięcy razy. W Node te same obliczenia dla miesiąca trwają ~100 ms. Efekt na telefonie — do potwierdzenia (pomiar przerwała utrata połączenia USB).
+
+### Uwagi
+
+- **Próg 100 ms dla „Dziś” i listy projektu** dotyczy danych z lokalnej bazy. Same dane i obliczenia mieszczą się w nim z zapasem (lista projektu: render ekranu zaczyna się ~32 ms po dotknięciu, obliczenia < 10 ms); resztę czasu zajmuje React Native: przejście nawigacji, pierwsze narysowanie wierszy (~60–90 ms) i zamontowanie widoków natywnych. Przełączenie najprostszej zakładki („Przeglądaj”, bez listy zadań) trwa tak samo ~90 ms, więc „Dziś” (103 ms) jest praktycznie na poziomie samej nawigacji.
+- **Ukończenie i „Cofnij” (0,66 s)** to dalej pełny odczyt 10 015 zadań po każdej zmianie (0,41–0,46 s) + przeliczenie widoku. Następny krok to przyrostowe odświeżanie (tylko zmienione wiersze) — jak na webie.
+- **Pierwsza synchronizacja (12,6 s)** — pobieranie i zapis po połowie; widoki odświeżają się raz, po ostatniej stronie.
+- **Niezmierzone**: kalendarz po poprawce 5, przeciąganie bloku na osi dnia (kl./s; `dumpsys gfxinfo`), wydajność przy 2 000 zadań poza startem.

@@ -42,6 +42,18 @@ export function formatMinutes(minutes: number): string {
 const localDate = (date: string, options: Intl.DateTimeFormatOptions): string =>
   new Intl.DateTimeFormat('pl-PL', { ...options, timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
 
+let collator: Intl.Collator | undefined;
+
+/**
+ * Porównanie napisów po polsku (sortowanie tytułów) jednym wspólnym `Intl.Collator`. Nie
+ * `localeCompare(…, 'pl')`: w Hermes na Androidzie każde wywołanie tworzy nowy kolator, a agenda
+ * miesiąca przy 10 000 zadań porównywała tytuły kilkadziesiąt tysięcy razy (~10 s, `docs/WYDAJNOSC.md`).
+ */
+export const compareText = (a: string, b: string): number => (collator ??= new Intl.Collator('pl')).compare(a, b);
+
+/** Porównanie kodów (id, daty i godziny ISO) bez reguł języka — kolejność znaków. */
+export const compareCode = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
 /** Pierwsza litera wielka: dla etykiety stojącej na początku wiersza. */
 export const capitalized = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 

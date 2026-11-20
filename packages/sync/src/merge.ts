@@ -50,6 +50,44 @@ export function mergeClocks(a: FieldClock, b: FieldClock): FieldClock {
   return out;
 }
 
+/** Kolumny, które serwer zmienia przy każdym zapisie, a których nie czyta żaden widok. */
+const BOOKKEEPING = new Set(['row_version', 'updated_at']);
+
+/** Tekst JSON z kluczami w stałej kolejności (`jsonb` na serwerze układa klucze po swojemu). */
+function canonical(value: SqlValue): SqlValue {
+  if (typeof value !== 'string' || !/^[[{]/.test(value)) return value;
+  try {
+    return JSON.stringify(JSON.parse(value), (_key, v: unknown) =>
+      v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : v,
+    );
+  } catch {
+    return value;
+  }
+}
+
+/** `timestamptz` w dwóch zapisach tej samej chwili (`…119Z` z klienta, `…119+00:00` z serwera). */
+const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+const sameInstant = (a: SqlValue, b: SqlValue) =>
+  typeof a === 'string' && typeof b === 'string' && TIMESTAMP.test(a) && TIMESTAMP.test(b) && !Number.isNaN(Date.parse(a)) && Date.parse(a) === Date.parse(b);
+
+/**
+ * Czy wiersz z serwera (już scalony, `mergeRemote`) zmienia coś poza `row_version` i `updated_at`?
+ * Powrót własnej zmiany (pobranie po wysłaniu) zwykle niczego nie zmienia — wtedy widoki nie muszą
+ * czytać wszystkiego jeszcze raz (przy 10 000 zadań to ~0,5 s na telefonie przy każdym dotknięciu).
+ */
+export function rowChanged(local: SqlRow | undefined, row: SqlRow): boolean {
+  if (!local) return true;
+  for (const [column, value] of Object.entries(row)) {
+    if (BOOKKEEPING.has(column)) continue;
+    const before = local[column] ?? null;
+    const after = value ?? null;
+    if (before === after || sameInstant(before, after)) continue;
+    if (before instanceof Uint8Array || after instanceof Uint8Array) return true;
+    if (canonical(before) !== canonical(after)) return true;
+  }
+  return false;
+}
+
 /**
  * Scal wiersz z serwera z lokalnym. Pole zostaje lokalne tylko wtedy, gdy jego HLC jest ściśle
  * nowszy (zmiana w outboxie, jeszcze niewysłana); remis = serwer (np. pole wyliczone przez trigger
