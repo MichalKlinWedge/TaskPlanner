@@ -5,7 +5,7 @@
  * `ViewTask` (z tagami i odpowiedzialnym) i dzisiejsze wykonania nawyków. Zapytania odświeżają się po każdej zmianie tabel
  * (także z innej karty i z synchronizacji); reguły widoków liczy `@taskplanner/core`.
  */
-import { AttachmentPreview, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, toHabitCompletion, toViewTask, ViewPrefs, type Collaborator, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ViewTask } from "@taskplanner/core";
+import { AttachmentPreview, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type Collaborator, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ViewTask } from "@taskplanner/core";
 import type { SqlRow, TabStore } from "@taskplanner/sync";
 import { useEffect, useMemo, useState } from "react";
 
@@ -38,6 +38,8 @@ export interface Tag {
   name: string;
   color: string | null;
   sortKey: string;
+  /** Przestrzenie, w których tag się pokazuje; `null` = wszystkie (core `tagsForWorkspace`). */
+  workspaceIds: string[] | null;
 }
 
 export interface SavedFilter {
@@ -118,7 +120,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
     [],
     ["lists"],
   );
-  const tags = useLocalQuery<Row>(store, "select id, name, color, sort_key from tags where deleted_at is null", [], ["tags"]);
+  const tags = useLocalQuery<Row>(store, "select id, name, color, sort_key, workspace_ids from tags where deleted_at is null", [], ["tags"]);
   const filters = useLocalQuery<Row>(store, "select id, name, icon, query, sort_key from saved_filters where deleted_at is null", [], ["saved_filters"]);
   const collaborators = useLocalQuery<Row>(store, "select id, name, email, acronym, archived_at from collaborators where deleted_at is null", [], ["collaborators"]);
   const tasks = useLocalQuery<SqlRow>(
@@ -170,7 +172,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
     return {
       workspaces: workspaces.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key) })).sort(byKey),
       lists: allLists,
-      tags: tags.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key) })).sort(byKey),
+      tags: tags.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), workspaceIds: tagWorkspaceIds(r.workspace_ids) })).sort(byKey),
       // Filtr z nieznanym warunkiem (nowsza wersja aplikacji) — pomijany, a nie psujący widoku.
       savedFilters: filters.rows
         .flatMap((r): SavedFilter[] => {

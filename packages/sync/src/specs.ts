@@ -58,8 +58,8 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     scope: 'derived',
   },
   tags: {
-    columns: columns<'tags'>()(['scope_id', 'name', 'color', 'sort_key']),
-    json: [],
+    columns: columns<'tags'>()(['scope_id', 'name', 'color', 'sort_key', 'workspace_ids']),
+    json: ['workspace_ids'],
     scope: 'personal',
   },
   task_tags: {

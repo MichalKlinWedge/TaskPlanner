@@ -3,7 +3,7 @@
  * zmienia, „×” usuwa), „+ Filtr” dodaje kolejny, „Wyczyść” zdejmuje wszystkie. Wybór w arkuszach
  * `pickOption` / `pickMany`; opis warunków i gotowe zakresy terminu z `core`.
  */
-import { ASSIGNEE_CREATOR, ASSIGNEE_CREATOR_LABEL, collaboratorsByStatus, DUE_PRESETS, duePreset, filterChips, isEmptyFilter, PRIORITY, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from '@taskplanner/core';
+import { ASSIGNEE_CREATOR, ASSIGNEE_CREATOR_LABEL, collaboratorsByStatus, DUE_PRESETS, duePreset, filterChips, isEmptyFilter, PRIORITY, tagsForWorkspace, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from '@taskplanner/core';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useView } from '@/lib/app-data';
@@ -27,7 +27,9 @@ const orUndefined = <T,>(values: T[]): T[] | undefined => (values.length ? value
 
 export function FilterBar({ query, onChange, hide = [] }: { query: FilterQuery; onChange: (query: FilterQuery) => void; hide?: readonly FilterField[] }) {
   const p = usePalette();
-  const { data } = useView();
+  const { data, workspaceId } = useView();
+  // Tagi bieżącej przestrzeni + już zaznaczone.
+  const tags = tagsForWorkspace(data.tags, workspaceId, query.tags?.ids);
   const names = {
     tags: new Map(data.tags.map((t) => [t.id, t.name])),
     lists: new Map(data.lists.map((l) => [l.id, l.kind === 'inbox' ? `Inbox (${data.workspaces.find((w) => w.id === l.workspaceId)?.name})` : l.name])),
@@ -41,11 +43,11 @@ export function FilterBar({ query, onChange, hide = [] }: { query: FilterQuery; 
   const edit = async (field: FilterField) => {
     switch (field) {
       case 'tags': {
-        if (!data.tags.length) {
+        if (!tags.length) {
           await pickOption('Tagi', [{ label: 'Brak tagów — dodaj je w zadaniu (@tag).', value: null }]);
           return;
         }
-        const ids = await pickMany('Tagi', data.tags.map((t) => ({ label: t.name, value: t.id, selected: !!query.tags?.ids.includes(t.id) })));
+        const ids = await pickMany('Tagi', tags.map((t) => ({ label: t.name, value: t.id, selected: !!query.tags?.ids.includes(t.id) })));
         if (!ids) return;
         if (!ids.length) return set({ tags: undefined });
         let match = query.tags?.match ?? 'any';

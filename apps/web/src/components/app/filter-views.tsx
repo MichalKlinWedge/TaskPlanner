@@ -4,7 +4,7 @@
  * Widok tagu i zapisanego filtra (M4) oraz „Zapisz jako filtr” z chipów dowolnego widoku. Wynik
  * liczy `applyFilter` z `core`; bez warunku statusu widać tylko otwarte zadania.
  */
-import { COLORS, filterChips, isEmptyFilter, keyBetween, plural, selectFiltered, sortTasks, uuidv7, type FilterQuery, type ViewContext, type ViewTask } from "@taskplanner/core";
+import { COLORS, filterChips, isEmptyFilter, keyBetween, plural, selectFiltered, sortTasks, tagWorkspacesPatch, uuidv7, type FilterQuery, type ViewContext, type ViewTask } from "@taskplanner/core";
 import { useState, type FormEvent } from "react";
 
 import type { AppData, SavedFilter, Tag } from "@/lib/app-data";
@@ -115,11 +115,35 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
           Usuń tag
         </Button>
       </header>
+      <TagWorkspaces tag={tag} workspaces={data.workspaces} onChange={(ids) => void update(tagWorkspacesPatch(ids))} />
       <FilterBar query={query} onChange={(q) => setQuery(q.tags ? q : { ...q, tags: { ids: [tag.id], match: "any" } })}>
         <SaveFilter query={query} onSaved={(id) => navigate({ view: "filter", id })} />
       </FilterBar>
       <Results data={data} ctx={ctx} query={query} />
     </>
+  );
+}
+
+/** Przestrzenie, w których tag się pokazuje i podpowiada; żadna zaznaczona = wszystkie. */
+function TagWorkspaces({ tag, workspaces, onChange }: { tag: Tag; workspaces: AppData["workspaces"]; onChange: (ids: string[]) => void }) {
+  const chosen = (tag.workspaceIds ?? []).filter((id) => workspaces.some((w) => w.id === id));
+  const chip = (pressed: boolean) => `rounded-full border px-2.5 py-0.5 ${pressed ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)] hover:bg-[var(--hover)]"}`;
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs" role="group" aria-label="Przestrzenie tagu">
+      <span className="text-[var(--muted)]">Widoczny w:</span>
+      <button type="button" aria-pressed={!chosen.length} onClick={() => onChange([])} className={chip(!chosen.length)}>
+        wszystkich przestrzeniach
+      </button>
+      {workspaces.map((w) => {
+        const on = chosen.includes(w.id);
+        return (
+          <button key={w.id} type="button" aria-pressed={on} onClick={() => onChange(on ? chosen.filter((id) => id !== w.id) : [...chosen, w.id])} className={`inline-flex items-center gap-1 ${chip(on)}`}>
+            <span className="h-2 w-2 rounded-full" style={{ background: w.color ?? "var(--muted)" }} />
+            {w.name}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

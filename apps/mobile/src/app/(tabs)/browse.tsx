@@ -3,7 +3,7 @@
  * otwartych zadań liczonymi jak na webie (`isOpen`, `selectFiltered` z core: wszystkie poziomy drzewa,
  * bez nawyków, tagi w bieżącej przestrzeni), kosz, ustawienia, narzędzia PoC.
  */
-import { isOpen, LIST_KIND, selectFiltered } from '@taskplanner/core';
+import { isOpen, LIST_KIND, selectFiltered, tagsForWorkspace } from '@taskplanner/core';
 import { router, type Href } from 'expo-router';
 import { useMemo, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -63,6 +63,8 @@ export default function BrowseScreen() {
     return { byList, byTag, byFilter };
   }, [data.tasks, data.savedFilters, ctx, workspaceId]);
   const workspaces = data.workspaces.filter((w) => !workspaceId || w.id === workspaceId);
+  // Tagi przypisane do innych przestrzeni chowają się.
+  const tags = tagsForWorkspace(data.tags, workspaceId);
 
   return (
     <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.body}>
@@ -105,9 +107,9 @@ export default function BrowseScreen() {
         </Group>
       ) : null}
 
-      {data.tags.length ? (
+      {tags.length ? (
         <Group title="Tagi">
-          {data.tags.map((t) => (
+          {tags.map((t) => (
             <Item key={t.id} title={`@${t.name}`} color={t.color} count={counts.byTag.get(t.id)} href={{ pathname: '/tag/[id]', params: { id: t.id } }} />
           ))}
         </Group>

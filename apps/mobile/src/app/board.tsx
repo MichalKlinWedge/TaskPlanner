@@ -7,7 +7,7 @@
  * jak na ekranie listy), bez — bieżącej przestrzeni (chipy filtra w pamięci do zamknięcia aplikacji)
  * (kryterium zapamiętane na urządzeniu).
  */
-import { applyFilter, BOARD_BY, boardColumns, isEmptyFilter, type FilterQuery, boardDropOps, type BoardBy, type BoardColumn, type ViewTask } from '@taskplanner/core';
+import { applyFilter, BOARD_BY, boardColumns, isEmptyFilter, tagsForWorkspace, type FilterQuery, boardDropOps, type BoardBy, type BoardColumn, type ViewTask } from '@taskplanner/core';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import Storage from 'expo-sqlite/kv-store';
 import { useMemo, useState } from 'react';
@@ -61,7 +61,12 @@ export default function BoardScreen() {
     const used = new Set(tasks.map((t) => t.listId));
     return data.lists.filter((l) => used.has(l.id) || l.id === listId);
   }, [data.lists, tasks, listId]);
-  const columns = useMemo(() => boardColumns(tasks, by, { today, firstDayOfWeek: ctx.firstDayOfWeek }, { tags: data.tags, lists }), [tasks, by, today, ctx.firstDayOfWeek, data.tags, lists]);
+  // Kolumny tagów: tagi przestrzeni tablicy (wybranej albo wspólnej dla jej list) + użyte na kartach.
+  const tags = useMemo(() => {
+    const space = ctx.workspaceId ?? (lists.length && lists.every((l) => l.workspaceId === lists[0]!.workspaceId) ? lists[0]!.workspaceId : null);
+    return tagsForWorkspace(data.tags, space, tasks.flatMap((t) => t.tagIds));
+  }, [data.tags, ctx.workspaceId, lists, tasks]);
+  const columns = useMemo(() => boardColumns(tasks, by, { today, firstDayOfWeek: ctx.firstDayOfWeek }, { tags, lists }), [tasks, by, today, ctx.firstDayOfWeek, tags, lists]);
   const [selected, setSelected] = useState<string | null>(null);
   const column = columns.find((c) => c.key === selected) ?? columns[0];
 

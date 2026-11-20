@@ -9,7 +9,7 @@
 import { closestCorners, DndContext, KeyboardSensor, PointerSensor, pointerWithin, useDroppable, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { BOARD_BY, boardColumns, boardDropOps, describeRecurrence, isOpen, PRIORITY, relativeDay, type BoardBy, type BoardColumn, type LocalDate, type ViewContext, type ViewTask } from "@taskplanner/core";
+import { BOARD_BY, boardColumns, boardDropOps, describeRecurrence, isOpen, PRIORITY, relativeDay, tagsForWorkspace, type BoardBy, type BoardColumn, type LocalDate, type ViewContext, type ViewTask } from "@taskplanner/core";
 import { memo, useMemo, useState } from "react";
 
 import type { AppData } from "@/lib/app-data";
@@ -177,7 +177,12 @@ export function Board({ data, ctx, tasks, by, onBy, listId, showList }: { data: 
     const used = new Set(tasks.map((t) => t.listId));
     return data.lists.filter((l) => used.has(l.id) || l.id === listId);
   }, [data.lists, tasks, listId]);
-  const columns = useMemo(() => boardColumns(tasks, by, { today: ctx.today, firstDayOfWeek: ctx.firstDayOfWeek }, { tags: data.tags, lists }), [tasks, by, ctx.today, ctx.firstDayOfWeek, data.tags, lists]);
+  // Kolumny tagów: tagi przestrzeni tablicy (wybranej albo wspólnej dla jej list) + użyte na kartach.
+  const tags = useMemo(() => {
+    const space = ctx.workspaceId ?? (lists.length && lists.every((l) => l.workspaceId === lists[0]!.workspaceId) ? lists[0]!.workspaceId : null);
+    return tagsForWorkspace(data.tags, space, tasks.flatMap((t) => t.tagIds));
+  }, [data.tags, ctx.workspaceId, lists, tasks]);
+  const columns = useMemo(() => boardColumns(tasks, by, { today: ctx.today, firstDayOfWeek: ctx.firstDayOfWeek }, { tags, lists }), [tasks, by, ctx.today, ctx.firstDayOfWeek, tags, lists]);
 
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over) return;

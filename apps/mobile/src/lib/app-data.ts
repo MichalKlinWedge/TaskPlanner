@@ -6,7 +6,7 @@
  * Reguły widoków liczy `@taskplanner/core` — tu jest tylko mapowanie wierszy, jak na webie
  * (`apps/web/src/lib/app-data.ts`).
  */
-import { FilterQuery, localDateAt, ProfileSettings, sortCollaborators, toHabitCompletion, toViewTask, ViewPrefs, type Collaborator, type HabitCompletion, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask } from '@taskplanner/core';
+import { FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type Collaborator, type HabitCompletion, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask } from '@taskplanner/core';
 import type { SqlRow, SyncEngine } from '@taskplanner/sync';
 import Storage from 'expo-sqlite/kv-store';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -39,6 +39,8 @@ export interface Tag {
   name: string;
   color: string | null;
   sortKey: string;
+  /** Przestrzenie, w których tag się pokazuje; `null` = wszystkie (core `tagsForWorkspace`). */
+  workspaceIds: string[] | null;
 }
 
 export interface SavedFilter {
@@ -126,7 +128,7 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
   const [workspaces, lists, tags, filters, collaborators, tasks, taskTags, habits] = await Promise.all([
     db.all<SqlRow>('select id, name, color, sort_key from workspaces where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs, project_status from lists where deleted_at is null and archived_at is null'),
-    db.all<SqlRow>('select id, name, color, sort_key from tags where deleted_at is null'),
+    db.all<SqlRow>('select id, name, color, sort_key, workspace_ids from tags where deleted_at is null'),
     db.all<SqlRow>('select id, name, icon, query, sort_key from saved_filters where deleted_at is null'),
     db.all<SqlRow>('select id, name, email, acronym, archived_at from collaborators where deleted_at is null'),
     db.all<SqlRow>(`select ${TASK_COLUMNS} from tasks t where t.deleted_at is null`),
@@ -165,7 +167,7 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
     userId: engine.userId,
     workspaces: workspaces.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key) })).sort(byKey),
     lists: allLists,
-    tags: tags.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key) })).sort(byKey),
+    tags: tags.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), workspaceIds: tagWorkspaceIds(r.workspace_ids) })).sort(byKey),
     // Filtr z nieznanym warunkiem (nowsza wersja aplikacji) — pomijany, a nie psujący widoku.
     savedFilters: filters
       .flatMap((r): SavedFilter[] => {

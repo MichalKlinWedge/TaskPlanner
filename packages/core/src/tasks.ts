@@ -302,6 +302,42 @@ export function taskTagOps(scope: Pick<QuickAddScope, 'userId' | 'tags'>, taskId
   return ops;
 }
 
+// ── Widoczność tagów w przestrzeniach (`tags.workspace_ids`) ─────────────────────────────────
+
+/**
+ * Tag widoczny w przestrzeni: bez przypisania (`null` / `[]`) — wszędzie; widok „Wszystkie
+ * przestrzenie” (`workspaceId` = `null`) — każdy tag. Tylko filtr widoku: tag nadal jest jeden na nazwę.
+ */
+export function tagVisibleIn(tag: { workspaceIds: readonly string[] | null }, workspaceId: string | null): boolean {
+  return !workspaceId || !tag.workspaceIds?.length || tag.workspaceIds.includes(workspaceId);
+}
+
+/**
+ * Tagi do pokazania w przestrzeni (pasek boczny, chipy filtra, podpowiedzi, kolumny tablicy);
+ * `keep` — ukryte, ale już przypięte do zadania albo zaznaczone w filtrze (nie mogą zniknąć).
+ */
+export function tagsForWorkspace<T extends { id: string; workspaceIds: readonly string[] | null }>(tags: readonly T[], workspaceId: string | null, keep: Iterable<string> = []): T[] {
+  const kept = new Set(keep);
+  return tags.filter((t) => kept.has(t.id) || tagVisibleIn(t, workspaceId));
+}
+
+/** `workspace_ids` z lokalnego wiersza (tekst JSON albo tablica) → lista id; brak / błąd / pusta = `null`. */
+export function tagWorkspaceIds(raw: unknown): string[] | null {
+  let value = raw;
+  if (typeof raw === 'string') {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  const ids = Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+  return ids.length ? ids : null;
+}
+
+/** Patch przypisania tagu do przestrzeni; pusta lista = wszystkie (`null`). */
+export const tagWorkspacesPatch = (ids: readonly string[]): { workspace_ids: string[] | null } => ({ workspace_ids: ids.length ? [...new Set(ids)] : null });
+
 // ── Podzadania, przenoszenie, kosz ───────────────────────────────────────────────────────────
 
 /** Najwięcej poziomów: zadanie + 3 poziomy podzadań (M3; trigger odrzuca głębsze — `TP001`). */

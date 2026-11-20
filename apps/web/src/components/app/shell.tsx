@@ -4,7 +4,7 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, plural, selectInbox, selectToday, type BoardBy, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
+import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, plural, selectInbox, selectToday, tagsForWorkspace, type BoardBy, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -331,6 +331,8 @@ export function Shell({
   );
 
   const workspaces = workspaceId ? data.workspaces.filter((w) => w.id === workspaceId) : data.workspaces;
+  // Tagi przypisane do innych przestrzeni chowają się (otwarty zostaje do wyjścia z jego widoku).
+  const sidebarTags = tagsForWorkspace(data.tags, workspaceId, route.view === "tag" ? [route.id] : []);
   const mainNav: NavEntry[] = [
     { route: { view: "inbox" }, icon: "📥", label: "Inbox", count: counts.inbox },
     { route: { view: "today" }, icon: "☀️", label: "Dziś", count: counts.today, alert: counts.overdue > 0 },
@@ -474,9 +476,9 @@ export function Shell({
                 ))}
               </SidebarSection>
             ) : null}
-            {data.tags.length ? (
+            {sidebarTags.length ? (
               <SidebarSection title="Tagi">
-                {data.tags.map((t) => (
+                {sidebarTags.map((t) => (
                   <NavItem key={t.id} route={{ view: "tag", id: t.id }} current={route} navigate={navigate} color={t.color} label={`@${t.name}`} count={counts.perTag.get(t.id)} />
                 ))}
               </SidebarSection>

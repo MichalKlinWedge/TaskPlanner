@@ -46,6 +46,7 @@ import {
   TASK_FIELD,
   TASK_STATUS,
   taskLinks,
+  tagsForWorkspace,
   taskTagId,
   taskTagOps,
   uuidv7,
@@ -723,7 +724,8 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
         <form onSubmit={add} className="inline-flex">
           <Input list="tag-names" value={name} onChange={(e) => setName(e.target.value)} placeholder="+ tag" aria-label="Dodaj tag" maxLength={60} className="w-32 py-0.5 text-xs" />
           <datalist id="tag-names">
-            {data.tags
+            {/* Podpowiedzi: tagi przestrzeni zadania (wpisana nazwa ukrytego tagu i tak trafia w ten sam tag). */}
+            {tagsForWorkspace(data.tags, task.workspaceId)
               .filter((t) => !task.tagIds.includes(t.id))
               .map((t) => (
                 <option key={t.id} value={t.name} />

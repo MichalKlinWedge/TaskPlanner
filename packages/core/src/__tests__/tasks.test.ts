@@ -20,6 +20,10 @@ import {
   reopenTaskPatch,
   restoreTaskOps,
   skipOccurrenceOps,
+  tagsForWorkspace,
+  tagVisibleIn,
+  tagWorkspaceIds,
+  tagWorkspacesPatch,
   taskDepth,
   toViewTask,
   type LocalTaskRow,
@@ -371,5 +375,35 @@ describe('dropTaskOps', () => {
     expect(dropTaskOps(tasks, 'a', 'c3', 'after')).toBeNull();
     // b (1 poziom) obok c3 → dokładnie 4 poziomy — dozwolone.
     expect(dropTaskOps(tasks, 'b', 'c3', 'after')![0]!.patch).toMatchObject({ parent_id: 'c2' });
+  });
+});
+
+describe('widoczność tagów w przestrzeniach', () => {
+  const tags = [
+    { id: 't-all', workspaceIds: null },
+    { id: 't-empty', workspaceIds: [] },
+    { id: 't-work', workspaceIds: ['w-work'] },
+    { id: 't-both', workspaceIds: ['w-work', 'w-home'] },
+  ];
+
+  it('bez przypisania — wszędzie; „Wszystkie przestrzenie” — każdy tag', () => {
+    expect(tagsForWorkspace(tags, null).map((t) => t.id)).toEqual(['t-all', 't-empty', 't-work', 't-both']);
+    expect(tagsForWorkspace(tags, 'w-home').map((t) => t.id)).toEqual(['t-all', 't-empty', 't-both']);
+    expect(tagsForWorkspace(tags, 'w-other').map((t) => t.id)).toEqual(['t-all', 't-empty']);
+    expect(tagVisibleIn(tags[2]!, 'w-work')).toBe(true);
+  });
+
+  it('ukryty, ale przypięty / zaznaczony zostaje', () => {
+    expect(tagsForWorkspace(tags, 'w-other', ['t-work']).map((t) => t.id)).toEqual(['t-all', 't-empty', 't-work']);
+  });
+
+  it('wiersz lokalny i patch', () => {
+    expect(tagWorkspaceIds('["a","b"]')).toEqual(['a', 'b']);
+    expect(tagWorkspaceIds(['a'])).toEqual(['a']);
+    expect(tagWorkspaceIds(null)).toBeNull();
+    expect(tagWorkspaceIds('[]')).toBeNull();
+    expect(tagWorkspaceIds('zły json')).toBeNull();
+    expect(tagWorkspacesPatch([])).toEqual({ workspace_ids: null });
+    expect(tagWorkspacesPatch(['a', 'a', 'b'])).toEqual({ workspace_ids: ['a', 'b'] });
   });
 });

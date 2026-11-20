@@ -208,6 +208,8 @@ export const TagRow = z.object({
   name: name(60),
   color: Color.nullable(),
   sort_key: SortKey,
+  /** Przestrzenie, w których tag się pokazuje i podpowiada; `null` / `[]` = wszystkie (`tagVisibleIn`). */
+  workspace_ids: z.array(Id).max(100).nullable(),
 });
 
 export const TaskTagRow = z.object({ id: Id, task_id: Id, tag_id: Id });

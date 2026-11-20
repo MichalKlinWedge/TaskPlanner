@@ -45,6 +45,7 @@ import {
   skipOccurrenceOps,
   TASK_STATUS,
   taskLinks,
+  tagsForWorkspace,
   taskTagId,
   taskTagOps,
   toggleMarkdownCheckbox,
@@ -389,7 +390,8 @@ function TagsField({ task, data }: { task: ViewTask; data: AppData }) {
   const [name, setName] = useState('');
   const byId = new Map(data.tags.map((t) => [t.id, t]));
   const query = name.trim().replace(/^[@#]/, '').toLowerCase();
-  const suggestions = data.tags.filter((t) => !task.tagIds.includes(t.id) && (!query || t.name.toLowerCase().includes(query))).slice(0, 8);
+  // Podpowiedzi: tagi przestrzeni zadania (wpisana nazwa ukrytego tagu i tak trafia w ten sam tag).
+  const suggestions = tagsForWorkspace(data.tags, task.workspaceId).filter((t) => !task.tagIds.includes(t.id) && (!query || t.name.toLowerCase().includes(query))).slice(0, 8);
   const add = (value: string) => {
     const tag = value.trim().replace(/^[@#]/, '');
     if (!tag) return;

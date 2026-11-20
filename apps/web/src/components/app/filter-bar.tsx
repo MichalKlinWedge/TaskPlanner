@@ -5,7 +5,7 @@
  * odpowiedzialny, termin, godzina. Aktywny warunek = chip z „×”; „+ Filtr” dodaje kolejny. Opis warunków i gotowe zakresy
  * terminu są w `core` (`filterChips`, `DUE_PRESETS`).
  */
-import { ASSIGNEE_CREATOR, ASSIGNEE_CREATOR_LABEL, collaboratorsByStatus, DUE_PRESETS, duePreset, filterChips, isEmptyFilter, LIST_KIND, PRIORITY, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from "@taskplanner/core";
+import { ASSIGNEE_CREATOR, ASSIGNEE_CREATOR_LABEL, collaboratorsByStatus, DUE_PRESETS, duePreset, filterChips, isEmptyFilter, LIST_KIND, PRIORITY, tagsForWorkspace, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from "@taskplanner/core";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useAppEnv } from "./app-env";
@@ -56,8 +56,10 @@ function Check({ checked, onChange, children }: { checked: boolean; onChange: ()
 }
 
 export function FilterBar({ query, onChange, hide = [], children }: { query: FilterQuery; onChange: (query: FilterQuery) => void; hide?: readonly Field[]; children?: ReactNode }) {
-  const { data } = useAppEnv();
+  const { data, workspaceId } = useAppEnv();
   const [open, setOpen] = useState<Field | "add" | null>(null);
+  // Tagi bieżącej przestrzeni + już zaznaczone (nie mogą zniknąć z chipa).
+  const tags = tagsForWorkspace(data.tags, workspaceId, query.tags?.ids);
   const names = {
     tags: new Map(data.tags.map((t) => [t.id, t.name])),
     lists: new Map(data.lists.map((l) => [l.id, l.kind === "inbox" ? `Inbox (${data.workspaces.find((w) => w.id === l.workspaceId)?.name})` : l.name])),
@@ -73,8 +75,8 @@ export function FilterBar({ query, onChange, hide = [], children }: { query: Fil
       case "tags":
         return (
           <>
-            {data.tags.length ? null : <p className="px-2 py-1 text-xs text-[var(--muted)]">Brak tagów — dodaj je w zadaniu (@tag).</p>}
-            {data.tags.map((t) => (
+            {tags.length ? null : <p className="px-2 py-1 text-xs text-[var(--muted)]">Brak tagów — dodaj je w zadaniu (@tag).</p>}
+            {tags.map((t) => (
               <Check key={t.id} checked={!!query.tags?.ids.includes(t.id)} onChange={() => {
                 const ids = toggle(query.tags?.ids, t.id);
                 set({ tags: ids ? { ids, match: query.tags?.match ?? "any" } : undefined });

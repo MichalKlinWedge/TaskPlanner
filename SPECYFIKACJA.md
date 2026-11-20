@@ -188,6 +188,7 @@ Oznaczenia: **[W]** web, **[A]** Android, **[W+A]** oba.
 
 ### M4. Tagi, filtry, inteligentne listy
 - Tagi są **wspólne dla wszystkich przestrzeni** (zakres osobisty): nazwa (unikalna bez rozróżniania wielkości liter i polskich znaków), kolor. Zadanie ma dowolną liczbę tagów (`task_tags`).
+  - v1.x (20.11.2026): tag można **przypisać do przestrzeni** (`tags.workspace_ids`, ekran tagu → „Widoczny w”); żadna = wszystkie. To tylko widoczność: w wybranej przestrzeni pasek boczny, chipy filtra, podpowiedzi w zadaniu i kolumny tablicy pokazują jej tagi + tagi już przypięte / zaznaczone; widok „Wszystkie przestrzenie” i paleta pokazują wszystkie. Tag nadal jest jeden na nazwę — `@nazwa` w innej przestrzeni trafia w ten sam tag (core `tagsForWorkspace`).
 - Filtrowanie: chipy w każdym widoku — tagi (wszystkie / dowolny), priorytet, lista, status, zakres dat, „bez terminu”, „z godziną”.
 - **Zapisane filtry** (`saved_filters`): nazwa, ikona, definicja (Zod: `FilterQuery`) — np. „Telefony na dziś” = tag `telefon` ∧ termin ≤ dziś. Widoczne w pasku bocznym jak listy, z licznikiem.
 - Tekstowy język filtrów (`@telefon & dziś & !1`) — v1.x.
@@ -377,7 +378,7 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 | Tabela | Najważniejsze kolumny | Uwagi |
 |---|---|---|
 | `tasks` | `id`, `scope_id` (wyliczany), `list_id`, `parent_id`, `kind` (`task`/`habit`), `title`, `description_md`, `status`, `priority smallint 1–4`, `start_date`, `due_date`, `due_time`, `duration_min`, `time_zone`, `recurrence jsonb` (`Recurrence`), `habit jsonb` (`HabitGoal`), `completed_at`, `sort_key`, `board_sort_key` (D15), `source jsonb` (`TaskSource`: ręcznie / szybkie dodawanie / e-mail / link / kalendarz), `postpone_count`, `assignee_id` → `collaborators` (v1.x; `null` = twórca) | trigger: głębokość ≤ 4, brak cyklu `parent_id`, zakres zgodny z listą i rodzicem |
-| `tags` | `id`, `name`, `color`, `sort_key` | zakres osobisty; unikalny `lower(name)`; id = UUIDv5 z nazwy bez polskich znaków (`tagId`), więc ten sam tag z dwóch urządzeń to jeden wiersz |
+| `tags` | `id`, `name`, `color`, `sort_key`, `workspace_ids` (jsonb, v1.x) | zakres osobisty; `workspace_ids` = przestrzenie, w których tag się pokazuje (`null` = wszystkie); unikalny `lower(name)`; id = UUIDv5 z nazwy bez polskich znaków (`tagId`), więc ten sam tag z dwóch urządzeń to jeden wiersz |
 | `task_tags` | `id` (UUIDv5 z `task_id`+`tag_id`), `task_id`, `tag_id` | wiersz łączący z `deleted_at` — dodanie tagu na dwóch urządzeniach nie gubi żadnego |
 | `reminders` | `id`, `task_id`, `kind` (`relative`/`absolute`), `offset_min`, `at_date`, `at_time` | |
 | `task_dependencies` | `id`, `predecessor_id`, `successor_id`, `kind` (`finish_to_start`), `lag_days` | trigger: brak cyklu, ta sama przestrzeń |
