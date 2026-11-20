@@ -1,12 +1,15 @@
 /**
  * Szczegóły zadania (MVP-3, jak panel zadania na webie): tytuł, status, priorytet, lista, termin,
  * godzina, początek, czas, powtarzanie (edytor M7, pomiń / zakończ serię), czas pracy, tagi, przypomnienia,
- * opis Markdown (edycja + podgląd z odhaczaniem pól), podzadania do 4 poziomów, kosz.
+ * zależności (M12, jak na webie), opis Markdown (edycja + podgląd z odhaczaniem pól), podzadania do 4 poziomów, kosz.
  * Każda zmiana to `mutate` jednego pola — synchronizacja scala zmiany z innych urządzeń (§6).
  */
 import {
+  addDependencyOps,
   canAddSubtask,
+  clampLag,
   datesPatch,
+  dependencyErrorText,
   deleteTaskOps,
   descendants,
   describeRecurrence,
@@ -15,24 +18,30 @@ import {
   isOpen,
   manualEntryOps,
   moveTaskOps,
+  normalizeText,
+  plural,
   PRIORITY,
   REMINDER_PRESETS,
   reminderOffset,
   relativeDay,
+  removeDependencyOps,
   shortDate,
   skipOccurrenceOps,
   TASK_STATUS,
+  taskLinks,
   taskTagId,
   taskTagOps,
   toggleMarkdownCheckbox,
   uuidv7,
+  type Dependency,
   type LocalDate,
   type Recurrence,
+  type TaskLink,
   type TaskStatus,
   type ViewTask,
 } from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { confirm, useTaskActions } from '@/components/actions';
@@ -52,6 +61,8 @@ import { permissionState, requestNotificationPermission } from '@/lib/reminders'
 
 const STATUSES = Object.keys(TASK_STATUS) as TaskStatus[];
 const DURATIONS = [5, 10, 15, 30, 45, 60, 90, 120, 180, 240];
+/** Odstęp zależności w dniach (koniec poprzednika → początek następnika); inne wartości ustawia oś czasu na webie. */
+const LAGS = [-2, -1, 0, 1, 2, 3, 5, 7, 10, 14, 21, 30];
 
 /** Wynik arkusza wyboru → akcja (bez zwracania wartości do `onPress`). */
 const then = <T,>(choice: Promise<T>, act: (value: T) => unknown) => void choice.then((value) => void act(value));
@@ -217,6 +228,7 @@ export default function TaskScreen() {
         <TimeField task={task} />
         <TagsField task={task} data={data} />
         <RemindersField task={task} today={today} />
+        <DependenciesField key={`dep:${task.id}`} task={task} data={data} />
 
         <Block title="Opis">
           <DescriptionField taskId={task.id} />
@@ -446,6 +458,128 @@ function RemindersField({ task, today }: { task: ViewTask; today: LocalDate }) {
   );
 }
 
+/**
+ * Zależności koniec→początek (M12), jak w panelu zadania na webie: „Czeka na” (poprzednicy) i „Blokuje”
+ * (następnicy) z odstępem w dniach i naruszeniem; dodanie wyszukaniem otwartego zadania z tej samej
+ * przestrzeni przez `addDependencyOps` (cykl, duplikat i inna przestrzeń są blokowane).
+ */
+function DependenciesField({ task, data }: { task: ViewTask; data: AppData }) {
+  const p = usePalette();
+  const { run, notify } = useTaskActions();
+  const rows = useLocalQuery(['task_dependencies'], (engine) =>
+    engine.db.all<{ id: string; predecessor_id: string; successor_id: string; lag_days: number }>('select id, predecessor_id, successor_id, lag_days from task_dependencies where deleted_at is null'),
+  );
+  const deps = useMemo((): Dependency[] => (rows ?? []).map((r) => ({ id: r.id, predecessorId: r.predecessor_id, successorId: r.successor_id, lagDays: Number(r.lag_days) || 0 })), [rows]);
+  const links = useMemo(() => taskLinks(task.id, data.tasks, deps), [task.id, data.tasks, deps]);
+  const [adding, setAdding] = useState<'predecessor' | 'successor' | null>(null);
+  const [query, setQuery] = useState('');
+  const byId = new Map(data.tasks.map((t) => [t.id, t]));
+  const titleOf = (id: string) => `„${byId.get(id)?.title ?? '?'}”`;
+  const needle = normalizeText(query.trim());
+  const candidates = adding && needle ? data.tasks.filter((t) => t.id !== task.id && t.kind === 'task' && t.workspaceId === task.workspaceId && isOpen(t) && normalizeText(t.title).includes(needle)).slice(0, 8) : [];
+
+  const close = () => {
+    setAdding(null);
+    setQuery('');
+  };
+  const add = (otherId: string) => {
+    const next = adding === 'predecessor' ? { predecessorId: otherId, successorId: task.id } : { predecessorId: task.id, successorId: otherId };
+    const result = addDependencyOps(data.tasks, deps, next);
+    if ('error' in result) return notify(dependencyErrorText(result.error, titleOf));
+    void run(result.ops, { text: `Zależność: ${titleOf(next.predecessorId)} → ${titleOf(next.successorId)}`, undo: result.undo });
+    close();
+  };
+  const lagLabel = (days: number) => (days ? `${days > 0 ? '+' : ''}${plural(days, ['dzień', 'dni', 'dni'])}` : 'bez odstępu');
+  const pickLag = (d: Dependency) =>
+    then(
+      pickOption<number>(
+        'Odstęp: koniec poprzednika → początek następnika',
+        [...new Set([...LAGS, d.lagDays])].sort((a, b) => a - b).map((n) => ({ label: lagLabel(n), value: n, selected: n === d.lagDays })),
+      ),
+      (lag) => lag !== undefined && clampLag(lag) !== d.lagDays && run([{ table: 'task_dependencies', id: d.id, patch: { lag_days: clampLag(lag) } }]),
+    );
+
+  const item = (link: TaskLink) => {
+    const other = byId.get(link.otherId);
+    const done = !!other && !isOpen(other);
+    const { dependency: d } = link;
+    return (
+      <View key={d.id} style={styles.dependency}>
+        <Pressable accessibilityRole="link" style={{ flex: 1, gap: 2 }} onPress={() => router.push({ pathname: '/task/[id]', params: { id: link.otherId } })}>
+          <Text style={{ color: done ? p.muted : p.fg, fontSize: 15, textDecorationLine: done ? 'line-through' : 'none' }} numberOfLines={1}>
+            {other?.title ?? '?'}
+          </Text>
+          {link.violation ? (
+            <Text style={{ color: p.bad, fontSize: 12 }}>
+              ⚠ {plural(link.violation.days, ['dzień', 'dni', 'dni'])} za wcześnie — następnik najwcześniej {shortDate(link.violation.earliestStart)}
+            </Text>
+          ) : null}
+        </Pressable>
+        <Pill label={lagLabel(d.lagDays)} onPress={() => pickLag(d)} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Usuń zależność z ${titleOf(link.otherId)}`}
+          hitSlop={10}
+          onPress={() => {
+            const result = removeDependencyOps(d.id);
+            void run(result.ops, { text: `Usunięto zależność ${titleOf(d.predecessorId)} → ${titleOf(d.successorId)}`, undo: result.undo });
+          }}
+        >
+          <Text style={{ color: p.muted, fontSize: 16 }}>✕</Text>
+        </Pressable>
+      </View>
+    );
+  };
+
+  const count = links.predecessors.length + links.successors.length;
+  return (
+    <Block title={`Zależności${count ? ` · ${count}` : ''}`}>
+      {links.predecessors.length ? (
+        <View style={{ gap: 6 }}>
+          <Text style={{ color: p.muted, fontSize: 12 }}>Czeka na</Text>
+          {links.predecessors.map(item)}
+        </View>
+      ) : null}
+      {links.successors.length ? (
+        <View style={{ gap: 6 }}>
+          <Text style={{ color: p.muted, fontSize: 12 }}>Blokuje</Text>
+          {links.successors.map(item)}
+        </View>
+      ) : null}
+      {adding ? (
+        <View style={{ gap: 6 }}>
+          <View style={styles.pills}>
+            <TextInput
+              autoFocus
+              value={query}
+              onChangeText={setQuery}
+              placeholder={adding === 'predecessor' ? 'Na co czeka to zadanie?' : 'Co czeka na to zadanie?'}
+              placeholderTextColor={p.muted}
+              accessibilityLabel="Szukaj zadania"
+              style={[styles.input, { flex: 1, color: p.fg, borderColor: p.border }]}
+            />
+            <Pill label="Anuluj" onPress={close} />
+          </View>
+          {candidates.map((t) => (
+            <Pressable key={t.id} accessibilityRole="button" accessibilityLabel={`Wybierz „${t.title}”`} onPress={() => add(t.id)} style={[styles.candidate, { borderColor: p.border }]}>
+              <Text style={{ color: p.fg, fontSize: 15, flex: 1 }} numberOfLines={1}>
+                {t.title}
+              </Text>
+              {t.dueDate ? <Text style={{ color: p.muted, fontSize: 12 }}>{shortDate(t.dueDate)}</Text> : null}
+            </Pressable>
+          ))}
+          {needle && !candidates.length ? <Text style={{ color: p.muted, fontSize: 12 }}>Brak otwartych zadań o takim tytule w tej przestrzeni.</Text> : null}
+        </View>
+      ) : (
+        <View style={styles.pills}>
+          <Pill label="+ Czeka na…" color={p.accent} onPress={() => setAdding('predecessor')} />
+          <Pill label="+ Blokuje…" color={p.accent} onPress={() => setAdding('successor')} />
+        </View>
+      )}
+    </Block>
+  );
+}
+
 type Selection = { start: number; end: number };
 
 /** Opis: podgląd Markdown (dotknięcie „Edytuj”) albo pole tekstowe z paskiem formatowania. */
@@ -557,6 +691,8 @@ const styles = StyleSheet.create({
   description: { minHeight: 140 },
   previewBox: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 10 },
   reminder: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dependency: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  candidate: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9 },
   bar: { height: 6, borderRadius: 3, overflow: 'hidden' },
   footer: { flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderColor: '#8884', paddingTop: 12 },
 });
