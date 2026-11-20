@@ -1,9 +1,26 @@
 /**
- * Formularz nawyku (Etap 8): nazwa, lista, jak często (codziennie / wybrane dni / N razy w tygodniu
- * lub miesiącu), cel ilościowy, początek, pora i przypomnienie o tej porze. Formularz ↔ pola —
+ * Formularz nawyku (Etap 8): nazwa, lista, jak często (codziennie / wybrane dni / co miesiąc w ustalony
+ * dzień / N razy w tygodniu lub miesiącu), cel ilościowy, początek, pora i przypomnienie o tej porze. Formularz ↔ pola —
  * `habitDraft` / `habitSaveOps` z core (jak `HabitEditor` na webie). `?id=` — edycja.
  */
-import { habitDraft, habitSaveOps, LIST_KIND, pluralForm, shortDate, WEEKDAY, type HabitDraft, type IsoWeekday, type LocalTime } from '@taskplanner/core';
+import {
+  dayChip,
+  habitDraft,
+  habitFields,
+  habitMonthly,
+  habitSaveOps,
+  LIST_KIND,
+  pluralForm,
+  previewDates,
+  shortDate,
+  WEEKDAY,
+  WEEKDAY_CODES,
+  type HabitDraft,
+  type IsoWeekday,
+  type LocalTime,
+  type MonthlyBy,
+  type WeekdayCode,
+} from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
@@ -16,6 +33,14 @@ import { useLocalQuery } from '@/lib/local-query';
 import { permissionState, requestNotificationPermission } from '@/lib/reminders';
 
 type ScheduleKind = HabitDraft['schedule']['kind'];
+const MONTHLY_BY: [MonthlyBy, string][] = [
+  ['day', 'dnia miesiąca'],
+  ['weekday', 'w dzień tygodnia'],
+  ['last_day', 'ostatniego dnia'],
+  ['last_workday', 'ostatniego dnia roboczego'],
+];
+const NTH: [number, string][] = [[1, 'pierwszy'], [2, 'drugi'], [3, 'trzeci'], [4, 'czwarty'], [-1, 'ostatni']];
+const weekdayName = (d: WeekdayCode) => WEEKDAY[(WEEKDAY_CODES.indexOf(d) + 1) as IsoWeekday].label;
 
 function Value({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
   const p = usePalette();
@@ -44,6 +69,7 @@ export default function HabitFormScreen() {
   const [days, setDays] = useState<IsoWeekday[]>(initial.schedule.kind === 'days' ? initial.schedule.days : [1, 2, 3, 4, 5]);
   const [times, setTimes] = useState(initial.schedule.kind === 'goal' ? initial.schedule.times : 3);
   const [period, setPeriod] = useState<'week' | 'month'>(initial.schedule.kind === 'goal' ? initial.schedule.period : 'week');
+  const [monthly, setMonthly] = useState(initial.schedule.kind === 'monthly' ? initial.schedule : habitMonthly(initial.start));
   const [quantity, setQuantity] = useState(initial.target !== null);
   const [target, setTarget] = useState(String(initial.target ?? 8));
   const [unit, setUnit] = useState(initial.unit ?? '');
@@ -64,16 +90,33 @@ export default function HabitFormScreen() {
   const kinds: [ScheduleKind, string][] = [
     ['daily', 'Codziennie'],
     ['days', 'W wybrane dni'],
+    ['monthly', 'Co miesiąc'],
     ['goal', 'N razy w okresie'],
     ...(initial.schedule.kind === 'custom' ? ([['custom', 'Bez zmian (własna reguła)']] as [ScheduleKind, string][]) : []),
-    // „Co miesiąc” ustawia się na webie; tu zostaje bez zmian.
-    ...(initial.schedule.kind === 'monthly' ? ([['monthly', 'Bez zmian (co miesiąc)']] as [ScheduleKind, string][]) : []),
   ];
+
+  // Najbliższe dni przy „co miesiąc” (np. 31. dnia omija krótsze miesiące).
+  const monthlyPreview = (() => {
+    if (kind !== 'monthly') return null;
+    try {
+      return previewDates(habitFields({ schedule: monthly, start, target: null, unit: null, time: null }).recurrence, today, 3);
+    } catch {
+      return null;
+    }
+  })();
 
   const submit = async () => {
     try {
       const schedule: HabitDraft['schedule'] =
-        kind === 'days' ? { kind, days } : kind === 'goal' ? { kind, period, times } : (kind === 'custom' || kind === 'monthly') && initial.schedule.kind === kind ? initial.schedule : { kind: 'daily' };
+        kind === 'days'
+          ? { kind, days }
+          : kind === 'goal'
+            ? { kind, period, times }
+            : kind === 'monthly'
+              ? monthly
+              : kind === 'custom' && initial.schedule.kind === 'custom'
+                ? initial.schedule
+                : { kind: 'daily' };
       // `...initial` — pola draftu, których formularz nie edytuje, zostają (np. koniec reguły).
       const draft: HabitDraft = { ...initial, schedule, start, target: quantity ? Number(target.replace(',', '.')) : null, unit: quantity ? unit : null, time };
       if (remind && !draft.time) throw new Error('Przypomnienie wymaga pory.');
@@ -142,6 +185,68 @@ export default function HabitFormScreen() {
           <Text style={{ color: p.fg }}>{pluralForm(times, ['raz', 'razy', 'razy'])} w</Text>
           <Chip label="tygodniu" selected={period === 'week'} onPress={() => setPeriod('week')} />
           <Chip label="miesiącu" selected={period === 'month'} onPress={() => setPeriod('month')} />
+          {period === 'month' ? (
+            <Text style={{ color: p.muted, fontSize: 12, width: '100%' }}>
+              dowolne dni; konkretny dzień miesiąca — wybierz „Co miesiąc”
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+      {kind === 'monthly' ? (
+        <View style={{ gap: 8 }}>
+          <View style={styles.line}>
+            <View style={{ flex: 1 }}>
+              <Value
+                label="Którego dnia"
+                value={MONTHLY_BY.find(([b]) => b === monthly.by)![1]}
+                onPress={() =>
+                  void pickOption<MonthlyBy>(
+                    'Którego dnia miesiąca',
+                    MONTHLY_BY.map(([b, label]) => ({ label, value: b, selected: b === monthly.by })),
+                  ).then((v) => v && setMonthly({ ...monthly, by: v }))
+                }
+              />
+            </View>
+            {monthly.by === 'day' ? (
+              <TextInput
+                accessibilityLabel="Dzień miesiąca"
+                value={String(monthly.day || '')}
+                onChangeText={(t) => setMonthly({ ...monthly, day: Number(t.replace(/\D/g, '')) || 0 })}
+                keyboardType="number-pad"
+                maxLength={2}
+                style={[styles.input, { width: 64, color: p.fg, borderColor: p.border }]}
+              />
+            ) : null}
+          </View>
+          {monthly.by === 'weekday' ? (
+            <View style={styles.line}>
+              <View style={{ flex: 1 }}>
+                <Value
+                  label="Który"
+                  value={NTH.find(([n]) => n === monthly.nth)?.[1] ?? '—'}
+                  onPress={() =>
+                    void pickOption<number>(
+                      'Który w miesiącu',
+                      NTH.map(([n, label]) => ({ label, value: n, selected: n === monthly.nth })),
+                    ).then((v) => v !== undefined && setMonthly({ ...monthly, nth: v }))
+                  }
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Value
+                  label="Dzień tygodnia"
+                  value={weekdayName(monthly.weekday)}
+                  onPress={() =>
+                    void pickOption<WeekdayCode>(
+                      'Dzień tygodnia',
+                      WEEKDAY_CODES.map((d) => ({ label: weekdayName(d), value: d, selected: d === monthly.weekday })),
+                    ).then((v) => v && setMonthly({ ...monthly, weekday: v }))
+                  }
+                />
+              </View>
+            </View>
+          ) : null}
+          {monthlyPreview?.length ? <Text style={{ color: p.muted, fontSize: 12 }}>najbliżej: {monthlyPreview.map((d) => dayChip(d)).join(' · ')}</Text> : null}
         </View>
       ) : null}
 
