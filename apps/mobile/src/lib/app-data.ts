@@ -90,7 +90,8 @@ const EMPTY: AppData = {
   loaded: false,
 };
 
-const TASK_COLUMNS = `t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
+/** Kolumny wiersza dla `toViewTask` (alias `t`) — też kosz. */
+export const TASK_COLUMNS = `t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
   t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count, t.field_clock`;
 
 const loadSettings = async (engine: SyncEngine): Promise<ProfileSettings> =>
