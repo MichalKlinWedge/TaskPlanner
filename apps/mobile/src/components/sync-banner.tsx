@@ -22,7 +22,10 @@ export function SyncBanner() {
   let text: string | null = null;
   let bad = false;
   if (!user.online) text = 'Tryb offline bez konta — dane tylko na telefonie. Zaloguj się w Ustawieniach.';
-  else if (status.syncing && status.firstSync) text = status.pull && !status.pull.done ? `Pierwsza synchronizacja: pobrano ${plural(status.pull.page, PAGES)}…` : 'Pierwsza synchronizacja…';
+  else if (status.authLost) {
+    text = 'Sesja wygasła — zaloguj się ponownie w Ustawieniach. Dane i zmiany na telefonie zostają.';
+    bad = true;
+  }  else if (status.syncing && status.firstSync) text = status.pull && !status.pull.done ? `Pierwsza synchronizacja: pobrano ${plural(status.pull.page, PAGES)}…` : 'Pierwsza synchronizacja…';
   else if (status.error) {
     text = `Synchronizacja: ${status.error}. Zmiany czekają na telefonie.`;
     bad = true;

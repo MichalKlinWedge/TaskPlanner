@@ -8,7 +8,7 @@
  * budzą też: Realtime, powrót sieci (`expo-network`), powrót aplikacji na wierzch i ponowienia
  * po błędzie (kryterium MVP-1: zmiana z trybu samolotowego na serwerze < 5 s po włączeniu sieci).
  */
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, isAuthRetryableFetchError, type SupabaseClient } from '@supabase/supabase-js';
 import { supabaseRemote, SYNCED_TABLES, SyncEngine, type LocalDb, type PullProgress, type Remote, type SyncedTable } from '@taskplanner/sync';
 import { openExpoDb } from '@taskplanner/sync/expo';
 import * as Network from 'expo-network';
@@ -85,6 +85,8 @@ export interface SyncStatus {
   firstSync: boolean;
   /** Pomiar ostatniego pobrania z wierszami (zapamiętany): ile trwało zapytanie, a ile zapis do SQLite. */
   pullPerf: PullPerf | null;
+  /** Konto jest, ale sesji Supabase już nie ma (`checkAuth`) — synchronizacja czeka na ponowne logowanie; dane lokalne zostają. */
+  authLost: boolean;
 }
 
 /** Suma stron jednego pobrania: `fetchMs` = `pull_changes` (sieć + serwer + JSON), `writeMs` = transakcja w expo-sqlite. */
@@ -110,7 +112,7 @@ const PULL_PERF_KEY = 'sync.pullPerf';
 
 function initialStatus(): SyncStatus {
   const lastAt = Number(Storage.getItemSync(lastAtKey(sessionUser().id))) || null;
-  return { syncing: false, lastAt, error: null, pull: null, firstSync: lastAt === null, pullPerf: readJson<PullPerf | null>(PULL_PERF_KEY, null) };
+  return { syncing: false, lastAt, error: null, pull: null, firstSync: lastAt === null, pullPerf: readJson<PullPerf | null>(PULL_PERF_KEY, null), authLost: false };
 }
 
 /** Bieżące pobranie (strony jednej synchronizacji); zapisywane od 100 wierszy. */
@@ -149,6 +151,27 @@ export function onSyncStatus(listener: Listener): () => void {
 }
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/**
+ * Czy klient Supabase ma sesję zapamiętanego konta. Bez niej zapytania idą jako `anon` („permission
+ * denied for function pull_changes”): telefon pamięta konto i dane, ale sesja przepadła (odświeżenie
+ * odrzucone, dane aplikacji zachowane przy odinstalowaniu). Wtedy `authLost` — synchronizacja stoi,
+ * a Ustawienia pozwalają zalogować się ponownie bez czyszczenia danych (to samo konto = te same dane).
+ * Błąd sieci przy odświeżaniu tokenu nie jest utratą sesji.
+ */
+export async function checkAuth(): Promise<boolean> {
+  const user = sessionUser();
+  if (!user.online || !serverConfig()) return true;
+  let ok = true;
+  try {
+    const { data, error } = await supabaseClient().auth.getSession();
+    ok = data.session ? data.session.user.id === user.id : !!error && isAuthRetryableFetchError(error);
+  } catch {
+    ok = true;
+  }
+  if (sessionUser().id === user.id && status.authLost === ok) setStatus(ok ? { authLost: false } : { authLost: true, syncing: false, error: 'sesja wygasła — zaloguj się ponownie' });
+  return ok;
+}
 
 // ── Zmiana konta (ekrany odświeżają zapytania i bramkę onboardingu) ─────────────────────────
 
@@ -243,7 +266,8 @@ export function localEngine(): Promise<SyncEngine> {
           } else {
             failures++;
             setStatus({ syncing: false, error: errorText(state.error) });
-            scheduleRetry(engine);
+            // Bez sesji ponawianie nic nie da — czeka na ponowne logowanie.
+            void checkAuth().then((ok) => ok && scheduleRetry(engine));
           }
         },
       });
@@ -284,12 +308,13 @@ let wakeups: { remove(): void }[] = [];
 /** Realtime + pierwsze pobranie + budzenie po powrocie sieci i aplikacji (tylko na ekranie, nie w zadaniu w tle). */
 export async function startOnlineSync() {
   if (!sessionUser().online || !serverConfig()) return;
+  if (!(await checkAuth())) return;
   const engine = await localEngine();
   engine.start();
   engine.requestSync(0);
   if (!wakeups.length) {
     const wake = async () => {
-      if (!sessionUser().online) return;
+      if (!sessionUser().online || status.authLost) return;
       (await localEngine()).requestSync(0);
     };
     wakeups = [

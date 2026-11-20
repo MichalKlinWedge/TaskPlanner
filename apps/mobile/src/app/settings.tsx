@@ -37,7 +37,8 @@ export default function Settings() {
   const [busy, setBusy] = useState(false);
   const [user, setUser] = useState(sessionUser());
   const [info, setInfo] = useState<string | null>(null);
-  const { pullPerf } = useSyncStatus();
+  const { pullPerf, authLost } = useSyncStatus();
+  const relogin = user.online && authLost;
 
   // Logowanie może się skończyć poza tym ekranem (link z maila → ekran `auth-callback`).
   useEffect(() => onSessionChange(() => setUser(sessionUser())), []);
@@ -61,9 +62,69 @@ export default function Settings() {
   };
   const validEmail = /^\S+@\S+\.\S+$/.test(email.trim());
 
+  // Logowanie: tryb bez konta i ponowne logowanie po utracie sesji (to samo konto — bez czyszczenia danych, `signedIn`).
+  const loginForm = (
+    <>
+      <Field label="E-mail" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" />
+      <Button
+        disabled={busy || !validEmail}
+        title={sentTo ? 'Wyślij link ponownie' : 'Wyślij link logowania'}
+        onPress={() =>
+          void run(async () => {
+            saveServer();
+            await sendMagicLink(email);
+            setSentTo(email.trim());
+            return `Wysłano link na ${email.trim()}. Otwórz go na tym telefonie albo wpisz kod z maila.`;
+          })
+        }
+      />
+      {sentTo ? (
+        <>
+          <Field label="Kod z maila" value={code} onChangeText={setCode} keyboardType="number-pad" autoComplete="one-time-code" maxLength={10} />
+          <Button
+            disabled={busy || code.trim().length < 6}
+            title="Zaloguj kodem"
+            kind="secondary"
+            onPress={() =>
+              void run(async () => {
+                await verifyEmailCode(sentTo, code);
+                setCode('');
+                router.replace('/');
+                return 'Zalogowano.';
+              })
+            }
+          />
+        </>
+      ) : null}
+      <Button
+        disabled={busy}
+        title="Zaloguj przez Google"
+        kind="secondary"
+        onPress={() =>
+          void run(async () => {
+            saveServer();
+            const signed = await signInWithGoogle();
+            if (!signed) return 'Logowanie Google przerwane.';
+            router.replace('/');
+            return 'Zalogowano.';
+          })
+        }
+      />
+    </>
+  );
+
   return (
     <Screen>
       <Section title={user.online ? `Zalogowano: ${user.email ?? '—'}` : 'Tryb offline (bez konta)'}>
+        {relogin ? (
+          <>
+            <P tone="bad">
+              Sesja wygasła — serwer nie przyjmuje zmian z telefonu. Zaloguj się ponownie kontem {user.email ?? 'tym samym co dotąd'}: dane i niewysłane zmiany na telefonie zostają. Inne konto
+              zaczyna od czystych danych (zmiany stąd przepadną).
+            </P>
+            {loginForm}
+          </>
+        ) : null}
         {user.online ? (
           <>
             <SyncIndicator />
@@ -88,51 +149,7 @@ export default function Settings() {
             <P muted>
               Bez konta zapisy zostają w lokalnej bazie i outboxie. Logowanie zaczyna od czystych danych lokalnych (zmiany z trybu offline nie trafią na konto).
             </P>
-            <Field label="E-mail" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" />
-            <Button
-              disabled={busy || !validEmail}
-              title={sentTo ? 'Wyślij link ponownie' : 'Wyślij link logowania'}
-              onPress={() =>
-                void run(async () => {
-                  saveServer();
-                  await sendMagicLink(email);
-                  setSentTo(email.trim());
-                  return `Wysłano link na ${email.trim()}. Otwórz go na tym telefonie albo wpisz kod z maila.`;
-                })
-              }
-            />
-            {sentTo ? (
-              <>
-                <Field label="Kod z maila" value={code} onChangeText={setCode} keyboardType="number-pad" autoComplete="one-time-code" maxLength={10} />
-                <Button
-                  disabled={busy || code.trim().length < 6}
-                  title="Zaloguj kodem"
-                  kind="secondary"
-                  onPress={() =>
-                    void run(async () => {
-                      await verifyEmailCode(sentTo, code);
-                      setCode('');
-                      router.replace('/');
-                      return 'Zalogowano.';
-                    })
-                  }
-                />
-              </>
-            ) : null}
-            <Button
-              disabled={busy}
-              title="Zaloguj przez Google"
-              kind="secondary"
-              onPress={() =>
-                void run(async () => {
-                  saveServer();
-                  const signed = await signInWithGoogle();
-                  if (!signed) return 'Logowanie Google przerwane.';
-                  router.replace('/');
-                  return 'Zalogowano.';
-                })
-              }
-            />
+            {loginForm}
           </>
         )}
         {info ? <P tone={info.startsWith('Błąd') ? 'bad' : 'ok'}>{info}</P> : null}
