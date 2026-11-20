@@ -5,8 +5,8 @@ const shortcutIcon = (name: string) => ({ src: `/icons/shortcut-${name}.png`, si
 /** Manifest PWA (instalacja na pulpicie / ekranie głównym). Ikony generuje `scripts/brand.mjs`. */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "TaskPlanner",
-    short_name: "TaskPlanner",
+    name: "Task Planner",
+    short_name: "Task Planner",
     description: "Zadania codzienne: listy, kanban, kalendarz i oś czasu",
     lang: "pl",
     start_url: "/",

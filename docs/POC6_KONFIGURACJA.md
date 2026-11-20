@@ -31,10 +31,10 @@ Resztę (`link`, `db push`, `functions deploy`, `secrets set`) robię ja — **z
 6. W Google Calendar załóż kalendarz testowy (np. „TaskPlanner test”), w jego ustawieniach skopiuj
    **Tajny adres w formacie iCal** i dopisz do `.env.local` jako `ICS_TEST_URL=…` (to też sekret).
 
-### 2a. Etap 12 — zapis do kalendarza „TaskPlanner” (≈ 5 min, robisz Ty w Google Cloud)
+### 2a. Etap 12 — zapis do kalendarza „Task Planner” (≈ 5 min, robisz Ty w Google Cloud)
 Dwukierunkowa synchronizacja zadań potrzebuje drugiego zakresu: **`https://www.googleapis.com/auth/calendar.app.created`**
 („Make secondary Google calendars, and see, create, change, and delete events on them”). Pozwala utworzyć kalendarz
-„TaskPlanner” i pisać tylko w nim — bez prawa zapisu w innych kalendarzach (odczyt nadal przez `calendar.readonly`).
+„Task Planner” i pisać tylko w nim — bez prawa zapisu w innych kalendarzach (odczyt nadal przez `calendar.readonly`).
 1. Google Auth Platform → Data access → Add or remove scopes → dopisz `.../auth/calendar.app.created` → Save.
    Zakres jest wrażliwy: aplikacja *In production* bez weryfikacji dalej działa z ekranem „unverified app”
    (limit 100 użytkowników — wystarczy).

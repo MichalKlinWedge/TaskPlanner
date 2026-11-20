@@ -129,7 +129,7 @@ function Onboarding({ store, userId, initial }: { store: TabStore; userId: strin
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4 sm:p-6">
       <header>
-        <h2 className="text-xl font-semibold">Witaj w TaskPlannerze</h2>
+        <h2 className="text-xl font-semibold">Witaj w Task Plannerze</h2>
         <p className="text-sm opacity-70">Kilka ustawień na start — wszystko zmienisz później w „Ustawieniach”.</p>
       </header>
       <Card>
@@ -230,7 +230,7 @@ function AppHeader({ store, email }: { store: TabStore; email: string | null }) 
   return (
     <>
       <header className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-sm">
-        <span className="font-semibold">TaskPlanner</span>
+        <span className="font-semibold">Task Planner</span>
         <span className="flex items-center gap-1.5 text-xs opacity-80" role="status" title={status.error ?? (status.lastSyncAt ? `Ostatnio: ${new Date(status.lastSyncAt).toLocaleTimeString("pl-PL")}` : undefined)} data-testid="sync-status">
           <span className={`h-2 w-2 rounded-full ${dot}`} />
           {label}

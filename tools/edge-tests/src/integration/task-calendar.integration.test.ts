@@ -1,5 +1,5 @@
 /**
- * Etap 12 — dwukierunkowa synchronizacja zadań z kalendarzem „TaskPlanner” na fałszywym Google:
+ * Etap 12 — dwukierunkowa synchronizacja zadań z kalendarzem „Task Planner” na fałszywym Google:
  * wybór przestrzeni → kalendarz w Google, zadanie → wydarzenie (wyzwalacz → pg_net → `tasks/flush`),
  * zmiana w Google → zadanie (kanał `watch` → HLC serwera), pętle, konflikty (`If-Match`), usunięcia,
  * powtórki (`watch`, `syncToken`, 410, cron) — 0 duplikatów i 0 zgubionych zmian.
@@ -49,7 +49,7 @@ beforeAll(async () => {
 });
 afterAll(() => fake.stop());
 
-describe('Kalendarz „TaskPlanner” (Etap 12)', () => {
+describe('Kalendarz „Task Planner” (Etap 12)', () => {
   let user: TestUser;
   let accountId: string;
   let work: Awaited<ReturnType<typeof createWorkspace>>;
@@ -66,7 +66,7 @@ describe('Kalendarz „TaskPlanner” (Etap 12)', () => {
   const eventFor = (taskId: string): StoredEvent | undefined => live().find((e) => e.extendedProperties?.private?.taskId === taskId);
   const settle = () => new Promise((r) => setTimeout(r, 1500));
 
-  it('wybór przestrzeni → kalendarz „TaskPlanner” w Google (raz), kanał watch, bez wydarzeń w calendar_events', async () => {
+  it('wybór przestrzeni → kalendarz „Task Planner” w Google (raz), kanał watch, bez wydarzeń w calendar_events', async () => {
     user = await createUser('zadania-kalendarz');
     accountId = await connectGoogle(user);
     work = await createWorkspace(user, 'Praca');
@@ -78,11 +78,11 @@ describe('Kalendarz „TaskPlanner” (Etap 12)', () => {
     targetId = target.id;
     tp = target.external_id;
     expect(fake.counts.createCalendar).toBe(1);
-    expect(fake.calendars.get(tp)!.entry).toMatchObject({ summary: 'TaskPlanner', timeZone: ZONE });
+    expect(fake.calendars.get(tp)!.entry).toMatchObject({ summary: 'Task Planner', timeZone: ZONE });
     expect(fake.calendars.get(tp)!.entry.description).toContain(`taskplanner:${user.id}`);
     await waitFor(async () => fake.activeChannels(tp).length === 1, 10_000, 'kanał watch');
 
-    // Ponowne połączenie konta (lista kalendarzy) nie robi z „TaskPlanner” zwykłego kalendarza ani drugiego kalendarza.
+    // Ponowne połączenie konta (lista kalendarzy) nie robi z „Task Planner” zwykłego kalendarza ani drugiego kalendarza.
     expect((await fn('calendar-sync/accounts/sync', { jwt: user.jwt, body: JSON.stringify({ accountId }) })).status).toBe(200);
     expect(fake.counts.createCalendar).toBe(1);
     const { data: cals } = await db.from('calendars').select('id, is_task_target').eq('account_id', accountId);
@@ -269,7 +269,7 @@ describe('Kalendarz „TaskPlanner” (Etap 12)', () => {
     expect((await db.from('calendar_task_links').select('task_id').eq('calendar_id', targetId)).data).toEqual([]);
   });
 
-  it('kalendarz „TaskPlanner” usunięty w Google → wysyłanie wyłączone, zadania zostają', async () => {
+  it('kalendarz „Task Planner” usunięty w Google → wysyłanie wyłączone, zadania zostają', async () => {
     await push(user, [{ table: 'profiles', id: user.id, set: { calendar_sync: { accountId, workspaceIds: [work.id] } } }]);
     await waitFor(async () => eventFor(t1), LIMIT_MS, 'wydarzenia po włączeniu', 100);
     fake.calendars.delete(tp);

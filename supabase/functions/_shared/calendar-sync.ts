@@ -37,7 +37,7 @@ export interface CalendarRow {
   external_id: string;
   name: string;
   visible: boolean;
-  /** Kalendarz „TaskPlanner” (Etap 12) — synchronizowany z zadaniami w `task-calendar.ts`, nie do `calendar_events`. */
+  /** Kalendarz „Task Planner” (Etap 12) — synchronizowany z zadaniami w `task-calendar.ts`, nie do `calendar_events`. */
   is_task_target: boolean;
   /**
    * `noWatch`: Google nie wysyła powiadomień dla tego kalendarza (np. święta) — tylko cron.
@@ -145,7 +145,7 @@ export async function refreshGoogleCalendars(db: SupabaseClient, cfg: GoogleConf
   const entries = (await listCalendars(cfg, token)).filter((c) => !c.deleted);
   const known = check(await db.from('calendars').select('*').eq('account_id', account.id), 'calendars') as CalendarRow[];
   const byId = new Map(known.map((c) => [c.external_id, c]));
-  // Kalendarz „TaskPlanner” bez wiersza w bazie przejmuje `ensureTaskCalendar` — nie jako zwykły (duplikaty zadań).
+  // Kalendarz „Task Planner” bez wiersza w bazie przejmuje `ensureTaskCalendar` — nie jako zwykły (duplikaty zadań).
   const upserts = entries.filter((e) => byId.has(e.id) || !e.description?.includes('taskplanner:')).map((e) => ({
     account_id: account.id,
     external_id: e.id,

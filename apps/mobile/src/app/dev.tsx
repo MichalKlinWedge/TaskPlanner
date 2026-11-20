@@ -10,7 +10,7 @@ import { onSessionChange } from '@/lib/sync';
 const ITEMS: { href: Href; title: string; hint: string }[] = [
   { href: '/widget', title: 'Dziś i widżet', hint: 'Lista „Dziś” z lokalnej bazy, dane przykładowe, dodanie widżetu' },
   { href: '/reminders', title: 'Przypomnienia', hint: '50 przypomnień / 3 dni, dokładne alarmy, akcje, pomiar opóźnień' },
-  { href: '/share', title: 'Szybkie dodawanie', hint: 'Cel udostępniania z Chrome (Udostępnij → TaskPlanner)' },
+  { href: '/share', title: 'Szybkie dodawanie', hint: 'Cel udostępniania z Chrome (Udostępnij → Task Planner)' },
   { href: '/calendar', title: 'Kalendarz', hint: 'expo-calendar + @howljs/calendar-kit, przeciąganie bloku' },
   { href: '/timeline', title: 'Oś dnia (własna)', hint: 'Wariant awaryjny: Reanimated + Gesture Handler' },
   { href: '/selftest', title: 'Samosprawdzenie', hint: 'PoC-1/2/3 w Hermes: sync, cykliczność, nawyki, parser' },

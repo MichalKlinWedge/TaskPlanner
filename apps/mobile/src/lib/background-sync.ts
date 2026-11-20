@@ -10,6 +10,8 @@ import { Platform } from 'react-native';
 
 import { refreshTodayWidget } from '../widget/refresh';
 import { readJson, serverConfig, sessionUser, writeJson } from './config';
+import { flushErrors, reportError } from './error-log';
+import { fillLinkPreviews, flushFiles } from './files';
 import { scheduleReminders } from './scheduler';
 import { syncNow } from './sync';
 
@@ -37,11 +39,16 @@ export async function runBackgroundSync(): Promise<BackgroundRun> {
     if (sessionUser().online && serverConfig()) {
       await syncNow();
       run.synced = true;
+      // Pliki i podglądy linków po synchronizacji (zadania już na serwerze).
+      await flushFiles();
+      await fillLinkPreviews();
     }
   } catch (error) {
     run.ok = false;
     run.error = error instanceof Error ? error.message : String(error);
+    reportError('sync', error, { background: true });
   }
+  await flushErrors();
   await scheduleReminders().catch(() => undefined);
   await refreshTodayWidget().catch(() => undefined);
   run.ms = Date.now() - start;

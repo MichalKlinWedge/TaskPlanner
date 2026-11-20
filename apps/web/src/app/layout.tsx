@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TaskPlanner",
+  title: "Task Planner",
   description: "Zadania codzienne: listy, kanban, kalendarz i oś czasu",
   // Potwierdzenie własności domeny w Google Search Console (weryfikacja aplikacji OAuth):
   // wartość `content` z meta-tagu w zmiennej projektu Vercel GOOGLE_SITE_VERIFICATION.

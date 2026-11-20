@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Polityka prywatności — TaskPlanner",
-  description: "Jakie dane zbiera TaskPlanner, do czego ich używa i jak je usunąć.",
+  title: "Polityka prywatności — Task Planner",
+  description: "Jakie dane zbiera Task Planner, do czego ich używa i jak je usunąć.",
 };
 
 // Data ostatniej zmiany treści — zmieniaj razem z treścią.
@@ -18,15 +18,15 @@ export default function PrivacyPage() {
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6 text-sm leading-relaxed">
       <header className="flex flex-col gap-1">
         <Link href="/" className="text-xs opacity-60 hover:opacity-100">
-          ← TaskPlanner
+          ← Task Planner
         </Link>
         <h1 className="text-2xl font-semibold">Polityka prywatności</h1>
         <p className="opacity-60">Ostatnia zmiana: {UPDATED}</p>
       </header>
 
-      <Section title="Czym jest TaskPlanner">
+      <Section title="Czym jest Task Planner">
         <p>
-          TaskPlanner to osobisty menedżer zadań: aplikacja webowa i aplikacja na Androida. Działa także bez sieci — dane są zapisywane na urządzeniu i
+          Task Planner to osobisty menedżer zadań: aplikacja webowa i aplikacja na Androida. Działa także bez sieci — dane są zapisywane na urządzeniu i
           synchronizowane z serwerem, gdy jest połączenie. Aplikacja nie wyświetla reklam i nie sprzedaje ani nie udostępnia danych nikomu.
         </p>
       </Section>
@@ -65,7 +65,7 @@ export default function PrivacyPage() {
 
       <Section title="Dane z Google (Limited Use)">
         <p>
-          Wykorzystanie i przekazywanie informacji otrzymanych z interfejsów API Google przez TaskPlanner jest zgodne z{" "}
+          Wykorzystanie i przekazywanie informacji otrzymanych z interfejsów API Google przez Task Planner jest zgodne z{" "}
           <a className="underline" href="https://developers.google.com/terms/api-services-user-data-policy">
             Google API Services User Data Policy
           </a>

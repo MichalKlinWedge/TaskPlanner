@@ -1,5 +1,5 @@
 /**
- * Service Worker TaskPlannera (SPECYFIKACJA M20): powłoka aplikacji offline. Dane i tak są w lokalnej
+ * Service Worker Task Plannera (SPECYFIKACJA M20): powłoka aplikacji offline. Dane i tak są w lokalnej
  * bazie (SQLite w OPFS) — tu chodzi tylko o to, żeby strona, skrypty i SQLite WASM wczytały się bez
  * sieci. Rejestracja tylko w buildzie produkcyjnym (`lib/service-worker.ts`).
  *
@@ -126,7 +126,7 @@ self.addEventListener('push', (event) => {
   }
   event.waitUntil(
     (async () => {
-      await self.registration.showNotification(data.title || 'TaskPlanner', {
+      await self.registration.showNotification(data.title || 'Task Planner', {
         body: data.body || '',
         tag: data.key,
         icon: '/icons/icon-192.png',

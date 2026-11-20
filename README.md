@@ -1,4 +1,4 @@
-# TaskPlanner
+# Task Planner
 
 Osobisty system zadań codziennych. Na laptopie (web, PWA) służy do planowania: listy, kanban, kalendarz z time-blockingiem, oś czasu z zależnościami, przeglądy dnia i tygodnia. Na telefonie (Android) służy do wykonania: szybkie dodawanie, „Dziś”, przypomnienia, tryb skupienia, nawyki, widżety.
 

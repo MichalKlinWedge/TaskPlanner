@@ -1,7 +1,7 @@
 /**
  * Google OAuth 2.0 i Calendar API v3 przez `fetch` (bez SDK). Adresy z konfiguracji, żeby testy mogły
  * podstawić fałszywe Google. Odczyt wszystkich kalendarzy (`calendar.readonly`, Etap 5) i zapis tylko
- * w kalendarzach utworzonych przez aplikację (`calendar.app.created`, Etap 12: kalendarz „TaskPlanner”).
+ * w kalendarzach utworzonych przez aplikację (`calendar.app.created`, Etap 12: kalendarz „Task Planner”).
  */
 import { contentEtag, overlapsWindow, type EventRow, type SyncWindow } from './calendar.ts';
 
@@ -265,7 +265,7 @@ export async function stopChannel(cfg: GoogleConfig, token: string, channel: Pic
   }
 }
 
-// ── Zapis (Etap 12: tylko kalendarz „TaskPlanner”) ───────────────────────────────────────────
+// ── Zapis (Etap 12: tylko kalendarz „Task Planner”) ───────────────────────────────────────────
 
 const eventPath = (calendarId: string, eventId?: string) =>
   `/calendars/${encodeURIComponent(calendarId)}/events${eventId ? `/${encodeURIComponent(eventId)}` : ''}`;

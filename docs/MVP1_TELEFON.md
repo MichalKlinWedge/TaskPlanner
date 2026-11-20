@@ -17,7 +17,7 @@ Część telefoniczna MVP-1 w `apps/mobile`: ekran „Konto i serwer” (`src/ap
 1. Ekran główny → „Konto i serwer”: adres `http://127.0.0.1:54521`, klucz `PUBLISHABLE_KEY` z `npm run supabase -- status` → „Zapisz adres”.
 2. E-mail (np. nowy `ja@test.local`) → „Wyślij link logowania”.
 3. Na telefonie w Chrome: http://127.0.0.1:54524 → mail → „Zaloguj się” (Log In).
-4. Oczekiwane: Chrome pyta o otwarcie TaskPlanner albo przełącza od razu, ekran „Logowanie…” (`taskplanner://auth-callback?code=…`), potem ekran startowy, a po pierwszej synchronizacji kreator „Witaj w TaskPlanner” (nowe konto).
+4. Oczekiwane: Chrome pyta o otwarcie Task Planner albo przełącza od razu, ekran „Logowanie…” (`taskplanner://auth-callback?code=…`), potem ekran startowy, a po pierwszej synchronizacji kreator „Witaj w TaskPlanner” (nowe konto).
 5. Ponowne kliknięcie tego samego linku: komunikat o błędzie z przyciskiem „Konto i serwer” (link jest jednorazowy).
 
 ## M2. Logowanie kodem z maila

@@ -1,4 +1,4 @@
-# TaskPlanner — specyfikacja v0.2
+# Task Planner — specyfikacja v0.2
 
 Źródła: wstępna specyfikacja (18.11.2026) oraz architektura i doświadczenia z ExpeditionPlan (`D:\AI\ExpeditionPlan`: `CLAUDE.md`, `SPECYFIKACJA.md` §2 i §6, `PLAN_ETAPOWY.md`).
 Plan realizacji: [PLAN_ETAPOWY.md](PLAN_ETAPOWY.md). Repozytorium: `github.com/MichalKlinWedge/TaskPlanner`.
@@ -20,7 +20,7 @@ Status: **v0.2 po bramce decyzyjnej (19.11.2026)** — wszystkie PoC zakończone
 - Dokumentacja, napisy w UI i komentarze po polsku, identyfikatory po angielsku.
 
 ### 0.2. Co zmieniamy i dlaczego
-| ExpeditionPlan | TaskPlanner | Powód |
+| ExpeditionPlan | Task Planner | Powód |
 |---|---|---|
 | Plan edytuje web, telefon głównie czyta; zapisy telefonu tylko dopisywane | **Oba klienty edytują wszystkie dane, także offline** | zadania dodaje się i zmienia tam, gdzie się o nich myśli |
 | Konflikty: brak (dopisywanie) albo last-write-wins na wierszu | **Scalanie per pole (LWW z zegarem HLC)** + operacje tylko dopisywane tam, gdzie się da (ukończenia, czas pracy) | dwie edycje różnych pól tego samego zadania nie mogą się nadpisać (§6) |
@@ -293,7 +293,7 @@ Widoki stałe w pasku bocznym [W+A]:
   - **Google Calendar API** — OAuth (zakres tylko do odczytu na tym etapie), lista kalendarzy do wyboru, synchronizacja przyrostowa (`syncToken`), powiadomienia `watch` na webhook Edge Function, odnawianie kanałów codziennie,
   - **kalendarz telefonu** (`expo-calendar`) — tylko na telefonie, bez serwera (obejmuje każde konto zsynchronizowane z Androidem, także firmowe).
 - Wydarzenia (`calendar_events`) w oknie −30…+180 dni, synchronizowane serwer → klient (tylko odczyt), widoczne w kalendarzu, w „Dziś” i w ostrzeżeniach o nakładaniu się.
-- **Dwukierunkowo** (Etap 12, Google): w koncie Google powstaje osobny kalendarz „TaskPlanner”. Zadania z godziną → wydarzenia (`extendedProperties.private.taskId`); zmiana godziny/długości/tytułu w Google → zmiana zadania (jako operacja z HLC serwera, §6); usunięcie wydarzenia → zadanie traci godzinę (nie jest usuwane). Pętle zmian wykluczone przez porównanie `etag` i znacznik źródła zmiany.
+- **Dwukierunkowo** (Etap 12, Google): w koncie Google powstaje osobny kalendarz „Task Planner”. Zadania z godziną → wydarzenia (`extendedProperties.private.taskId`); zmiana godziny/długości/tytułu w Google → zmiana zadania (jako operacja z HLC serwera, §6); usunięcie wydarzenia → zadanie traci godzinę (nie jest usuwane). Pętle zmian wykluczone przez porównanie `etag` i znacznik źródła zmiany.
 - Microsoft 365 / Outlook przez Graph API — v1.x albo wcześniej, jeśli kalendarz firmowy jest w Microsoft 365 (D8).
 - Tokeny OAuth tylko na serwerze (Supabase Vault), nigdy w przeglądarce ani w APK.
 
@@ -366,7 +366,7 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 ### Tabele — konto i struktura
 | Tabela | Najważniejsze kolumny | Uwagi |
 |---|---|---|
-| `profiles` | `id` (= id użytkownika), `display_name`, `settings jsonb` (`ProfileSettings`, z flagą `onboarded`), `focus jsonb` (`FocusState` — aktywny timer skupienia, `null` = brak; Etap 7), `calendar_sync jsonb` (`CalendarSync` — konto Google z kalendarzem „TaskPlanner” i wysyłane przestrzenie, `null` = wyłączone; Etap 12); `inbox_token`, `inbound_senders text[]` dojdą razem z e-mailem (v1.x, D9) | zakres osobisty; powstaje triggerem razem z kontem (MVP-1) |
+| `profiles` | `id` (= id użytkownika), `display_name`, `settings jsonb` (`ProfileSettings`, z flagą `onboarded`), `focus jsonb` (`FocusState` — aktywny timer skupienia, `null` = brak; Etap 7), `calendar_sync jsonb` (`CalendarSync` — konto Google z kalendarzem „Task Planner” i wysyłane przestrzenie, `null` = wyłączone; Etap 12); `inbox_token`, `inbound_senders text[]` dojdą razem z e-mailem (v1.x, D9) | zakres osobisty; powstaje triggerem razem z kontem (MVP-1) |
 | `devices` | `id`, `user_id`, `name`, `platform` (`web`/`android`), `reminder_channel`, `push_subscription jsonb`, `last_sync_at` | |
 | `sync_scopes` | `id`, `kind` (`workspace`/`personal`), `owner_id`, `sync_version bigint` | licznik zakresu; Realtime subskrybuje te wiersze |
 | `workspaces` | `id` (= `scope_id`), `name`, `color`, `icon`, `sort_key`, `archived_at` | jedna przestrzeń = jeden zakres |
@@ -392,8 +392,8 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 |---|---|---|
 | `calendar_accounts` | `id`, `user_id`, `provider` (`google`/`microsoft`/`ics`), `label`, `secret_id` (Vault), `sync_state jsonb`, `status` | tokeny i adres ICS w Vault; kolumny sekretów niewidoczne dla klientów |
 | `calendars` | `id`, `account_id`, `external_id`, `name`, `color`, `visible`, `is_task_target` | |
-| `calendar_events` | `id`, `calendar_id`, `external_id`, `title`, `start_at`, `end_at`, `all_day`, `location`, `etag`, `task_id` | okno −30…+180 dni; zakres osobisty; bez wydarzeń kalendarza „TaskPlanner” (`is_task_target` — to zadania) |
-| `calendar_task_links` | `calendar_id`, `task_id`, `external_id`, `etag`, `pushed jsonb` (rzut zadania w chwili ostatniej zgodności) | tylko serwer (Etap 12): zadanie ↔ wydarzenie kalendarza „TaskPlanner”, podstawa scalania trójstronnego; `calendar_task_runs` — dzierżawa uzgadniania kalendarza |
+| `calendar_events` | `id`, `calendar_id`, `external_id`, `title`, `start_at`, `end_at`, `all_day`, `location`, `etag`, `task_id` | okno −30…+180 dni; zakres osobisty; bez wydarzeń kalendarza „Task Planner” (`is_task_target` — to zadania) |
+| `calendar_task_links` | `calendar_id`, `task_id`, `external_id`, `etag`, `pushed jsonb` (rzut zadania w chwili ostatniej zgodności) | tylko serwer (Etap 12): zadanie ↔ wydarzenie kalendarza „Task Planner”, podstawa scalania trójstronnego; `calendar_task_runs` — dzierżawa uzgadniania kalendarza |
 | `inbound_messages` | `id`, `user_id`, `received_at`, `from_addr`, `subject`, `status` (`created`/`rejected`), `task_id`, `reason` | dziennik, bez treści; unikalny Message-ID |
 | `oauth_states` | jednorazowy `state` OAuth (15 min) | PoC-6 |
 | `inbound_addresses` | token i nadawcy adresu e-mail | **tymczasowa z PoC-6** — przechodzi do `profiles` w v1.x razem z e-mailem (D9; decyzja 2026-11-19) |
@@ -603,7 +603,7 @@ Stan po bramce decyzyjnej (19.11.2026): wszystkie zatwierdzone.
 | D7 | Zakres telefonu | **Pełna edycja + kalendarz dnia/tygodnia**; oś czasu (Gantt) tylko na webie; kanban na telefonie uproszczony (decyzja 2026-11-19) |
 | D8 | Kalendarz firmowy (spotkania) | **Google** (decyzja 2026-11-18): dwukierunkowa synchronizacja z Google Calendar; ICS i kalendarz telefonu jako odczyt dla pozostałych; Microsoft 365 dopiero w v1.x |
 | D9 | Domena dla adresu e-mail | **E-mail → Inbox przesunięte do v1.x** (decyzja 2026-11-18) — wymaga domeny z DNS w Cloudflare; do tego czasu przechwytywanie przez udostępnianie z telefonu i Web Share Target (M19) |
-| D10 | Projekt Supabase | **Osobny projekt na osobnym koncie** Supabase (Free, decyzja 2026-11-18) — limit 2 aktywnych projektów konta ExpeditionPlan nie dotyczy TaskPlanner |
+| D10 | Projekt Supabase | **Osobny projekt na osobnym koncie** Supabase (Free, decyzja 2026-11-18) — limit 2 aktywnych projektów konta ExpeditionPlan nie dotyczy Task Plannera |
 | D11 | Widżety pulpitu | **PWA + skróty** w v1.0; natywny widżet / zasobnik / globalny skrót przez Tauri w v1.x |
 | D12 | Integracje na serwerze | **Supabase Edge Functions + `pg_cron`** (nie trasy API Vercela) |
 | D13 | Import z obecnego narzędzia | **Brak** (decyzja 2026-11-18): start od zera, bez `tools/import`; zostaje eksport/import JSON własnych danych (Etap 13). Korpus parsera uzupełnią przykładowe zadania wpisane przez użytkownika |
@@ -612,7 +612,7 @@ Stan po bramce decyzyjnej (19.11.2026): wszystkie zatwierdzone.
 | D17 | Build i dystrybucja Androida | **Bez EAS** (decyzja 2026-11-18/19, PoC-4): APK lokalnie i z GitHub Actions, podpis kluczem z sekretów repozytorium, poza Google Play; aktualizacja = nowy APK (bez OTA); dokładne alarmy przez `USE_EXACT_ALARM` |
 | D18 | Biblioteka osi czasu | **SVAR React Gantt** (decyzja 2026-11-19, PoC-5); własny SVG niepotrzebny |
 | D19 | Silnik cykliczności | **Własny podzbiór RRULE** (decyzja 2026-11-19, PoC-3); rrule.js tylko w testach |
-| D14 | Język i nazwa | UI po polsku, nazwa aplikacji „TaskPlanner”, pakiety `@taskplanner/*` (decyzja 2026-11-19) |
+| D14 | Język i nazwa | UI po polsku, nazwa aplikacji „Task Planner”, pakiety `@taskplanner/*` (decyzja 2026-11-19) |
 | D20 | Raportowanie błędów | **Własny dziennik w Supabase** (decyzja 2026-11-19, Etap 13), bez Sentry: tabela `client_errors` (wiersz na użytkownika, odcisk i dzień, licznik), zapis tylko przez `report_client_errors` (limity), retencja 90 dni (`pg_cron`), podgląd w Ustawieniach; błędy Edge Functions — w logach Supabase |
 
 ---

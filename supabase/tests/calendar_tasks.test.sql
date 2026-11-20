@@ -1,4 +1,4 @@
--- Etap 12: kalendarz „TaskPlanner” — ustawienie w profilu, sygnał do wysyłki (pg_net raz na transakcję),
+-- Etap 12: kalendarz „Task Planner” — ustawienie w profilu, sygnał do wysyłki (pg_net raz na transakcję),
 -- zmiany z kalendarza z HLC serwera, powiązania, dzierżawa, uprawnienia.
 -- Uruchomienie: npm run test:db
 begin;
@@ -101,7 +101,7 @@ select throws_ok(format($$ select public.calendar_task_apply(%L, %L, '{}', null)
 -- ── service_role: zmiana z kalendarza (HLC serwera) ──────────────────────────────────────────
 select pg_temp.service();
 insert into public.calendar_accounts (id, user_id, provider, label, external_id) values (:A, :U, 'google', 'ja@gmail.com', 'ja@gmail.com');
-insert into public.calendars (id, account_id, external_id, name, is_task_target) values (:C, :A, 'tp@group.calendar.google.com', 'TaskPlanner', true);
+insert into public.calendars (id, account_id, external_id, name, is_task_target) values (:C, :A, 'tp@group.calendar.google.com', 'Task Planner', true);
 select set_config('taskplanner.calendar_kicked', '', true);
 
 select is((public.calendar_task_apply(:C, :T1, '{"due_time":"12:30","duration_min":60,"status":"done"}',

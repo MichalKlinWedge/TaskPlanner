@@ -1,5 +1,5 @@
 /**
- * Znak marki TaskPlanner: jedyne źródło logo. Rysuje SVG w `brand/` i z nich ikony aplikacji
+ * Znak marki Task Planner: jedyne źródło logo. Rysuje SVG w `brand/` i z nich ikony aplikacji
  * (web: favicon, apple-icon, PWA; Android: ikona, adaptive icon, monochrome, splash).
  *
  *   node scripts/brand.mjs
@@ -74,7 +74,7 @@ const logo = (text) =>
   <svg width="240" height="240" viewBox="0 0 1024 1024">${gradient}
     <rect width="1024" height="1024" rx="232" fill="url(#bg)"/>${glyph()}
   </svg>
-  <text x="290" y="160" font-family="Geist, 'Segoe UI', Inter, system-ui, sans-serif" font-size="128" letter-spacing="-3" fill="${text}"><tspan font-weight="700">Task</tspan><tspan font-weight="400">Planner</tspan></text>`,
+  <text x="290" y="160" font-family="Geist, 'Segoe UI', Inter, system-ui, sans-serif" font-size="128" letter-spacing="-3" fill="${text}"><tspan font-weight="700">Task</tspan> <tspan font-weight="400">Planner</tspan></text>`,
     1100,
     240,
   );

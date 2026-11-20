@@ -5,7 +5,7 @@
  * widocznych obok zadań, odświeżenie i odłączenie. Lista z lokalnej bazy (tylko do odczytu — przychodzi
  * synchronizacją), działania przez `calendar-sync` (online). Wydarzenia są tylko do odczytu.
  *
- * Etap 12: przestrzenie, których zadania z godziną idą do kalendarza „TaskPlanner” na wybranym koncie
+ * Etap 12: przestrzenie, których zadania z godziną idą do kalendarza „Task Planner” na wybranym koncie
  * Google — `profiles.calendar_sync`, zapis lokalny (działa offline); serwer tworzy kalendarz i synchronizuje.
  */
 import { CalendarSync, relativeDay, localDateAt, localDateTimeAt } from "@taskplanner/core";
@@ -94,7 +94,7 @@ export function CalendarsCard({ store, timeZone }: { store: TabStore; timeZone?:
     const current = sync?.accountId === account.id ? sync.workspaceIds : [];
     if (on && sync && sync.accountId !== account.id && sync.workspaceIds.length) {
       const other = accounts.find((a) => a.id === sync.accountId)?.label ?? "innym koncie";
-      if (!window.confirm(`Zadania przestaną trafiać do kalendarza „TaskPlanner” na ${other}. Wysyłać je na ${account.label}?`)) return;
+      if (!window.confirm(`Zadania przestaną trafiać do kalendarza „Task Planner” na ${other}. Wysyłać je na ${account.label}?`)) return;
     }
     const workspaceIds = on ? [...new Set([...current, workspaceId])] : current.filter((id) => id !== workspaceId);
     setMessage(null);
@@ -114,7 +114,7 @@ export function CalendarsCard({ store, timeZone }: { store: TabStore; timeZone?:
       <h2 className="mb-1 text-sm font-semibold">Połączone kalendarze</h2>
       <p className="mb-3 text-xs text-[var(--muted)]">
         Spotkania z kalendarzy widać w kalendarzu obok zadań (tylko do odczytu). Odświeżają się same co kilka minut. Zadania z godziną z wybranych przestrzeni mogą też trafiać do
-        osobnego kalendarza „TaskPlanner” w Google — przesunięcie tam zmienia zadanie.
+        osobnego kalendarza „Task Planner” w Google — przesunięcie tam zmienia zadanie.
       </p>
 
       <div className="mb-3 flex flex-wrap gap-2">
@@ -229,7 +229,7 @@ function TaskTarget({
       ? `wysyłane do „${target.name}”`
       : account.last_error
         ? "czeka na zgodę na zapis"
-        : "kalendarz „TaskPlanner” powstanie przy synchronizacji";
+        : "kalendarz „Task Planner” powstanie przy synchronizacji";
   return (
     <fieldset className="mt-2 pl-2">
       <legend className="text-xs font-medium">Zadania z godziną → Google ({status})</legend>

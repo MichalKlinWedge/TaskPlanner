@@ -1,27 +1,53 @@
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
-import { router, Stack, useSegments } from 'expo-router';
+import { router, Stack, usePathname, useSegments, type ErrorBoundaryProps } from 'expo-router';
 import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
 import { useEffect, useRef } from 'react';
-import { AppState } from 'react-native';
+import { AppState, ScrollView, Text } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { TaskActionsProvider } from '@/components/actions';
 import { PickerHost } from '@/components/pickers';
-import { usePalette } from '@/components/ui';
+import { Button, usePalette } from '@/components/ui';
 
 import { onAppData, type AppData } from '@/lib/app-data';
 import { registerBackgroundSync } from '@/lib/background-sync';
 import { sessionUser } from '@/lib/config';
+import { flushErrors, reportError, setErrorRoute } from '@/lib/error-log';
+import { startCapture } from '@/lib/files';
 import { startFocusWork } from '@/lib/focus';
 import { loadProfile, onboardingGateHeld, onOnboardingGateRelease } from '@/lib/profile';
 import { handleResponse, setupNotifications } from '@/lib/reminders';
 import { scheduleReminders } from '@/lib/scheduler';
-import { localEngine, onSessionChange, startOnlineSync } from '@/lib/sync';
+import { localEngine, onSessionChange, onSynced, startOnlineSync } from '@/lib/sync';
 import { refreshTodayWidget } from '@/widget/refresh';
 
 /** Głęboki link (skrót aplikacji, powiadomienie) do ekranu nad zakładkami — pod spodem zawsze zakładki. */
 export const unstable_settings = { anchor: '(tabs)' };
+
+/**
+ * Granica błędów renderowania całej aplikacji (Expo Router: eksport `ErrorBoundary` z root layout) —
+ * błąd idzie do dziennika (`render`), ekran pozwala spróbować ponownie.
+ */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  const p = usePalette();
+  useEffect(() => reportError('render', error, { boundary: 'root' }), [error]);
+  return (
+    <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={{ padding: 24, paddingTop: 64, gap: 12 }}>
+      <Text style={{ color: p.fg, fontSize: 20, fontWeight: '700' }}>Coś poszło nie tak</Text>
+      <Text style={{ color: p.muted }}>Błąd zapisano w dzienniku aplikacji. Dane są bezpieczne w lokalnej bazie.</Text>
+      <Text style={{ color: p.bad, fontFamily: 'monospace', fontSize: 12 }}>{error.message}</Text>
+      <Button title="Spróbuj ponownie" onPress={() => void retry()} />
+    </ScrollView>
+  );
+}
+
+/** Bieżący ekran do wpisów dziennika błędów. */
+function ErrorRoute() {
+  const path = usePathname();
+  useEffect(() => setErrorRoute(path), [path]);
+  return null;
+}
 
 /** Udostępnienie z innej aplikacji (Chrome → „Udostępnij”) → ekran szybkiego dodawania. */
 function ShareRedirect() {
@@ -34,7 +60,10 @@ function ShareRedirect() {
   }, [segments]);
   useEffect(() => {
     // Ekran już otwarty pokazuje nowe udostępnienie sam — kolejny na stosie wracałby „Wstecz” do starego.
-    if (hasShareIntent && !onShare.current) router.push('/share');
+    if (!hasShareIntent || onShare.current) return;
+    // Otwarte okno (np. szybkie dodawanie jako arkusz) zasłoniłoby ekran udostępniania.
+    if (router.canDismiss()) router.dismissAll();
+    router.push('/share');
   }, [hasShareIntent]);
   return null;
 }
@@ -143,6 +172,10 @@ function useAppStart() {
     registerBackgroundSync().catch((error) => console.warn('synchronizacja w tle', error));
     startOnlineSync().catch((error) => console.warn('synchronizacja', error));
     refreshTodayWidget().catch(() => undefined);
+    // Wpisy z poprzedniego uruchomienia (np. błąd krytyczny) i po każdej udanej synchronizacji.
+    void flushErrors();
+    startCapture();
+    const offSynced = onSynced(() => void flushErrors());
     // Akcja z powiadomienia, gdy aplikacja jest na wierzchu (w tle obsługuje ją zadanie z index.ts).
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       void handleResponse(response, 'foreground');
@@ -150,6 +183,7 @@ function useAppStart() {
     return () => {
       alive = false;
       sub.remove();
+      offSynced();
       stopFocus?.();
     };
   }, []);
@@ -179,12 +213,13 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ShareIntentProvider>
         <TaskActionsProvider>
+          <ErrorRoute />
           <ShareRedirect />
           <OnboardingGate />
           <BackgroundWork />
           <NotificationTap />
           <Stack screenOptions={{ headerStyle: { backgroundColor: p.card }, headerTintColor: p.fg, contentStyle: { backgroundColor: p.bg } }}>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'TaskPlanner' }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'Task Planner' }} />
             <Stack.Screen name="task/[id]" options={{ title: 'Zadanie' }} />
             <Stack.Screen name="focus" options={{ title: 'Skupienie' }} />
             <Stack.Screen name="habits" options={{ title: 'Nawyki' }} />
@@ -201,7 +236,7 @@ export default function RootLayout() {
             <Stack.Screen name="trash" options={{ title: 'Kosz' }} />
             <Stack.Screen name="workspaces" options={{ title: 'Przestrzenie i listy' }} />
             <Stack.Screen name="workspace/[id]" options={{ title: 'Przestrzeń' }} />
-            <Stack.Screen name="onboarding" options={{ title: 'Witaj w TaskPlanner', headerBackVisible: false, gestureEnabled: false }} />
+            <Stack.Screen name="onboarding" options={{ title: 'Witaj w Task Planner', headerBackVisible: false, gestureEnabled: false }} />
             <Stack.Screen name="auth-callback" options={{ title: 'Logowanie' }} />
             <Stack.Screen name="settings" options={{ title: 'Konto i synchronizacja' }} />
             <Stack.Screen name="dev" options={{ title: 'Narzędzia PoC' }} />

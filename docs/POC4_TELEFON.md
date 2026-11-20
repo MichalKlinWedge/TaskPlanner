@@ -47,7 +47,7 @@ Od 19.11.2026 aplikacja deklaruje `USE_EXACT_ALARM` (APK poza Google Play — po
 
 ## S6. Widżet „Dziś” przy zamkniętej aplikacji, bez sieci
 
-1. „Dziś i widżet” → „Dodaj przykładowe zadania” → „Dodaj widżet na ekran” (albo z listy widżetów launchera: „TaskPlanner — Dziś”).
+1. „Dziś i widżet” → „Dodaj przykładowe zadania” → „Dodaj widżet na ekran” (albo z listy widżetów launchera: „Task Planner — Dziś”).
 2. Zamknąć aplikację, tryb samolotowy, kliknąć 2–3 zadania w widżecie: ☐ → ☑ (cykliczne „Trening” przesuwa się na jutro i znika z listy).
 3. Oczekiwane: zmiana widoczna w widżecie ≤ 2 s; po otwarciu aplikacji „Dziś” w tym samym stanie; „Dziennik widżetu” — wpisy `CLICK TOGGLE_TASK` z czasem obsługi.
 4. Odhaczenie w aplikacji → widżet odświeża się sam.
@@ -55,7 +55,7 @@ Od 19.11.2026 aplikacja deklaruje `USE_EXACT_ALARM` (APK poza Google Play — po
 
 ## S7. Udostępnianie z Chrome
 
-1. Aplikacja zamknięta. Chrome → dowolna strona → ⋮ → Udostępnij → TaskPlanner.
+1. Aplikacja zamknięta. Chrome → dowolna strona → ⋮ → Udostępnij → Task Planner.
 2. Oczekiwane: otwiera się „Szybkie dodawanie” z linkiem (i tytułem, jeśli Chrome go podał).
 3. Dopisać „jutro o 20 !2” → podświetlenia (data, godzina, priorytet) → „Dodaj zadanie” → komunikat z czasem od odebrania.
 4. Powtórzyć z aplikacją w tle (drugi link zastępuje pierwszy).
