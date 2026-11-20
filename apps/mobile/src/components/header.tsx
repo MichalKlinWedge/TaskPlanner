@@ -2,11 +2,14 @@
  * Nagłówek zakładek: przełącznik przestrzeni (M2, „Wszystkie” albo jedna), wyszukiwarka i kropka
  * stanu synchronizacji (zielona / szara w trakcie / czerwona po błędzie; dotknięcie = Ustawienia).
  */
+import { focusRemaining, focusElapsed, formatTimer } from '@taskplanner/core';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { setCurrentWorkspace, useAppData, useWorkspace } from '@/lib/app-data';
 import { sessionUser } from '@/lib/config';
+import { isTicking, useFocusData } from '@/lib/focus';
 import { useSyncStatus } from '@/lib/local-query';
 
 import { pickOption } from './pickers';
@@ -56,10 +59,36 @@ export function SyncDot() {
   );
 }
 
+/** Wskaźnik timera skupienia (też uruchomionego na innym urządzeniu); dotknięcie — ekran skupienia. */
+export function FocusChip() {
+  const p = usePalette();
+  const { state, settings } = useFocusData();
+  const ticking = isTicking(state);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!ticking) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [ticking]);
+  if (state.phase === 'idle') return null;
+  const at = new Date(now);
+  const text = state.phase === 'ready' ? '☕ koniec' : formatTimer(focusRemaining(state, at, settings) ?? focusElapsed(state, at));
+  const color = state.phase === 'focus' || state.phase === 'stopwatch' ? p.accent : p.ok;
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={`Timer skupienia: ${text}. Otwórz`} hitSlop={8} onPress={() => router.push('/focus')} style={[styles.switcher, { borderColor: color }]}>
+      <Text style={{ color, fontSize: 13, fontVariant: ['tabular-nums'] }}>
+        {state.paused ? '❚❚ ' : '⏱ '}
+        {text}
+      </Text>
+    </Pressable>
+  );
+}
+
 export function HeaderRight() {
   const p = usePalette();
   return (
     <View style={styles.right}>
+      <FocusChip />
       <WorkspaceSwitcher />
       <Pressable accessibilityRole="button" accessibilityLabel="Szukaj" hitSlop={10} onPress={() => router.push('/search')}>
         <Text style={{ color: p.fg, fontSize: 19 }}>⌕</Text>

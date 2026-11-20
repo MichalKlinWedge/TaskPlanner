@@ -81,14 +81,15 @@ export function BottomBar({ quickAdd }: { quickAdd?: QuickAddParams | null }) {
   return <Fab onPress={() => openQuickAdd(quickAdd)} />;
 }
 
-export function Fab({ onPress }: { onPress: () => void }) {
+/** `bottom` — odstęp od dołu (ekran bez zakładek: + dolny inset systemu). */
+export function Fab({ onPress, label = 'Dodaj zadanie', bottom = 16 }: { onPress: () => void; label?: string; bottom?: number }) {
   const p = usePalette();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Dodaj zadanie"
+      accessibilityLabel={label}
       onPress={onPress}
-      style={({ pressed }) => [styles.fab, { backgroundColor: p.accent, bottom: 16, opacity: pressed ? 0.8 : 1 }]}
+      style={({ pressed }) => [styles.fab, { backgroundColor: p.accent, bottom, opacity: pressed ? 0.8 : 1 }]}
     >
       <Text style={styles.fabText}>+</Text>
     </Pressable>

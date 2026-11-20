@@ -66,6 +66,14 @@ export default function BrowseScreen() {
         <Text style={{ color: p.muted, fontSize: 16 }}>⌕ Szukaj zadań, list, tagów…</Text>
       </Pressable>
 
+      <Group title="Planowanie">
+        <Item title="Nawyki" hint="Passa, regularność, historia" href="/habits" />
+        <Item title="Skupienie" hint="Pomodoro i stoper, czas pracy" href="/focus" />
+        <Item title="Tablica" hint="Kanban bieżącej przestrzeni" href="/board" />
+        <Item title="Przegląd dnia" hint="Zaległe i dzisiejsze — gesty na karcie" href="/review/daily" />
+        <Item title="Przegląd tygodnia" hint="Inbox, projekty, oczekujące, tydzień, nawyki" href="/review/weekly" />
+      </Group>
+
       {workspaces.map((w) => (
         <Group key={w.id} title={w.name}>
           {data.lists

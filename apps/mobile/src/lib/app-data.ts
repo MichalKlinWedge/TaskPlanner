@@ -6,7 +6,7 @@
  * Reguły widoków liczy `@taskplanner/core` — tu jest tylko mapowanie wierszy, jak na webie
  * (`apps/web/src/lib/app-data.ts`).
  */
-import { FilterQuery, localDateAt, ProfileSettings, toViewTask, ViewPrefs, type LocalDate, type ListKind, type LocalTaskRow, type ViewContext, type ViewTask } from '@taskplanner/core';
+import { FilterQuery, localDateAt, ProfileSettings, toHabitCompletion, toViewTask, ViewPrefs, type HabitCompletion, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask } from '@taskplanner/core';
 import type { SqlRow, SyncEngine } from '@taskplanner/sync';
 import Storage from 'expo-sqlite/kv-store';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -28,6 +28,8 @@ export interface List {
   color: string | null;
   sortKey: string;
   prefs: ViewPrefs;
+  /** Status projektu (`kind = 'project'`). */
+  projectStatus: ProjectStatus | null;
 }
 
 export interface Tag {
@@ -54,6 +56,8 @@ export interface AppData {
   tasks: ViewTask[];
   /** Id nawyków odhaczonych dziś. */
   habitsDoneToday: Set<string>;
+  /** Wpisy nawyków (id zadania → wpisy od najstarszego) — statystyki, blok „Dziś”, przypomnienia. */
+  habitCompletions: Map<string, HabitCompletion[]>;
   settings: ProfileSettings;
   loaded: boolean;
 }
@@ -81,12 +85,13 @@ const EMPTY: AppData = {
   savedFilters: [],
   tasks: [],
   habitsDoneToday: new Set(),
+  habitCompletions: new Map(),
   settings: ProfileSettings.parse({}),
   loaded: false,
 };
 
 const TASK_COLUMNS = `t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
-  t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.postpone_count, t.field_clock`;
+  t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count, t.field_clock`;
 
 const loadSettings = async (engine: SyncEngine): Promise<ProfileSettings> =>
   parseSettings((await engine.db.all<SqlRow>('select settings from profiles where id = ?', [engine.userId]))[0]?.settings);
@@ -113,13 +118,16 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
   const queried = Date.now();
   const [workspaces, lists, tags, filters, tasks, taskTags, habits] = await Promise.all([
     db.all<SqlRow>('select id, name, color, sort_key from workspaces where deleted_at is null and archived_at is null'),
-    db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs from lists where deleted_at is null and archived_at is null'),
+    db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs, project_status from lists where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, name, color, sort_key from tags where deleted_at is null'),
     db.all<SqlRow>('select id, name, icon, query, sort_key from saved_filters where deleted_at is null'),
     db.all<SqlRow>(`select ${TASK_COLUMNS} from tasks t where t.deleted_at is null`),
     // Osobno i pogrupowane w JS: podzapytanie na każde zadanie było najdroższą częścią odczytu na telefonie.
     db.all<SqlRow>('select task_id, tag_id from task_tags where deleted_at is null order by rowid'),
-    db.all<SqlRow>("select task_id from task_completions where occurrence_date = ? and kind = 'done' and deleted_at is null", [today]),
+    db.all<SqlRow>(
+      `select c.task_id, c.occurrence_date, c.kind, c.value from task_completions c join tasks t on t.id = c.task_id
+        where c.deleted_at is null and t.kind = 'habit' and t.deleted_at is null order by c.occurrence_date`,
+    ),
   ]);
   if (__DEV__) console.info('dane widoków: zapytania', `${Date.now() - queried} ms`);
   const tagsOf = new Map<string, string[]>();
@@ -140,6 +148,7 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
         color: r.color as string | null,
         sortKey: String(r.sort_key),
         prefs: prefs.success ? prefs.data : {},
+        projectStatus: (r.project_status as ProjectStatus | null) ?? null,
       };
     })
     .sort(byKey);
@@ -160,7 +169,15 @@ export async function loadAppData(engine: SyncEngine): Promise<AppData> {
     tasks: tasks
       .map((r) => toViewTask(r as unknown as LocalTaskRow, tagsOf.get(String(r.id)) ?? []))
       .filter((t) => listIds.has(t.listId)),
-    habitsDoneToday: new Set(habits.map((r) => String(r.task_id))),
+    habitsDoneToday: new Set(habits.filter((r) => r.occurrence_date === today && r.kind === 'done').map((r) => String(r.task_id))),
+    habitCompletions: habits.reduce((map, r) => {
+      const id = String(r.task_id);
+      const entry = toHabitCompletion({ occurrence_date: r.occurrence_date, kind: r.kind, value: r.value });
+      const list = map.get(id);
+      if (list) list.push(entry);
+      else map.set(id, [entry]);
+      return map;
+    }, new Map<string, HabitCompletion[]>()),
     settings,
     loaded: true,
   };

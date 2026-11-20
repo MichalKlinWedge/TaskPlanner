@@ -1,6 +1,6 @@
 /**
  * Szczegóły zadania (MVP-3, jak panel zadania na webie): tytuł, status, priorytet, lista, termin,
- * godzina, początek, czas, powtarzanie (gramatyka szybkiego dodawania), tagi, przypomnienia,
+ * godzina, początek, czas, powtarzanie (edytor M7, pomiń / zakończ serię), czas pracy, tagi, przypomnienia,
  * opis Markdown (edycja + podgląd z odhaczaniem pól), podzadania do 4 poziomów, kosz.
  * Każda zmiana to `mutate` jednego pola — synchronizacja scala zmiany z innych urządzeń (§6).
  */
@@ -8,22 +8,26 @@ import {
   canAddSubtask,
   datesPatch,
   deleteTaskOps,
+  descendants,
   describeRecurrence,
+  endSeriesOps,
   formatMinutes,
-  localDateTimeAt,
+  isOpen,
+  manualEntryOps,
   moveTaskOps,
-  parseQuickAdd,
   PRIORITY,
   REMINDER_PRESETS,
   reminderOffset,
   relativeDay,
   shortDate,
+  skipOccurrenceOps,
   TASK_STATUS,
   taskTagId,
   taskTagOps,
   toggleMarkdownCheckbox,
   uuidv7,
   type LocalDate,
+  type Recurrence,
   type TaskStatus,
   type ViewTask,
 } from '@taskplanner/core';
@@ -31,15 +35,17 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { useTaskActions } from '@/components/actions';
+import { confirm, useTaskActions } from '@/components/actions';
 import { AttachmentsField } from '@/components/attachments-field';
 import { MarkdownView } from '@/components/markdown-view';
 import { pickDate, pickOption, pickTime } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
+import { RecurrenceEditor } from '@/components/recurrence-editor';
 import { pickList, pickPriority } from '@/components/task-menus';
 import { TaskRow } from '@/components/task-row';
 import { Button, usePalette } from '@/components/ui';
 import { listLabel, useView, type AppData } from '@/lib/app-data';
+import { spentMinutes, useFocusData } from '@/lib/focus';
 import { useLocalQuery } from '@/lib/local-query';
 import { rememberRecent } from '@/lib/recent';
 import { permissionState, requestNotificationPermission } from '@/lib/reminders';
@@ -207,7 +213,8 @@ export default function TaskScreen() {
           </View>
         </View>
 
-        <RecurrenceField key={`rec:${task.id}`} task={task} today={today} timeZone={data.settings.timeZone} onSave={(patch) => void update(patch)} />
+        <RecurrenceField key={`rec:${task.id}`} task={task} data={data} today={today} timeZone={data.settings.timeZone} onSave={(patch) => void update(patch)} />
+        <TimeField task={task} />
         <TagsField task={task} data={data} />
         <RemindersField task={task} today={today} />
 
@@ -264,49 +271,83 @@ function TitleField({ value, onSave }: { value: string; onSave: (title: string) 
   );
 }
 
-function RecurrenceField({ task, today, timeZone, onSave }: { task: ViewTask; today: LocalDate; timeZone?: string; onSave: (patch: Record<string, unknown>) => void }) {
+function RecurrenceField({ task, data, today, timeZone, onSave }: { task: ViewTask; data: AppData; today: LocalDate; timeZone?: string; onSave: (patch: Record<string, unknown>) => void }) {
   const p = usePalette();
+  const { run } = useTaskActions();
   const [editing, setEditing] = useState(false);
-  const [text, setText] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const submit = () => {
-    // Ta sama gramatyka co szybkie dodawanie: „co tydzień”, „w dni robocze”, „co 3 dni po ukończeniu”.
-    const parsed = parseQuickAdd(`x ${text}`, { now: localDateTimeAt(new Date(), timeZone), workspaces: [], lists: [], tags: [] });
-    const rec = parsed.fields.recurrence;
-    if (!rec) return setError('Nie rozpoznano — np. „co tydzień”, „w dni robocze”, „co miesiąc 15.”, „co 3 dni po ukończeniu”.');
-    // Seria liczy się od terminu zadania (kotwica), a nie od dziś.
-    const due = task.dueDate ?? parsed.fields.dueDate ?? today;
-    onSave({ recurrence: rec.mode === 'schedule' ? { ...rec, anchor: due } : rec, due_date: due });
+  const anchor = task.dueDate ?? today;
+  const save = (recurrence: Recurrence) => {
+    // Seria liczy się od terminu zadania; termin przechodzi na pierwsze pasujące wystąpienie.
+    const due = recurrence.mode === 'schedule' ? recurrence.anchor : anchor;
+    onSave({ recurrence, ...datesPatch(task, { due_date: due }) });
     setEditing(false);
-    setText('');
-    setError(null);
+  };
+  const series = !!task.recurrence && task.kind === 'task' && isOpen(task);
+  const skip = () => {
+    const result = skipOccurrenceOps(task, { now: new Date(), timeZone, subtasks: descendants(data.tasks, task.id) });
+    void run(result.ops, { text: result.nextDue ? `Pominięto — następny termin: ${relativeDay(result.nextDue, today)}` : 'Pominięto ostatnie wystąpienie — seria zakończona', undo: result.undo });
+  };
+  const end = async () => {
+    if (!(await confirm(`Zakończyć serię „${task.title}”?`, 'Kolejne wystąpienia nie powstaną.', 'Zakończ', 'Anuluj'))) return;
+    const result = endSeriesOps(task, new Date());
+    void run(result.ops, { text: `Zakończono serię „${task.title}”`, undo: result.undo });
   };
   return (
     <Block title="Powtarzanie">
       {editing ? (
-        <View style={{ gap: 8 }}>
-          <TextInput
-            autoFocus
-            value={text}
-            onChangeText={setText}
-            onSubmitEditing={submit}
-            placeholder="np. co tydzień w poniedziałek"
-            placeholderTextColor={p.muted}
-            style={[styles.input, { color: p.fg, borderColor: p.border }]}
-          />
-          <View style={styles.pills}>
-            <Pill label="Ustaw" onPress={submit} color={p.accent} />
-            <Pill label="Anuluj" onPress={() => setEditing(false)} />
-          </View>
-          {error ? <Text style={{ color: p.bad, fontSize: 12 }}>{error}</Text> : null}
-        </View>
+        <RecurrenceEditor value={task.recurrence} anchor={anchor} today={today} timeZone={timeZone} onSave={save} onCancel={() => setEditing(false)} />
       ) : (
-        <View style={styles.pills}>
-          <Text style={{ color: task.recurrence ? p.fg : p.muted, fontSize: 15, flexShrink: 1 }}>{task.recurrence ? `↻ ${describeRecurrence(task.recurrence)}` : 'Nie powtarza się'}</Text>
-          <Pill label={task.recurrence ? 'Zmień' : 'Ustaw'} onPress={() => setEditing(true)} />
-          {task.recurrence ? <Pill label="Usuń" onPress={() => onSave({ recurrence: null })} /> : null}
+        <View style={{ gap: 8 }}>
+          <View style={styles.pills}>
+            <Text style={{ color: task.recurrence ? p.fg : p.muted, fontSize: 15, flexShrink: 1 }}>{task.recurrence ? `↻ ${describeRecurrence(task.recurrence)}` : 'Nie powtarza się'}</Text>
+            <Pill label={task.recurrence ? 'Zmień' : 'Ustaw'} onPress={() => setEditing(true)} />
+            {task.recurrence ? <Pill label="Usuń" onPress={() => onSave({ recurrence: null })} /> : null}
+          </View>
+          {series ? (
+            <>
+              <View style={styles.pills}>
+                <Pill label="Pomiń to wystąpienie" onPress={skip} />
+                <Pill label="Zakończ serię" color={p.bad} onPress={() => void end()} />
+              </View>
+              <Text style={{ color: p.muted, fontSize: 12 }}>Zmiana terminu wyżej przesuwa tylko to wystąpienie.</Text>
+            </>
+          ) : null}
         </View>
       )}
+    </Block>
+  );
+}
+
+/** Czas pracy (Etap 7): spędzono kontra szacunek (`duration_min`), „▶ Skup się”, ręczny wpis. */
+function TimeField({ task }: { task: ViewTask }) {
+  const p = usePalette();
+  const { run } = useTaskActions();
+  const focus = useFocusData();
+  const spent = spentMinutes(focus.entries, task.id);
+  const estimate = task.durationMin;
+  const add = () =>
+    void pickOption<number>('Dodaj czas pracy (kończy się teraz)', [5, 10, 15, 25, 30, 45, 60, 90, 120].map((m) => ({ label: formatMinutes(m), value: m }))).then((min) => {
+      if (!min) return;
+      const ops = manualEntryOps(task.id, min, new Date());
+      void run(ops, { text: `Dodano ${formatMinutes(min)} pracy`, undo: ops.map((op) => ({ ...op, patch: { deleted_at: new Date().toISOString() } })) });
+    });
+  const current = focus.state.phase !== 'idle' && focus.state.taskId === task.id;
+  return (
+    <Block title="Czas pracy" right={<Pill label="+ Dodaj czas" onPress={add} />}>
+      <Text style={{ color: p.fg, fontSize: 15 }}>
+        Spędzono {formatMinutes(spent)}
+        {estimate ? ` / szac. ${formatMinutes(estimate)}` : ''}
+      </Text>
+      {estimate ? (
+        <View style={[styles.bar, { backgroundColor: p.border }]}>
+          <View style={{ width: `${Math.min(100, (spent / estimate) * 100)}%`, height: '100%', backgroundColor: spent > estimate ? p.bad : p.accent }} />
+        </View>
+      ) : null}
+      {isOpen(task) && task.kind === 'task' ? (
+        <View style={styles.pills}>
+          <Pill label={current ? '⏱ Timer trwa — otwórz' : '▶ Skup się'} color={p.accent} onPress={() => router.push({ pathname: '/focus', params: { task: task.id } })} />
+        </View>
+      ) : null}
     </Block>
   );
 }
@@ -516,5 +557,6 @@ const styles = StyleSheet.create({
   description: { minHeight: 140 },
   previewBox: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 10 },
   reminder: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  bar: { height: 6, borderRadius: 3, overflow: 'hidden' },
   footer: { flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderColor: '#8884', paddingTop: 12 },
 });

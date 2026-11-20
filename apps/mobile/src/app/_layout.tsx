@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
 import { router, Stack, usePathname, useSegments, type ErrorBoundaryProps } from 'expo-router';
 import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
@@ -14,6 +15,7 @@ import { registerBackgroundSync } from '@/lib/background-sync';
 import { sessionUser } from '@/lib/config';
 import { flushErrors, reportError, setErrorRoute } from '@/lib/error-log';
 import { startCapture } from '@/lib/files';
+import { startFocusWork } from '@/lib/focus';
 import { loadProfile, onboardingGateHeld, onOnboardingGateRelease } from '@/lib/profile';
 import { handleResponse, setupNotifications } from '@/lib/reminders';
 import { scheduleReminders } from '@/lib/scheduler';
@@ -159,9 +161,14 @@ function BackgroundWork() {
 
 function useAppStart() {
   useEffect(() => {
-    setupNotifications()
-      .then(() => scheduleReminders())
-      .catch((error) => console.warn('powiadomienia', error));
+    let alive = true;
+    let stopFocus: (() => void) | undefined;
+    const ready = setupNotifications().catch((error) => console.warn('powiadomienia', error));
+    void ready.then(() => scheduleReminders());
+    // Timer skupienia (po kanałach powiadomień): powiadomienia, koniec etapu w chwili końca, porzucone wpisy.
+    void ready.then(() => {
+      if (alive) stopFocus = startFocusWork(() => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined));
+    });
     registerBackgroundSync().catch((error) => console.warn('synchronizacja w tle', error));
     startOnlineSync().catch((error) => console.warn('synchronizacja', error));
     refreshTodayWidget().catch(() => undefined);
@@ -174,10 +181,29 @@ function useAppStart() {
       void handleResponse(response, 'foreground');
     });
     return () => {
+      alive = false;
       sub.remove();
       offSynced();
+      stopFocus?.();
     };
   }, []);
+}
+
+/** Dotknięcie powiadomienia (nie przycisku): timer → ekran skupienia, nawyk → „Nawyki”, zadanie → szczegóły. */
+function NotificationTap() {
+  const response = Notifications.useLastNotificationResponse();
+  const handled = useRef<string | null>(null);
+  useEffect(() => {
+    if (!response || response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+    const key = `${response.notification.request.identifier}:${response.notification.date}`;
+    if (handled.current === key) return;
+    handled.current = key;
+    const data = (response.notification.request.content.data ?? {}) as { focus?: boolean; taskId?: string; habit?: boolean; batch?: string };
+    if (data.focus) router.push('/focus');
+    else if (data.habit) router.push('/habits');
+    else if (data.taskId && !data.batch) router.push({ pathname: '/task/[id]', params: { id: data.taskId } });
+  }, [response]);
+  return null;
 }
 
 export default function RootLayout() {
@@ -191,9 +217,17 @@ export default function RootLayout() {
           <ShareRedirect />
           <OnboardingGate />
           <BackgroundWork />
+          <NotificationTap />
           <Stack screenOptions={{ headerStyle: { backgroundColor: p.card }, headerTintColor: p.fg, contentStyle: { backgroundColor: p.bg } }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'Task Planner' }} />
             <Stack.Screen name="task/[id]" options={{ title: 'Zadanie' }} />
+            <Stack.Screen name="focus" options={{ title: 'Skupienie' }} />
+            <Stack.Screen name="habits" options={{ title: 'Nawyki' }} />
+            <Stack.Screen name="habit/[id]" options={{ title: 'Nawyk' }} />
+            <Stack.Screen name="habit-form" options={{ title: 'Nawyk' }} />
+            <Stack.Screen name="board" options={{ title: 'Tablica' }} />
+            <Stack.Screen name="review/daily" options={{ title: 'Przegląd dnia' }} />
+            <Stack.Screen name="review/weekly" options={{ title: 'Przegląd tygodnia' }} />
             <Stack.Screen name="quick-add" options={{ title: 'Szybkie dodawanie', presentation: 'formSheet', sheetAllowedDetents: 'fitToContents', headerShown: false }} />
             <Stack.Screen name="list/[id]" options={{ title: 'Lista' }} />
             <Stack.Screen name="tag/[id]" options={{ title: 'Tag' }} />

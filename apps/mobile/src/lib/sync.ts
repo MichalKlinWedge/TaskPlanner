@@ -237,6 +237,14 @@ export async function mutate(table: SyncedTable, id: string, patch: Record<strin
   if (sessionUser().online && serverConfig()) engine.requestSync();
 }
 
+/** Kilka zmian w jednej transakcji (jedno odświeżenie widoków) — przejście timera, decyzja przeglądu. */
+export async function mutateMany(ops: readonly { table: SyncedTable; id: string; patch: Record<string, unknown> }[]) {
+  if (!ops.length) return;
+  const engine = await localEngine();
+  await engine.mutateMany(ops);
+  if (sessionUser().online && serverConfig()) engine.requestSync();
+}
+
 export async function syncNow(): Promise<number> {
   if (!sessionUser().online) throw new Error('Tryb offline — zaloguj się, żeby synchronizować.');
   const engine = await localEngine();

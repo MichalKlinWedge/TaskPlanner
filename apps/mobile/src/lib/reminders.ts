@@ -18,8 +18,9 @@ import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 
 import { readJson, writeJson } from './config';
-import { completeTaskById, postponeTaskById, pushNow } from './headless';
-import { ACTION, CATEGORY_ID, CHANNEL_ID, scheduleReminders, snoozeNotification, type ReminderData } from './scheduler';
+import { FOCUS_ACTION, setupFocusNotifications, syncFocusNotifications, type FocusNotificationData } from './focus';
+import { completeTaskById, focusCommand, habitDoneById, postponeTaskById, pushNow, type FocusCommand } from './headless';
+import { ACTION, CATEGORY_ID, CHANNEL_ID, HABIT_CATEGORY_ID, scheduleReminders, snoozeNotification, type ReminderData } from './scheduler';
 import { createTask, reminderListId } from './tasks';
 import { toLocalDate, toLocalTime } from './time';
 import { refreshTodayWidget } from '../widget/refresh';
@@ -112,6 +113,8 @@ export async function setupNotifications() {
     { identifier: ACTION.snooze, buttonTitle: 'Odłóż 10 min', options: { opensAppToForeground: false } },
     { identifier: ACTION.tomorrow, buttonTitle: 'Jutro', options: { opensAppToForeground: false } },
   ]);
+  await Notifications.setNotificationCategoryAsync(HABIT_CATEGORY_ID, [{ identifier: ACTION.habitDone, buttonTitle: 'Zrobione', options: { opensAppToForeground: false } }]);
+  await setupFocusNotifications();
   if (!(await TaskManager.isTaskRegisteredAsync(NOTIFICATION_TASK))) await Notifications.registerTaskAsync(NOTIFICATION_TASK);
 }
 
@@ -242,6 +245,27 @@ function logAction(entry: ActionLog) {
   writeJson(K.actions, [...actionLog().slice(-199), entry]);
 }
 
+const FOCUS_COMMAND: Record<string, FocusCommand['kind']> = {
+  [FOCUS_ACTION.pause]: 'pause',
+  [FOCUS_ACTION.resume]: 'resume',
+  [FOCUS_ACTION.skip]: 'skip',
+  [FOCUS_ACTION.stop]: 'stop',
+  [FOCUS_ACTION.continue]: 'continue',
+};
+
+/**
+ * Akcja timera skupienia: polecenie tylko dla stanu, którego dotyczy powiadomienie (`stamp`) —
+ * powtórzona akcja albo stare powiadomienie nic nie zmienią; potem powiadomienia od nowa.
+ */
+async function handleFocusAction(action: string, data: Partial<FocusNotificationData>, entry: ActionLog) {
+  const kind = FOCUS_COMMAND[action];
+  if (!kind) return;
+  const result = await focusCommand({ kind } as FocusCommand, data.stamp);
+  entry.ms = Date.now() - entry.at;
+  await syncFocusNotifications(result);
+  if (result.changed) await pushNow();
+}
+
 /** Wspólna obsługa odpowiedzi: zadanie w tle i słuchacz na wierzchu. */
 export async function handleResponse(response: Notifications.NotificationResponse | Record<string, unknown>, appState: ActionLog['appState']) {
   const r = response as { actionIdentifier?: string; notification?: { date?: number; request?: { identifier?: string; content?: Record<string, unknown> } } };
@@ -249,12 +273,19 @@ export async function handleResponse(response: Notifications.NotificationRespons
   if (!action || action === Notifications.DEFAULT_ACTION_IDENTIFIER) return;
   const notificationId = r.notification?.request?.identifier ?? '';
   const data = contentData(r.notification?.request?.content);
-  const key = `${notificationId}:${action}`;
+  const focusData = data as Partial<FocusNotificationData> | undefined;
+  const key = focusData?.focus ? `${notificationId}:${action}:${focusData.stamp}` : `${notificationId}:${action}`;
   const handled = readJson<string[]>(K.handled, []);
   if (inFlight.has(key) || handled.includes(key)) return;
   inFlight.add(key);
   const entry: ActionLog = { at: Date.now(), action, taskId: data?.taskId ?? '', notificationId, appState, ok: true };
   try {
+    if (focusData?.focus) {
+      entry.taskId = 'focus';
+      await handleFocusAction(action, focusData, entry);
+      writeJson(K.handled, [...handled.slice(-499), key]);
+      return;
+    }
     if (data) recordDelivery(notificationId, data, r.notification?.date ?? Date.now(), 'action');
     if (!data?.taskId) throw new Error('brak taskId w powiadomieniu');
     // Zamknięcie od razu: zapis w tle (wczytanie danych, kolejka bazy) potrafi trwać kilkanaście
@@ -267,6 +298,7 @@ export async function handleResponse(response: Notifications.NotificationRespons
     if (action === ACTION.complete) await completeTaskById(data.taskId, data.occurrenceDate);
     else if (action === ACTION.tomorrow) await postponeTaskById(data.taskId, data.occurrenceDate);
     else if (action === ACTION.snooze) await snoozeNotification(notificationId, data as ReminderData);
+    else if (action === ACTION.habitDone && data.occurrenceDate) await habitDoneById(data.taskId, data.occurrenceDate);
     entry.ms = Date.now() - entry.at;
     writeJson(K.handled, [...handled.slice(-499), key]);
     // Najpierw wysyłka: przeplanowanie i widżet wczytują dane od nowa, a w tle to kilka sekund.
