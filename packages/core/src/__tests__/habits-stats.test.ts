@@ -19,6 +19,7 @@ import {
   habitEndDate,
   habitEntryOps,
   habitFields,
+  habitMonthly,
   habitNeedsReminder,
   habitProgressLabel,
   habitSaveOps,
@@ -266,6 +267,30 @@ describe('Etap 8: formularz nawyku', () => {
     const custom = habitDraft({ recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY;INTERVAL=2;COUNT=10', anchor: '2026-11-01' }, habit: null }, today);
     expect(custom).toMatchObject({ schedule: { kind: 'custom', rrule: 'FREQ=DAILY;INTERVAL=2' }, end: { kind: 'count', n: 10 } });
     expect(habitFields({ ...custom, end: { kind: 'never' } }).recurrence.rrule).toBe('FREQ=DAILY;INTERVAL=2');
+  });
+
+  it('co miesiąc: dzień miesiąca, N-ty dzień tygodnia, ostatni (roboczy) dzień — tam i z powrotem', () => {
+    const base = { start: '2026-12-10', target: null, unit: null, time: null };
+    expect(habitMonthly('2026-12-10')).toEqual({ kind: 'monthly', by: 'day', day: 10, nth: 2, weekday: 'TH' });
+    const cases: [Parameters<typeof habitFields>[0]['schedule'], string, string, string[]][] = [
+      [habitMonthly('2026-12-10'), 'FREQ=MONTHLY;BYMONTHDAY=10', '10. dnia miesiąca', ['2026-12-10', '2027-01-10', '2027-02-10']],
+      [{ kind: 'monthly', by: 'weekday', day: 10, nth: 1, weekday: 'MO' }, 'FREQ=MONTHLY;BYDAY=1MO', 'pierwszy poniedziałek miesiąca', ['2027-01-04', '2027-02-01', '2027-03-01']],
+      [{ kind: 'monthly', by: 'weekday', day: 10, nth: 3, weekday: 'TU' }, 'FREQ=MONTHLY;BYDAY=3TU', 'trzeci wtorek miesiąca', ['2026-12-15', '2027-01-19', '2027-02-16']],
+      [{ kind: 'monthly', by: 'last_workday', day: 10, nth: 2, weekday: 'TH' }, 'FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1', 'ostatniego dnia roboczego miesiąca', ['2026-12-31', '2027-01-29', '2027-02-26']],
+      // 31. dnia — krótsze miesiące bez wystąpienia.
+      [{ kind: 'monthly', by: 'day', day: 31, nth: 2, weekday: 'TH' }, 'FREQ=MONTHLY;BYMONTHDAY=31', '31. dnia miesiąca', ['2026-12-31', '2027-01-31', '2027-03-31']],
+    ];
+    for (const [schedule, rrule, text, next] of cases) {
+      const f = habitFields({ ...base, schedule, end: { kind: 'count', n: 12 } });
+      expect(f.recurrence).toEqual({ mode: 'schedule', rrule: `${rrule};COUNT=12`, anchor: '2026-12-10' });
+      expect(habitDraft(f, today)).toMatchObject({ schedule, end: { kind: 'count', n: 12 } });
+      expect(describeHabit({ recurrence: { ...f.recurrence, rrule } })).toBe(text);
+      expect(occurrences(f.recurrence, { limit: 3 })).toEqual(next);
+    }
+    expect(() => habitFields({ ...base, schedule: { kind: 'monthly', by: 'day', day: 32, nth: 1, weekday: 'MO' } })).toThrow('od 1 do 31');
+    // Kilka dni miesiąca albo co 2 miesiące — własna reguła.
+    expect(habitDraft({ recurrence: { mode: 'schedule', rrule: 'FREQ=MONTHLY;BYMONTHDAY=1,15', anchor: '2026-12-01' }, habit: null }, today).schedule.kind).toBe('custom');
+    expect(habitDraft({ recurrence: { mode: 'schedule', rrule: 'FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=1', anchor: '2026-12-01' }, habit: null }, today).schedule.kind).toBe('custom');
   });
 
   it('koniec: błędy', () => {

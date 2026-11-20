@@ -66,12 +66,14 @@ export default function HabitFormScreen() {
     ['days', 'W wybrane dni'],
     ['goal', 'N razy w okresie'],
     ...(initial.schedule.kind === 'custom' ? ([['custom', 'Bez zmian (własna reguła)']] as [ScheduleKind, string][]) : []),
+    // „Co miesiąc” ustawia się na webie; tu zostaje bez zmian.
+    ...(initial.schedule.kind === 'monthly' ? ([['monthly', 'Bez zmian (co miesiąc)']] as [ScheduleKind, string][]) : []),
   ];
 
   const submit = async () => {
     try {
       const schedule: HabitDraft['schedule'] =
-        kind === 'days' ? { kind, days } : kind === 'goal' ? { kind, period, times } : kind === 'custom' && initial.schedule.kind === 'custom' ? initial.schedule : { kind: 'daily' };
+        kind === 'days' ? { kind, days } : kind === 'goal' ? { kind, period, times } : (kind === 'custom' || kind === 'monthly') && initial.schedule.kind === kind ? initial.schedule : { kind: 'daily' };
       // `...initial` — pola draftu, których formularz nie edytuje, zostają (np. koniec reguły).
       const draft: HabitDraft = { ...initial, schedule, start, target: quantity ? Number(target.replace(',', '.')) : null, unit: quantity ? unit : null, time };
       if (remind && !draft.time) throw new Error('Przypomnienie wymaga pory.');

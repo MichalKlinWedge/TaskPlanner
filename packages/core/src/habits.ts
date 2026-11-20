@@ -12,8 +12,8 @@ import { addDays, daysBetween, isoWeekday } from './dates.ts';
 import { pluralForm } from './format.ts';
 import { completionId, uuidv7 } from './ids.ts';
 import { WEEKDAY } from './labels.ts';
-import { describeRecurrence, formatRrule, occurrences, parseRrule, WEEKDAY_CODES, type Recurrence, type RRule, type ScheduleRecurrence } from './recurrence.ts';
-import { MAX_COUNT, type RecurrenceEnd } from './recurrence-editor.ts';
+import { describeRecurrence, formatRrule, occurrences, parseRrule, WEEKDAY_CODES, type Recurrence, type RRule, type ScheduleRecurrence, type WeekdayCode } from './recurrence.ts';
+import { draftFromRecurrence, MAX_COUNT, recurrenceFromDraft, type MonthlyBy, type RecurrenceEnd } from './recurrence-editor.ts';
 import { LocalTime, type IsoWeekday, type LocalDate } from './schemas/primitives.ts';
 import { keyBetween } from './sort-key.ts';
 import type { TaskOp } from './tasks.ts';
@@ -466,6 +466,11 @@ export type HabitSchedule =
   | { kind: 'daily' }
   | { kind: 'days'; days: IsoWeekday[] }
   | { kind: 'goal'; period: 'week' | 'month'; times: number }
+  /**
+   * Co miesiąc w ustalony dzień: `day` (1–31; w krótszym miesiącu bez wystąpienia), N-ty dzień
+   * tygodnia (`nth` 1–4 albo −1 = ostatni, `weekday`), ostatni dzień albo ostatni dzień roboczy.
+   */
+  | { kind: 'monthly'; by: MonthlyBy; day: number; nth: number; weekday: WeekdayCode }
   /** Reguła spoza formularza (np. z szybkiego dodawania „co 2 dni”) — zostaje bez zmian. */
   | { kind: 'custom'; rrule: string };
 
@@ -478,6 +483,12 @@ export interface HabitDraft {
   target: number | null;
   unit: string | null;
   time: LocalTime | null;
+}
+
+/** Domyślny „co miesiąc” z dnia początku: ten sam dzień miesiąca / ten sam N-ty dzień tygodnia. */
+export function habitMonthly(start: LocalDate): Extract<HabitSchedule, { kind: 'monthly' }> {
+  const d = draftFromRecurrence(null, start);
+  return { kind: 'monthly', by: 'day', day: d.monthDays[0]!, nth: d.nth, weekday: d.weekday };
 }
 
 /** Formularz z pól zadania (nowy nawyk: codziennie od dziś). */
@@ -494,6 +505,13 @@ export function habitDraft(task: { recurrence: Recurrence | null; habit: HabitSe
     const days = rule.byDay.map((d) => (WEEKDAY_CODES.indexOf(d.day) + 1) as IsoWeekday).sort();
     return { ...base, schedule: days.length === 7 ? { kind: 'daily' } : { kind: 'days', days } };
   }
+  if (rule.freq === 'MONTHLY' && rule.interval === 1 && !rule.byMonth.length) {
+    const m = draftFromRecurrence({ mode: 'schedule', rrule: formatRrule(rule as RRule), anchor: habit.recurrence.anchor }, habit.recurrence.anchor);
+    // Edytor nawyku zna jeden dzień miesiąca; kilka dni („1, 15”) zostaje własną regułą.
+    if (m.monthlyBy !== 'day' || (m.monthDays.length === 1 && m.monthDays[0]! > 0)) {
+      return { ...base, schedule: { kind: 'monthly', by: m.monthlyBy, day: m.monthDays[0]!, nth: m.nth, weekday: m.weekday } };
+    }
+  }
   return { ...base, schedule: { kind: 'custom', rrule: formatRrule(rule as RRule) } };
 }
 
@@ -506,6 +524,10 @@ export function habitFields(draft: HabitDraft): { recurrence: ScheduleRecurrence
     if (!schedule.days.length) throw new Error('Wybierz co najmniej jeden dzień tygodnia.');
     const days = [...new Set(schedule.days)].sort();
     if (days.length < 7) rrule = `FREQ=WEEKLY;BYDAY=${days.map((d) => WEEKDAY_CODES[d - 1]).join(',')}`;
+  } else if (schedule.kind === 'monthly') {
+    if (schedule.by === 'day' && (!Number.isInteger(schedule.day) || schedule.day < 1 || schedule.day > 31)) throw new Error('Dzień miesiąca: od 1 do 31.');
+    const monthly = { ...draftFromRecurrence(null, draft.start), unit: 'month' as const, monthlyBy: schedule.by, monthDays: [schedule.day], nth: schedule.nth, weekday: schedule.weekday };
+    rrule = (recurrenceFromDraft(monthly, draft.start) as ScheduleRecurrence).rrule;
   } else if (schedule.kind === 'custom') {
     // Koniec reguły ustawia pole „Koniec” — własna reguła bez COUNT/UNTIL.
     const { count: _count, until: _until, ...rule } = parseRrule(schedule.rrule);
