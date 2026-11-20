@@ -115,8 +115,19 @@ describe('nawyki (Etap 8)', () => {
     expect(reminderFireTimes([habit], [rule], { ...win, to: '2026-11-22T12:00:00Z', habitCompletions: done }).map((f) => f.key)).toEqual(['hr:2026-11-22']);
   });
 
-  it('bezwzględne i zamknięte nawyki nie przypominają; treść z celem', () => {
-    expect(reminderFireTimes([habit], [{ ...rule, kind: 'absolute', offsetMin: null, atDate: '2026-11-20', atTime: '10:00' }], win)).toEqual([]);
+  it('jednorazowe: raz w wybranym dniu i godzinie, pominięte po odhaczeniu dnia', () => {
+    const once: ReminderRule = { ...rule, id: 'ha', kind: 'absolute', offsetMin: null, atDate: '2026-11-20', atTime: '10:00' };
+    expect(reminderFireTimes([habit], [once], win).map((f) => [f.key, f.fireAt, f.dueAt])).toEqual([['ha:2026-11-20', '2026-11-20T09:00:00.000Z', null]]);
+    const done = new Map([['h', [{ date: '2026-11-20', kind: 'done' as const, value: 8 }]]]);
+    expect(reminderFireTimes([habit], [once], { ...win, habitCompletions: done })).toEqual([]);
+  });
+
+  it('nawyk z końcem nie przypomina po ostatnim dniu', () => {
+    const ending = { ...habit, recurrence: { mode: 'schedule' as const, rrule: 'FREQ=DAILY;UNTIL=20261121', anchor: '2026-11-01' } };
+    expect(reminderFireTimes([ending], [rule], { ...win, to: '2026-11-24T12:00:00Z' }).map((f) => f.key)).toEqual(['hr:2026-11-20', 'hr:2026-11-21']);
+  });
+
+  it('zamknięte nawyki nie przypominają; treść z celem', () => {
     expect(reminderFireTimes([{ ...habit, status: 'cancelled' }], [rule], win)).toEqual([]);
     const [fire] = reminderFireTimes([habit], [rule], win);
     expect(reminderBody(habit, fire!, '2026-11-20T06:30:00Z', WAW)).toEqual({ title: 'Woda', body: 'Nawyk na dziś · cel 8 szklanek' });
