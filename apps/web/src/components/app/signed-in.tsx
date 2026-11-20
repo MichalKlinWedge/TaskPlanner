@@ -18,7 +18,7 @@ import { ProfileForm, type ProfileValues } from "./profile-form";
 import { InstallCard, OfflineCard } from "./pwa-cards";
 import { RemindersCard } from "./reminders-card";
 import { Shell } from "./shell";
-import { Button, Card, Notice, Splash } from "./ui";
+import { Card, Notice, Splash } from "./ui";
 import { WorkspacesScreen } from "./workspaces-screen";
 
 interface ProfileRow extends Record<string, string | number | null> {
@@ -250,9 +250,13 @@ function AppHeader({ store, email, settingsLink }: { store: TabStore; email: str
             <span aria-hidden>⚙️</span>
           </a>
         ) : null}
-        <Button kind="ghost" onClick={() => void signOut()}>
-          Wyloguj
-        </Button>
+        <button type="button" onClick={() => void signOut()} aria-label="Wyloguj" title="Wyloguj" className="px-1 opacity-70 outline-none hover:opacity-100">
+          <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <path d="m16 17 5-5-5-5" />
+            <path d="M21 12H9" />
+          </svg>
+        </button>
       </header>
       {stale ? (
         <p role="alert" className="border-b border-amber-400 bg-amber-100 px-4 py-2 text-sm text-amber-900 dark:bg-amber-900/40 dark:text-amber-100" data-testid="stale-leader">
