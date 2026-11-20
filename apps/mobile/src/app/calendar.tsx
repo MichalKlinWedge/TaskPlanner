@@ -5,17 +5,21 @@
  * „Zaplanuj…” dla zadań bez godziny (`scheduleBlockPatch`), menu bloku (godzina, czas trwania, „Bez
  * godziny” — `unscheduleBlockPatch`). Tydzień: `calendarEntries` → `agendaDays`. Miesiąc: `monthWeeks`
  * z liczbą pozycji, dotknięcie dnia → agenda dnia. Wydarzenia: kalendarze połączone na serwerze
- * i wybrane kalendarze telefonu (`lib/calendar-events.ts`). Wszystkie zmiany z „Cofnij”.
+ * i wybrane kalendarze telefonu (`lib/calendar-events.ts`). Wszystkie zmiany z „Cofnij”. Chipy filtra
+ * zawężają zadania we wszystkich widokach (wydarzenia i nawyki zostają); bez terminu i godziny, bo o nich
+ * decyduje kalendarz; filtr trwa do opuszczenia ekranu, nie jest zapisywany.
  */
 import {
   addDays,
   addMonths,
   agendaDays,
+  applyFilter,
   calendarEntries,
   capitalized,
   dayLabel,
   formatMinutes,
   habitSlots,
+  isEmptyFilter,
   isOpen,
   isoWeekday,
   localDateTimeAt,
@@ -34,6 +38,7 @@ import {
   WEEKDAY,
   type Block,
   type CalendarEntry,
+  type FilterQuery,
   type IsoWeekday,
   type LocalDate,
   type LocalTime,
@@ -48,6 +53,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTaskActions } from '@/components/actions';
 import { DayTimeline } from '@/components/day-timeline';
+import { FilterBar, type FilterField } from '@/components/filter-bar';
 import { pickMany, pickOption, pickTime, type Option } from '@/components/pickers';
 import { Chip, usePalette } from '@/components/ui';
 import { useView, type AppData } from '@/lib/app-data';
@@ -65,6 +71,8 @@ const MODES: { mode: Mode; label: string }[] = [
 const HOUR = 56;
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
 const HABIT_COLOR = '#059669';
+/** Termin i godzinę ustala kalendarz — te warunki filtra nic tu nie zmieniają. */
+const HIDDEN: FilterField[] = ['due', 'hasTime'];
 
 const datesBefore = (t: ViewTask): Record<string, unknown> => ({ start_date: t.startDate, due_date: t.dueDate, due_time: t.dueTime, duration_min: t.durationMin });
 const pick = (all: Record<string, unknown>, keys: string[]) => Object.fromEntries(keys.map((k) => [k, all[k] ?? null]));
@@ -74,7 +82,13 @@ export default function CalendarScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ date?: string; mode?: string }>();
-  const { data, today, workspaceId } = useView();
+  const { data: all, today, workspaceId } = useView();
+  const [filter, setFilter] = useState<FilterQuery>({});
+  const data = useMemo((): AppData => {
+    if (isEmptyFilter(filter)) return all;
+    const shown = new Set(applyFilter(all.tasks, filter, today).map((t) => t.id));
+    return { ...all, tasks: all.tasks.filter((t) => t.kind === 'habit' || shown.has(t.id)) };
+  }, [all, filter, today]);
   const { notify } = useTaskActions();
   const [mode, setModeState] = useState<Mode>(() => (params.mode as Mode | undefined) ?? (Storage.getItemSync(MODE_KEY) as Mode | null) ?? 'day');
   const [date, setDate] = useState<LocalDate>(() => (/^\d{4}-\d{2}-\d{2}$/.test(params.date ?? '') ? (params.date as LocalDate) : today));
@@ -135,6 +149,7 @@ export default function CalendarScreen() {
           <View style={{ flex: 1 }} />
           <Chip label="Dziś" selected={date === today} onPress={() => setDate(today)} />
         </View>
+        <FilterBar query={filter} onChange={setFilter} hide={HIDDEN} />
       </View>
       {mode === 'day' ? (
         <DayView key={date} data={data} date={date} today={today} workspaceId={workspaceId} bottom={insets.bottom} />

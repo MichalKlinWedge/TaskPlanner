@@ -12,6 +12,7 @@ import { z } from 'zod';
 
 import { addDays, weekStart, zonedInstant } from './dates.ts';
 import { uuidv5, uuidv7 } from './ids.ts';
+import { FOCUS_PHASE } from './labels.ts';
 import type { LocalDate } from './schemas/primitives.ts';
 import type { TaskOp } from './tasks.ts';
 
@@ -154,6 +155,30 @@ export function advanceFocus(state: FocusState, now: Date, { settings = DEFAULT_
     current = { state: step.state, entries: [...current.entries, ...step.entries] };
   }
   return current;
+}
+
+/** Treść powiadomienia o końcu etapu (web i Web Push z serwera). */
+export const focusEndText = (finished: FocusPhase, next: FocusState): { title: string; body: string } =>
+  finished === 'focus' ? { title: 'Koniec pracy', body: `${FOCUS_PHASE[next.phase]} — odpocznij.` } : { title: 'Koniec przerwy', body: 'Wróć do pracy, kiedy zechcesz.' };
+
+export interface FocusEndPush {
+  /** Jedna wysyłka na odcinek: `<id wpisu>:focus` (wznowienie po pauzie = nowy wpis). */
+  key: string;
+  endsAt: string;
+  taskId: string | null;
+  title: string;
+  body: string;
+}
+
+/**
+ * Koniec bieżącego etapu w oknie `[from, to]` — do Web Push z serwera (`reminders-push`), kiedy żadna
+ * karta nie jest otwarta (otwarta karta przechodzi dalej sama i pokazuje dźwięk / powiadomienie).
+ */
+export function focusEndPush(state: FocusState, settings: FocusSettings, { from, to }: { from: Date; to: Date }): FocusEndPush | null {
+  const end = phaseEndsAt(state, settings);
+  if (!end || !state.entryId || end.getTime() < from.getTime() || end.getTime() > to.getTime()) return null;
+  const next = advanceFocus(state, end, { settings, newId: () => 'next' }).state;
+  return { key: `${state.entryId}:focus`, endsAt: end.toISOString(), taskId: state.taskId, ...focusEndText(state.phase, next) };
 }
 
 /** „Pomiń”: koniec etapu teraz (praca liczy się jako ukończona, przerwa przechodzi w `ready`). */

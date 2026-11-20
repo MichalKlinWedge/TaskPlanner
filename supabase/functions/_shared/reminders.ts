@@ -5,8 +5,11 @@
  * przypomnienia i subskrypcję push. Przypomnienie dostaje autor wiersza `reminders` (`created_by`).
  * Nawyk (Etap 8) przypomina o swojej porze w dni reguły, z pominięciem dni już zaliczonych / wolnych
  * (`completions`); powiadomienie ma wtedy akcję „Zrobione” (`payload.habit`, `payload.date` — Service Worker).
+ * Tryb skupienia (Etap 7): koniec etapu z `profiles.focus` (`core` `focusEndPush`) — powiadomienie także
+ * przy zamkniętej karcie (`payload.focus`; Service Worker pomija je, gdy karta aplikacji jest na wierzchu).
  * Bez Deno — testowane w Node (`tools/edge-tests`).
  */
+import { focusEndPush, parseFocusState } from '../../../packages/core/src/focus.ts';
 import { HabitSettings, toHabitCompletion, type HabitCompletion } from '../../../packages/core/src/habits.ts';
 import { reminderBody, reminderFireTimes, toReminderRule, type ReminderTask } from '../../../packages/core/src/reminders.ts';
 import { Recurrence } from '../../../packages/core/src/recurrence.ts';
@@ -58,16 +61,19 @@ export interface CompletionRow {
 export interface ProfileRow {
   id: string;
   settings: unknown;
+  /** Stan timera skupienia (`profiles.focus`). */
+  focus?: unknown;
 }
 
 export interface PlannedPush {
   userId: string;
   deviceId: string;
   fireKey: string;
-  taskId: string;
+  /** `null` — koniec etapu skupienia bez zadania. */
+  taskId: string | null;
   fireAt: string;
   subscription: PushSubscriptionJson;
-  payload: { key: string; title: string; body: string; url: string; taskId: string; habit?: true; date?: string };
+  payload: { key: string; title: string; body: string; url: string; taskId?: string; habit?: true; date?: string; focus?: true };
 }
 
 /** Urządzenia, które dostają Web Push: przeglądarka z włączonymi przypomnieniami i ważną subskrypcją. */
@@ -91,14 +97,30 @@ export function planPushes(
   const byUser = new Map<string, typeof targets>();
   for (const d of targets) byUser.set(d.scope_id, [...(byUser.get(d.scope_id) ?? []), d]);
   const settings = new Map(profiles.map((p) => [p.id, ProfileSettings.parse(p.settings ?? {})]));
+  const focus = new Map(profiles.map((p) => [p.id, p.focus]));
   const habitCompletions = new Map<string, HabitCompletion[]>();
   for (const c of completions) habitCompletions.set(c.task_id, [...(habitCompletions.get(c.task_id) ?? []), toHabitCompletion(c)]);
 
   const plan: PlannedPush[] = [];
   for (const [userId, userDevices] of byUser) {
+    const s = settings.get(userId) ?? ProfileSettings.parse({});
+    // Koniec etapu skupienia, który już minął (bez wyprzedzenia — powiadomienie nie przychodzi przed końcem).
+    const end = focusEndPush(parseFocusState(focus.get(userId) ?? null), s.focus, { from: new Date(at - LOOKBACK_MS), to: new Date(at) });
+    if (end) {
+      for (const device of userDevices) {
+        plan.push({
+          userId,
+          deviceId: device.id,
+          fireKey: end.key,
+          taskId: end.taskId,
+          fireAt: end.endsAt,
+          subscription: device.subscription,
+          payload: { key: end.key, title: end.title, body: end.body, url: end.taskId ? `/#/focus/${end.taskId}` : '/#/focus', focus: true },
+        });
+      }
+    }
     const rows = reminders.filter((r) => r.created_by === userId && r.tasks && !r.tasks.deleted_at);
     if (!rows.length) continue;
-    const s = settings.get(userId) ?? ProfileSettings.parse({});
     const tasks = new Map<string, ReminderTask>();
     for (const r of rows) {
       const t = r.tasks!;

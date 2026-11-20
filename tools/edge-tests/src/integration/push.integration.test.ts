@@ -186,6 +186,25 @@ describe('Web Push z przypomnień', () => {
     await device(b2);
   });
 
+  it('koniec etapu skupienia (Etap 7) → push przy zamkniętej karcie, raz na odcinek; bez zadania też', async () => {
+    const entryId = uuidv7();
+    const topic = `${entryId.replaceAll('-', '').slice(0, 24)}focus`;
+    // Praca 25 min (domyślnie) skończyła się 5 s temu; żadna karta nie przeszła dalej.
+    const started = new Date(Date.now() - 25 * 60_000 - 5_000).toISOString();
+    await push('profiles', user.id, { focus: { phase: 'focus', taskId: null, segmentStartedAt: started, elapsedMs: 0, paused: false, completedFocus: 0, entryId } });
+    const since = Date.now();
+    await fn('reminders-push', { cron: true });
+    await fn('reminders-push', { cron: true });
+    for (const b of [b1, b2]) {
+      const reqs = received(b, topic, since);
+      expect(reqs).toHaveLength(1);
+      expect(JSON.parse(await decrypt(b, reqs[0]!.body))).toMatchObject({ title: 'Koniec pracy', body: 'Krótka przerwa — odpocznij.', url: '/#/focus', focus: true });
+    }
+    const { data: rows } = await db.from('reminder_deliveries').select('status, task_id').eq('fire_key', `${entryId}:focus`);
+    expect(rows).toEqual([{ status: 'sent', task_id: null }, { status: 'sent', task_id: null }]);
+    await push('profiles', user.id, { focus: null });
+  });
+
   it('klient: widzi swój dziennik, nie pisze go, nie zajmuje wysyłek; funkcja wymaga sekretu crona', async () => {
     expect(((await user.client.from('reminder_deliveries').select('id')).data ?? []).length).toBeGreaterThan(0);
     const { error } = await user.client.from('reminder_deliveries').insert({ user_id: user.id, device_id: b1.id, fire_key: 'x', task_id: uuidv7(), fire_at: new Date().toISOString() });

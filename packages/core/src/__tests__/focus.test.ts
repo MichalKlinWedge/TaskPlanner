@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { advanceFocus, DEFAULT_FOCUS, FOCUS_IDLE, focusEntryId, focusMinutes, focusRemaining, FocusSettings, FocusState, focusStepOps, focusWeek, manualEntryOps, orphanEntryOps, parseFocusState, pauseFocus, phaseEndsAt, resumeFocus, skipPhase, startFocus, stopFocus, type EntryOp } from '../focus.ts';
+import { advanceFocus, DEFAULT_FOCUS, FOCUS_IDLE, focusEndPush, focusEndText, focusEntryId, focusMinutes, focusRemaining, FocusSettings, FocusState, focusStepOps, focusWeek, manualEntryOps, orphanEntryOps, parseFocusState, pauseFocus, phaseEndsAt, resumeFocus, skipPhase, startFocus, stopFocus, type EntryOp } from '../focus.ts';
 import { formatTimer } from '../format.ts';
 import { FOCUS_PHASE } from '../labels.ts';
 
@@ -95,6 +95,23 @@ describe('Pomodoro', () => {
     const s = startFocus(FOCUS_IDLE, { taskId: null, now: at(0), newId: ids() }).state;
     expect(phaseEndsAt(s, settings)).toEqual(at(50));
     expect(advanceFocus(s, at(55), { settings, newId: ids() }).state.phase).toBe('short_break');
+  });
+});
+
+describe('powiadomienie o końcu etapu (Web Push z serwera)', () => {
+  it('koniec w oknie → klucz odcinka i treść; pauza, stoper, poza oknem — nic', () => {
+    const work = startFocus(FOCUS_IDLE, { taskId: 'task', now: at(0), newId: ids() }).state;
+    const win = (from: number, to: number) => focusEndPush(work, DEFAULT_FOCUS, { from: at(from), to: at(to) });
+    expect(win(20, 26)).toEqual({ key: 'e1:focus', endsAt: at(25).toISOString(), taskId: 'task', title: 'Koniec pracy', body: 'Krótka przerwa — odpocznij.' });
+    expect(win(26, 30)).toBeNull();
+    expect(win(0, 24)).toBeNull();
+    expect(focusEndPush(pauseFocus(work, at(10)).state, DEFAULT_FOCUS, { from: at(0), to: at(60) })).toBeNull();
+    const watch = startFocus(FOCUS_IDLE, { taskId: null, mode: 'stopwatch', now: at(0), newId: ids() }).state;
+    expect(focusEndPush(watch, DEFAULT_FOCUS, { from: at(0), to: at(600) })).toBeNull();
+    // Przerwa (już po przejściu): koniec przerwy, bez zadania.
+    const brk = advanceFocus(startFocus(FOCUS_IDLE, { taskId: null, now: at(0), newId: ids() }).state, at(26), { newId: ids() }).state;
+    expect(focusEndPush(brk, DEFAULT_FOCUS, { from: at(29), to: at(31) })).toMatchObject({ endsAt: at(30).toISOString(), taskId: null, title: 'Koniec przerwy' });
+    expect(focusEndText('focus', { ...FOCUS_IDLE, phase: 'long_break' }).body).toBe('Długa przerwa — odpocznij.');
   });
 });
 

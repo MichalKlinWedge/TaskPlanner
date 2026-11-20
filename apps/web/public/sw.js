@@ -22,7 +22,7 @@
  * workerze karty-lidera), więc przekazuje odhaczenie otwartej karcie (`habit-done`) albo otwiera nową
  * (`/?habitDone=<id>&date=<dzień>`) — zapis robi aplikacja (`habitEntryOps`).
  */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL = `tp-shell-${VERSION}`;
 const STATIC = `tp-static-${VERSION}`;
 const PAGE_TIMEOUT = 4000;
@@ -126,6 +126,18 @@ self.addEventListener('push', (event) => {
   }
   event.waitUntil(
     (async () => {
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      if (data.focus) {
+        // Koniec etapu skupienia: karta na wierzchu sama gra dźwięk i pokazuje dymek; ten sam `tag`
+        // co powiadomienie z karty w tle — jedno zastępuje drugie.
+        if (windows.some((w) => w.focused)) return;
+        return void (await self.registration.showNotification(data.title || 'Task Planner', {
+          body: data.body || '',
+          tag: 'tp-focus',
+          icon: '/icons/icon-192.png',
+          data: { url: data.url || '/#/focus' },
+        }));
+      }
       await self.registration.showNotification(data.title || 'Task Planner', {
         body: data.body || '',
         tag: data.key,
@@ -133,7 +145,7 @@ self.addEventListener('push', (event) => {
         data: { url: data.url || '/', taskId: data.taskId, habit: Boolean(data.habit), date: data.date },
         actions: data.habit ? [{ action: 'habit-done', title: 'Zrobione' }] : [],
       });
-      for (const client of await self.clients.matchAll({ type: 'window', includeUncontrolled: true })) {
+      for (const client of windows) {
         client.postMessage({ type: 'reminder', title: data.title, body: data.body, taskId: data.taskId });
       }
     })(),

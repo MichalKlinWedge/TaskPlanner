@@ -12,6 +12,7 @@
 import {
   advanceFocus,
   FOCUS_PHASE,
+  focusEndText,
   focusElapsed,
   focusEntryId,
   focusMinutes,
@@ -126,11 +127,6 @@ async function showNotification(title: string, body: string) {
   }
 }
 
-const endText = (finished: FocusPhase, next: FocusState) =>
-  finished === "focus"
-    ? { title: "Koniec pracy", body: `${FOCUS_PHASE[next.phase]} — odpocznij.` }
-    : { title: "Koniec przerwy", body: "Wróć do pracy, kiedy zechcesz." };
-
 // ── Stan timera ──────────────────────────────────────────────────────────────────────────────
 
 export function FocusProvider({ store, userId, settings, children }: { store: TabStore; userId: string; settings: ProfileSettings; children: ReactNode }) {
@@ -189,7 +185,7 @@ export function FocusProvider({ store, userId, settings, children }: { store: Ta
     const step = advanceFocus(state, new Date(now), { settings: focusSettings, newId: focusEntryId(userId) });
     write(step);
     if (now - endsAt < 60_000) {
-      const text = endText(state.phase, step.state);
+      const text = focusEndText(state.phase, step.state);
       if (document.visibilityState === "visible") {
         chime(state.phase !== "focus");
         notify(`⏱ ${text.title} — ${text.body}`);
@@ -258,12 +254,25 @@ function dial(api: FocusApi): string {
 // ── Wskaźnik w pasku bocznym ─────────────────────────────────────────────────────────────────
 
 /** Aktywny timer (także uruchomiony na innym urządzeniu) — klik otwiera tryb skupienia. */
-export function FocusIndicator({ navigate }: { navigate: (route: Route) => void }) {
+export function FocusIndicator({ navigate, compact }: { navigate: (route: Route) => void; compact?: boolean }) {
   const api = useFocus();
   const { data } = useAppEnv();
   const { state } = api;
   if (state.phase === "idle") return null;
   const task = state.taskId ? data.tasks.find((t) => t.id === state.taskId) : undefined;
+  // Zwinięty pasek boczny: ikona i czas, reszta w podpowiedzi.
+  if (compact)
+    return (
+      <button
+        type="button"
+        onClick={() => navigate({ view: "focus" })}
+        title={`${FOCUS_PHASE[state.phase]}${state.paused ? " · pauza" : ""} — ${task?.title ?? "Bez zadania"} (F)`}
+        className={`mb-1 flex w-10 flex-col items-center rounded-md border py-0.5 ${isBreak(state.phase) || state.phase === "ready" ? "border-green-500/50 bg-green-500/10" : "border-[var(--accent)]/50 bg-[var(--accent)]/10"}`}
+      >
+        <span aria-hidden>{state.paused ? "⏸" : state.phase === "ready" ? "✓" : "⏱"}</span>
+        <span className="font-mono text-[10px] tabular-nums">{state.phase === "ready" ? "" : dial(api)}</span>
+      </button>
+    );
   return (
     <button
       type="button"
