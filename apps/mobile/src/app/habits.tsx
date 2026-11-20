@@ -1,32 +1,39 @@
 /**
  * „Nawyki” (Etap 8): otwarte nawyki bieżącej przestrzeni z opisem, passą, regularnością 30 dni
- * i paskiem 8 dni (uzupełnianie wstecz), zakończone osobno, „+ Nowy nawyk”.
+ * i paskiem 8 dni (uzupełnianie wstecz), zakończone osobno, „+ Nowy nawyk”. Chipy filtra (lista,
+ * godzina — reszta warunków nie dotyczy nawyków) trwają do opuszczenia ekranu, nie są zapisywane.
  */
-import { describeHabit, habitsForDay, habitStats, isOpen, plural, toHabit } from '@taskplanner/core';
+import { applyFilter, describeHabit, habitsForDay, habitStats, isEmptyFilter, isOpen, plural, toHabit, type FilterQuery } from '@taskplanner/core';
 import { router, Stack } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { FilterBar, type FilterField } from '@/components/filter-bar';
 import { completionsOf, HabitDayStrip, pct, STREAK_UNIT } from '@/components/habits';
 import { ScreenHeader } from '@/components/sync-banner';
 import { Fab } from '@/components/task-list';
 import { usePalette } from '@/components/ui';
 import { useView } from '@/lib/app-data';
 
+const HIDDEN: FilterField[] = ['tags', 'priorities', 'statuses', 'due'];
+
 export default function HabitsScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const { data, today, workspaceId } = useView();
+  const [filter, setFilter] = useState<FilterQuery>({});
+  const tasks = useMemo(() => (isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today)), [data.tasks, filter, today]);
   const habits = useMemo(
-    () => data.tasks.filter((t) => t.kind === 'habit' && (!workspaceId || t.workspaceId === workspaceId)).sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1)),
-    [data.tasks, workspaceId],
+    () => tasks.filter((t) => t.kind === 'habit' && (!workspaceId || t.workspaceId === workspaceId)).sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1)),
+    [tasks, workspaceId],
   );
-  const forToday = useMemo(() => habitsForDay(data.tasks, data.habitCompletions, today, today, workspaceId), [data.tasks, data.habitCompletions, today, workspaceId]);
+  const forToday = useMemo(() => habitsForDay(tasks, data.habitCompletions, today, today, workspaceId), [tasks, data.habitCompletions, today, workspaceId]);
   const open = habits.filter(isOpen);
   const closed = habits.filter((t) => !isOpen(t));
   const left = forToday.filter((h) => !h.settled).length;
-  const subtitle = open.length
+  const filtered = !isEmptyFilter(filter);
+  const subtitle = open.length || filtered
     ? `${plural(forToday.length, ['nawyk', 'nawyki', 'nawyków'])} na dziś · ${left ? `${left} do zrobienia` : 'wszystko zrobione'}`
     : 'Codzienne i tygodniowe nawyki z passą i statystykami';
 
@@ -34,7 +41,9 @@ export default function HabitsScreen() {
     <View style={{ flex: 1, backgroundColor: p.bg }}>
       <Stack.Screen options={{ title: 'Nawyki' }} />
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
-        <ScreenHeader subtitle={subtitle} />
+        <ScreenHeader subtitle={subtitle}>
+          <FilterBar query={filter} onChange={setFilter} hide={HIDDEN} />
+        </ScreenHeader>
         {open.map((task) => {
           const habit = toHabit(task);
           if (!habit) return null;
@@ -53,7 +62,8 @@ export default function HabitsScreen() {
             </View>
           );
         })}
-        {!open.length && data.loaded ? (
+        {!open.length && filtered ? <Text style={[styles.empty, { color: p.muted }]}>Żaden otwarty nawyk nie pasuje do filtra.</Text> : null}
+        {!open.length && !filtered && data.loaded ? (
           <Text style={[styles.empty, { color: p.muted }]}>Nie masz jeszcze nawyków. Dodaj pierwszy — np. „Woda 8 szklanek” albo „Siłownia 3 razy w tygodniu”.</Text>
         ) : null}
         {closed.length ? (
