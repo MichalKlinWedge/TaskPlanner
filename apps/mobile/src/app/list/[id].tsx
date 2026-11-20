@@ -1,14 +1,16 @@
 /**
  * Lista / projekt (M9): drzewo podzadań ze zwijaniem i postępem (kolejność ręczna, bez grupowania)
- * albo grupy po sortowaniu; sortowanie, grupowanie i ukończone w `view_prefs` listy — jak na webie.
+ * albo grupy po sortowaniu; sortowanie, grupowanie, ukończone i chipy filtra w `view_prefs` listy — jak na webie.
  * „▦ Tablica” otwiera kanban listy (`/board?list=`).
  */
 import {
+  applyFilter,
   buildTree,
   COMPLETED_MODE,
   flattenTree,
   GROUP_BY,
   groupTasks,
+  isEmptyFilter,
   isOpen,
   LIST_KIND,
   plural,
@@ -17,6 +19,7 @@ import {
   sortTasks,
   withCompleted,
   type CompletedMode,
+  type FilterQuery,
   type GroupBy,
   type SortBy,
   type ViewPrefs,
@@ -26,6 +29,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
+import { FilterBar } from '@/components/filter-bar';
 import { pickOption } from '@/components/pickers';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
@@ -62,8 +66,12 @@ export default function ListScreen() {
   const sortBy: SortBy = list?.prefs.sortBy ?? 'manual';
   const groupBy: GroupBy = list?.prefs.groupBy ?? 'none';
   const completed: CompletedMode = list?.prefs.completed ?? 'today';
+  const filter = list?.prefs.filter;
 
-  const tasks = useMemo(() => withCompleted(data.tasks.filter((t) => t.listId === id), completed, ctx), [data.tasks, id, completed, ctx]);
+  const tasks = useMemo(() => {
+    const own = data.tasks.filter((t) => t.listId === id);
+    return withCompleted(filter && !isEmptyFilter(filter) ? applyFilter(own, filter, today) : own, completed, ctx);
+  }, [data.tasks, id, filter, today, completed, ctx]);
   const tree = sortBy === 'manual' && groupBy === 'none';
   const row = rowMaker(data, today);
 
@@ -110,6 +118,12 @@ export default function ListScreen() {
   }
 
   const setPrefs = (patch: Partial<ViewPrefs>) => void mutate('lists', list.id, { view_prefs: { ...list.prefs, ...patch } }).catch((e: unknown) => notify(String(e)));
+  const setFilter = (next: FilterQuery) => {
+    const prefs = { ...list.prefs };
+    delete prefs.filter;
+    if (!isEmptyFilter(next)) prefs.filter = next;
+    void mutate('lists', list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
+  };
   const workspace = data.workspaces.find((w) => w.id === list.workspaceId)?.name;
   const title = list.kind === 'inbox' ? `Inbox · ${workspace ?? ''}` : list.name;
 
@@ -128,6 +142,7 @@ export default function ListScreen() {
                 <Text style={{ color: p.accent, fontSize: 13 }}>▦ Tablica</Text>
               </Pressable>
             </View>
+            <FilterBar query={filter ?? {}} onChange={setFilter} hide={['lists']} />
           </ScreenHeader>
         }
         empty="Brak zadań."

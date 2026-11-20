@@ -1,6 +1,6 @@
 /**
  * Arkusze wyboru wywoływane z dowolnego miejsca (gest na wierszu, pasek zaznaczenia, szczegóły
- * zadania): `pickOption` — lista opcji, `pickDate` — gotowe dni + kalendarz miesiąca, `pickTime` —
+ * zadania): `pickOption` — lista opcji, `pickMany` — kilka opcji z „Gotowe”, `pickDate` — gotowe dni + kalendarz miesiąca, `pickTime` —
  * gotowe godziny + wpisanie. Jeden `<PickerHost />` w układzie głównym; Promise kończy się wyborem
  * albo `undefined` po zamknięciu. Własne arkusze zamiast natywnego wyboru daty — bez dodatkowego
  * modułu natywnego, a gotowe dni („Jutro”, „Za tydzień”) są o jedno dotknięcie.
@@ -22,6 +22,7 @@ export interface Option<T> {
 
 type Request =
   | { kind: 'option'; title: string; options: Option<unknown>[]; resolve: (value: unknown) => void }
+  | { kind: 'many'; title: string; options: Option<unknown>[]; resolve: (value: unknown[] | undefined) => void }
   | { kind: 'date'; title: string; value: LocalDate | null; today: LocalDate; allowNone: boolean; firstDayOfWeek: number; resolve: (value: LocalDate | null | undefined) => void }
   | { kind: 'time'; title: string; value: LocalTime | null; allowNone: boolean; resolve: (value: LocalTime | null | undefined) => void };
 
@@ -42,6 +43,10 @@ function open<T>(request: Pending): Promise<T> {
 
 export const pickOption = <T,>(title: string, options: Option<T>[]): Promise<T | undefined> =>
   open<T | undefined>({ kind: 'option', title, options: options as Option<unknown>[] });
+
+/** Wybór kilku opcji (`selected` = zaznaczone na starcie); „Gotowe” zwraca zaznaczone, zamknięcie — `undefined`. */
+export const pickMany = <T,>(title: string, options: Option<T>[]): Promise<T[] | undefined> =>
+  open<T[] | undefined>({ kind: 'many', title, options: options as Option<unknown>[] });
 
 /** `null` = „Bez terminu” (gdy `allowNone`), `undefined` = zamknięte bez wyboru. */
 export const pickDate = (opts: { title: string; value: LocalDate | null; today: LocalDate; allowNone?: boolean; firstDayOfWeek?: number }): Promise<LocalDate | null | undefined> =>
@@ -69,6 +74,7 @@ export function PickerHost() {
       {request ? (
         <Sheet title={request.title} onClose={() => close()}>
           {request.kind === 'option' ? <OptionList options={request.options} /> : null}
+          {request.kind === 'many' ? <ManyList key={request.title} options={request.options} /> : null}
           {request.kind === 'date' ? <DatePicker key={`${request.title}:${request.value}`} request={request} /> : null}
           {request.kind === 'time' ? <TimePicker key={`${request.title}:${request.value}`} request={request} /> : null}
         </Sheet>
@@ -119,6 +125,40 @@ function OptionList({ options }: { options: Option<unknown>[] }) {
           {o.hint ? <Text style={{ color: p.muted, fontSize: 13 }}>{o.hint}</Text> : null}
         </Pressable>
       ))}
+    </View>
+  );
+}
+
+function ManyList({ options }: { options: Option<unknown>[] }) {
+  const p = usePalette();
+  const [picked, setPicked] = useState<ReadonlySet<number>>(() => new Set(options.flatMap((o, i) => (o.selected ? [i] : []))));
+  const toggle = (i: number) =>
+    setPicked((current) => {
+      const next = new Set(current);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  return (
+    <View>
+      {options.map((o, i) => (
+        <Pressable
+          key={`${i}:${o.label}`}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: picked.has(i) }}
+          onPress={() => toggle(i)}
+          style={({ pressed }) => [styles.option, styles.check, { borderColor: p.border, backgroundColor: pressed ? p.border : 'transparent' }]}
+        >
+          <Text style={[styles.box, { borderColor: picked.has(i) ? p.accent : p.border, backgroundColor: picked.has(i) ? p.accent : 'transparent' }]}>{picked.has(i) ? '✓' : ' '}</Text>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={[styles.optionText, { color: p.fg }]}>{o.label}</Text>
+            {o.hint ? <Text style={{ color: p.muted, fontSize: 13 }}>{o.hint}</Text> : null}
+          </View>
+        </Pressable>
+      ))}
+      <Pressable accessibilityRole="button" onPress={() => close(options.filter((_, i) => picked.has(i)).map((o) => o.value))} style={[styles.done, { backgroundColor: p.accent }]}>
+        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Gotowe</Text>
+      </Pressable>
     </View>
   );
 }
@@ -237,6 +277,9 @@ const styles = StyleSheet.create({
   title: { flex: 1, fontSize: 17, fontWeight: '600' },
   option: { paddingVertical: 13, borderBottomWidth: StyleSheet.hairlineWidth, gap: 2 },
   optionText: { fontSize: 16 },
+  check: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  box: { width: 22, height: 22, borderWidth: 1.5, borderRadius: 5, textAlign: 'center', color: '#fff', fontSize: 14, lineHeight: 19, overflow: 'hidden' },
+  done: { marginTop: 12, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   pill: { borderWidth: 1, borderRadius: 18, paddingVertical: 7, paddingHorizontal: 13 },
   monthHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6 },

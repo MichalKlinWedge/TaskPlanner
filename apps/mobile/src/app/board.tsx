@@ -3,10 +3,10 @@
  * (`boardColumns`) — jedna kolumna na ekranie, przełączana zakładkami z licznikami; kartę
  * przenosi menu „⇄” (do innej kolumny na początek, wyżej / niżej w kolumnie) przez `boardDropOps`,
  * jak przeciąganie na webie (atrybut kolumny + `board_sort_key`, z „Cofnij”).
- * `?list=` — tablica listy (kryterium w `view_prefs.boardBy`), bez — bieżącej przestrzeni
+ * `?list=` — tablica listy (kryterium w `view_prefs.boardBy`, zadania po filtrze listy `view_prefs.filter`), bez — bieżącej przestrzeni
  * (kryterium zapamiętane na urządzeniu).
  */
-import { BOARD_BY, boardColumns, boardDropOps, type BoardBy, type BoardColumn, type ViewTask } from '@taskplanner/core';
+import { applyFilter, BOARD_BY, boardColumns, isEmptyFilter, boardDropOps, type BoardBy, type BoardColumn, type ViewTask } from '@taskplanner/core';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import Storage from 'expo-sqlite/kv-store';
 import { useMemo, useState } from 'react';
@@ -41,10 +41,11 @@ export default function BoardScreen() {
     }
   };
 
-  const tasks = useMemo(
-    () => data.tasks.filter((t) => (listId ? t.listId === listId : !ctx.workspaceId || t.workspaceId === ctx.workspaceId)),
-    [data.tasks, listId, ctx.workspaceId],
-  );
+  const filter = list?.prefs.filter;
+  const tasks = useMemo(() => {
+    const own = data.tasks.filter((t) => (listId ? t.listId === listId : !ctx.workspaceId || t.workspaceId === ctx.workspaceId));
+    return filter && !isEmptyFilter(filter) ? applyFilter(own, filter, today) : own;
+  }, [data.tasks, listId, ctx.workspaceId, filter, today]);
   const lists = useMemo(() => {
     const used = new Set(tasks.map((t) => t.listId));
     return data.lists.filter((l) => used.has(l.id) || l.id === listId);
