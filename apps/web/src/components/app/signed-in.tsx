@@ -16,6 +16,7 @@ import { CalendarsCard } from "./calendars-card";
 import { CaptureCard } from "./capture-card";
 import { ErrorsCard } from "./errors-card";
 import { ProfileForm, type ProfileValues } from "./profile-form";
+import { InvitesCard } from "./invites-card";
 import { InstallCard, OfflineCard } from "./pwa-cards";
 import { RemindersCard } from "./reminders-card";
 import { Shell } from "./shell";
@@ -105,6 +106,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
             <InstallCard />
             <ErrorsCard />
             <OfflineCard />
+            <InvitesCard />
             <AccountCard email={email} />
           </>
         }

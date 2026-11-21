@@ -39,6 +39,20 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"app_admins": {
+                  Row: {
+                    "created_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"attachments": {
                   Row: {
                     "created_at": string,"created_by": string | null,"deleted_at": string | null,"field_clock": NonNullable<Json>,"id": string,"kind": string,"mime": string | null,"name": string,"preview": Json | null,"row_version": number,"scope_id": string,"size_bytes": number | null,"storage_path": string | null,"task_id": string,"updated_at": string,"url": string | null
@@ -717,6 +731,9 @@ isOneToOne: false
 "account_secret_set":
 { Args: { "p_account": string,"p_secret": string }; Returns: undefined
                            },
+"add_invite":
+{ Args: { "p_note"?: string,"p_pattern": string }; Returns: undefined
+                           },
 "attachment_quota_bytes":
 { Args: Record<PropertyKey, never>; Returns: number
                            },
@@ -788,6 +805,14 @@ isOneToOne: false
 "inbound_context":
 { Args: { "p_user": string }; Returns: Json
                            },
+"is_app_admin":
+{ Args: Record<PropertyKey, never>; Returns: boolean
+                           },
+"list_invites":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "accounts": number,"created_at": string,"note": string,"pattern": string
+            }[]
+                           },
 "pull_changes":
 { Args: { "p_limit"?: number,"p_since"?: Json }; Returns: Json
                            },
@@ -800,8 +825,14 @@ isOneToOne: false
 "random_token":
 { Args: Record<PropertyKey, never>; Returns: string
                            },
+"remove_invite":
+{ Args: { "p_pattern": string }; Returns: boolean
+                           },
 "report_client_errors":
 { Args: { "p_items": Json }; Returns: number
+                           },
+"require_app_admin":
+{ Args: Record<PropertyKey, never>; Returns: undefined
                            },
 "rotate_inbound_token":
 { Args: Record<PropertyKey, never>; Returns: string
