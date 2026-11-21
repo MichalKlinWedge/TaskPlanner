@@ -2,7 +2,7 @@
 
 /**
  * Tablica kanban (M10) na webie: kolumny z `core/kanban.ts`, przeciąganie kart (dnd-kit) zmienia
- * atrybut kolumny i kolejność (`board_sort_key`), szybkie dodanie na dole kolumny z atrybutem
+ * atrybut kolumny i kolejność (`board_sort_key`), szybkie dodanie u góry kolumny z atrybutem
  * kolumny, zwijanie kolumn. Tryb „Własne”: kolumny listy tablicy (`lists.board_columns`) —
  * dodawanie, zmiana nazwy, usuwanie (z cofnięciem) i przeciąganie kolumn za uchwyt. Warunek z PoC-5: kolumna rysuje porcję kart (`PAGE`) — tylko one są
  * sortowalne, reszta po „Pokaż więcej”.
@@ -119,7 +119,6 @@ function Column({
   const [shown, setShown] = useState(PAGE);
   const [collapsed, setCollapsed] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  const [adding, setAdding] = useState(false);
   const ref = (node: HTMLElement | null) => {
     setNodeRef(node);
     sortRef?.(node);
@@ -216,25 +215,14 @@ function Column({
             </button>
           </>
         ) : null}
-        <button
-          type="button"
-          className={`text-base leading-none hover:text-[var(--accent)] ${adding ? "text-[var(--accent)]" : "text-[var(--muted)]"}`}
-          onClick={() => setAdding((a) => !a)}
-          aria-label={`Dodaj zadanie w kolumnie ${column.label}`}
-          aria-expanded={adding}
-          title="Dodaj zadanie w tej kolumnie"
-        >
-          +
-        </button>
         <button type="button" className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]" onClick={() => setCollapsed(true)} aria-label={`Zwiń kolumnę ${column.label}`} title="Zwiń">
           ⟨
         </button>
       </header>
-      {adding ? (
-        <div className="mb-1.5">
-          <QuickAdd placeholder={`Dodaj do „${column.label}”`} listId={listId} autoFocus onCancel={() => setAdding(false)} {...add} />
-        </div>
-      ) : null}
+      {/* Dodanie nad kartami — widoczne bez przewijania długiej kolumny. */}
+      <div className="mb-1.5">
+        <QuickAdd placeholder="Dodaj kartę" listId={listId} {...add} />
+      </div>
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <ul className="flex min-h-12 flex-col gap-1.5">
           {visible.map((t) => (
@@ -247,7 +235,6 @@ function Column({
           Pokaż więcej ({column.tasks.length - shown})
         </button>
       ) : null}
-      <QuickAdd placeholder="Dodaj kartę" listId={listId} {...add} />
     </section>
   );
 }
@@ -317,7 +304,7 @@ function AddColumn({ onAdd }: { onAdd: (name: string) => void }) {
 
 /**
  * Tablica z zadań `tasks` (lista, przestrzeń albo wynik filtra). `listId` — lista nowych kart (pole
- * dodawania nad tablicą i „+” w nagłówku kolumny z jej polami); `showList` — nazwa listy na karcie.
+ * dodawania nad tablicą i „Dodaj kartę” u góry kolumny z jej polami); `showList` — nazwa listy na karcie.
  */
 export function Board({
   data,
