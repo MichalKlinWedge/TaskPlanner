@@ -3,6 +3,13 @@
 /* Tryb ciemny według `data-theme` na <html> (ustawia `lib/theme.ts`; przed hydratacją skrypt w `layout.tsx`). */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+/* Nagłówek widoku sięga prawej krawędzi obszaru treści (`main` = kontener `@container`, `--tp-pad` = padding
+   kolumny), więc przyciski widoku (eksport, Lista | Tablica) stoją w prawym górnym rogu tak samo przy wąskiej,
+   wyśrodkowanej kolumnie (lista) i przy pełnej szerokości (tablica). Na wąskim ekranie margines = 0. */
+.tp-view-header {
+  margin-right: calc(50% + var(--tp-pad, 0px) - 50cqw);
+}
+
 @theme {
   --font-sans: var(--font-geist-sans), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;

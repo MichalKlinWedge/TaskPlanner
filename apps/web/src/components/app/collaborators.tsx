@@ -87,7 +87,7 @@ export function CollaboratorsView() {
 
   return (
     <>
-      <header className="mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
+      <header className="tp-view-header mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold">Współpracownicy</h1>
           <p className="text-sm text-[var(--muted)]">

@@ -78,7 +78,7 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
 
   return (
     <>
-      <header className="mb-2 flex flex-wrap items-center gap-2">
+      <header className="tp-view-header mb-2 flex flex-wrap items-center gap-2">
         <span className="h-3 w-3 rounded-full" style={{ background: tag.color ?? "var(--muted)" }} />
         {renaming ? (
           <form
@@ -100,7 +100,6 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
         )}
         <span className="text-sm text-[var(--muted)]">{plural(count, ["zadanie", "zadania", "zadań"])}</span>
         <span className="flex-1" />
-        <TaskExportButton title={`@${tag.name}`} data={data} ctx={ctx} count={count} rows={() => sortTasks(filtered(data.tasks, query, ctx), "due").map((task) => ({ task }))} />
         <div className="flex gap-1" role="radiogroup" aria-label="Kolor tagu">
           {COLORS.map((c) => (
             <button key={c.value} type="button" role="radio" aria-checked={c.value === tag.color} aria-label={c.label} title={c.label} onClick={() => void update({ color: c.value })} className="h-4 w-4 rounded-full ring-offset-1 aria-checked:ring-2 aria-checked:ring-[var(--accent)]" style={{ background: c.value }} />
@@ -116,6 +115,7 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
         >
           Usuń tag
         </Button>
+        <TaskExportButton title={`@${tag.name}`} data={data} ctx={ctx} count={count} rows={() => sortTasks(filtered(data.tasks, query, ctx), "due").map((task) => ({ task }))} />
       </header>
       <div className="mb-3">
         <WorkspaceChips ids={tag.workspaceIds} workspaces={data.workspaces} label="Przestrzenie tagu" onChange={(ids) => void update(tagWorkspacesPatch(ids))} />
@@ -166,7 +166,7 @@ export function SavedFilterView({ data, ctx, filter, navigate }: { data: AppData
 
   return (
     <>
-      <header className="mb-2 flex flex-wrap items-center gap-2">
+      <header className="tp-view-header mb-2 flex flex-wrap items-center gap-2">
         {renaming ? (
           <form
             onSubmit={(e) => {
@@ -187,7 +187,6 @@ export function SavedFilterView({ data, ctx, filter, navigate }: { data: AppData
         )}
         <span className="text-sm text-[var(--muted)]">{plural(count, ["zadanie", "zadania", "zadań"])}</span>
         <span className="flex-1" />
-        <TaskExportButton title={filter.name} data={data} ctx={ctx} count={count} rows={() => sortTasks(filtered(data.tasks, query, ctx), "due").map((task) => ({ task }))} />
         {changed ? (
           <>
             <Button kind="primary" onClick={() => void update({ query })} disabled={isEmptyFilter(query)}>
@@ -208,6 +207,7 @@ export function SavedFilterView({ data, ctx, filter, navigate }: { data: AppData
         >
           Usuń filtr
         </Button>
+        <TaskExportButton title={filter.name} data={data} ctx={ctx} count={count} rows={() => sortTasks(filtered(data.tasks, query, ctx), "due").map((task) => ({ task }))} />
       </header>
       {!changed ? <p className="mb-2 text-xs text-[var(--muted)]">{filterChips(filter.query, names).map((c) => c.label).join(" · ")}</p> : null}
       <FilterBar query={query} onChange={setQuery} />

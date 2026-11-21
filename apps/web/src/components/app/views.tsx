@@ -61,15 +61,16 @@ export interface ViewProps {
   toolbar?: ReactNode;
 }
 
+/** Nagłówek widoku: tytuł po lewej, przyciski widoku (`children`) w prawym górnym rogu obszaru treści (`tp-view-header`). */
 function Header({ title, subtitle, children }: { title: string; subtitle?: string; children?: ReactNode }) {
   return (
-    <header className="mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
+    <header className="tp-view-header mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
       {/* `min-w-48`: przy wąskim ekranie przyciski schodzą do nowego wiersza, zamiast ścisnąć tytuł do zera. */}
       <div className="min-w-48 flex-1">
         <h1 className="text-xl font-semibold">{title}</h1>
         {subtitle ? <p className="text-sm text-[var(--muted)]">{subtitle}</p> : null}
       </div>
-      {children}
+      {children ? <div className="ml-auto flex flex-wrap items-center gap-2">{children}</div> : null}
     </header>
   );
 }
@@ -150,52 +151,54 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
   const open = view.overdue.length + view.today.length;
   const empty = !open && !view.ongoing.length && !view.habits.length && !view.done.length;
   return (
-    <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-8">
-      <div className="min-w-0">
-        <Header title="Dziś" subtitle={`${capitalized(dayLabel(ctx.today))} · ${plural(open, ["zadanie", "zadania", "zadań"])}`}>
-          <TaskExportButton
-            title="Dziś"
-            data={data}
-            ctx={ctx}
-            count={open + view.ongoing.length + view.done.length}
-            rows={() =>
-              (["overdue", "today", "ongoing", "done"] as const).flatMap((key) => view[key].map((task) => ({ task, section: VIEW_SECTION[key] })))
-            }
-          />
-        </Header>
-        {toolbar}
-        <QuickAdd listId={targetInbox?.id} dueDate={ctx.today} placeholder="Dodaj zadanie na dziś" />
-        {view.overdue.length ? (
-          <Section title={VIEW_SECTION.overdue} count={view.overdue.length} tone="danger">
-            <Paged items={view.overdue}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />}</Paged>
-          </Section>
-        ) : null}
-        {view.today.length ? (
-          <Section title={VIEW_SECTION.today} count={view.today.length}>
-            <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />}</Paged>
-          </Section>
-        ) : null}
-        {view.ongoing.length ? (
-          <Section title={VIEW_SECTION.ongoing} count={view.ongoing.length}>
-            <Paged items={view.ongoing}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />}</Paged>
-          </Section>
-        ) : null}
-        {habits.length ? (
-          <Section title={VIEW_SECTION.habits} count={habits.filter((h) => !h.settled).length || undefined}>
-            {habits.map((item) => (
-              <HabitTodayItem key={item.task.id} item={item} />
-            ))}
-          </Section>
-        ) : null}
-        {view.done.length ? (
-          <Section title={VIEW_SECTION.done} count={view.done.length}>
-            <Paged items={view.done}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />}</Paged>
-          </Section>
-        ) : null}
-        {empty ? <Empty>Na dziś nic nie ma.</Empty> : null}
+    <>
+      <Header title="Dziś" subtitle={`${capitalized(dayLabel(ctx.today))} · ${plural(open, ["zadanie", "zadania", "zadań"])}`}>
+        <TaskExportButton
+          title="Dziś"
+          data={data}
+          ctx={ctx}
+          count={open + view.ongoing.length + view.done.length}
+          rows={() =>
+            (["overdue", "today", "ongoing", "done"] as const).flatMap((key) => view[key].map((task) => ({ task, section: VIEW_SECTION[key] })))
+          }
+        />
+      </Header>
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-8">
+        <div className="min-w-0">
+          {toolbar}
+          <QuickAdd listId={targetInbox?.id} dueDate={ctx.today} placeholder="Dodaj zadanie na dziś" />
+          {view.overdue.length ? (
+            <Section title={VIEW_SECTION.overdue} count={view.overdue.length} tone="danger">
+              <Paged items={view.overdue}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />}</Paged>
+            </Section>
+          ) : null}
+          {view.today.length ? (
+            <Section title={VIEW_SECTION.today} count={view.today.length}>
+              <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />}</Paged>
+            </Section>
+          ) : null}
+          {view.ongoing.length ? (
+            <Section title={VIEW_SECTION.ongoing} count={view.ongoing.length}>
+              <Paged items={view.ongoing}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />}</Paged>
+            </Section>
+          ) : null}
+          {habits.length ? (
+            <Section title={VIEW_SECTION.habits} count={habits.filter((h) => !h.settled).length || undefined}>
+              {habits.map((item) => (
+                <HabitTodayItem key={item.task.id} item={item} />
+              ))}
+            </Section>
+          ) : null}
+          {view.done.length ? (
+            <Section title={VIEW_SECTION.done} count={view.done.length}>
+              <Paged items={view.done}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />}</Paged>
+            </Section>
+          ) : null}
+          {empty ? <Empty>Na dziś nic nie ma.</Empty> : null}
+        </div>
+        {aside}
       </div>
-      {aside}
-    </div>
+    </>
   );
 }
 
@@ -341,27 +344,28 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
   return (
     <>
       <Header title={list.name} subtitle={`${LIST_KIND[list.kind]} · ${plural(openCount, ["otwarte", "otwarte", "otwartych"])}`}>
-        <div className="flex flex-wrap gap-2">
-          <TaskExportButton
-            title={list.name}
-            data={data}
-            ctx={ctx}
-            count={tasks.length}
-            rows={() =>
-              !kanban && groups
-                ? groups.flatMap((g) => g.tasks.map((task) => ({ task, section: g.label || undefined })))
-                : flattenTree(buildTree(tasks)).map((n) => ({ task: n.task, depth: n.depth }))
-            }
-          />
-          <div className="flex overflow-hidden rounded-md border border-[var(--line)] text-xs" role="radiogroup" aria-label="Widok">
-            {(["list", "kanban"] as const).map((v) => (
-              <button key={v} type="button" role="radio" aria-checked={(list.prefs.view ?? "list") === v} onClick={() => setPrefs({ view: v })} className={`px-2.5 py-1 ${(list.prefs.view ?? "list") === v ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--hover)]"}`}>
-                {v === "list" ? "Lista" : "Tablica"}
-              </button>
-            ))}
-          </div>
-          {kanban ? null : (
-            <>
+        <TaskExportButton
+          title={list.name}
+          data={data}
+          ctx={ctx}
+          count={tasks.length}
+          rows={() =>
+            !kanban && groups
+              ? groups.flatMap((g) => g.tasks.map((task) => ({ task, section: g.label || undefined })))
+              : flattenTree(buildTree(tasks)).map((n) => ({ task: n.task, depth: n.depth }))
+          }
+        />
+        <div className="flex overflow-hidden rounded-md border border-[var(--line)] text-xs" role="radiogroup" aria-label="Widok">
+          {(["list", "kanban"] as const).map((v) => (
+            <button key={v} type="button" role="radio" aria-checked={(list.prefs.view ?? "list") === v} onClick={() => setPrefs({ view: v })} className={`px-2.5 py-1 ${(list.prefs.view ?? "list") === v ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--hover)]"}`}>
+              {v === "list" ? "Lista" : "Tablica"}
+            </button>
+          ))}
+        </div>
+      </Header>
+      {/* Sortowanie / grupowanie listy — pod nagłówkiem, przyciski widoku zostają w rogu. */}
+      {kanban ? null : (
+        <div className="mb-2 flex flex-wrap gap-2">
           <Select aria-label="Sortowanie" value={sortBy} onChange={(e) => setPrefs({ sortBy: e.target.value as SortBy })} className="py-1 text-xs">
             {(Object.keys(SORT_BY) as SortBy[]).map((k) => (
               <option key={k} value={k}>
@@ -383,10 +387,8 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
               </option>
             ))}
           </Select>
-            </>
-          )}
         </div>
-      </Header>
+      )}
       {toolbar}
       {kanban ? (
         <Board data={data} ctx={ctx} tasks={data.tasks.filter((t) => t.listId === list.id)} by={list.prefs.boardBy ?? "status"} onBy={(boardBy) => setPrefs({ boardBy })} listId={list.id} showList={false} />

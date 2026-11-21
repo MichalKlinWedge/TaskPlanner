@@ -269,7 +269,7 @@ export function Shell({
       <UpcomingView {...props} />
     ) : route.view === "board" ? (
       <>
-        <header className="mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
+        <header className="tp-view-header mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
           <div className="min-w-0 flex-1">
             <h1 className="text-xl font-semibold">Tablica</h1>
             <p className="text-sm text-[var(--muted)]">{workspaceId ? data.workspaces.find((w) => w.id === workspaceId)?.name : "Wszystkie przestrzenie"} — zawęź chipami filtrów</p>
@@ -506,8 +506,8 @@ export function Shell({
             </nav>
             </div>
           </aside>
-          <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
-            <div className={`mx-auto w-full p-4 pb-20 sm:p-6 ${wide ? "" : route.view === "today" ? "max-w-5xl" : "max-w-3xl"}`}>{content}</div>
+          <main ref={mainRef} className="@container min-w-0 flex-1 overflow-y-auto">
+            <div className={`mx-auto w-full p-4 pb-20 [--tp-pad:1rem] sm:p-6 sm:[--tp-pad:1.5rem] ${wide ? "" : route.view === "today" ? "max-w-5xl" : "max-w-3xl"}`}>{content}</div>
           </main>
           {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>

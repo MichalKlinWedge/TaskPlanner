@@ -244,7 +244,7 @@ export function HabitsView({ data, ctx, targetInbox, navigate }: { data: AppData
   const left = today.filter((h) => !h.settled).length;
   return (
     <>
-      <header className="mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
+      <header className="tp-view-header mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold">Nawyki</h1>
           <p className="text-sm text-[var(--muted)]">

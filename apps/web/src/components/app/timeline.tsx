@@ -483,7 +483,7 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
 
   return (
     <section className="tp-timeline flex flex-col gap-2" aria-label="Oś czasu" data-testid="timeline">
-      <header className="flex flex-wrap items-center gap-2">
+      <header className="tp-view-header flex flex-wrap items-center gap-2">
         <h1 className="mr-2 text-xl font-semibold">Oś czasu</h1>
         <div className="flex overflow-hidden rounded-md border border-[var(--line)] text-xs" role="group" aria-label="Skala">
           {(Object.keys(SCALES) as Scale[]).map((s) => (
@@ -500,18 +500,20 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
           Przesuń zależne
         </label>
         {allProjects.length ? <ProjectFilter projects={allProjects} hidden={hidden} onChange={setHidden} /> : null}
-        <ExportButton
-          fileName={timelineFileName(today)}
-          build={exportSheets}
-          summary={exportSummary}
-          disabled={!model.rows.length}
-          title="Zapisz widoczne wiersze osi (po filtrze projektów) do pliku Excel — kolumna na każdy dzień / tydzień / miesiąc bieżącej skali"
-          testId="timeline-export"
-        />
-        <span className="ml-auto text-xs text-[var(--muted)]">
-          {projects.length === allProjects.length ? plural(projects.length, ["projekt", "projekty", "projektów"]) : `${projects.length} z ${plural(allProjects.length, ["projektu", "projektów", "projektów"])}`} · {plural(model.links.length, ["zależność", "zależności", "zależności"])}
-          {model.undated ? ` · ${plural(model.undated, ["zadanie", "zadania", "zadań"])} bez terminu poza osią` : ""}
-        </span>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <span className="text-xs text-[var(--muted)]">
+            {projects.length === allProjects.length ? plural(projects.length, ["projekt", "projekty", "projektów"]) : `${projects.length} z ${plural(allProjects.length, ["projektu", "projektów", "projektów"])}`} · {plural(model.links.length, ["zależność", "zależności", "zależności"])}
+            {model.undated ? ` · ${plural(model.undated, ["zadanie", "zadania", "zadań"])} bez terminu poza osią` : ""}
+          </span>
+          <ExportButton
+            fileName={timelineFileName(today)}
+            build={exportSheets}
+            summary={exportSummary}
+            disabled={!model.rows.length}
+            title="Zapisz widoczne wiersze osi (po filtrze projektów) do pliku Excel — kolumna na każdy dzień / tydzień / miesiąc bieżącej skali"
+            testId="timeline-export"
+          />
+        </div>
       </header>
 
       {model.violations.length ? (
