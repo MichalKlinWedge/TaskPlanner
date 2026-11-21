@@ -7,7 +7,7 @@
 import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, plural, selectInbox, selectToday, tagsForWorkspace, type BoardBy, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { useAppData, useToday, type List } from "@/lib/app-data";
 import { GOOGLE_RETURN_PARAM } from "@/lib/calendars";
@@ -142,6 +142,42 @@ export function Shell({
   }, []);
   // Klik w przypomnienie przy zamkniętej karcie: `/?task=<id>` (Service Worker, M8).
   const [openTaskId, setOpenTaskId] = useState<string | null>(() => (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("task") : null));
+  // Klik poza panelem zadania zamyka go — po obsłudze kliknięcia (zamknięcie przy `pointerdown` przesunęłoby
+  // układ pod kursorem), chyba że to kliknięcie otworzyło inne zadanie. Bez zamykania: wiersze i karty zadań
+  // (zaznaczanie, odhaczanie, przeciąganie), okna dialogowe, komunikat z „Cofnij”, pasek boczny (zamyka sam)
+  // i pasek przewijania.
+  const openTaskRef = useRef(openTaskId);
+  useLayoutEffect(() => {
+    openTaskRef.current = openTaskId;
+  });
+  useEffect(() => {
+    let pressed: { id: string | null; outside: boolean } | null = null;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      const id = openTaskRef.current;
+      const scrollbar = !!target && target.scrollHeight > target.clientHeight && e.offsetX > target.clientWidth;
+      pressed = {
+        id,
+        outside:
+          !!id &&
+          !!target?.isConnected &&
+          e.button === 0 &&
+          !scrollbar &&
+          !target.closest('aside[aria-label="Zadanie"], #sidebar, [role=dialog], [role=status], [data-task-id], [data-card]'),
+      };
+    };
+    const onClick = () => {
+      const p = pressed;
+      pressed = null;
+      if (p?.outside && openTaskRef.current === p.id) setOpenTaskId(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("click", onClick);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("click", onClick);
+    };
+  }, []);
   useEffect(() => {
     const url = new URL(window.location.href);
     if (url.searchParams.has("task")) {
