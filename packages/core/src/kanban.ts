@@ -64,7 +64,8 @@ export function boardOrder(a: ViewTask, b: ViewTask): number {
 /**
  * Kolumny tablicy z zadań-kandydatów (już zawężonych do listy / przestrzeni / filtra). Karty to
  * zadania główne (podzadania liczą się do postępu karty). Poza kolumną statusu — tylko otwarte;
- * „Gotowe” — z ostatnich 7 dni. Dzień tygodnia: bieżący tydzień od `firstDayOfWeek` + „Bez terminu”.
+ * „Gotowe” — z ostatnich 7 dni. Dzień tygodnia: „Bez terminu” + bieżący tydzień od `firstDayOfWeek`.
+ * Kolumna bez wartości (`none`: bez terminu / bez tagu / do przypisania) jest zawsze pierwsza.
  */
 export function boardColumns(
   tasks: readonly ViewTask[],
@@ -88,16 +89,16 @@ export function boardColumns(
     for (const p of [1, 2, 3, 4] as Priority[]) column(String(p), PRIORITY[p].label);
     for (const t of cards) columns.get(String(t.priority))!.tasks.push(t);
   } else if (by === 'weekday') {
+    column('none', VIEW_SECTION.noDate);
     const start = weekStart(today, firstDayOfWeek);
     for (let i = 0; i < 7; i++) {
       const d = addDays(start, i);
       column(d, `${dayChip(d)}${d === today ? ' · dziś' : ''}`);
     }
-    column('none', VIEW_SECTION.noDate);
     for (const t of cards) (t.dueDate ? columns.get(t.dueDate) : columns.get('none'))?.tasks.push(t);
   } else if (by === 'tag') {
-    for (const tag of [...(lookup.tags ?? [])].sort((a, b) => byText(a.sortKey, b.sortKey))) column(tag.id, tag.name);
     column('none', VIEW_SECTION.noTag);
+    for (const tag of [...(lookup.tags ?? [])].sort((a, b) => byText(a.sortKey, b.sortKey))) column(tag.id, tag.name);
     for (const t of cards) for (const id of t.tagIds.length ? t.tagIds : ['none']) columns.get(id)?.tasks.push(t);
   } else if (by === 'custom') {
     column('none', BOARD_UNASSIGNED);

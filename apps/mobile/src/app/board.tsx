@@ -70,7 +70,8 @@ export default function BoardScreen() {
   }, [data.tags, ctx.workspaceId, lists, tasks]);
   const columns = useMemo(() => boardColumns(tasks, by, { today, firstDayOfWeek: ctx.firstDayOfWeek }, { tags, lists }), [tasks, by, today, ctx.firstDayOfWeek, tags, lists]);
   const [selected, setSelected] = useState<string | null>(null);
-  const column = columns.find((c) => c.key === selected) ?? columns[0];
+  // Na start pierwsza kolumna z wartością (dzień / tag), nie „Bez terminu” / „Bez tagu”, które są pierwsze.
+  const column = columns.find((c) => c.key === selected) ?? columns.find((c) => c.key !== 'none') ?? columns[0];
 
   const tagName = useMemo(() => new Map(data.tags.map((t) => [t.id, t.name])), [data.tags]);
   const children = useMemo(() => {

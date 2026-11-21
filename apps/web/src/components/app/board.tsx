@@ -344,7 +344,8 @@ export function Board({
     () => (custom && !owner ? [] : boardColumns(tasks, by, { today: ctx.today, firstDayOfWeek: ctx.firstDayOfWeek }, { tags, lists, columns: defs })),
     [tasks, by, custom, owner, ctx.today, ctx.firstDayOfWeek, tags, lists, defs],
   );
-  const pinned = custom ? columns.find((c) => c.key === "none") : undefined;
+  // Kolumna bez wartości (do przypisania / bez terminu / bez tagu) — pierwsza i przypięta.
+  const pinned = columns[0]?.key === "none" ? columns[0] : undefined;
   const scrolled = pinned ? columns.filter((c) => c !== pinned) : columns;
   const columnIds = useMemo(() => (custom ? defs.map((d) => columnSortId(d.id)) : []), [custom, defs]);
   // Kolumny po ostatniej własnej zmianie: dwie zmiany szybciej niż odświeżenie zapytania nie nadpisują się.
@@ -422,7 +423,7 @@ export function Board({
         </p>
       ) : null}
       <DndContext sensors={sensors} collisionDetection={collision} onDragEnd={onDragEnd}>
-        {/* Tryb „Własne”: „Do przypisania” stoi w miejscu, przewijają się kolumny listy (na wąskim ekranie — całość). */}
+        {/* Kolumna bez wartości stoi w miejscu, przewijają się pozostałe (na wąskim ekranie — całość). */}
         <div className="flex gap-3 overflow-x-auto pb-4 sm:overflow-visible sm:pb-0" data-testid="board">
           {pinned ? (
             <div className="flex shrink-0 sm:pb-4">

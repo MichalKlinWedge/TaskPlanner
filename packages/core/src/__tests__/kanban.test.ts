@@ -56,12 +56,12 @@ describe('kolumny', () => {
     expect(boardColumns(tasks, 'priority', ctx).some((c) => c.hint)).toBe(false);
   });
 
-  it('dzień tygodnia: bieżący tydzień od poniedziałku + bez terminu; tylko otwarte', () => {
+  it('dzień tygodnia: bez terminu na początku + bieżący tydzień od poniedziałku; tylko otwarte', () => {
     const cols = boardColumns(tasks, 'weekday', ctx);
-    expect(cols.map((c) => c.key)).toEqual(['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20', '2026-11-21', '2026-11-22', 'none']);
-    expect(cols[0]!.tasks.map((x) => x.id)).toEqual(['b']);
-    expect(cols[3]!.label).toContain('dziś');
-    expect(cols.at(-1)!.tasks.map((x) => x.id)).toEqual(['k0', 'k1']);
+    expect(cols.map((c) => c.key)).toEqual(['none', '2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20', '2026-11-21', '2026-11-22']);
+    expect(cols[1]!.tasks.map((x) => x.id)).toEqual(['b']);
+    expect(cols[4]!.label).toContain('dziś');
+    expect(cols[0]!.tasks.map((x) => x.id)).toEqual(['k0', 'k1']);
   });
 
   it('tag: zadanie z kilkoma tagami w każdej kolumnie; lista i priorytet', () => {
@@ -70,9 +70,9 @@ describe('kolumny', () => {
       { id: 'g1', name: 'telefon', sortKey: 'a' },
     ];
     expect(boardColumns(tasks, 'tag', ctx, { tags }).map((c) => [c.key, c.tasks.map((x) => x.id)])).toEqual([
+      ['none', ['k0', 'k1']],
       ['g1', ['b', 'a']],
       ['g2', ['b']],
-      ['none', ['k0', 'k1']],
     ]);
     expect(boardColumns(tasks, 'priority', ctx).map((c) => c.tasks.length)).toEqual([1, 1, 0, 2]);
     expect(boardColumns(tasks, 'list', ctx, { lists: [{ id: 'L1', name: 'Dom', sortKey: 'a' }] }).map((c) => c.key)).toEqual(['L1']);
