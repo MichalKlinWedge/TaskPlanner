@@ -49,6 +49,7 @@ Mobile: always `npx expo install <pkg>` inside `apps/mobile`, then `npx expo-doc
 
 - Web: Vercel project `task-planner` (Root Directory `apps/web`), production https://task-planner-omega-indol.vercel.app — auto-deploys from `main`; the team alias `task-planner-michalklinwedge.vercel.app` sits behind Vercel login (Deployment Protection). `/dev/*` pages return 404 in production.
 - Supabase cloud project ref `sakjrlpfbclcjlnpjcrt` (linked via `npm run supabase -- link`); apply migrations with `npm run supabase -- db push`, check with `npm run supabase -- migration list --linked`.
+- **Sign-up is invite-only** (migration `*_v1x_signup_allowlist.sql`): Auth hook „Before User Created” → `public.hook_before_user_created` lets a new account in only for an address (or `@domain`) in `public.allowed_emails`; existing accounts are unaffected; `auth.admin.createUser` (seed/e2e/test tools) skips the hook. Locally enabled in `supabase/config.toml`; in the cloud enabled by hand in Dashboard → Authentication → Hooks (config.toml is not pushed). Invite = `insert into public.allowed_emails (pattern, note) values ('jan@example.com', 'Jan')` in the SQL Editor. The rejection message starts with `signup_not_invited` (core `SIGNUP_NOT_INVITED`), which `authErrorMessage` maps to Polish; the login screens show `LOGIN_INVITE_NOTE`.
 
 ## Architecture rules
 

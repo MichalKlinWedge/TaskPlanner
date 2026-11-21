@@ -25,6 +25,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"allowed_emails": {
+                  Row: {
+                    "created_at": string,"note": string | null,"pattern": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"note"?: string | null,"pattern": string
+                  }
+                  Update: {
+                    "created_at"?: string,"note"?: string | null,"pattern"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"attachments": {
                   Row: {
                     "created_at": string,"created_by": string | null,"deleted_at": string | null,"field_clock": NonNullable<Json>,"id": string,"kind": string,"mime": string | null,"name": string,"preview": Json | null,"row_version": number,"scope_id": string,"size_bytes": number | null,"storage_path": string | null,"task_id": string,"updated_at": string,"url": string | null
@@ -761,6 +775,9 @@ isOneToOne: false
                            },
 "has_scope_access":
 { Args: { "p_scope": string }; Returns: boolean
+                           },
+"hook_before_user_created":
+{ Args: { "event": Json }; Returns: Json
                            },
 "inbound_context":
 { Args: { "p_user": string }; Returns: Json

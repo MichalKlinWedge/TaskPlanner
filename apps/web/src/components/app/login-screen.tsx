@@ -1,6 +1,6 @@
 "use client";
 
-import { authErrorMessage } from "@taskplanner/core";
+import { authErrorMessage, LOGIN_INVITE_NOTE } from "@taskplanner/core";
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 
@@ -89,6 +89,7 @@ export function LoginScreen() {
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold">Task Planner</h1>
         <p className="text-sm opacity-70">Zaloguj się, żeby zadania były na laptopie i telefonie. Działa też bez sieci.</p>
+        <p className="text-xs opacity-60">{LOGIN_INVITE_NOTE}</p>
       </header>
       <Card className="flex flex-col gap-4">
         <Button kind="secondary" onClick={() => void google()} disabled={busy || googleEnabled === false} className="py-2">

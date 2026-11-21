@@ -95,6 +95,15 @@ describe('błędy logowania po polsku', () => {
     expect(authErrorMessage({ code: 'validation_failed', message: 'Unsupported provider: provider is not enabled' })).toBe(AUTH_ERROR.provider_disabled);
     expect(authErrorMessage('Email link is invalid or has expired')).toBe(AUTH_ERROR.otp_expired);
   });
+  it('rejestracja spoza zaproszeń — po treści, przed kodem', () => {
+    // Hook „Before User Created”: znacznik w komunikacie, kod ogólny (mail i powrót z Google).
+    expect(authErrorMessage({ code: 'unexpected_failure', message: 'signup_not_invited: adres spoza listy' })).toBe(AUTH_ERROR.signup_not_invited);
+    expect(authErrorMessage({ code: 'server_error', message: 'signup_not_invited: adres spoza listy' })).toBe(AUTH_ERROR.signup_not_invited);
+    // Wyłączona rejestracja: link z maila dla nowego adresu daje `otp_disabled`, nie „logowanie wyłączone”.
+    expect(authErrorMessage({ code: 'otp_disabled', message: 'Signups not allowed for otp' })).toBe(AUTH_ERROR.signup_disabled);
+    expect(authErrorMessage({ code: 'signup_disabled', message: 'Signups not allowed for this instance' })).toBe(AUTH_ERROR.signup_disabled);
+    expect(authErrorMessage({ code: 'otp_disabled', message: 'OTP is disabled' })).toBe(AUTH_ERROR.otp_disabled);
+  });
   it('nieznany błąd — komunikat serwera, pusty — ogólny', () => {
     expect(authErrorMessage({ code: 'hook_timeout', message: 'Hook timed out' })).toBe('Hook timed out');
     expect(authErrorMessage(null)).toBe('Nie udało się zalogować.');

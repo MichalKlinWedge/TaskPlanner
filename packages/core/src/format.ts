@@ -4,7 +4,7 @@
  * Podstawa z ExpeditionPlan (`packages/core/src/format.ts`).
  */
 import { daysBetween, isoWeekday } from './dates.ts';
-import { AUTH_ERROR, MONTH_SHORT, PRIORITY, QUICK_ADD_KIND, WEEKDAY } from './labels.ts';
+import { AUTH_ERROR, MONTH_SHORT, PRIORITY, QUICK_ADD_KIND, SIGNUP_NOT_INVITED, WEEKDAY } from './labels.ts';
 import type { QuickAddResult, QuickAddToken } from './quick-add.ts';
 import { describeRecurrence } from './recurrence.ts';
 import type { IsoWeekday, LocalDate } from './schemas/primitives.ts';
@@ -101,6 +101,10 @@ export function relativeDay(date: LocalDate, today: LocalDate, style: 'date' | '
 export function authErrorMessage(error: { code?: string | null; message?: string | null; status?: number; name?: string } | string | null | undefined): string {
   const e = typeof error === 'string' ? { message: error } : (error ?? {});
   const message = e.message ?? '';
+  // Odmowa rejestracji przed kodem: przy wyłączonej rejestracji GoTrue zwraca dla maila `otp_disabled`
+  // („Signups not allowed for otp”), a hook — swój komunikat ze znacznikiem pod ogólnym kodem.
+  if (message.includes(SIGNUP_NOT_INVITED)) return AUTH_ERROR.signup_not_invited!;
+  if (/signups? not allowed/i.test(message)) return AUTH_ERROR.signup_disabled!;
   if (e.code && AUTH_ERROR[e.code]) return AUTH_ERROR[e.code]!;
   // Starsze serwery i błędy bez kodu: po treści (jak na webie w `login-screen.tsx`).
   if (e.name === 'AuthRetryableFetchError' || /network request failed|failed to fetch|fetch failed/i.test(message)) return AUTH_ERROR.network!;

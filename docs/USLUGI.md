@@ -15,6 +15,7 @@ Stan na **18.11.2026** (oficjalna dokumentacja i cenniki). Przed wprowadzeniem n
 | Uprawnienia nowych tabel (chmura) | nowe projekty nie nadają `anon`/`authenticated`/`service_role` do tabel z migracji — jawne `grant` w migracji (lokalnie nadawane automatycznie) | W | PoC-6 |
 | Edge Runtime lokalnie | 1.77.8 (zgodny z Deno 2.1.4); importy spoza `supabase/functions` (np. `packages/core`) działają, `npm:` i `jsr:` przez mapę importów | W | PoC-6 |
 | Realtime | 200 jednoczesnych połączeń, 2 mln wiadomości/mies., 100 wiad./s | W | supabase.com/docs/guides/realtime/limits |
+| Auth Hook „Before User Created” | dostępny na **Free** i Pro; hook w Postgresie ma 2 s; odmowa `{"error": {"http_code", "message"}}`. Lokalnie (CLI 2.122.0, 21.11.2026): `signInWithOtp` dostaje 403, `code: 'unknown'` i komunikat hooka dosłownie, a `auth.admin.createUser` hooka **nie** wywołuje. Powrót z Google po odmowie niesprawdzony | W | supabase.com/docs/guides/auth/auth-hooks, …/auth-hooks/before-user-created-hook (21.11.2026) |
 
 **Wniosek:** TaskPlanner ma projekt na osobnym koncie Supabase (D10), więc limit 2 aktywnych projektów go nie ogranicza; nadal obowiązuje wstrzymanie po 7 dniach niskiej aktywności (wiersz wyżej).
 

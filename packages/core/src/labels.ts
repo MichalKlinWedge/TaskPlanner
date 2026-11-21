@@ -163,6 +163,16 @@ export const MONTH_NAME = ['styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'cz
  * Błędy Supabase Auth po polsku (kody `ErrorCode` z GoTrue i `error_code` z adresu powrotu).
  * Tekst do pokazania wybiera `authErrorMessage` (`format.ts`); kod spoza listy = komunikat serwera.
  */
+/**
+ * Znacznik odmowy rejestracji spoza listy zaproszonych: hook Supabase Auth „Before User Created”
+ * zwraca go na początku komunikatu błędu (mail z linkiem i powrót z Google), `authErrorMessage`
+ * rozpoznaje go po treści, bo GoTrue nie przenosi własnego kodu błędu z hooka.
+ */
+export const SIGNUP_NOT_INVITED = 'signup_not_invited';
+
+/** Podpis ekranu logowania (web i telefon): kto może się zalogować. */
+export const LOGIN_INVITE_NOTE = 'Dostęp na zaproszenie — zaloguj się adresem e-mail, który dostał zaproszenie od właściciela aplikacji.';
+
 export const AUTH_ERROR: Record<string, string> = {
   // GoTrue zwraca `otp_expired` także dla błędnie wpisanego kodu („Token has expired or is invalid”).
   otp_expired: 'Kod albo link z maila jest błędny, wygasł lub został już użyty — sprawdź kod albo wyślij nowy.',
@@ -180,7 +190,8 @@ export const AUTH_ERROR: Record<string, string> = {
   oauth_provider_not_supported: 'Logowanie Google nie jest włączone na tym serwerze.',
   bad_oauth_state: 'Logowanie Google przerwane — spróbuj ponownie.',
   bad_oauth_callback: 'Logowanie Google przerwane — spróbuj ponownie.',
-  signup_disabled: 'Zakładanie nowych kont jest wyłączone na tym serwerze.',
+  signup_disabled: 'Dostęp jest na zaproszenie, a ten adres nie ma konta. Poproś właściciela aplikacji o zaproszenie.',
+  signup_not_invited: 'Dostęp jest na zaproszenie, a tego adresu nie ma na liście. Poproś właściciela aplikacji o zaproszenie.',
   user_banned: 'To konto jest zablokowane.',
   email_not_confirmed: 'Adres e-mail nie jest jeszcze potwierdzony.',
   session_not_found: 'Sesja wygasła — zaloguj się ponownie.',

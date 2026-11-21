@@ -1,3 +1,4 @@
+import { LOGIN_INVITE_NOTE } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Switch, Text, View } from 'react-native';
@@ -92,6 +93,7 @@ export default function Settings() {
   // Logowanie: tryb bez konta i ponowne logowanie po utracie sesji (to samo konto — bez czyszczenia danych, `signedIn`).
   const loginForm = (
     <>
+      <P muted>{LOGIN_INVITE_NOTE}</P>
       <Field label="E-mail" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" />
       <Button
         disabled={busy || !validEmail}
