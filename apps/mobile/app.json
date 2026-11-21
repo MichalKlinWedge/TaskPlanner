@@ -2,14 +2,14 @@
   "expo": {
     "name": "Task Planner",
     "slug": "taskplanner",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "orientation": "portrait",
     "scheme": "taskplanner",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/images/icon.png",
     "android": {
       "package": "pl.taskplanner.app",
-      "versionCode": 6,
+      "versionCode": 7,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.SCHEDULE_EXACT_ALARM",
