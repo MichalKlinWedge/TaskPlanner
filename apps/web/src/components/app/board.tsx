@@ -344,6 +344,8 @@ export function Board({
     () => (custom && !owner ? [] : boardColumns(tasks, by, { today: ctx.today, firstDayOfWeek: ctx.firstDayOfWeek }, { tags, lists, columns: defs })),
     [tasks, by, custom, owner, ctx.today, ctx.firstDayOfWeek, tags, lists, defs],
   );
+  const pinned = custom ? columns.find((c) => c.key === "none") : undefined;
+  const scrolled = pinned ? columns.filter((c) => c !== pinned) : columns;
   const columnIds = useMemo(() => (custom ? defs.map((d) => columnSortId(d.id)) : []), [custom, defs]);
   // Kolumny po ostatniej własnej zmianie: dwie zmiany szybciej niż odświeżenie zapytania nie nadpisują się.
   const latest = useRef(defs);
@@ -420,9 +422,16 @@ export function Board({
         </p>
       ) : null}
       <DndContext sensors={sensors} collisionDetection={collision} onDragEnd={onDragEnd}>
-        <div className="flex gap-3 overflow-x-auto pb-4" data-testid="board">
+        {/* Tryb „Własne”: „Do przypisania” stoi w miejscu, przewijają się kolumny listy (na wąskim ekranie — całość). */}
+        <div className="flex gap-3 overflow-x-auto pb-4 sm:overflow-visible sm:pb-0" data-testid="board">
+          {pinned ? (
+            <div className="flex shrink-0 sm:pb-4">
+              <Column column={pinned} by={by} data={data} today={ctx.today} listId={listId} showList={showList} />
+            </div>
+          ) : null}
+          <div className="flex gap-3 sm:min-w-0 sm:flex-1 sm:overflow-x-auto sm:pb-4" data-testid="board-scroll">
           <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
-            {columns.map((c) =>
+            {scrolled.map((c) =>
               custom && owner && c.key !== "none" ? (
                 <SortableColumn
                   key={c.key}
@@ -441,6 +450,7 @@ export function Board({
             )}
           </SortableContext>
           {!columns.length && !custom ? <p className="py-6 text-sm text-[var(--muted)]">{by === "tag" ? "Brak tagów." : "Brak kolumn."}</p> : null}
+          </div>
         </div>
       </DndContext>
     </div>
