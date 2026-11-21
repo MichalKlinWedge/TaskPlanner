@@ -37,11 +37,17 @@ export const TimeZone = z.string().refine((zone) => {
 
 // ── jsonb ────────────────────────────────────────────────────────────────────────────────────
 
+/** `workspaces.board_columns`: własna kolumna tablicy przestrzeni (v1.x). */
+export const BoardColumnDef = z.object({ id: Id, name: name(60) });
+export type BoardColumnDef = z.infer<typeof BoardColumnDef>;
+/** Własne kolumny tablicy w kolejności wyświetlania; `null` = brak. */
+export const BoardColumns = z.array(BoardColumnDef).max(50);
+
 /** `lists.view_prefs`: ustawienia widoku listy (M2). */
 export const ViewPrefs = z.object({
   view: z.enum(['list', 'kanban', 'calendar', 'timeline']).optional(),
   /** Kryterium kolumn tablicy (M10). */
-  boardBy: z.enum(['status', 'priority', 'weekday', 'tag', 'list']).optional(),
+  boardBy: z.enum(['status', 'priority', 'weekday', 'tag', 'list', 'custom']).optional().catch(undefined),
   groupBy: GroupBy.optional(),
   sortBy: SortBy.optional(),
   completed: CompletedMode.optional(),
@@ -146,6 +152,8 @@ export const WorkspaceRow = z.object({
   icon: Icon.nullable(),
   sort_key: SortKey,
   archived_at: Instant.nullable(),
+  /** Własne kolumny tablicy przestrzeni (`BoardColumns`); `null` = brak. */
+  board_columns: BoardColumns.nullable(),
 });
 
 export const ListRow = z
@@ -195,6 +203,8 @@ export const TaskRow = z
     postpone_count: z.number().int().min(0),
     /** Odpowiedzialny (`collaborators.id`); `null` = twórca zadania. */
     assignee_id: Id.nullable(),
+    /** Własna kolumna tablicy (`workspaces.board_columns`); `null` / nieznane id = „Do przypisania”. */
+    board_column_id: Id.nullable(),
   })
   .refine((t) => t.due_date || (!t.due_time && !t.start_date), { message: 'Godzina i początek wymagają terminu.', path: ['due_date'] })
   .refine((t) => !t.start_date || !t.due_date || t.start_date <= t.due_date, { message: 'Początek po terminie.', path: ['start_date'] })

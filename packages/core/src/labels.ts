@@ -94,6 +94,7 @@ export const TASK_FIELD: Record<string, string> = {
   postpone_count: 'Przesunięcia terminu',
   source: 'Źródło',
   assignee_id: 'Odpowiedzialny',
+  board_column_id: 'Kolumna tablicy',
 };
 
 /** Gotowe przypomnienia względne (minuty przed terminem). */

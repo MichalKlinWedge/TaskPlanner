@@ -3,31 +3,37 @@
 /**
  * Tablica kanban (M10) na webie: kolumny z `core/kanban.ts`, przeciąganie kart (dnd-kit) zmienia
  * atrybut kolumny i kolejność (`board_sort_key`), szybkie dodanie na dole kolumny z atrybutem
- * kolumny, zwijanie kolumn. Warunek z PoC-5: kolumna rysuje porcję kart (`PAGE`) — tylko one są
+ * kolumny, zwijanie kolumn. Tryb „Własne”: kolumny przestrzeni tablicy (`workspaces.board_columns`) —
+ * dodawanie, zmiana nazwy, usuwanie (z cofnięciem) i przeciąganie kolumn za uchwyt. Warunek z PoC-5: kolumna rysuje porcję kart (`PAGE`) — tylko one są
  * sortowalne, reszta po „Pokaż więcej”.
  */
-import { closestCorners, DndContext, KeyboardSensor, PointerSensor, pointerWithin, useDroppable, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { closestCenter, closestCorners, DndContext, KeyboardSensor, PointerSensor, pointerWithin, useDroppable, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from "@dnd-kit/core";
+import { horizontalListSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { BOARD_BY, boardColumns, boardDropOps, describeRecurrence, isOpen, PRIORITY, relativeDay, tagsForWorkspace, type BoardBy, type BoardColumn, type LocalDate, type ViewContext, type ViewTask } from "@taskplanner/core";
-import { memo, useMemo, useState } from "react";
+import { addBoardColumnOps, BOARD_BY, type BoardColumnDef, type TaskOp, boardColumns, boardDropOps, describeRecurrence, moveBoardColumnOps, removeBoardColumnOps, renameBoardColumnOps, isOpen, PRIORITY, relativeDay, tagsForWorkspace, type BoardBy, type BoardColumn, type LocalDate, type ViewContext, type ViewTask } from "@taskplanner/core";
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import type { AppData } from "@/lib/app-data";
 
 import { useAppEnv } from "./app-env";
 import { QuickAdd } from "./quick-add";
 import { useTaskActions } from "./task-item";
-import { Select } from "./ui";
+import { Button, Input, Select } from "./ui";
 
 /** Ile kart kolumna rysuje od razu (PoC-5: ~400 sortowalnych kart = 150–184 ms na starcie przeciągania). */
 const PAGE = 40;
 const cardId = (column: string, task: string) => `card:${column}:${task}`;
+const columnSortId = (column: string) => `colsort:${column}`;
 
 /**
  * Cel upuszczenia: pod wskaźnikiem (karta albo kolumna); z klawiatury (bez wskaźnika) — najbliższy.
  * Puszczenie poza kolumnami nic nie zmienia (`closestCorners` sam wybrałby najbliższą kolumnę).
+ * Przeciągana kolumna (tryb „Własne”) celuje tylko w inne kolumny-do-sortowania, karta — nigdy w nie.
  */
 const collision: CollisionDetection = (args) => {
+  const columnDrag = String(args.active.id).startsWith("colsort:");
+  args = { ...args, droppableContainers: args.droppableContainers.filter((c) => String(c.id).startsWith("colsort:") === columnDrag) };
+  if (columnDrag) return closestCenter(args);
   if (!args.pointerCoordinates) return closestCorners(args);
   const hits = pointerWithin(args);
   const cards = hits.filter((h) => String(h.id).startsWith("card:"));
@@ -37,6 +43,18 @@ const collision: CollisionDetection = (args) => {
 interface CardData {
   taskId: string;
   column: string;
+}
+
+interface ColumnDragData {
+  kind: "column";
+  key: string;
+}
+
+/** Uchwyt i edycja własnej kolumny (tryb „Własne”, bez „Do przypisania”). */
+interface ColumnEdit {
+  handle: ReactNode;
+  onRename: (name: string) => void;
+  onRemove: () => void;
 }
 
 const Card = memo(function Card({ task, column, today, tagNames, listName, progress }: { task: ViewTask; column: string; today: LocalDate; tagNames: string[]; listName?: string; progress?: { done: number; total: number } }) {
@@ -81,6 +99,9 @@ function Column({
   today,
   listId,
   showList,
+  edit,
+  sortRef,
+  sortStyle,
 }: {
   column: BoardColumn;
   by: BoardBy;
@@ -89,10 +110,19 @@ function Column({
   /** Lista nowych kart (widok listy / domyślny Inbox). */
   listId?: string;
   showList: boolean;
+  edit?: ColumnEdit;
+  /** Węzeł i styl kolumny przeciąganej (tryb „Własne”). */
+  sortRef?: (node: HTMLElement | null) => void;
+  sortStyle?: CSSProperties;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `column:${column.key}`, data: { column: column.key } });
   const [shown, setShown] = useState(PAGE);
   const [collapsed, setCollapsed] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const ref = (node: HTMLElement | null) => {
+    setNodeRef(node);
+    sortRef?.(node);
+  };
   const visible = column.tasks.slice(0, shown);
   const ids = useMemo(() => visible.map((t) => cardId(column.key, t.id)), [visible, column.key]);
   const tagName = useMemo(() => new Map(data.tags.map((t) => [t.id, t.name])), [data.tags]);
@@ -121,11 +151,13 @@ function Column({
             ? { defaults: { tagNames: [column.label] } }
             : by === "list"
               ? { listId: column.key }
-              : {};
+              : by === "custom" && column.key !== "none"
+                ? { defaults: { boardColumnId: column.key } }
+                : {};
 
   if (collapsed) {
     return (
-      <section className="flex w-10 shrink-0 flex-col items-center rounded-lg bg-black/5 py-2 dark:bg-white/5" data-column={column.key}>
+      <section ref={sortRef} style={sortStyle} className="flex w-10 shrink-0 flex-col items-center rounded-lg bg-black/5 py-2 dark:bg-white/5" data-column={column.key}>
         <button type="button" className="text-xs text-[var(--muted)] [writing-mode:vertical-rl]" onClick={() => setCollapsed(false)} aria-label={`Rozwiń kolumnę ${column.label}`}>
           {column.label} · {column.tasks.length}
         </button>
@@ -135,16 +167,54 @@ function Column({
 
   return (
     <section
-      ref={setNodeRef}
+      ref={ref}
+      style={sortStyle}
       className={`flex w-72 shrink-0 flex-col rounded-lg p-2 transition-colors ${isOver ? "bg-indigo-50 ring-2 ring-[var(--accent)] dark:bg-indigo-950/40" : "bg-black/5 dark:bg-white/5"}`}
       data-column={column.key}
       aria-label={`Kolumna ${column.label}`}
     >
-      <header className="mb-2 flex items-center gap-2 px-1 text-sm font-semibold">
-        <span className={`min-w-0 flex-1 truncate ${column.hint ? "cursor-help" : ""}`} title={column.hint}>
-          {column.label}
-        </span>
+      <header className="group mb-2 flex items-center gap-2 px-1 text-sm font-semibold">
+        {edit?.handle}
+        {renaming && edit ? (
+          <input
+            autoFocus
+            defaultValue={column.label}
+            maxLength={60}
+            aria-label="Nazwa kolumny"
+            className="min-w-0 flex-1 rounded border border-[var(--accent)] bg-[var(--surface)] px-1 py-0.5 text-sm font-semibold outline-none"
+            onBlur={(e) => {
+              setRenaming(false);
+              if (e.target.value.trim()) edit.onRename(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") e.currentTarget.blur();
+              if (e.key === "Escape") {
+                e.currentTarget.value = column.label;
+                e.currentTarget.blur();
+              }
+            }}
+          />
+        ) : (
+          <span
+            className={`min-w-0 flex-1 truncate ${column.hint ? "cursor-help" : ""}`}
+            title={column.hint ?? (edit ? "Kliknij dwukrotnie, aby zmienić nazwę" : undefined)}
+            onDoubleClick={edit ? () => setRenaming(true) : undefined}
+          >
+            {column.label}
+          </span>
+        )}
         <span className="text-xs font-normal text-[var(--muted)]">{column.tasks.length}</span>
+        {edit ? (
+          <>
+            <button type="button" className="text-xs text-[var(--muted)] opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-[var(--foreground)]" onClick={() => setRenaming(true)} aria-label={`Zmień nazwę kolumny ${column.label}`} title="Zmień nazwę">
+              ✎
+            </button>
+            <button type="button" className="text-xs text-[var(--muted)] opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-[var(--danger)]" onClick={edit.onRemove} aria-label={`Usuń kolumnę ${column.label}`} title="Usuń kolumnę (zadania wrócą do „Do przypisania”)">
+              ✕
+            </button>
+          </>
+        ) : null}
         <button type="button" className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]" onClick={() => setCollapsed(true)} aria-label={`Zwiń kolumnę ${column.label}`} title="Zwiń">
           ⟨
         </button>
@@ -166,6 +236,69 @@ function Column({
   );
 }
 
+/** Własna kolumna z uchwytem do przeciągania (dnd-kit `useSortable`, poziomo). */
+function SortableColumn({ onRename, onRemove, ...props }: Omit<Parameters<typeof Column>[0], "edit" | "sortRef" | "sortStyle"> & { onRename: (name: string) => void; onRemove: () => void }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: columnSortId(props.column.key),
+    data: { kind: "column", key: props.column.key } satisfies ColumnDragData,
+  });
+  const handle = (
+    <button
+      ref={setActivatorNodeRef}
+      type="button"
+      {...attributes}
+      {...listeners}
+      className="cursor-grab touch-none text-[var(--muted)] hover:text-[var(--foreground)]"
+      aria-label={`Przenieś kolumnę ${props.column.label}`}
+      title="Przeciągnij, aby zmienić kolejność"
+    >
+      ⠿
+    </button>
+  );
+  return (
+    <Column
+      {...props}
+      edit={{ handle, onRename, onRemove }}
+      sortRef={setNodeRef}
+      sortStyle={{ transform: CSS.Translate.toString(transform), transition, opacity: isDragging ? 0.6 : undefined, zIndex: isDragging ? 10 : undefined }}
+    />
+  );
+}
+
+const NO_COLUMNS: never[] = [];
+
+/** Dodanie własnej kolumny (pole nazwy w pasku tablicy). */
+function AddColumn({ onAdd }: { onAdd: (name: string) => void }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <Button className="py-1 text-xs" onClick={() => setOpen(true)} data-testid="board-add-column">
+        + Kolumna
+      </Button>
+    );
+  }
+  return (
+    <form
+      className="flex items-center gap-1"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const input = e.currentTarget.elements.namedItem("name") as HTMLInputElement;
+        if (!input.value.trim()) return;
+        onAdd(input.value);
+        input.value = "";
+      }}
+    >
+      <Input name="name" autoFocus maxLength={60} placeholder="Nazwa kolumny" aria-label="Nazwa nowej kolumny" className="w-44 py-1 text-xs" onKeyDown={(e) => e.key === "Escape" && setOpen(false)} />
+      <Button kind="primary" type="submit" className="py-1 text-xs">
+        Dodaj
+      </Button>
+      <Button kind="ghost" className="py-1 text-xs" onClick={() => setOpen(false)}>
+        Gotowe
+      </Button>
+    </form>
+  );
+}
+
 /**
  * Tablica z zadań `tasks` (lista, przestrzeń albo wynik filtra). `listId` — lista nowych kart;
  * `showList` — nazwa listy na karcie (tablica z kilku list).
@@ -177,16 +310,44 @@ export function Board({ data, ctx, tasks, by, onBy, listId, showList }: { data: 
     const used = new Set(tasks.map((t) => t.listId));
     return data.lists.filter((l) => used.has(l.id) || l.id === listId);
   }, [data.lists, tasks, listId]);
-  // Kolumny tagów: tagi przestrzeni tablicy (wybranej albo wspólnej dla jej list) + użyte na kartach.
-  const tags = useMemo(() => {
-    const space = ctx.workspaceId ?? (lists.length && lists.every((l) => l.workspaceId === lists[0]!.workspaceId) ? lists[0]!.workspaceId : null);
-    return tagsForWorkspace(data.tags, space, tasks.flatMap((t) => t.tagIds));
-  }, [data.tags, ctx.workspaceId, lists, tasks]);
-  const columns = useMemo(() => boardColumns(tasks, by, { today: ctx.today, firstDayOfWeek: ctx.firstDayOfWeek }, { tags, lists }), [tasks, by, ctx.today, ctx.firstDayOfWeek, tags, lists]);
+  // Przestrzeń tablicy: wybrana albo wspólna dla jej list (tagi przestrzeni, własne kolumny).
+  const space = ctx.workspaceId ?? (lists.length && lists.every((l) => l.workspaceId === lists[0]!.workspaceId) ? lists[0]!.workspaceId : null);
+  const workspace = space ? data.workspaces.find((w) => w.id === space) : undefined;
+  const custom = by === "custom";
+  const defs = workspace?.boardColumns ?? NO_COLUMNS;
+  // Kolumny tagów: tagi przestrzeni tablicy + użyte na kartach.
+  const tags = useMemo(() => tagsForWorkspace(data.tags, space, tasks.flatMap((t) => t.tagIds)), [data.tags, space, tasks]);
+  const columns = useMemo(
+    () => (custom && !workspace ? [] : boardColumns(tasks, by, { today: ctx.today, firstDayOfWeek: ctx.firstDayOfWeek }, { tags, lists, columns: defs })),
+    [tasks, by, custom, workspace, ctx.today, ctx.firstDayOfWeek, tags, lists, defs],
+  );
+  const columnIds = useMemo(() => (custom ? defs.map((d) => columnSortId(d.id)) : []), [custom, defs]);
+  // Kolumny po ostatniej własnej zmianie: dwie zmiany szybciej niż odświeżenie zapytania nie nadpisują się.
+  const latest = useRef(defs);
+  useEffect(() => {
+    latest.current = defs;
+  }, [defs]);
+  const editColumns = (make: (current: readonly BoardColumnDef[]) => TaskOp[] | { ops: TaskOp[]; undo?: TaskOp[] }, text?: string) => {
+    try {
+      const result = make(latest.current);
+      const { ops, undo } = Array.isArray(result) ? { ops: result, undo: undefined } : result;
+      const next = ops.find((op) => op.table === "workspaces")?.patch.board_columns;
+      if (next !== undefined) latest.current = (next as BoardColumnDef[] | null) ?? [];
+      void run(ops, text ? { text, undo } : undefined);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over) return;
-    const from = active.data.current as CardData | undefined;
+    const dragged = active.data.current as CardData | ColumnDragData | undefined;
+    if (dragged && "kind" in dragged) {
+      const target = over.data.current as ColumnDragData | undefined;
+      if (workspace && target?.kind === "column") editColumns((current) => moveBoardColumnOps(workspace.id, current, dragged.key, current.findIndex((d) => d.id === target.key)));
+      return;
+    }
+    const from = dragged;
     const overCard = over.data.current as (CardData & { sortable?: { index: number } }) | { column: string } | undefined;
     if (!from || !overCard) return;
     const toKey = overCard.column;
@@ -210,7 +371,7 @@ export function Board({ data, ctx, tasks, by, onBy, listId, showList }: { data: 
 
   return (
     <div className="flex min-h-0 flex-col gap-2">
-      <div className="flex items-center gap-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-[var(--muted)]">Kolumny:</span>
         <Select aria-label="Kryterium kolumn" value={by} onChange={(e) => onBy(e.target.value as BoardBy)} className="py-1 text-xs">
           {(Object.keys(BOARD_BY) as BoardBy[]).map((k) => (
@@ -220,13 +381,40 @@ export function Board({ data, ctx, tasks, by, onBy, listId, showList }: { data: 
           ))}
         </Select>
         {by === "status" ? <span className="text-[var(--muted)]">„Gotowe” z ostatnich 7 dni</span> : null}
+        {custom && workspace ? <span className="text-[var(--muted)]">Kolumny przestrzeni „{workspace.name}” — przeciągnij ⠿, by zmienić kolejność</span> : null}
+        {custom && workspace ? (
+          <div className="ml-auto">
+            <AddColumn onAdd={(name) => editColumns((current) => addBoardColumnOps(workspace.id, current, name))} />
+          </div>
+        ) : null}
       </div>
+      {custom && !workspace ? (
+        <p className="py-6 text-sm text-[var(--muted)]" data-testid="board-custom-no-space">
+          Własne kolumny należą do jednej przestrzeni — wybierz przestrzeń w pasku bocznym albo otwórz tablicę listy.
+        </p>
+      ) : null}
       <DndContext sensors={sensors} collisionDetection={collision} onDragEnd={onDragEnd}>
         <div className="flex gap-3 overflow-x-auto pb-4" data-testid="board">
-          {columns.map((c) => (
-            <Column key={c.key} column={c} by={by} data={data} today={ctx.today} listId={listId} showList={showList} />
-          ))}
-          {!columns.length ? <p className="py-6 text-sm text-[var(--muted)]">{by === "tag" ? "Brak tagów." : "Brak kolumn."}</p> : null}
+          <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
+            {columns.map((c) =>
+              custom && workspace && c.key !== "none" ? (
+                <SortableColumn
+                  key={c.key}
+                  column={c}
+                  by={by}
+                  data={data}
+                  today={ctx.today}
+                  listId={listId}
+                  showList={showList}
+                  onRename={(name) => editColumns((current) => renameBoardColumnOps(workspace.id, current, c.key, name))}
+                  onRemove={() => editColumns((current) => removeBoardColumnOps(workspace.id, current, c.key, data.tasks), `Usunięto kolumnę „${c.label}”`)}
+                />
+              ) : (
+                <Column key={c.key} column={c} by={by} data={data} today={ctx.today} listId={listId} showList={showList} />
+              ),
+            )}
+          </SortableContext>
+          {!columns.length && !custom ? <p className="py-6 text-sm text-[var(--muted)]">{by === "tag" ? "Brak tagów." : "Brak kolumn."}</p> : null}
         </div>
       </DndContext>
     </div>

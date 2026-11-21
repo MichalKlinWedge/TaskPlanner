@@ -26,7 +26,7 @@ describe('onboarding', () => {
 
   it('wiersze przechodzą schematy modelu', () => {
     for (const op of onboardingOps(USER)) {
-      if (op.table === 'workspaces') expect(WorkspaceRow.safeParse({ id: op.id, archived_at: null, ...op.patch }).success).toBe(true);
+      if (op.table === 'workspaces') expect(WorkspaceRow.safeParse({ id: op.id, archived_at: null, board_columns: null, ...op.patch }).success).toBe(true);
       if (op.table === 'lists') {
         const row = { id: op.id, color: null, icon: null, description_md: null, start_date: null, end_date: null, project_status: null, view_prefs: {}, archived_at: null, ...op.patch };
         expect(ListRow.safeParse(row).success).toBe(true);

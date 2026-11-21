@@ -8,12 +8,14 @@
  */
 import {
   addCommentOps,
+  BOARD_UNASSIGNED,
   addDependencyOps,
   addParticipantByNameOps,
   addParticipantOps,
   assigneeChoices,
   assignTaskOps,
   canAddSubtask,
+  taskBoardColumn,
   clampLag,
   collaboratorMatches,
   collaboratorsForWorkspace,
@@ -122,6 +124,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
   }
 
   const update = (patch: Record<string, unknown>) => run([{ table: "tasks", id: task.id, patch }]);
+  const boardColumnDefs = data.workspaces.find((w) => w.id === task.workspaceId)?.boardColumns ?? [];
   const parent = task.parentId ? data.tasks.find((t) => t.id === task.parentId) : undefined;
   const children = data.tasks.filter((t) => t.parentId === task.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
   const workspaceName = new Map(data.workspaces.map((w) => [w.id, w.name]));
@@ -218,6 +221,18 @@ export function TaskPanel({ taskId }: { taskId: string }) {
         <Field label="Godzina">
           <CommitInput type="time" value={task.dueTime ?? ""} disabled={!task.dueDate} onCommit={(value) => void update(datesPatch(task, { due_time: (value || null) as LocalTime | null }))} />
         </Field>
+        {boardColumnDefs.length && task.kind === "task" && !task.parentId ? (
+          <Field label="Kolumna tablicy">
+            <Select aria-label="Kolumna tablicy" value={taskBoardColumn(task, boardColumnDefs) ?? ""} onChange={(e) => void update({ board_column_id: e.target.value || null })}>
+              <option value="">{BOARD_UNASSIGNED}</option>
+              {boardColumnDefs.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
       </div>
 
       <PeopleField key={`people:${task.id}`} task={task} />

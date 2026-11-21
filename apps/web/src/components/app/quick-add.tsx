@@ -29,7 +29,7 @@ export interface QuickAddProps {
   /** Termin, gdy wpis go nie podaje. */
   dueDate?: LocalDate | null;
   /** Pola z kolumny tablicy (status, priorytet), gdy wpis ich nie podaje; tagi dokładane. */
-  defaults?: { status?: string; priority?: number; tagNames?: readonly string[] };
+  defaults?: { status?: string; priority?: number; tagNames?: readonly string[]; boardColumnId?: string };
   /** Podzadanie tego zadania (lista rodzica, wskazanie listy we wpisie pomijane). */
   parent?: { id: string; listId: string };
   placeholder?: string;
@@ -100,6 +100,7 @@ export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dod
       keys.set(parent?.id ?? result.listId, result.ops[0]!.patch.sort_key as string);
       if (defaults?.status) Object.assign(result.ops[0]!.patch, { status: defaults.status }, defaults.status === "done" ? { completed_at: new Date().toISOString() } : {});
       if (defaults?.priority && !parsed.fields.priority) result.ops[0]!.patch.priority = defaults.priority;
+      if (defaults?.boardColumnId) result.ops[0]!.patch.board_column_id = defaults.boardColumnId;
       // Adres w tytule (wklejony) albo z udostępnienia → załącznik-link; podgląd strony dociągnie tytuł.
       ops.push(...withLinkOps(result, { title: parsed.title, url: added.length === 0 ? link?.url : null, shared: added.length === 0 && Boolean(link) }));
       if (defaults?.tagNames?.length) ops.push(...taskTagOps({ userId, tags: data.tags }, result.taskId, defaults.tagNames, data.lists.find((l) => l.id === result.listId)?.workspaceId).filter((op) => !ops.some((o) => o.table === op.table && o.id === op.id)));

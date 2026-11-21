@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { taskTagId } from '../ids.ts';
-import { boardColumns, boardDropOps, boardOrder } from '../kanban.ts';
+import { addBoardColumnOps, boardColumnDefs, boardColumns, boardDropOps, boardOrder, moveBoardColumnOps, removeBoardColumnOps, renameBoardColumnOps, taskBoardColumn } from '../kanban.ts';
 import { toViewTask, type LocalTaskRow } from '../tasks.ts';
 import type { ViewTask } from '../views.ts';
 
@@ -127,5 +127,70 @@ describe('przeciągnięcie karty', () => {
       ['sub', 'L2'],
       ['a', undefined],
     ]);
+  });
+});
+
+describe('własne kolumny przestrzeni', () => {
+  const C1 = '00000000-0000-4000-8000-0000000000c1';
+  const C2 = '00000000-0000-4000-8000-0000000000c2';
+  const C3 = '00000000-0000-4000-8000-0000000000c3';
+  const defs = [
+    { id: C1, name: 'Pomysły' },
+    { id: C2, name: 'Zakupy' },
+  ];
+  const cards = [t('a', { boardColumnId: C2 }), t('b'), t('c', { boardColumnId: C3 }), t('d', { boardColumnId: C1, status: 'done', completedAt: '2026-11-18T10:00:00Z' })];
+
+  it('„Do przypisania” na początku: bez kolumny i z nieznaną kolumną; tylko otwarte', () => {
+    const cols = boardColumns(cards, 'custom', ctx, { columns: defs });
+    expect(cols.map((c) => [c.key, c.label, c.tasks.map((x) => x.id)])).toEqual([
+      ['none', 'Do przypisania', ['b', 'c']],
+      [C1, 'Pomysły', []],
+      [C2, 'Zakupy', ['a']],
+    ]);
+    expect(boardColumns(cards, 'custom', ctx).map((c) => c.key)).toEqual(['none']);
+  });
+
+  it('przeciągnięcie ustawia board_column_id (do „Do przypisania” — null), z cofnięciem', () => {
+    const [none, , zakupy] = boardColumns(cards, 'custom', ctx, { columns: defs });
+    const b = cards[1]!;
+    const { ops, undo } = boardDropOps(b, cards, 'custom', 'none', C2, zakupy!.tasks, 0, ctx);
+    expect(ops.at(-1)!.patch).toMatchObject({ board_column_id: C2 });
+    expect(undo.at(-1)!.patch).toMatchObject({ board_column_id: null });
+    const back = boardDropOps(cards[0]!, cards, 'custom', C2, 'none', none!.tasks, 0, ctx);
+    expect(back.ops.at(-1)!.patch).toMatchObject({ board_column_id: null });
+  });
+
+  it('dodanie, zmiana nazwy, przeniesienie i usunięcie kolumny', () => {
+    const added = addBoardColumnOps('w', defs, '  Na później ', () => C3);
+    expect(added.id).toBe(C3);
+    expect(added.ops).toEqual([{ table: 'workspaces', id: 'w', patch: { board_columns: [...defs, { id: C3, name: 'Na później' }] } }]);
+    expect(() => addBoardColumnOps('w', defs, '  ')).toThrow();
+
+    expect(renameBoardColumnOps('w', defs, C1, 'Pomysły')).toEqual([]);
+    expect(renameBoardColumnOps('w', defs, C1, 'Idee')[0]!.patch).toEqual({ board_columns: [{ id: C1, name: 'Idee' }, defs[1]] });
+
+    expect(moveBoardColumnOps('w', defs, C1, 0)).toEqual([]);
+    expect(moveBoardColumnOps('w', defs, C1, 1)[0]!.patch).toEqual({ board_columns: [defs[1], defs[0]] });
+    expect(moveBoardColumnOps('w', defs, C2, 0)[0]!.patch).toEqual({ board_columns: [defs[1], defs[0]] });
+
+    const removed = removeBoardColumnOps('w', defs, C2, cards);
+    expect(removed.ops).toEqual([
+      { table: 'workspaces', id: 'w', patch: { board_columns: [defs[0]] } },
+      { table: 'tasks', id: 'a', patch: { board_column_id: null } },
+    ]);
+    expect(removed.undo).toEqual([
+      { table: 'workspaces', id: 'w', patch: { board_columns: defs } },
+      { table: 'tasks', id: 'a', patch: { board_column_id: C2 } },
+    ]);
+    expect(removeBoardColumnOps('w', [defs[0]!], C1, [])).toEqual({ ops: [{ table: 'workspaces', id: 'w', patch: { board_columns: null } }], undo: [{ table: 'workspaces', id: 'w', patch: { board_columns: [defs[0]] } }] });
+  });
+
+  it('odczyt z bazy i kolumna zadania', () => {
+    expect(boardColumnDefs(JSON.stringify(defs))).toEqual(defs);
+    expect(boardColumnDefs(null)).toEqual([]);
+    expect(boardColumnDefs('[{"id":"zly"}]')).toEqual([]);
+    expect(taskBoardColumn({ boardColumnId: C3 }, defs)).toBeNull();
+    expect(taskBoardColumn({ boardColumnId: C1 }, defs)).toBe(C1);
+    expect(toViewTask({ ...row, board_column_id: C1 }).boardColumnId).toBe(C1);
   });
 });

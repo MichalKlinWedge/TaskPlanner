@@ -39,8 +39,8 @@ const columns = <T extends SyncedTable>() => <const C extends readonly (keyof Ta
 
 export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
   workspaces: {
-    columns: columns<'workspaces'>()(['name', 'color', 'icon', 'sort_key', 'archived_at']),
-    json: [],
+    columns: columns<'workspaces'>()(['name', 'color', 'icon', 'sort_key', 'archived_at', 'board_columns']),
+    json: ['board_columns'],
     scope: 'self',
   },
   lists: {
@@ -52,7 +52,7 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     columns: columns<'tasks'>()([
       'list_id', 'parent_id', 'kind', 'title', 'description_md', 'status', 'priority', 'start_date', 'due_date', 'due_time',
       'duration_min', 'time_zone', 'recurrence', 'habit', 'completed_at', 'sort_key', 'board_sort_key', 'source', 'postpone_count',
-      'assignee_id',
+      'assignee_id', 'board_column_id',
     ]),
     json: ['recurrence', 'habit', 'source'],
     scope: 'derived',

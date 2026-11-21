@@ -35,7 +35,9 @@ export default function BoardScreen() {
   const { run, notify } = useTaskActions();
   const list = listId ? data.lists.find((l) => l.id === listId) : undefined;
   const [localBy, setLocalBy] = useState<BoardBy>(() => (Storage.getItemSync(BY_KEY) as BoardBy | null) ?? 'status');
-  const by: BoardBy = list ? (list.prefs.boardBy ?? 'status') : localBy;
+  // Własne kolumny przestrzeni są na razie tylko na webie — tu tablica listy w tym trybie pokazuje statusy.
+  const savedBy: BoardBy = list ? (list.prefs.boardBy ?? 'status') : localBy;
+  const by: BoardBy = savedBy === 'custom' ? 'status' : savedBy;
   const setBy = (next: BoardBy) => {
     if (list) void mutate('lists', list.id, { view_prefs: { ...list.prefs, boardBy: next } }).catch((e: unknown) => notify(String(e)));
     else {
@@ -109,7 +111,7 @@ export default function BoardScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Kolumny: ${BOARD_BY[by]}`}
-          onPress={() => void pickOption<BoardBy>('Kolumny według', (Object.keys(BOARD_BY) as BoardBy[]).map((k) => ({ label: BOARD_BY[k], value: k, selected: k === by }))).then((v) => v && setBy(v))}
+          onPress={() => void pickOption<BoardBy>('Kolumny według', (Object.keys(BOARD_BY) as BoardBy[]).filter((k) => k !== 'custom').map((k) => ({ label: BOARD_BY[k], value: k, selected: k === by }))).then((v) => v && setBy(v))}
           style={[styles.by, { borderColor: p.border }]}
         >
           <Text style={{ color: p.fg, fontSize: 13 }}>Kolumny: {BOARD_BY[by]}</Text>

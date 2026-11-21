@@ -48,10 +48,11 @@ type Operation =
  * (nowa kolumna / tabela, której starszy lider nie ma). 1 = brak pola (do Etapu 7), 2 = `mutateMany`,
  * `profiles.focus`, `review_sessions` w przeglądzie, 3 = `collaborators`, `task_participants`,
  * `task_comments`, `tasks.assignee_id`, 4 = `collaborators.acronym`, `collaborators.archived_at`,
- * 5 = `tags.workspace_ids`, 6 = `collaborators.workspace_ids`. Pole `ids` w `changed` nie podbija wersji:
+ * 5 = `tags.workspace_ids`, 6 = `collaborators.workspace_ids`, 7 = `workspaces.board_columns`,
+ * `tasks.board_column_id`. Pole `ids` w `changed` nie podbija wersji:
  * jest opcjonalne w obie strony (bez niego widoki czytają całe tabele).
  */
-export const TAB_PROTOCOL = 6;
+export const TAB_PROTOCOL = 7;
 
 /** Błąd zapisu przez lidera ze starszą wersją aplikacji. */
 export const STALE_LEADER_MESSAGE = 'Aplikacja jest otwarta w innej karcie w starszej wersji — odśwież albo zamknij tamtą kartę i spróbuj ponownie.';

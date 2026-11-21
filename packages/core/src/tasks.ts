@@ -36,6 +36,7 @@ export interface LocalTaskRow {
   board_sort_key?: string | null;
   postpone_count: number | null;
   assignee_id?: string | null;
+  board_column_id?: string | null;
   field_clock?: unknown;
 }
 
@@ -87,13 +88,14 @@ export function toViewTask(row: LocalTaskRow, tagIds: readonly string[] = []): V
     postponeCount: Number(row.postpone_count ?? 0),
     statusChangedAt: fieldChangedAt(row.field_clock, 'status'),
     assigneeId: row.assignee_id ?? null,
+    boardColumnId: row.board_column_id ?? null,
   };
 }
 
 export interface TaskOp {
   table:
     | 'tasks' | 'task_completions' | 'tags' | 'task_tags' | 'reminders' | 'saved_filters' | 'task_dependencies' | 'lists' | 'time_entries' | 'profiles'
-    | 'review_sessions' | 'attachments' | 'collaborators' | 'task_participants' | 'task_comments';
+    | 'review_sessions' | 'attachments' | 'collaborators' | 'task_participants' | 'task_comments' | 'workspaces';
   id: string;
   patch: Record<string, unknown>;
 }

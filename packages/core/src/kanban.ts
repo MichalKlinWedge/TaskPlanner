@@ -1,20 +1,21 @@
 /**
- * Kanban (SPECYFIKACJA M10): kolumny według statusu, priorytetu, dnia bieżącego tygodnia, tagu albo
- * listy; kolejność kart z `board_sort_key` (D15 — wspólna dla kart z wielu list; bez klucza —
+ * Kanban (SPECYFIKACJA M10): kolumny według statusu, priorytetu, dnia bieżącego tygodnia, tagu,
+ * listy albo własnych kolumn przestrzeni (`workspaces.board_columns`, v1.x); kolejność kart z `board_sort_key` (D15 — wspólna dla kart z wielu list; bez klucza —
  * automatycznie: priorytet, termin) i operacje przeciągnięcia karty (zmiana atrybutu kolumny +
  * miejsce w kolumnie). Web i telefon (uproszczony) liczą to samo.
  */
 import { addDays, weekStart } from './dates.ts';
 import { dayChip } from './format.ts';
 import { PRIORITY, TASK_STATUS, TASK_STATUS_HINT, VIEW_SECTION } from './labels.ts';
-import { taskTagId } from './ids.ts';
+import { taskTagId, uuidv7 } from './ids.ts';
 import { reschedulePatch } from './review.ts';
+import { BoardColumns, type BoardColumnDef } from './schemas/model.ts';
 import type { LocalDate, Priority, TaskStatus } from './schemas/primitives.ts';
 import { keyBetween } from './sort-key.ts';
 import { completeTaskOps, datesPatch, moveTaskOps, reopenTaskPatch, type TaskOp } from './tasks.ts';
 import type { ViewTask } from './views.ts';
 
-export type BoardBy = 'status' | 'priority' | 'weekday' | 'tag' | 'list';
+export type BoardBy = 'status' | 'priority' | 'weekday' | 'tag' | 'list' | 'custom';
 
 export const BOARD_BY: Record<BoardBy, string> = {
   status: 'Status',
@@ -22,7 +23,11 @@ export const BOARD_BY: Record<BoardBy, string> = {
   weekday: 'Dzień tygodnia',
   tag: 'Tag',
   list: 'Lista',
+  custom: 'Własne',
 };
+
+/** Pierwsza kolumna trybu „Własne”: zadania bez kolumny albo z kolumną spoza przestrzeni. */
+export const BOARD_UNASSIGNED = 'Do przypisania';
 
 /** Kolumny statusu (anulowane nie są na tablicy). */
 export const BOARD_STATUSES: readonly TaskStatus[] = ['todo', 'in_progress', 'waiting', 'done'];
@@ -30,7 +35,7 @@ export const BOARD_STATUSES: readonly TaskStatus[] = ['todo', 'in_progress', 'wa
 export const BOARD_DONE_DAYS = 7;
 
 export interface BoardColumn {
-  /** Wartość kolumny: status, priorytet, data, id tagu / listy albo `none`. */
+  /** Wartość kolumny: status, priorytet, data, id tagu / listy / własnej kolumny albo `none`. */
   key: string;
   label: string;
   /** Opis wartości kolumny (dymek) — przy kolumnach statusów. */
@@ -41,6 +46,8 @@ export interface BoardColumn {
 export interface BoardLookup {
   lists?: readonly { id: string; name: string; sortKey: string }[];
   tags?: readonly { id: string; name: string; sortKey: string }[];
+  /** Własne kolumny przestrzeni tablicy (tryb `custom`). */
+  columns?: readonly BoardColumnDef[];
 }
 
 const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -92,6 +99,10 @@ export function boardColumns(
     for (const tag of [...(lookup.tags ?? [])].sort((a, b) => byText(a.sortKey, b.sortKey))) column(tag.id, tag.name);
     column('none', VIEW_SECTION.noTag);
     for (const t of cards) for (const id of t.tagIds.length ? t.tagIds : ['none']) columns.get(id)?.tasks.push(t);
+  } else if (by === 'custom') {
+    column('none', BOARD_UNASSIGNED);
+    for (const c of lookup.columns ?? []) column(c.id, c.name);
+    for (const t of cards) ((t.boardColumnId ? columns.get(t.boardColumnId) : undefined) ?? columns.get('none')!).tasks.push(t);
   } else {
     for (const l of [...(lookup.lists ?? [])].sort((a, b) => byText(a.sortKey, b.sortKey))) column(l.id, l.name);
     for (const t of cards) columns.get(t.listId)?.tasks.push(t);
@@ -124,7 +135,8 @@ function boardKeyOps(column: readonly ViewTask[], draggedId: string, index: numb
 
 /**
  * Przeciągnięcie karty do kolumny `toKey` na pozycję `index`: atrybut kolumny (status — ukończenie /
- * ponowne otwarcie jak przy odhaczeniu, priorytet, termin z zachowaniem godziny, tag, lista) i klucz
+ * ponowne otwarcie jak przy odhaczeniu, priorytet, termin z zachowaniem godziny, tag, lista, własna
+ * kolumna) i klucz
  * kolejności. Z `undo` — przywrócenie (bez kluczy kolejności sąsiadów).
  */
 export function boardDropOps(
@@ -180,7 +192,8 @@ export function boardDropOps(
         ops.push({ table: 'task_tags', id: taskTagId(task.id, toKey), patch: { task_id: task.id, tag_id: toKey, deleted_at: null } });
         undo.push({ table: 'task_tags', id: taskTagId(task.id, toKey), patch: { deleted_at: at } });
       }
-    } else {
+    } else if (by === 'custom') set('board_column_id', toKey === 'none' ? null : toKey, task.boardColumnId ?? null);
+    else {
       const moves = moveTaskOps(all, task.id, toKey);
       ops.push(...moves);
       undo.push(...moves.map((m): TaskOp => ({ table: 'tasks', id: m.id, patch: { list_id: task.listId } })));
@@ -193,3 +206,77 @@ export function boardDropOps(
   undo.push({ table: 'tasks', id: task.id, patch: before });
   return { ops, undo };
 }
+
+// ── Własne kolumny przestrzeni ──────────────────────────────────────────────────────────────────
+
+/** Własne kolumny z `workspaces.board_columns` (tekst JSON z lokalnej bazy albo tablica); uszkodzone → `[]`. */
+export function boardColumnDefs(raw: unknown): BoardColumnDef[] {
+  let value = raw;
+  if (typeof raw === 'string') {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  const parsed = BoardColumns.safeParse(value ?? []);
+  return parsed.success ? parsed.data : [];
+}
+
+const columnsOp = (workspaceId: string, next: readonly BoardColumnDef[]): TaskOp => ({
+  table: 'workspaces',
+  id: workspaceId,
+  patch: { board_columns: next.length ? next.map((c) => ({ id: c.id, name: c.name })) : null },
+});
+
+function columnName(name: string): string {
+  const trimmed = name.trim().slice(0, 60);
+  if (!trimmed) throw new Error('Nazwa kolumny nie może być pusta.');
+  return trimmed;
+}
+
+/** Nowa kolumna na końcu tablicy przestrzeni. */
+export function addBoardColumnOps(workspaceId: string, current: readonly BoardColumnDef[], name: string, newId: () => string = uuidv7): { ops: TaskOp[]; id: string } {
+  if (current.length >= 50) throw new Error('Tablica może mieć najwyżej 50 kolumn.');
+  const id = newId();
+  return { ops: [columnsOp(workspaceId, [...current, { id, name: columnName(name) }])], id };
+}
+
+/** Zmiana nazwy kolumny; ta sama nazwa / nieznane id — brak operacji. */
+export function renameBoardColumnOps(workspaceId: string, current: readonly BoardColumnDef[], id: string, name: string): TaskOp[] {
+  const next = columnName(name);
+  if (!current.some((c) => c.id === id && c.name !== next)) return [];
+  return [columnsOp(workspaceId, current.map((c) => (c.id === id ? { ...c, name: next } : c)))];
+}
+
+/** Przeniesienie kolumny na pozycję `index` (licząc bez niej); to samo miejsce / nieznane id — brak operacji. */
+export function moveBoardColumnOps(workspaceId: string, current: readonly BoardColumnDef[], id: string, index: number): TaskOp[] {
+  const from = current.findIndex((c) => c.id === id);
+  if (from < 0) return [];
+  const rest = current.filter((c) => c.id !== id);
+  const to = Math.max(0, Math.min(index, rest.length));
+  if (to === from) return [];
+  return [columnsOp(workspaceId, [...rest.slice(0, to), current[from]!, ...rest.slice(to)])];
+}
+
+/**
+ * Usunięcie kolumny: jej zadania wracają do „Do przypisania” (`board_column_id = null`). Z `undo` —
+ * kolumna na tym samym miejscu i przypisania zadań.
+ */
+export function removeBoardColumnOps(
+  workspaceId: string,
+  current: readonly BoardColumnDef[],
+  id: string,
+  tasks: readonly Pick<ViewTask, 'id' | 'boardColumnId'>[],
+): { ops: TaskOp[]; undo: TaskOp[] } {
+  if (!current.some((c) => c.id === id)) return { ops: [], undo: [] };
+  const assigned = tasks.filter((t) => t.boardColumnId === id);
+  return {
+    ops: [columnsOp(workspaceId, current.filter((c) => c.id !== id)), ...assigned.map((t): TaskOp => ({ table: 'tasks', id: t.id, patch: { board_column_id: null } }))],
+    undo: [columnsOp(workspaceId, current), ...assigned.map((t): TaskOp => ({ table: 'tasks', id: t.id, patch: { board_column_id: id } }))],
+  };
+}
+
+/** Kolumna zadania w przestrzeni — id z `columns` albo `null` („Do przypisania”). */
+export const taskBoardColumn = (task: Pick<ViewTask, 'boardColumnId'>, columns: readonly BoardColumnDef[]): string | null =>
+  task.boardColumnId && columns.some((c) => c.id === task.boardColumnId) ? task.boardColumnId : null;
