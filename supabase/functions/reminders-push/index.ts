@@ -16,7 +16,7 @@
  */
 import * as webpush from '@negrel/webpush';
 
-import { planPushes, pushDevices, type CompletionRow, type DeviceRow, type PlannedPush, type ProfileRow, type ReminderRow } from '../_shared/reminders.ts';
+import { planPushes, pushDevices, type CompletionRow, type DeviceRow, type MembershipRow, type PlannedPush, type ProfileRow, type ReminderRow } from '../_shared/reminders.ts';
 import { admin, env, HttpError, json, optionalEnv, requireCron, route, serve } from '../_shared/runtime.ts';
 
 let server: webpush.ApplicationServer | null = null;
@@ -59,18 +59,20 @@ serve(async (req, url) => {
   if (!devices.length) return json({ devices: 0, sent: 0, ms: Date.now() - started });
   const users = [...new Set(devices.map((d) => d.scope_id))];
 
-  const [{ data: reminderRows, error: remError }, { data: profileRows, error: profError }] = await Promise.all([
+  const [{ data: reminderRows, error: remError }, { data: profileRows, error: profError }, { data: memberRows, error: memError }] = await Promise.all([
     db
       .from('reminders')
-      .select(`id, task_id, kind, offset_min, at_date, at_time, created_by, tasks!inner(${TASK_COLUMNS})`)
+      .select(`id, task_id, kind, offset_min, at_date, at_time, created_by, scope_id, tasks!inner(${TASK_COLUMNS})`)
       .in('created_by', users)
       .is('deleted_at', null)
       .is('tasks.deleted_at', null)
       .not('tasks.status', 'in', '(done,cancelled)'),
     db.from('profiles').select('id, settings, focus').in('id', users),
+    db.from('scope_members').select('scope_id, user_id').in('user_id', users),
   ]);
   if (remError) throw remError;
   if (profError) throw profError;
+  if (memError) throw memError;
   const reminders = (reminderRows ?? []) as unknown as ReminderRow[];
 
   // Nawyki: wpisy od początku bieżącego tygodnia / miesiąca (cel „N razy”) w każdej strefie — z zapasem dnia.
@@ -92,7 +94,7 @@ serve(async (req, url) => {
   }
 
   const plan = planPushes(
-    { devices, reminders, profiles: (profileRows ?? []) as ProfileRow[], completions },
+    { devices, reminders, profiles: (profileRows ?? []) as ProfileRow[], completions, memberships: (memberRows ?? []) as MembershipRow[] },
     { now, allowHttp },
   );
   const summary = { devices: devices.length, due: plan.length, claimed: 0, sent: 0, retry: 0, gone: 0, failed: 0 };

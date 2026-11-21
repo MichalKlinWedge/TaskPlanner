@@ -6,7 +6,7 @@
  * (także z innej karty i z synchronizacji) — zadania przyrostowo (`createTaskCache`: tylko zmienione
  * wiersze, gotowe `ViewTask` reszty zostają); reguły widoków liczy `@taskplanner/core`.
  */
-import { AttachmentPreview, boardColumnDefs, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type BoardColumnDef, type Collaborator, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ViewTask } from "@taskplanner/core";
+import { AttachmentPreview, boardColumnDefs, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type BoardColumnDef, type Collaborator, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ScopeRole, type ViewTask } from "@taskplanner/core";
 import { createTaskCache, type TabStore, type TaskEntry } from "@taskplanner/sync";
 import { useEffect, useMemo, useState } from "react";
 
@@ -19,6 +19,8 @@ export interface Workspace {
   name: string;
   color: string | null;
   sortKey: string;
+  /** Rola w przestrzeni z ostatniej synchronizacji (`_scopes`); `null` = jeszcze nieznana (jak właściciel). */
+  role: ScopeRole | null;
 }
 
 export interface List {
@@ -155,7 +157,12 @@ function useTaskEntries(store: TabStore): { entries: readonly TaskEntry[]; loade
 }
 
 export function useAppData(store: TabStore, today: LocalDate): AppData {
-  const workspaces = useLocalQuery<Row>(store, "select id, name, color, sort_key from workspaces where deleted_at is null and archived_at is null", [], ["workspaces"]);
+  const workspaces = useLocalQuery<Row>(
+    store,
+    "select w.id, w.name, w.color, w.sort_key, s.role from workspaces w left join _scopes s on s.id = w.id where w.deleted_at is null and w.archived_at is null",
+    [],
+    ["workspaces"],
+  );
   const lists = useLocalQuery<Row>(
     store,
     "select id, scope_id, kind, name, color, sort_key, view_prefs, start_date, end_date, project_status, board_columns from lists where deleted_at is null and archived_at is null",
@@ -212,7 +219,9 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
 
   return useMemo(
     () => ({
-      workspaces: workspaces.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key) })).sort(byKey),
+      workspaces: workspaces.rows
+        .map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), role: (r.role as ScopeRole | null) ?? null }))
+        .sort(byKey),
       lists: allLists,
       tags: tags.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), workspaceIds: tagWorkspaceIds(r.workspace_ids) })).sort(byKey),
       // Filtr z nieznanym warunkiem (nowsza wersja aplikacji) — pomijany, a nie psujący widoku.

@@ -1,0 +1,326 @@
+"use client";
+
+/**
+ * Współdzielenie przestrzeni (v1.x): panel „Osoby” w karcie przestrzeni (`SharingPanel`) i zaproszenia
+ * do zalogowanego (`ScopeInvites` — pasek pod nagłówkiem, także przyjęcie z linku `/?invite=`).
+ * Dane na serwerze (RPC z `lib/sharing.ts`) — wymaga sieci; po przyjęciu albo opuszczeniu przestrzeni
+ * `store.sync()` pobiera (albo usuwa z urządzenia) jej dane.
+ */
+import { inviteLink, plural, SCOPE_ROLE, SCOPE_ROLE_HINT, shareEmail, WORKSPACE_SHARE_NOTE, type ShareRole } from "@taskplanner/core";
+import type { TabStore } from "@taskplanner/sync";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+
+import {
+  acceptInvite,
+  acceptLinkInvite,
+  declineInvite,
+  myInvites,
+  removeMember,
+  revokeInvite,
+  setMemberRole,
+  shareWorkspace,
+  workspaceSharing,
+  type MyInvite,
+  type PendingInvite,
+  type WorkspaceSharing,
+} from "@/lib/sharing";
+
+import { Button, Input, Notice, Select } from "./ui";
+
+const ROLES: ShareRole[] = ["editor", "viewer"];
+const date = (iso: string) => new Date(iso).toLocaleDateString("pl-PL", { dateStyle: "medium" });
+const offlineText = "Udostępnianie wymaga połączenia z internetem.";
+const message = (e: unknown) => (typeof navigator !== "undefined" && !navigator.onLine ? offlineText : e instanceof Error ? e.message : String(e));
+
+async function copy(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    window.prompt("Skopiuj link zaproszenia:", text);
+    return false;
+  }
+}
+
+/** Członkowie przestrzeni, zaproszenia (właściciel) i „Opuść przestrzeń” (pozostali). */
+export function SharingPanel({ store, workspaceId, workspaceName }: { store: TabStore; workspaceId: string; workspaceName: string }) {
+  const [sharing, setSharing] = useState<WorkspaceSharing | null>(null);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<ShareRole>("editor");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setSharing(await workspaceSharing(workspaceId));
+      setError(null);
+    } catch (e) {
+      setError(message(e));
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    void Promise.resolve().then(load);
+  }, [load]);
+
+  const act = async (work: () => Promise<unknown>, done?: string) => {
+    setBusy(true);
+    setError(null);
+    setInfo(null);
+    try {
+      await work();
+      if (done) setInfo(done);
+    } catch (e) {
+      setError(message(e));
+    }
+    await load();
+    setBusy(false);
+  };
+
+  const normalized = shareEmail(email);
+  const owner = sharing?.role === "owner";
+
+  const invite = (event: FormEvent) => {
+    event.preventDefault();
+    if (!normalized) return;
+    void act(async () => {
+      const { token } = await shareWorkspace(workspaceId, normalized, role);
+      setEmail("");
+      const copied = await copy(inviteLink(window.location.origin, token));
+      setInfo(`Zaproszenie dla ${normalized} czeka w aplikacji tej osoby${copied ? " — link skopiowany do schowka, możesz go też wysłać" : ""}.`);
+    });
+  };
+
+  const leave = () => {
+    if (!window.confirm(`Opuścić przestrzeń „${workspaceName}”? Jej zadania znikną z Twoich urządzeń; wrócisz tylko z nowym zaproszeniem.`)) return;
+    void act(async () => {
+      const me = sharing?.members.find((m) => m.me);
+      if (me) await removeMember(workspaceId, me.userId);
+      await store.sync().catch(() => undefined);
+    });
+  };
+
+  return (
+    <div className="mt-3 rounded-md border border-[var(--line)] p-3 text-sm" data-testid="sharing-panel">
+      {owner ? <p className="mb-3 text-xs opacity-70">{WORKSPACE_SHARE_NOTE}</p> : null}
+      {owner ? (
+        <form onSubmit={invite} className="mb-1 flex flex-wrap items-center gap-2">
+          <Input
+            aria-label="Adres e-mail osoby zapraszanej"
+            placeholder="adres@example.com"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="off"
+            className="min-w-48 flex-1"
+          />
+          <Select aria-label="Rola" value={role} onChange={(e) => setRole(e.target.value as ShareRole)} className="w-36">
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {SCOPE_ROLE[r]}
+              </option>
+            ))}
+          </Select>
+          <Button kind="primary" type="submit" disabled={busy || !normalized}>
+            Zaproś
+          </Button>
+        </form>
+      ) : null}
+      {owner ? <p className="mb-3 text-xs opacity-60">{SCOPE_ROLE[role]} — {SCOPE_ROLE_HINT[role]}.</p> : null}
+      {sharing ? (
+        <ul className="divide-y divide-[var(--line)]">
+          {sharing.members.map((m) => (
+            <li key={m.userId} className="flex flex-wrap items-center gap-2 py-2">
+              <span className="min-w-0 flex-1 truncate">
+                {m.email}
+                {m.me ? <span className="ml-1 opacity-60">(Ty)</span> : null}
+              </span>
+              {owner && m.role !== "owner" ? (
+                <>
+                  <Select
+                    aria-label={`Rola ${m.email}`}
+                    value={m.role}
+                    disabled={busy}
+                    onChange={(e) => void act(() => setMemberRole(workspaceId, m.userId, e.target.value as ShareRole))}
+                    className="w-32"
+                  >
+                    {ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {SCOPE_ROLE[r]}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    kind="ghost"
+                    disabled={busy}
+                    onClick={() => {
+                      if (window.confirm(`Usunąć ${m.email} z przestrzeni „${workspaceName}”? Jej dane znikną z urządzeń tej osoby.`)) void act(() => removeMember(workspaceId, m.userId));
+                    }}
+                  >
+                    Usuń
+                  </Button>
+                </>
+              ) : (
+                <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs">{SCOPE_ROLE[m.role]}</span>
+              )}
+            </li>
+          ))}
+          {sharing.invites.map((i) => (
+            <InviteRow key={i.id} invite={i} busy={busy} onRevoke={() => void act(() => revokeInvite(i.id))} onCopied={setInfo} />
+          ))}
+        </ul>
+      ) : null}
+      {sharing && !owner ? (
+        <div className="mt-2 flex items-center gap-2">
+          <span className="flex-1 text-xs opacity-70">
+            Twoja rola: {SCOPE_ROLE[sharing.role]}
+            {sharing.role === "viewer" ? " — możesz tylko przeglądać zadania." : "."}
+          </span>
+          <Button kind="ghost" disabled={busy} onClick={leave}>
+            Opuść przestrzeń
+          </Button>
+        </div>
+      ) : null}
+      {info ? (
+        <div className="mt-2">
+          <Notice tone="ok">{info}</Notice>
+        </div>
+      ) : null}
+      {error ? (
+        <div className="mt-2">
+          <Notice tone="error">{error}</Notice>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function InviteRow({ invite, busy, onRevoke, onCopied }: { invite: PendingInvite; busy: boolean; onRevoke: () => void; onCopied: (text: string) => void }) {
+  return (
+    <li className="flex flex-wrap items-center gap-2 py-2">
+      <span className="min-w-0 flex-1 truncate">
+        {invite.email}
+        <span className="ml-2 text-xs opacity-60">
+          {invite.expired ? "zaproszenie wygasło" : `zaproszono ${date(invite.createdAt)}, ważne do ${date(invite.expiresAt)}`}
+        </span>
+      </span>
+      <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs">{SCOPE_ROLE[invite.role]}</span>
+      {!invite.expired ? (
+        <Button
+          kind="ghost"
+          disabled={busy}
+          onClick={() => void copy(inviteLink(window.location.origin, invite.token)).then((ok) => ok && onCopied(`Link dla ${invite.email} skopiowany do schowka.`))}
+        >
+          Kopiuj link
+        </Button>
+      ) : null}
+      <Button kind="ghost" disabled={busy} onClick={onRevoke}>
+        Cofnij
+      </Button>
+    </li>
+  );
+}
+
+/** Zaproszenia do zalogowanego: przyjęcie z linku po zalogowaniu i lista do przyjęcia / odrzucenia. */
+export function ScopeInvites({ store }: { store: TabStore }) {
+  const [invites, setInvites] = useState<MyInvite[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setInvites(await myInvites());
+    } catch {
+      // Offline albo chwilowy błąd — lista wróci przy następnej próbie.
+    }
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        if (await acceptLinkInvite()) {
+          if (alive) setInfo("Dołączono do udostępnionej przestrzeni — jej zadania pobierają się teraz na to urządzenie.");
+          await store.sync().catch(() => undefined);
+        }
+      } catch (e) {
+        if (alive) setError(`Nie udało się przyjąć zaproszenia z linku: ${message(e)}`);
+      }
+      if (alive) await load();
+    })();
+    const refresh = () => void load();
+    window.addEventListener("online", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      alive = false;
+      window.removeEventListener("online", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [load, store]);
+
+  const respond = async (invite: MyInvite, accept: boolean) => {
+    setBusy(true);
+    setError(null);
+    setInfo(null);
+    try {
+      if (accept) {
+        await acceptInvite({ id: invite.id });
+        setInfo(`Dołączono do przestrzeni „${invite.workspace}” — jej zadania pobierają się teraz na to urządzenie.`);
+        await store.sync().catch(() => undefined);
+      } else {
+        await declineInvite(invite.id);
+      }
+    } catch (e) {
+      setError(message(e));
+    }
+    await load();
+    setBusy(false);
+  };
+
+  if (!invites.length && !info && !error) return null;
+  return (
+    <section aria-label="Zaproszenia do przestrzeni" className="border-b border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-sm" data-testid="scope-invites">
+      {invites.length ? (
+        <p className="mb-1 font-medium">{plural(invites.length, ["Zaproszenie do przestrzeni", "Zaproszenia do przestrzeni", "Zaproszeń do przestrzeni"])}</p>
+      ) : null}
+      <ul className="flex flex-col gap-1">
+        {invites.map((i) => (
+          <li key={i.id} className="flex flex-wrap items-center gap-2">
+            <span className="min-w-0 flex-1">
+              <strong>„{i.workspace}”</strong>
+              {i.invitedBy ? ` od ${i.invitedBy}` : ""} — rola: {SCOPE_ROLE[i.role].toLowerCase()} ({SCOPE_ROLE_HINT[i.role]})
+            </span>
+            <Button kind="primary" disabled={busy} onClick={() => void respond(i, true)}>
+              Przyjmij
+            </Button>
+            <Button kind="ghost" disabled={busy} onClick={() => void respond(i, false)}>
+              Odrzuć
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {info ? (
+        <div className="mt-1 flex items-center gap-2">
+          <div className="flex-1">
+            <Notice tone="ok">{info}</Notice>
+          </div>
+          <Button kind="ghost" onClick={() => setInfo(null)} aria-label="Zamknij">
+            ✕
+          </Button>
+        </div>
+      ) : null}
+      {error ? (
+        <div className="mt-1 flex items-center gap-2">
+          <div className="flex-1">
+            <Notice tone="error">{error}</Notice>
+          </div>
+          <Button kind="ghost" onClick={() => setError(null)} aria-label="Zamknij">
+            ✕
+          </Button>
+        </div>
+      ) : null}
+    </section>
+  );
+}

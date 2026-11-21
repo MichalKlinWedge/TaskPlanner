@@ -1,11 +1,12 @@
 "use client";
 
-import { COLORS, inboxId, keyBetween, LIST_KIND, reorderPatches, uuidv7, type ListKind } from "@taskplanner/core";
+import { canEditScope, COLORS, inboxId, keyBetween, LIST_KIND, reorderPatches, SCOPE_ROLE, uuidv7, type ListKind, type ScopeRole } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useState, type FormEvent } from "react";
 
 import { useLocalQuery } from "@/lib/local-store";
 
+import { SharingPanel } from "./sharing";
 import { Button, Card, IconButton, Input, Notice, Select } from "./ui";
 
 interface WorkspaceRow extends Record<string, string | number | null> {
@@ -14,6 +15,8 @@ interface WorkspaceRow extends Record<string, string | number | null> {
   color: string | null;
   sort_key: string;
   archived_at: string | null;
+  /** Rola z ostatniej synchronizacji (`_scopes`); `null` = jeszcze nieznana (jak właściciel). */
+  role: ScopeRole | null;
 }
 
 interface ListRow extends Record<string, string | number | null> {
@@ -29,13 +32,13 @@ interface ListRow extends Record<string, string | number | null> {
 
 const byKey = <T extends { sort_key: string; id: string }>(a: T, b: T) => (a.sort_key < b.sort_key ? -1 : a.sort_key > b.sort_key ? 1 : a.id < b.id ? -1 : 1);
 
-/** Przestrzenie i listy (MVP-1): tworzenie, nazwa, kolor, kolejność, archiwizacja. */
+/** Przestrzenie i listy (MVP-1): tworzenie, nazwa, kolor, kolejność, archiwizacja; osoby i udostępnianie (v1.x). */
 export function WorkspacesScreen({ store }: { store: TabStore }) {
   const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { rows: workspaces } = useLocalQuery<WorkspaceRow>(
     store,
-    "select id, name, color, sort_key, archived_at from workspaces where deleted_at is null",
+    "select w.id, w.name, w.color, w.sort_key, w.archived_at, s.role from workspaces w left join _scopes s on s.id = w.id where w.deleted_at is null",
     [],
     ["workspaces"],
   );
@@ -122,6 +125,10 @@ function WorkspaceCard({
   run: (work: () => Promise<void>) => Promise<void>;
 }) {
   const archived = Boolean(workspace.archived_at);
+  const [people, setPeople] = useState(false);
+  // Podgląd tylko czyta; archiwizacja zmienia przestrzeń wszystkim członkom — tylko właściciel.
+  const editable = canEditScope(workspace.role);
+  const owner = workspace.role === null || workspace.role === "owner";
   // Inbox zawsze pierwszy i bez przesuwania; pozostałe po kluczu kolejności.
   const inbox = lists.find((l) => l.kind === "inbox");
   const others = lists.filter((l) => l.kind !== "inbox" && (showArchived || !l.archived_at)).sort(byKey);
@@ -149,35 +156,60 @@ function WorkspaceCard({
   return (
     <Card className={archived ? "opacity-60" : ""}>
       <div className="flex flex-wrap items-center gap-2">
-        <ColorPicker value={workspace.color} onChange={(color) => void update({ color })} label={`Kolor przestrzeni ${workspace.name}`} />
-        <EditableName value={workspace.name} max={100} onSave={(name) => void update({ name })} className="text-base font-semibold" />
+        {editable ? (
+          <>
+            <ColorPicker value={workspace.color} onChange={(color) => void update({ color })} label={`Kolor przestrzeni ${workspace.name}`} />
+            <EditableName value={workspace.name} max={100} onSave={(name) => void update({ name })} className="text-base font-semibold" />
+          </>
+        ) : (
+          <>
+            <span className="h-4 w-4 rounded-full border border-[var(--line)]" style={{ background: workspace.color ?? "transparent" }} />
+            <span className="px-1 text-base font-semibold">{workspace.name}</span>
+          </>
+        )}
         {archived ? <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs">zarchiwizowana</span> : null}
+        {!owner && workspace.role ? (
+          <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs" title="Przestrzeń udostępniona Ci przez innego użytkownika">
+            udostępniona · {SCOPE_ROLE[workspace.role].toLowerCase()}
+          </span>
+        ) : null}
         <span className="flex-1" />
-        <IconButton label="W górę" disabled={!canUp} onClick={() => onMove(-1)}>
-          ↑
-        </IconButton>
-        <IconButton label="W dół" disabled={!canDown} onClick={() => onMove(1)}>
-          ↓
-        </IconButton>
-        <Button kind="ghost" onClick={() => void update({ archived_at: archived ? null : new Date().toISOString() })}>
-          {archived ? "Przywróć" : "Archiwizuj"}
+        {editable ? (
+          <>
+            <IconButton label="W górę" disabled={!canUp} onClick={() => onMove(-1)}>
+              ↑
+            </IconButton>
+            <IconButton label="W dół" disabled={!canDown} onClick={() => onMove(1)}>
+              ↓
+            </IconButton>
+          </>
+        ) : null}
+        <Button kind="ghost" aria-expanded={people} onClick={() => setPeople((p) => !p)}>
+          {owner ? "Udostępnij" : "Osoby"}
         </Button>
+        {owner ? (
+          <Button kind="ghost" onClick={() => void update({ archived_at: archived ? null : new Date().toISOString() })}>
+            {archived ? "Przywróć" : "Archiwizuj"}
+          </Button>
+        ) : null}
       </div>
+      {people ? <SharingPanel store={store} workspaceId={workspace.id} workspaceName={workspace.name} /> : null}
       <ul className="mt-3 flex flex-col divide-y divide-[var(--line)] border-t border-[var(--line)]">
-        {inbox ? <ListItem store={store} list={inbox} run={run} /> : null}
+        {inbox ? <ListItem store={store} list={inbox} run={run} editable={editable} /> : null}
         {others.map((list, index) => (
           <ListItem
             key={list.id}
             store={store}
             list={list}
             run={run}
+            editable={editable}
             canUp={!list.archived_at && index > 0}
             canDown={!list.archived_at && index < activeOthers.length - 1}
             onMove={(delta) => void moveList(list, delta)}
           />
         ))}
       </ul>
-      {!archived ? <AddListForm onAdd={(name, kind) => void addList(name, kind)} /> : null}
+      {!archived && editable ? <AddListForm onAdd={(name, kind) => void addList(name, kind)} /> : null}
     </Card>
   );
 }
@@ -186,6 +218,7 @@ function ListItem({
   store,
   list,
   run,
+  editable,
   canUp,
   canDown,
   onMove,
@@ -193,6 +226,7 @@ function ListItem({
   store: TabStore;
   list: ListRow;
   run: (work: () => Promise<void>) => Promise<void>;
+  editable: boolean;
   canUp?: boolean;
   canDown?: boolean;
   onMove?: (delta: number) => void;
@@ -202,12 +236,16 @@ function ListItem({
   const inbox = list.kind === "inbox";
   return (
     <li className={`flex flex-wrap items-center gap-2 py-2 text-sm ${archived ? "opacity-60" : ""}`}>
-      <ColorPicker value={list.color} onChange={(color) => void update({ color })} label={`Kolor listy ${list.name}`} />
-      {inbox ? <span className="font-medium">{list.name}</span> : <EditableName value={list.name} max={200} onSave={(name) => void update({ name })} />}
+      {editable ? (
+        <ColorPicker value={list.color} onChange={(color) => void update({ color })} label={`Kolor listy ${list.name}`} />
+      ) : (
+        <span className="h-4 w-4 rounded-full border border-[var(--line)]" style={{ background: list.color ?? "transparent" }} />
+      )}
+      {inbox || !editable ? <span className="font-medium">{list.name}</span> : <EditableName value={list.name} max={200} onSave={(name) => void update({ name })} />}
       <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs">{LIST_KIND[list.kind]}</span>
       {Number(list.open) > 0 ? <span className="text-xs opacity-60">{list.open} otwartych</span> : null}
       <span className="flex-1" />
-      {!inbox ? (
+      {!inbox && editable ? (
         <>
           <IconButton label="W górę" disabled={!canUp} onClick={() => onMove?.(-1)}>
             ↑

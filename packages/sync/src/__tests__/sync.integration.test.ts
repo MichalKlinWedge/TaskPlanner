@@ -6,6 +6,7 @@
 import { advanceFocus, completionId, FOCUS_IDLE, focusEntryId, focusStepOps, inboxId, parseFocusState, pauseFocus, startFocus, uuidv7 } from '@taskplanner/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { READONLY_SCOPE_MESSAGE } from '../engine.ts';
 import { createDevice, createUser, waitFor, type Device, type TestUser } from './helpers/devices.ts';
 
 let user: TestUser;
@@ -232,6 +233,72 @@ describe('PoC-1: synchronizacja w obie strony', () => {
     expect(stranger.rejected.map((r) => r.code)).toEqual(['TP003']);
     expect((await serverTask(phone, id))?.title).toBe('Prywatne');
     expect(await row(stranger, 'tasks', id)).toBeUndefined();
+  });
+});
+
+describe('v1.x: współdzielona przestrzeń', () => {
+  const share = async (email: string, role: 'editor' | 'viewer') => {
+    const { data, error } = await phone.client.rpc('share_workspace', { p_scope: W, p_email: email, p_role: role });
+    if (error) throw new Error(error.message);
+    return (data as { token: string }).token;
+  };
+  const roleOf = async (device: Device) => (await device.engine.db.all<{ role: string }>('select role from _scopes where id = ?', [W]))[0]?.role;
+
+  it('edytor i podgląd: przyjęcie, zapis edytora, podgląd tylko czyta, po usunięciu dane znikają', async () => {
+    const id = await sharedTask('Wspólne');
+    const editorUser = await createUser('edytor');
+    const viewerUser = await createUser('podglad');
+    const editor = await open(editorUser, 'editor');
+    const viewer = await open(viewerUser, 'viewer');
+    await share(editorUser.email, 'editor');
+    const token = await share(viewerUser.email, 'viewer');
+
+    // Przyjęcie z listy w aplikacji (edytor) i z linku (podgląd) — potem pełne pobranie nowego zakresu.
+    const invites = (await editor.client.rpc('my_scope_invites')).data as { id: string }[];
+    expect((await editor.client.rpc('accept_scope_invite', { p_id: invites[0]!.id })).error).toBeNull();
+    expect((await viewer.client.rpc('accept_scope_invite', { p_token: token })).error).toBeNull();
+    let viewerWorkspaceChanges = 0;
+    const off = viewer.engine.watch(['workspaces'], () => viewerWorkspaceChanges++);
+    await editor.engine.sync();
+    await viewer.engine.sync();
+    expect((await row(editor, 'tasks', id))?.title).toBe('Wspólne');
+    expect((await row(viewer, 'tasks', id))?.title).toBe('Wspólne');
+    expect(await roleOf(editor)).toBe('editor');
+    expect(await roleOf(viewer)).toBe('viewer');
+    expect(await roleOf(phone)).toBe('owner');
+    expect(viewerWorkspaceChanges).toBeGreaterThan(0);
+    off();
+
+    await editor.engine.mutate('tasks', id, { title: 'Poprawione przez edytora' });
+    await editor.engine.sync();
+    await phone.engine.sync();
+    expect((await row(phone, 'tasks', id))?.title).toBe('Poprawione przez edytora');
+    expect(editor.rejected).toEqual([]);
+
+    // Podgląd: zmiana odrzucona już lokalnie (nic w outboksie), nowe zadanie w tej przestrzeni też.
+    await expect(viewer.engine.mutate('tasks', id, { title: 'Podgląd' })).rejects.toThrow(READONLY_SCOPE_MESSAGE);
+    await expect(viewer.engine.mutate('tasks', uuidv7(), { list_id: L, title: 'Nowe' })).rejects.toThrow(READONLY_SCOPE_MESSAGE);
+    expect(await viewer.engine.pendingCount()).toBe(0);
+    expect((await row(viewer, 'tasks', id))?.title).toBe('Wspólne');
+
+    // Zmiana roli na edytora odblokowuje zapis po najbliższym pobraniu.
+    expect((await phone.client.rpc('set_scope_member_role', { p_scope: W, p_user: viewerUser.id, p_role: 'editor' })).error).toBeNull();
+    await viewer.engine.sync();
+    expect(await roleOf(viewer)).toBe('editor');
+    await viewer.engine.mutate('tasks', id, { title: 'Już mogę' });
+    await viewer.engine.sync();
+    expect(viewer.rejected).toEqual([]);
+
+    // Usunięcie z przestrzeni (właściciel) i opuszczenie (sam członek): wiersze znikają z urządzenia.
+    expect((await phone.client.rpc('remove_scope_member', { p_scope: W, p_user: viewerUser.id })).error).toBeNull();
+    expect((await editor.client.rpc('remove_scope_member', { p_scope: W, p_user: editorUser.id })).error).toBeNull();
+    await viewer.engine.sync();
+    await editor.engine.sync();
+    for (const device of [viewer, editor]) {
+      expect(await row(device, 'tasks', id)).toBeUndefined();
+      expect(await device.engine.get('workspaces', W)).toBeUndefined();
+      expect(await roleOf(device)).toBeUndefined();
+    }
   });
 });
 

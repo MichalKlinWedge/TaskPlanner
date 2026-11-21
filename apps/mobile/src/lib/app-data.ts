@@ -7,7 +7,7 @@
  * Reguły widoków liczy `@taskplanner/core` — tu jest tylko mapowanie wierszy, jak na webie
  * (`apps/web/src/lib/app-data.ts`).
  */
-import { boardColumnDefs, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type BoardColumnDef, type Collaborator, type HabitCompletion, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask } from '@taskplanner/core';
+import { boardColumnDefs, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type BoardColumnDef, type Collaborator, type HabitCompletion, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask, type ScopeRole } from '@taskplanner/core';
 import { createTaskCache, TASK_COLUMNS, type SqlRow, type SyncEngine, type TaskCache, type TaskEntry } from '@taskplanner/sync';
 import Storage from 'expo-sqlite/kv-store';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -21,6 +21,8 @@ export interface Workspace {
   name: string;
   color: string | null;
   sortKey: string;
+  /** Rola z ostatniej synchronizacji (`_scopes`); `null` = jeszcze nieznana (jak właściciel). */
+  role: ScopeRole | null;
 }
 
 export interface List {
@@ -140,7 +142,7 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
   const today = localDateAt(new Date(), settings.timeZone);
   const queried = Date.now();
   const [workspaces, lists, tags, filters, collaborators, entries, habits] = await Promise.all([
-    db.all<SqlRow>('select id, name, color, sort_key from workspaces where deleted_at is null and archived_at is null'),
+    db.all<SqlRow>('select w.id, w.name, w.color, w.sort_key, s.role from workspaces w left join _scopes s on s.id = w.id where w.deleted_at is null and w.archived_at is null'),
     db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs, project_status, board_columns from lists where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, name, color, sort_key, workspace_ids from tags where deleted_at is null'),
     db.all<SqlRow>('select id, name, icon, query, sort_key from saved_filters where deleted_at is null'),
@@ -176,7 +178,9 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
   lastTasks = { entries, lists: listKey, tasks };
   return {
     userId: engine.userId,
-    workspaces: workspaces.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key) })).sort(byKey),
+    workspaces: workspaces
+      .map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), role: (r.role as ScopeRole | null) ?? null }))
+      .sort(byKey),
     lists: allLists,
     tags: tags.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), workspaceIds: tagWorkspaceIds(r.workspace_ids) })).sort(byKey),
     // Filtr z nieznanym warunkiem (nowsza wersja aplikacji) — pomijany, a nie psujący widoku.

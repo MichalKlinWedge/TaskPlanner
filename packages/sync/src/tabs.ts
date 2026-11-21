@@ -49,10 +49,10 @@ type Operation =
  * `profiles.focus`, `review_sessions` w przeglądzie, 3 = `collaborators`, `task_participants`,
  * `task_comments`, `tasks.assignee_id`, 4 = `collaborators.acronym`, `collaborators.archived_at`,
  * 5 = `tags.workspace_ids`, 6 = `collaborators.workspace_ids`, 7 = `workspaces.board_columns`,
- * `tasks.board_column_id`, 8 = `lists.board_columns`. Pole `ids` w `changed` nie podbija wersji:
+ * `tasks.board_column_id`, 8 = `lists.board_columns`, 9 = `_scopes` (role w zakresach). Pole `ids` w `changed` nie podbija wersji:
  * jest opcjonalne w obie strony (bez niego widoki czytają całe tabele).
  */
-export const TAB_PROTOCOL = 8;
+export const TAB_PROTOCOL = 9;
 
 /** Błąd zapisu przez lidera ze starszą wersją aplikacji. */
 export const STALE_LEADER_MESSAGE = 'Aplikacja jest otwarta w innej karcie w starszej wersji — odśwież albo zamknij tamtą kartę i spróbuj ponownie.';
@@ -148,7 +148,7 @@ export function connectTabs({ name = 'taskplanner', createEngine, timeoutMs = 40
         const result = await execute(message.body);
         channel.postMessage({ kind: 'reply', id: message.id, to: message.from, result, v: TAB_PROTOCOL } satisfies Message);
       } catch (error) {
-        channel.postMessage({ kind: 'reply', id: message.id, to: message.from, error: String(error), v: TAB_PROTOCOL } satisfies Message);
+        channel.postMessage({ kind: 'reply', id: message.id, to: message.from, error: error instanceof Error ? error.message : String(error), v: TAB_PROTOCOL } satisfies Message);
       }
     } else if (message.kind === 'reply' && message.to === tab) {
       const call = waiting.get(message.id);

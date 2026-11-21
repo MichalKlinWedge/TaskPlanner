@@ -19,6 +19,7 @@ import { ProfileForm, type ProfileValues } from "./profile-form";
 import { InvitesCard } from "./invites-card";
 import { InstallCard, OfflineCard } from "./pwa-cards";
 import { RemindersCard } from "./reminders-card";
+import { ScopeInvites } from "./sharing";
 import { Shell } from "./shell";
 import { Card, Notice, Splash } from "./ui";
 import { WorkspacesScreen } from "./workspaces-screen";
@@ -72,6 +73,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
     return (
       <>
         {header}
+        <ScopeInvites store={store} />
         <Onboarding store={store} userId={userId} initial={{ displayName: profile?.display_name ?? null, settings }} />
       </>
     );
@@ -81,6 +83,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
   return (
     <div className="flex h-dvh flex-col">
       {header}
+      <ScopeInvites store={store} />
       <Shell
         store={store}
         userId={userId}

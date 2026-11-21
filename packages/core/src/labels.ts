@@ -175,7 +175,7 @@ export const LOGIN_INVITE_NOTE = 'Dostęp na zaproszenie — zaloguj się adrese
 
 /** Ustawienia → „Usuń konto” (web i telefon, Edge Function `account-delete`). */
 export const ACCOUNT_DELETE_NOTE =
-  'Usuwa konto i wszystkie dane na serwerze: zadania, listy, nawyki, załączniki i połączone kalendarze. Tego nie da się cofnąć — jeśli chcesz zachować dane, najpierw zrób kopię zapasową. Wpisz adres e-mail konta, żeby potwierdzić.';
+  'Usuwa konto i wszystkie dane na serwerze: zadania, listy, nawyki, załączniki i połączone kalendarze. Przestrzenie, które udostępniasz innym, znikną także u nich; z cudzych przestrzeni po prostu wychodzisz. Tego nie da się cofnąć — jeśli chcesz zachować dane, najpierw zrób kopię zapasową. Wpisz adres e-mail konta, żeby potwierdzić.';
 
 export const AUTH_ERROR: Record<string, string> = {
   // GoTrue zwraca `otp_expired` także dla błędnie wpisanego kodu („Token has expired or is invalid”).

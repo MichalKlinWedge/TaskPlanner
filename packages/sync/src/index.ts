@@ -4,7 +4,7 @@
  */
 export { applyBackupPlan, exportBackup, planBackupImport, type BackupMutate, type BackupQuery } from './backup.ts';
 export { addChange, mergeChanges, wholeTables, type ChangeSet, type TableChanges } from './changes.ts';
-export { SyncEngine, type PullProgress, type SyncEngineOptions } from './engine.ts';
+export { READONLY_SCOPE_MESSAGE, ReadOnlyScopeError, SyncEngine, type PullProgress, type SyncEngineOptions } from './engine.ts';
 export { createLocalDb, type LocalDb, type SqlDriver, type SqlRow, type SqlValue } from './local-db.ts';
 export { decodeRow, encodeRow, mergeClocks, mergeRemote, parseClock, type FieldClock, type RemoteRow } from './merge.ts';
 export { supabaseRemote, type PullResult, type PushOp, type PushResult, type RejectedOp, type Remote, type ScopeInfo } from './remote.ts';

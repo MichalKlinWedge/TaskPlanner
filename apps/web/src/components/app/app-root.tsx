@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import "@/lib/install";
 import { installErrorLog, setErrorUser } from "@/lib/error-log";
 import { startOfflineSupport } from "@/lib/service-worker";
+// Przy imporcie: token z linku zaproszenia do przestrzeni (`/?invite=`) — zapamiętany przed logowaniem.
+import { clearInviteParam } from "@/lib/sharing";
 import { storedUser, supabaseBrowser } from "@/lib/supabase-browser";
 
 import { LoginScreen } from "./login-screen";
@@ -27,6 +29,8 @@ export function AppRoot() {
   useEffect(() => {
     installErrorLog();
     startOfflineSupport();
+    // Po efektach routera Next (ten przy hydratacji przywraca adres z `?invite=`).
+    const clearInvite = setTimeout(clearInviteParam, 0);
     const supabase = supabaseBrowser();
     void supabase.auth.getSession().then(({ data, error }) => {
       const offline = !data.session && error && isAuthRetryableFetchError(error) ? storedUser() : null;
@@ -43,7 +47,10 @@ export function AppRoot() {
       if (next) setUser({ id: next.user.id, email: next.user.email ?? null });
       else if (event === "SIGNED_OUT") setUser(null);
     });
-    return () => data.subscription.unsubscribe();
+    return () => {
+      clearTimeout(clearInvite);
+      data.subscription.unsubscribe();
+    };
   }, []);
 
   // Dziennik błędów wysyła tylko z kontem (RLS) — kolejka sprzed logowania idzie po nim.

@@ -9,7 +9,7 @@ import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
-import { useAppData, useToday, type List } from "@/lib/app-data";
+import { useAppData, useToday, type List, type Workspace } from "@/lib/app-data";
 import { GOOGLE_RETURN_PARAM } from "@/lib/calendars";
 import { DEFAULT_ROUTE, routeHash, useRoute, type Route } from "@/lib/route";
 
@@ -484,7 +484,7 @@ export function Shell({
                 <option value={ALL}>Wszystkie przestrzenie</option>
                 {data.workspaces.map((w) => (
                   <option key={w.id} value={w.id}>
-                    {w.name}
+                    {w.role === "viewer" ? `${w.name} (podgląd)` : w.role === "editor" ? `${w.name} (udostępniona)` : w.name}
                   </option>
                 ))}
               </Select>
@@ -520,7 +520,7 @@ export function Shell({
               ))}
             </nav>
             {workspaces.map((w) => (
-              <WorkspaceLists key={w.id} name={w.name} color={w.color} lists={sectionLists(w.id)} counts={counts.perList} route={route} navigate={navigate} />
+              <WorkspaceLists key={w.id} name={w.name} color={w.color} role={w.role} lists={sectionLists(w.id)} counts={counts.perList} route={route} navigate={navigate} />
             ))}
             {data.savedFilters.length ? (
               <SidebarSection title="Filtry">
@@ -711,6 +711,7 @@ function NavItem({
 function WorkspaceLists({
   name,
   color,
+  role,
   lists,
   counts,
   route,
@@ -718,6 +719,7 @@ function WorkspaceLists({
 }: {
   name: string;
   color: string | null;
+  role: Workspace["role"];
   lists: List[];
   counts: Map<string, number>;
   route: Route;
@@ -728,6 +730,11 @@ function WorkspaceLists({
       <h2 className="mb-1 flex items-center gap-2 px-2 text-xs font-semibold tracking-wide text-[var(--muted)] uppercase">
         <span className="h-2 w-2 rounded-full" style={{ background: color ?? "var(--muted)" }} />
         {name}
+        {role === "editor" || role === "viewer" ? (
+          <span className="font-normal tracking-normal normal-case" title={role === "viewer" ? "Udostępniona Ci do podglądu" : "Udostępniona Ci do edycji"}>
+            {role === "viewer" ? "· podgląd" : "· udostępniona"}
+          </span>
+        ) : null}
       </h2>
       {lists.length ? (
         <nav className="flex flex-col gap-0.5">

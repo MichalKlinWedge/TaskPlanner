@@ -2,7 +2,7 @@
  * Przestrzenie i listy (M2) na lokalnej bazie: odczyt do ekranu „Przestrzenie i listy” i zapisy
  * przez `mutate` (wiersz + outbox). Kolejność = `sort_key` z `keyBetween` / `reorderPatches`.
  */
-import { inboxId, keyBetween, reorderPatches, uuidv7, type ListKind, type ProjectStatus } from '@taskplanner/core';
+import { inboxId, keyBetween, reorderPatches, uuidv7, type ListKind, type ProjectStatus, type ScopeRole } from '@taskplanner/core';
 import type { SqlRow, SyncEngine } from '@taskplanner/sync';
 
 import { localEngine, mutate } from './sync';
@@ -14,6 +14,8 @@ export interface WorkspaceItem {
   sort_key: string;
   archived_at: string | null;
   lists: number;
+  /** Rola z ostatniej synchronizacji (`_scopes`); `null` = jeszcze nieznana (jak właściciel). */
+  role: ScopeRole | null;
 }
 
 export interface ListItem {
@@ -35,9 +37,9 @@ const nowIso = () => new Date().toISOString();
 
 export async function workspaceItems(engine: SyncEngine): Promise<WorkspaceItem[]> {
   const rows = await engine.db.all<SqlRow>(
-    `select w.id, w.name, w.color, w.sort_key, w.archived_at,
+    `select w.id, w.name, w.color, w.sort_key, w.archived_at, s.role,
             (select count(*) from lists l where l.scope_id = w.id and l.deleted_at is null and l.archived_at is null) as lists
-     from workspaces w where w.deleted_at is null order by w.sort_key, w.id`,
+     from workspaces w left join _scopes s on s.id = w.id where w.deleted_at is null order by w.sort_key, w.id`,
   );
   return rows.map((r) => ({ ...r, lists: Number(r.lists) }) as unknown as WorkspaceItem);
 }

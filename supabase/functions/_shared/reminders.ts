@@ -36,6 +36,8 @@ export interface ReminderRow {
   at_date: string | null;
   at_time: string | null;
   created_by: string | null;
+  /** Zakres przypomnienia (przestrzeń zadania) — do sprawdzenia, czy autor nadal do niej należy. */
+  scope_id?: string;
   tasks: {
     id: string;
     kind: string;
@@ -88,8 +90,20 @@ export function pushDevices(devices: readonly DeviceRow[], { allowHttp = false }
   return out;
 }
 
+/** Członkostwo w zakresie (`scope_members`). */
+export interface MembershipRow {
+  scope_id: string;
+  user_id: string;
+}
+
 export function planPushes(
-  { devices, reminders, profiles, completions = [] }: { devices: readonly DeviceRow[]; reminders: readonly ReminderRow[]; profiles: readonly ProfileRow[]; completions?: readonly CompletionRow[] },
+  {
+    devices,
+    reminders,
+    profiles,
+    completions = [],
+    memberships,
+  }: { devices: readonly DeviceRow[]; reminders: readonly ReminderRow[]; profiles: readonly ProfileRow[]; completions?: readonly CompletionRow[]; memberships?: readonly MembershipRow[] },
   { now, allowHttp = false }: { now: Date | string; allowHttp?: boolean },
 ): PlannedPush[] {
   const at = new Date(now).getTime();
@@ -100,6 +114,8 @@ export function planPushes(
   const focus = new Map(profiles.map((p) => [p.id, p.focus]));
   const habitCompletions = new Map<string, HabitCompletion[]>();
   for (const c of completions) habitCompletions.set(c.task_id, [...(habitCompletions.get(c.task_id) ?? []), toHabitCompletion(c)]);
+
+  const member = new Set((memberships ?? []).map((m) => `${m.scope_id}:${m.user_id}`));
 
   const plan: PlannedPush[] = [];
   for (const [userId, userDevices] of byUser) {
@@ -119,7 +135,8 @@ export function planPushes(
         });
       }
     }
-    const rows = reminders.filter((r) => r.created_by === userId && r.tasks && !r.tasks.deleted_at);
+    // Współdzielona przestrzeń (v1.x): przypomnienie dzwoni u autora, dopóki należy do przestrzeni.
+    const rows = reminders.filter((r) => r.created_by === userId && r.tasks && !r.tasks.deleted_at && (!memberships || !r.scope_id || member.has(`${r.scope_id}:${userId}`)));
     if (!rows.length) continue;
     const tasks = new Map<string, ReminderTask>();
     for (const r of rows) {

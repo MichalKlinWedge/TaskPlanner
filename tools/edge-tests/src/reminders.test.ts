@@ -66,6 +66,14 @@ describe('planPushes', () => {
     expect(none(reminder({ tasks: { ...task, deleted_at: AT } }))).toEqual([]);
     expect(none(reminder({ created_by: OTHER }))).toEqual([]);
   });
+
+  it('wspólna przestrzeń: autor usunięty z przestrzeni nie dostaje przypomnienia', () => {
+    const W = '00000000-0000-4000-8000-0000000000c3';
+    const plan = (memberships: { scope_id: string; user_id: string }[]) =>
+      planPushes({ devices: [device('d1')], reminders: [reminder({ scope_id: W })], profiles, memberships }, { now: AT }).length;
+    expect(plan([{ scope_id: W, user_id: U }])).toBe(1);
+    expect(plan([{ scope_id: W, user_id: OTHER }])).toBe(0);
+  });
 });
 
 describe('planPushes — koniec etapu skupienia (Etap 7)', () => {

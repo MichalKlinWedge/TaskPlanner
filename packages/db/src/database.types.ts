@@ -433,6 +433,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"scope_invites": {
+                  Row: {
+                    "created_at": string,"email": string,"expires_at": string,"id": string,"invited_by": string,"role": string,"scope_id": string,"token": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"email": string,"expires_at"?: string,"id"?: string,"invited_by": string,"role": string,"scope_id": string,"token"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"email"?: string,"expires_at"?: string,"id"?: string,"invited_by"?: string,"role"?: string,"scope_id"?: string,"token"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "scope_invites_scope_id_fkey"
+      columns: ["scope_id"]
+isOneToOne: false
+      referencedRelation: "sync_scopes"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"scope_members": {
                   Row: {
                     "role": string,"scope_id": string,"user_id": string
@@ -725,7 +745,10 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "account_secret_get":
+            "accept_scope_invite":
+{ Args: { "p_id"?: string,"p_token"?: string }; Returns: string
+                           },
+"account_secret_get":
 { Args: { "p_account": string }; Returns: string
                            },
 "account_secret_set":
@@ -760,6 +783,9 @@ isOneToOne: false
                            },
 "call_edge_function":
 { Args: { "p_body"?: Json,"p_path": string }; Returns: number
+                           },
+"caller_email":
+{ Args: Record<PropertyKey, never>; Returns: string
                            },
 "can_read_attachment":
 { Args: { "p_name": string }; Returns: boolean
@@ -796,6 +822,9 @@ isOneToOne: false
 "create_integration_task":
 { Args: { "p_tags"?: Json,"p_task": Json,"p_user": string }; Returns: string
                            },
+"decline_scope_invite":
+{ Args: { "p_id": string }; Returns: boolean
+                           },
 "has_scope_access":
 { Args: { "p_scope": string }; Returns: boolean
                            },
@@ -813,6 +842,9 @@ isOneToOne: false
               "accounts": number,"created_at": string,"note": string,"pattern": string
             }[]
                            },
+"my_scope_invites":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
 "pull_changes":
 { Args: { "p_limit"?: number,"p_since"?: Json }; Returns: Json
                            },
@@ -828,14 +860,26 @@ isOneToOne: false
 "remove_invite":
 { Args: { "p_pattern": string }; Returns: boolean
                            },
+"remove_scope_member":
+{ Args: { "p_scope": string,"p_user": string }; Returns: undefined
+                           },
 "report_client_errors":
 { Args: { "p_items": Json }; Returns: number
                            },
 "require_app_admin":
 { Args: Record<PropertyKey, never>; Returns: undefined
                            },
+"require_workspace_owner":
+{ Args: { "p_scope": string }; Returns: undefined
+                           },
+"revoke_scope_invite":
+{ Args: { "p_id": string }; Returns: boolean
+                           },
 "rotate_inbound_token":
 { Args: Record<PropertyKey, never>; Returns: string
+                           },
+"scope_role":
+{ Args: { "p_scope": string }; Returns: string
                            },
 "server_hlc":
 { Args: Record<PropertyKey, never>; Returns: string
@@ -843,8 +887,17 @@ isOneToOne: false
 "set_inbound_senders":
 { Args: { "p_senders": (string)[] }; Returns: undefined
                            },
+"set_scope_member_role":
+{ Args: { "p_role": string,"p_scope": string,"p_user": string }; Returns: undefined
+                           },
+"share_workspace":
+{ Args: { "p_email": string,"p_role": string,"p_scope": string }; Returns: Json
+                           },
 "synced_tables":
 { Args: Record<PropertyKey, never>; Returns: (string)[]
+                           },
+"workspace_sharing":
+{ Args: { "p_scope": string }; Returns: Json
                            },
 "writable_columns":
 { Args: { "p_table": string }; Returns: (string)[]

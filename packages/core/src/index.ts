@@ -25,6 +25,7 @@ export * from './review.ts';
 export * from './schemas/model.ts';
 export * from './schemas/primitives.ts';
 export * from './search.ts';
+export * from './sharing.ts';
 export * from './sort-key.ts';
 export * from './task-export.ts';
 export * from './tasks.ts';

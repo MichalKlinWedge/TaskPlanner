@@ -12,6 +12,7 @@ import { sessionUser } from '@/lib/config';
 import { useSyncStatus } from '@/lib/local-query';
 
 import { UpdateBanner } from './app-update';
+import { ScopeInvitesBanner } from './sharing';
 import { usePalette } from './ui';
 
 const PAGES = ['strona', 'strony', 'stron'] as const;
@@ -52,6 +53,7 @@ export function ScreenHeader({ subtitle, children }: { subtitle?: string; childr
     <>
       <SyncBanner />
       <UpdateBanner />
+      <ScopeInvitesBanner />
       {subtitle ? <Text style={{ color: p.muted, fontSize: 13, paddingHorizontal: 12, paddingTop: 10 }}>{subtitle}</Text> : null}
       {children}
     </>

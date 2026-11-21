@@ -72,6 +72,16 @@ const SYNCED_SCHEMA = SYNCED_TABLES.map((t) => `${t}(${TABLES[t].columns.join(',
 /** Wydarzenia kalendarzy starsze niż tyle dni (koniec) — usuwane lokalnie (okno serwera: −30 dni). */
 const CALENDAR_KEEP_DAYS = 30;
 
+export const READONLY_SCOPE_MESSAGE = 'Ta przestrzeń jest udostępniona Ci tylko do podglądu — zmiany może wprowadzać jej właściciel albo edytor.';
+
+/** Zmiana w przestrzeni, w której użytkownik ma rolę `viewer` (cała operacja `mutateMany` się wycofuje). */
+export class ReadOnlyScopeError extends Error {
+  constructor() {
+    super(READONLY_SCOPE_MESSAGE);
+    this.name = 'ReadOnlyScopeError';
+  }
+}
+
 export class SyncEngine {
   readonly db: LocalDb;
   readonly userId: string;
@@ -201,6 +211,8 @@ export class SyncEngine {
     }
     const stamps = await this.db.transaction(async (tx) => {
       const out: Hlc[] = [];
+      // Przestrzeń udostępniona do podglądu: serwer i tak odrzuci zmianę (TP003), więc nie zapisujemy jej lokalnie.
+      const readOnly = new Set((await tx.all("select id from _scopes where role = 'viewer'")).map((r) => String(r.id)));
       for (const { table, id, patch } of ops) {
         const fields = Object.keys(patch);
         const stamp = this.clock.tick();
@@ -212,6 +224,7 @@ export class SyncEngine {
         for (const field of fields) clock[field] = stamp;
         row.field_clock = JSON.stringify(clock);
         await this.deriveScope(tx, table, row);
+        if (readOnly.size && (readOnly.has(String(row.scope_id)) || readOnly.has(String(current?.scope_id)))) throw new ReadOnlyScopeError();
         await this.upsert(tx, table, row);
         await tx.run('insert into _outbox (op_id, tbl, row_id, data, hlc) values (?, ?, ?, ?, ?)', [uuidv7(this.now()), table, id, JSON.stringify(patch), stamp]);
         out.push(stamp);
@@ -463,6 +476,15 @@ export class SyncEngine {
             addChange(touched, table, null);
           }
         }
+      }
+      // Role w zakresach (współdzielone przestrzenie, `viewer` = tylko odczyt) — widoki czytają `_scopes`
+      // razem z `workspaces`, więc zmiana roli odświeża je jak zmiana przestrzeni.
+      const roles = Object.entries(result.scopes).map(([id, info]) => `${id}:${info.kind}:${info.role}`).sort();
+      const stored = (await tx.all("select id || ':' || kind || ':' || role as r from _scopes order by r")).map((row) => String(row.r));
+      if (roles.join() !== stored.join()) {
+        await tx.run('delete from _scopes');
+        for (const [id, info] of Object.entries(result.scopes)) await tx.run('insert into _scopes (id, kind, role) values (?, ?, ?)', [id, info.kind, info.role]);
+        addChange(touched, 'workspaces', null);
       }
       this.since = Object.fromEntries(Object.entries(result.scopes).map(([id, info]) => [id, info.version]));
       await this.setMeta(tx, 'since', JSON.stringify(this.since));

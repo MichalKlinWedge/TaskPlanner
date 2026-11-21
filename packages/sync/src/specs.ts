@@ -171,7 +171,7 @@ export const localColumns = (table: SyncedTable): readonly string[] => [
 
 export const isSyncedTable = (value: string): value is SyncedTable => (SYNCED_TABLES as readonly string[]).includes(value);
 
-/** Schemat lokalnej bazy: tabele synchronizowane + outbox + metadane. */
+/** Schemat lokalnej bazy: tabele synchronizowane + outbox + metadane + role w zakresach. */
 export function localSchema(): string[] {
   const statements: string[] = [];
   for (const table of SYNCED_TABLES) {
@@ -201,5 +201,7 @@ export function localSchema(): string[] {
   );
   statements.push('create index if not exists _outbox_status on _outbox (status, seq)');
   statements.push('create table if not exists _meta (key text primary key, value text not null)');
+  // Zakresy użytkownika z rolą z ostatniego `pull_changes` (współdzielenie przestrzeni, v1.x).
+  statements.push('create table if not exists _scopes (id text primary key, kind text not null, role text not null)');
   return statements;
 }

@@ -1,5 +1,5 @@
 /** Przestrzenie (M2): tworzenie, nazwa, kolor, kolejność, archiwizacja; wskaźnik synchronizacji. */
-import { COLORS, plural } from '@taskplanner/core';
+import { canEditScope, COLORS, plural, SCOPE_ROLE } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { useState } from 'react';
 
@@ -22,22 +22,27 @@ export default function Workspaces() {
   const archived = items.filter((w) => w.archived_at);
   const onError = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
 
-  const row = (w: WorkspaceItem, index: number, group: WorkspaceItem[]) => (
-    <EditableItem
-      key={w.id}
-      name={w.name}
-      color={w.color}
-      subtitle={plural(w.lists, LISTS)}
-      archived={!!w.archived_at}
-      onOpen={() => router.push({ pathname: '/workspace/[id]', params: { id: w.id } })}
-      onSave={(patch) => updateWorkspace(w.id, { name: patch.name })}
-      onColor={(c) => updateWorkspace(w.id, { color: c })}
-      onMoveUp={index > 0 ? () => moveItem('workspaces', group, index, index - 1) : undefined}
-      onMoveDown={index < group.length - 1 ? () => moveItem('workspaces', group, index, index + 1) : undefined}
-      onArchive={(value) => archiveWorkspace(w.id, value)}
-      onError={onError}
-    />
-  );
+  // Podgląd tylko czyta; archiwizacja zmienia przestrzeń wszystkim członkom — tylko właściciel.
+  const row = (w: WorkspaceItem, index: number, group: WorkspaceItem[]) => {
+    const editable = canEditScope(w.role);
+    const shared = w.role === 'editor' || w.role === 'viewer';
+    return (
+      <EditableItem
+        key={w.id}
+        name={w.name}
+        color={w.color}
+        subtitle={[plural(w.lists, LISTS), shared ? `udostępniona · ${SCOPE_ROLE[w.role!].toLowerCase()}` : null].filter(Boolean).join(' · ')}
+        archived={!!w.archived_at}
+        onOpen={() => router.push({ pathname: '/workspace/[id]', params: { id: w.id } })}
+        onSave={editable ? (patch) => updateWorkspace(w.id, { name: patch.name }) : undefined}
+        onColor={editable ? (c) => updateWorkspace(w.id, { color: c }) : undefined}
+        onMoveUp={editable && index > 0 ? () => moveItem('workspaces', group, index, index - 1) : undefined}
+        onMoveDown={editable && index < group.length - 1 ? () => moveItem('workspaces', group, index, index + 1) : undefined}
+        onArchive={shared ? undefined : (value) => archiveWorkspace(w.id, value)}
+        onError={onError}
+      />
+    );
+  };
 
   return (
     <Screen>

@@ -26,6 +26,11 @@ export const CLOUD_SERVER: ServerConfig = {
   key: 'sb_publishable_3srH-dGVsfBkJNCzlLqJZg__9gFYEFL',
 };
 
+/** Web aplikacji w chmurze — do linków zaproszeń (`/?invite=`); przy innym serwerze linku nie ma. */
+const CLOUD_WEB_URL = 'https://task-planner-omega-indol.vercel.app';
+
+export const webAppUrl = (): string | null => (serverConfig()?.url === CLOUD_SERVER.url ? CLOUD_WEB_URL : null);
+
 export interface SessionUser {
   id: string;
   email: string | null;

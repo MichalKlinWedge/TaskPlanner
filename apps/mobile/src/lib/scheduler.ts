@@ -11,7 +11,7 @@ import { MAX_SCHEDULED_REMINDERS, reminderBody, reminderFireTimes, toReminderRul
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-import { readJson, writeJson } from './config';
+import { readJson, sessionUser, writeJson } from './config';
 import { loadTask, type AppData } from './app-data';
 import { headlessData } from './headless';
 import { localEngine } from './sync';
@@ -95,7 +95,9 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
     const engine = await localEngine();
     const [rules, zones] = await Promise.all([
       engine.db.all<{ id: string; task_id: string; kind: string; offset_min: number | null; at_date: string | null; at_time: string | null }>(
-        'select id, task_id, kind, offset_min, at_date, at_time from reminders where deleted_at is null',
+        // Przypomnienie dostaje jego autor (jak `reminders-push`) — we wspólnej przestrzeni nie dzwonią cudze.
+        'select id, task_id, kind, offset_min, at_date, at_time from reminders where deleted_at is null and (created_by is null or created_by = ?)',
+        [sessionUser().id],
       ),
       engine.db.all<{ id: string; time_zone: string }>('select id, time_zone from tasks where time_zone is not null and deleted_at is null'),
     ]);
