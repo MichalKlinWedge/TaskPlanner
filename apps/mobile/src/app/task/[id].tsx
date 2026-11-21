@@ -6,6 +6,8 @@
  * Każda zmiana to `mutate` jednego pola — synchronizacja scala zmiany z innych urządzeń (§6).
  */
 import {
+  BOARD_UNASSIGNED,
+  taskBoardColumn,
   addCommentOps,
   addDependencyOps,
   addParticipantByNameOps,
@@ -149,6 +151,9 @@ export default function TaskScreen() {
   const children = data.tasks.filter((t) => t.parentId === task.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
   const closed = task.status === 'done' || task.status === 'cancelled';
   const color = PRIORITY[task.priority].color;
+  // Własne kolumny tablicy listy zadania (tryb „Własne”) — tylko zadania najwyższego poziomu.
+  const boardDefs = data.lists.find((l) => l.id === task.listId)?.boardColumns ?? [];
+  const boardColumn = taskBoardColumn(task, boardDefs);
 
   const remove = () => {
     const ops = deleteTaskOps(data.tasks, task.id, new Date());
@@ -240,6 +245,18 @@ export default function TaskScreen() {
           <View style={[styles.cell, { borderColor: 'transparent', justifyContent: 'center' }]}>
             <Text style={{ color: p.muted, fontSize: 12 }}>{task.dueDate ? relativeDay(task.dueDate, today, 'distance') : 'Bez terminu'}</Text>
           </View>
+          {boardDefs.length && task.kind === 'task' && !task.parentId ? (
+            <Cell
+              label="Kolumna tablicy"
+              value={boardDefs.find((d) => d.id === boardColumn)?.name ?? BOARD_UNASSIGNED}
+              onPress={() =>
+                then(pickOption<string>('Kolumna tablicy', [
+                  { label: BOARD_UNASSIGNED, value: '', selected: !boardColumn },
+                  ...boardDefs.map((d) => ({ label: d.name, value: d.id, selected: d.id === boardColumn })),
+                ]), (v) => v !== undefined && (v || null) !== boardColumn && update({ board_column_id: v || null }))
+              }
+            />
+          ) : null}
         </View>
 
         <PeopleField key={`people:${task.id}`} task={task} data={data} />

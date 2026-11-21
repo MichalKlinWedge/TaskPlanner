@@ -11,6 +11,7 @@ import {
   quickAddChip,
   quickAddTaskOps,
   suppressToken,
+  taskTagOps,
   withLinkOps,
   type LocalDate,
   type QuickAddContext,
@@ -51,9 +52,11 @@ export interface QuickAddFieldProps {
   onAdded?: (ids: string[]) => void;
   /** Przycisk „Dodaj” obok pola (okno „+”), bez niego Enter na klawiaturze. */
   submitLabel?: string;
+  /** Pola z kolumny tablicy (status, priorytet, własna kolumna), gdy wpis ich nie podaje; tagi dokładane. */
+  defaults?: { status?: string; priority?: number; tagNames?: readonly string[]; boardColumnId?: string };
 }
 
-export function QuickAddField({ listId, dueDate, parent, placeholder = 'Dodaj zadanie', autoFocus, initialText = '', link, onAdded, submitLabel }: QuickAddFieldProps) {
+export function QuickAddField({ listId, dueDate, parent, placeholder = 'Dodaj zadanie', autoFocus, initialText = '', link, onAdded, submitLabel, defaults }: QuickAddFieldProps) {
   const p = usePalette();
   const data = useAppData();
   const workspaceId = useWorkspace(data);
@@ -100,7 +103,11 @@ export function QuickAddField({ listId, dueDate, parent, placeholder = 'Dodaj za
       const base = scope(defaultListId);
       const r = quickAddTaskOps(parsed, line, { ...base, lastSortKey: (id) => keys.get(id) ?? base.lastSortKey(id) });
       keys.set(parent?.id ?? r.listId, r.ops[0]!.patch.sort_key as string);
+      if (defaults?.status) Object.assign(r.ops[0]!.patch, { status: defaults.status }, defaults.status === 'done' ? { completed_at: new Date().toISOString() } : {});
+      if (defaults?.priority && !parsed.fields.priority) r.ops[0]!.patch.priority = defaults.priority;
+      if (defaults?.boardColumnId) r.ops[0]!.patch.board_column_id = defaults.boardColumnId;
       ops.push(...withLinkOps(r, { title: parsed.title, url: added.length === 0 ? link : null, shared: added.length === 0 && !!link }));
+      if (defaults?.tagNames?.length) ops.push(...taskTagOps({ userId: data.userId, tags: data.tags }, r.taskId, defaults.tagNames, data.lists.find((l) => l.id === r.listId)?.workspaceId).filter((op) => !ops.some((o) => o.table === op.table && o.id === op.id)));
       added.push(r);
     }
     if (!added.length) return notify('Zadanie musi mieć tytuł.');

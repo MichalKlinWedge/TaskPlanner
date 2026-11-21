@@ -7,7 +7,7 @@
  * Reguły widoków liczy `@taskplanner/core` — tu jest tylko mapowanie wierszy, jak na webie
  * (`apps/web/src/lib/app-data.ts`).
  */
-import { FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type Collaborator, type HabitCompletion, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask } from '@taskplanner/core';
+import { boardColumnDefs, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type BoardColumnDef, type Collaborator, type HabitCompletion, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask } from '@taskplanner/core';
 import { createTaskCache, TASK_COLUMNS, type SqlRow, type SyncEngine, type TaskCache, type TaskEntry } from '@taskplanner/sync';
 import Storage from 'expo-sqlite/kv-store';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -33,6 +33,8 @@ export interface List {
   prefs: ViewPrefs;
   /** Status projektu (`kind = 'project'`). */
   projectStatus: ProjectStatus | null;
+  /** Własne kolumny tablicy listy (tryb „Własne”, core `boardColumnDefs`). */
+  boardColumns: BoardColumnDef[];
 }
 
 export interface Tag {
@@ -139,7 +141,7 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
   const queried = Date.now();
   const [workspaces, lists, tags, filters, collaborators, entries, habits] = await Promise.all([
     db.all<SqlRow>('select id, name, color, sort_key from workspaces where deleted_at is null and archived_at is null'),
-    db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs, project_status from lists where deleted_at is null and archived_at is null'),
+    db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs, project_status, board_columns from lists where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, name, color, sort_key, workspace_ids from tags where deleted_at is null'),
     db.all<SqlRow>('select id, name, icon, query, sort_key from saved_filters where deleted_at is null'),
     db.all<SqlRow>('select id, name, email, acronym, archived_at, workspace_ids from collaborators where deleted_at is null'),
@@ -162,6 +164,7 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
         sortKey: String(r.sort_key),
         prefs: prefs.success ? prefs.data : {},
         projectStatus: (r.project_status as ProjectStatus | null) ?? null,
+        boardColumns: boardColumnDefs(r.board_columns),
       };
     })
     .sort(byKey);
