@@ -6,6 +6,7 @@ import { Alert, Switch, Text, View } from 'react-native';
 import { UpdateSection } from '@/components/app-update';
 import { BackgroundStatus } from '@/components/background-status';
 import { ErrorsSection } from '@/components/errors-section';
+import { InvitesSection } from '@/components/invites-section';
 import { SyncIndicator } from '@/components/sync-indicator';
 import { Button, Field, P, Row, Screen, Section, usePalette } from '@/components/ui';
 import { useView } from '@/lib/app-data';
@@ -225,6 +226,8 @@ export default function Settings() {
       <BackgroundStatus />
 
       <ErrorsSection />
+
+      {user.online && !relogin ? <InvitesSection /> : null}
 
       {user.online && !relogin ? <DeleteAccountSection email={user.email} /> : null}
 
