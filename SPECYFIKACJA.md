@@ -310,6 +310,35 @@ Widoki stałe w pasku bocznym [W+A]:
 - **Widżety Android** (Etap 11): „Dziś” (lista do 10 zadań, odhaczanie bez otwierania aplikacji), „Szybkie dodawanie” (przycisk + mikrofon klawiatury), „Nawyki” (dzisiejsze nawyki do odhaczenia). Dane z lokalnej bazy; odświeżanie po zmianie danych i co 30 min. Skróty aplikacji (long-press ikony): Dodaj zadanie, Dziś, Tryb skupienia.
 - **Pulpit**: zainstalowana PWA + skróty. Natywny widżet pulpitu i globalny skrót klawiszowy — v1.x (Tauri, D11).
 
+### M21. Integracje wychodzące (pluginy) — v1.x [W], [A] tylko wyzwalacz ręczny
+Projekt z 21.11.2026 (D21), etap w `PLAN_ETAPOWY.md` → v1.x. Kierunek jednokierunkowy: **zdarzenie w Task Plannerze → akcja w systemie zewnętrznym** (issue w GitLab/Jira, wiadomość na Slacku/Teams, e-mail, dowolny webhook). Dwukierunkowość później (niżej).
+
+- **Wyzwalacz działa tylko na serwerze.** Klienci pracują offline, więc reguła odpalona na urządzeniu odpaliłaby się z opóźnieniem, na dwóch urządzeniach dwa razy, a tokeny systemów zewnętrznych musiałyby trafić do przeglądarki/APK. Zdarzenie powstaje, gdy zmiana dotrze do Postgresa przez `push_changes` (albo przez `create_integration_task` / `calendar_task_apply`) — ten sam wzorzec co wysyłka zadań do Google w Etapie 12 (trigger → `pg_net` raz na transakcję → Edge Function z dzierżawą, `pg_cron` jako zabezpieczenie).
+- **Trzy rodzaje wyzwalaczy:**
+  - **zmiana zadania** — zdarzenia semantyczne (niżej) + filtr,
+  - **ręczny** — „Wyślij do…” w menu zadania, w palecie (`plugin.send`) i na telefonie; klient zapisuje wiersz `plugin_requests` przez `mutate` (działa offline jak każda zmiana, wysyłka po synchronizacji),
+  - **czasowy** — reguła z godziną i dniami (podzbiór RRULE z `recurrence.ts`), np. „codziennie 8:00 lista Dziś na Slacka”; liczona przez `pg_cron` co minutę na widokach z `core/views.ts`.
+- **Zdarzenia** (`core/plugins/events.ts`, `pluginEvents(before, after)` na rzucie zadania — czysty TS, testy Vitest): `task.created`, `task.completed`, `task.reopened`, `task.deleted`, `task.restored`, `task.moved` (lista / przestrzeń), `task.tagged`, `task.untagged`, `task.due_changed`, `task.assigned`, `task.commented`. Zdarzenie wynika z **przejścia stanu po scaleniu na serwerze**, nie z pojedynczej operacji — kolejność i liczba urządzeń nie mają znaczenia. Ukończenie wystąpienia serii nie zmienia `tasks.status` (dochodzi wiersz `task_completions`, termin się przesuwa), więc `task.completed` pochodzi też z wstawienia do `task_completions` (z `occurrence` w ładunku).
+- **Reguła** = „Gdy [wyzwalacz] i [filtr] → [akcja przez połączenie]”. Filtr = istniejący `FilterQuery` (listy, przestrzenie, tagi, priorytet, odpowiedzialny…), dopasowanie tą samą funkcją co zapisane filtry. Opcje: opóźnienie (domyślnie 20 s), „także dla zadań z integracji” (domyślnie nie — ochrona przed pętlami z e-mailem / kalendarzem), „uruchom teraz dla pasujących” przy tworzeniu (bez tego reguła działa tylko na zmiany od chwili utworzenia).
+- **Plugin** = moduł wkompilowany w Edge Function, nie kod ładowany w locie (bezpieczeństwo sekretów w Vault, bundlowanie Edge Functions). Opis w core (`core/plugins/catalog.ts`: `id`, nazwa, `configSchema`, `secretFields`, `actionSchema`, obsługiwane zdarzenia — z tego UI buduje formularze), wykonanie w `supabase/functions/_shared/plugins/<id>.ts`:
+  ```ts
+  interface PluginRuntime<Config, Action> {
+    test(ctx): Promise<DeliveryResult>;                     // „Wyślij próbne”
+    deliver(ctx, delivery, action): Promise<DeliveryResult>;
+  }
+  type DeliveryResult =
+    | { ok: true; externalId?: string; externalUrl?: string }
+    | { ok: false; retryable: boolean; retryAfterSec?: number; disable?: boolean; error: string };
+  ```
+  Pierwszy plugin to **Webhook** (podpisany JSON pod dowolny adres) — przez n8n / Make / Zapier pokrywa każdy system bez kodu. Natywne pluginy (Slack, GitLab, Jira, e-mail) tylko tam, gdzie daje to wygodę (wybór projektu z listy, link do utworzonego issue); kolejność do wyboru przy starcie etapu.
+- **Szablony** (`core/plugins/template.ts`, `renderTemplate`): pola `{{title}}`, `{{description}}`, `{{due}}`, `{{time}}`, `{{priority}}`, `{{list}}`, `{{workspace}}`, `{{tags}}`, `{{assignee}}`, `{{url}}` (link do zadania w aplikacji webowej), `{{event}}`; bez logiki, ucieczka znaków według celu (JSON / Markdown / Slack). Podgląd reguły pokazuje dokładny ładunek dla wybranego zadania — treść zadania wychodzi poza system świadomie.
+- **Dostarczanie** (Edge Function `plugins`): trigger na `tasks` / `task_tags` / `task_completions` / `task_comments` / `plugin_requests` zapisuje do `plugin_outbox` (rzut przed / po, pochodzenie zmiany) **tylko gdy któryś członek zakresu ma włączoną regułę zdarzeniową** — inaczej zero kosztu; `pg_net` woła `plugins/flush` raz na transakcję, `plugins/cron/tick` co minutę (ponowienia, reguły czasowe, zgubione wywołania). Przebieg: dopasuj reguły → utwórz `plugin_deliveries` z deterministycznym id (UUIDv5 z reguły, zadania, zdarzenia i `row_version` / id prośby) → po opóźnieniu **połącz zdarzenia tego samego zadania i reguły z okna** w jedną wysyłkę, **sprawdź warunek ponownie na bieżącym stanie** (ukończenie cofnięte „Cofnij” w ciągu kilku sekund → `skipped`), sprawdź, czy właściciel reguły nadal ma dostęp do zakresu zadania → `deliver()`.
+  - Gwarancja „co najmniej raz”: id dostawy jako `Idempotency-Key`; webhook dostaje też `X-TaskPlanner-Timestamp` i `X-TaskPlanner-Signature: sha256=<HMAC(sekret, timestamp + "." + treść)>`.
+  - 2xx = wysłane; 429 / 5xx / przekroczenie czasu (10 s) = ponowienie (1 min, 5 min, 30 min, 2 h, 12 h, potem `dead`); inne 4xx = `failed` bez ponowień; 401 / 403 / 410 = połączenie przechodzi w `error` (wyłączone) z komunikatem w Ustawieniach i Web Push „Integracja … wyłączona”.
+  - Limit wysyłek na połączenie (domyślnie 60 / min, nadmiar czeka), przebieg pod dzierżawą jak `calendar_task_runs`.
+- **Ustawienia → „Integracje”** [W]: połączenia (dodaj z formularza pluginu, sekret trafia od razu do Edge Function → Vault, „Wyślij próbne”, wyłącz, usuń = usunięcie sekretu), reguły (kreator „Gdy … i … → …” z podglądem ładunku, włącz / wyłącz), historia wysyłek z błędem, linkiem do utworzonego obiektu i „Ponów”. [A]: „Wyślij do…” i lista reguł do włączania / wyłączania; edycja reguł później. Historia wysyłek wymaga sieci (wyjątek M20).
+- **Później — dwukierunkowo**: `external_id` / `external_url` zapisywane w `plugin_deliveries` od początku; kierunek zwrotny (zmiana issue → zadanie) = tabela powiązań zadanie ↔ obiekt zewnętrzny i operacje z HLC serwera, jak `calendar_task_links` w Etapie 12.
+
 ---
 
 ## 4. Szybkie dodawanie — gramatyka (`core/quick-add.ts`)
@@ -404,8 +433,13 @@ Ustalenia z PoC-2 i PoC-3 (v0.2):
 | `reminder_deliveries` | `id` (identity), `user_id`, `device_id`, `fire_key` (`<id przypomnienia>:<dzień wystąpienia>`), `task_id`, `fire_at`, `status` (`claimed`/`sent`/`failed`/`skipped`), `attempts`, `sent_at`, `error`; unikalne (`device_id`, `fire_key`) | dziennik wysyłek Web Push (MVP-4): `reminders-push` co minutę liczy należne przypomnienia z `core/reminders.ts` i zajmuje każdą wysyłkę wierszem (`claim_reminder_deliveries`) — bez duplikatów; subskrypcja przeglądarki w `devices.push_subscription`. Zastąpił tymczasowe `push_subscriptions` i `push_queue` z PoC-6 |
 | `client_errors` | `id` (identity), `user_id`, `fingerprint`, `day`, `kind` (`error`/`unhandled`/`render`/`sync`/`rejected`), `platform`, `app_version`, `message`, `stack`, `url`, `user_agent`, `context`, `count`, `first_at`, `last_at`, `received_at`; unikalne (`user_id`, `fingerprint`, `day`) | Dziennik błędów aplikacji (D20, Etap 13), niesynchronizowany: klient pisze tylko przez `report_client_errors`, czyta własne wiersze |
 | `activity_log` | `id` (identity), `scope_id`, `table_name`, `row_id`, `changes jsonb`, `device_id` (węzeł HLC zmiany), `actor_id`, `at` | historia zmian zadań (M3) z triggera; tylko odczyt, poza strumieniem synchronizacji (MVP-1) |
+| `plugin_connections` | `id`, `user_id`, `plugin` (`webhook`/`slack`/`gitlab`/`jira`/`email`), `label`, `config jsonb` (bez sekretów, schemat pluginu), `secret_id` (Vault), `status` (`active`/`disabled`/`error`), `last_error`, `row_version` | M21 (v1.x); tylko do odczytu w `pull_changes` (jak `calendar_accounts`), pisze Edge Function `plugins` |
+| `plugin_outbox` | `id` (identity), `scope_id`, `table_name`, `row_id`, `task_id`, `before jsonb`, `after jsonb`, `origin` (`client`/`integration`), `created_at`, `processed_at` | M21; tylko serwer, wypełniany triggerami w transakcji zmiany, czyszczony po przetworzeniu |
+| `plugin_deliveries` | `id` (UUIDv5), `user_id`, `rule_id`, `connection_id`, `task_id`, `events text[]`, `payload jsonb` (obcięty), `status` (`pending`/`sending`/`sent`/`skipped`/`failed`/`dead`), `attempts`, `next_attempt_at`, `sent_at`, `external_id`, `external_url`, `error` | M21; niesynchronizowana — klient czyta własne wiersze (online), „Ponów” przez RPC `retry_plugin_delivery`; retencja 30 dni (`pg_cron`); dzierżawa w `plugin_runs` |
 
 Ustalenia z PoC-6: tabele integracji mają `user_id` (= zakres osobisty) i `row_version`; każdy zapis podbija `sync_scopes.sync_version` (sygnał Realtime), a w `pull_changes` dochodzą w Etapie 5 jako tylko do odczytu. Wydarzenie całodniowe ma daty pływające `start_date`/`end_date` (koniec bez włączenia, jak w iCalendar); `start_at`/`end_at` tylko dla wydarzeń z godziną. Zadanie z integracji dostaje HLC serwera w `field_clock` każdego pola (`create_integration_task`).
+
+Pluginy (M21) dodają też dwie zwykłe tabele synchronizowane w zakresie osobistym: `plugin_rules` (`id`, `name`, `connection_id`, `enabled`, `trigger jsonb` — `{kind:'event', events, filter: FilterQuery}` / `{kind:'schedule', rule, time, view}` / `{kind:'manual'}`, `action jsonb` — schemat pluginu z szablonami, `options jsonb` — opóźnienie, zadania z integracji, `sort_key`) i `plugin_requests` (tylko dopisywane: `id`, `rule_id`, `task_id`, `requested_at` — wyzwalacz ręczny offline). Nowe tabele zmieniają `SYNCED_SCHEMA` (jednorazowe pobranie od zera na każdym kliencie).
 
 ### Uprawnienia (RLS)
 - Dostęp do wiersza: `scope_id` należy do zakresu, w którym użytkownik jest członkiem (`scope_members`, także zakres osobisty). Jedna funkcja `has_scope_access(scope_id)` (SECURITY DEFINER, stabilna) w politykach wszystkich tabel.
@@ -538,6 +572,7 @@ Recurrence =
 - Tokeny kalendarzy w Supabase Vault; odłączenie konta usuwa tokeny i wydarzenia.
 - Adres e-mail do przechwytywania = sekret (token) + lista dozwolonych nadawców; możliwość wygenerowania nowego tokenu.
 - `link-preview`: tylko `http(s)`, blokada adresów prywatnych i lokalnych (SSRF), limit rozmiaru i czasu.
+- Pluginy (M21): sekrety połączeń tylko w Vault (klient ich nie widzi ani nie odczyta z powrotem); adres webhooka tylko `https`, te same blokady SSRF co `link-preview` (także po przekierowaniu), limit rozmiaru ładunku i czasu odpowiedzi; podpis HMAC i `Idempotency-Key`; wysyłka sprawdza bieżący dostęp właściciela reguły do zakresu zadania; brak wykonywania kodu dostarczonego przez użytkownika.
 - Lokalna baza na telefonie w katalogu aplikacji; w przeglądarce w OPFS danego pochodzenia. Wylogowanie czyści lokalną bazę (po wysłaniu outboxu albo z ostrzeżeniem o niewysłanych zmianach).
 - Kopia zapasowa: plan Free Supabase nie ma kopii — nocny `pg_dump` (GitHub Actions, prywatny artefakt) + eksport JSON w ustawieniach (§10).
 
@@ -591,6 +626,7 @@ Szacowany koszt v1.0: 0 zł miesięcznie (+ domena, jeśli trzeba kupić). Supab
 | R11 | Podszyte maile do adresu przechwytywania | śmieci w Inbox | token w adresie + lista nadawców + DMARC + dziennik odrzuceń |
 | R12 | Brak OTA (D17) | każda poprawka na telefonie = nowy APK | GitHub Actions buduje APK; ewentualnie własny serwer zgodny z protokołem Expo Updates |
 | R13 | Kanban z wieloma kartami (PoC-5: start przeciągania 150–184 ms) | szarpnięcie przy podniesieniu karty | porcje albo wirtualizacja, pomiar ponownie w MVP-4 |
+| R14 | Pluginy (M21): zduplikowane lub lawinowe wysyłki (paczka offline, „Cofnij”, pętla z integracją), limity Edge Functions na Free | spam w systemie zewnętrznym, wyczerpany limit | deterministyczne id dostaw + `Idempotency-Key`, opóźnienie z łączeniem i ponownym sprawdzeniem, domyślnie bez zadań z integracji, limit na połączenie, trigger nic nie robi bez aktywnych reguł; limity do sprawdzenia w `docs/USLUGI.md` przed etapem |
 
 ---
 
@@ -619,6 +655,7 @@ Stan po bramce decyzyjnej (19.11.2026): wszystkie zatwierdzone.
 | D19 | Silnik cykliczności | **Własny podzbiór RRULE** (decyzja 2026-11-19, PoC-3); rrule.js tylko w testach |
 | D14 | Język i nazwa | UI po polsku, nazwa aplikacji „Task Planner”, pakiety `@taskplanner/*` (decyzja 2026-11-19) |
 | D20 | Raportowanie błędów | **Własny dziennik w Supabase** (decyzja 2026-11-19, Etap 13), bez Sentry: tabela `client_errors` (wiersz na użytkownika, odcisk i dzień, licznik), zapis tylko przez `report_client_errors` (limity), retencja 90 dni (`pg_cron`), podgląd w Ustawieniach; błędy Edge Functions — w logach Supabase |
+| D21 | Integracje wychodzące | **System pluginów na serwerze** (projekt 21.11.2026, M21; szczegóły do potwierdzenia przy starcie etapu): wyzwalacze tylko po stronie Postgresa / Edge Function `plugins` (nigdy w kliencie offline), pluginy wkompilowane (bez kodu ładowanego w locie), pierwszy plugin = Webhook z podpisem HMAC; dostarczanie „co najmniej raz” z deterministycznym id, opóźnieniem i ponownym sprawdzeniem warunku. Wybór pierwszego pluginu natywnego otwarty |
 
 ---
 
