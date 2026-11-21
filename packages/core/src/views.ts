@@ -45,7 +45,7 @@ export interface ViewTask {
   statusChangedAt?: string | null;
   /** Odpowiedzialny (`collaborators.id`); brak / `null` = twórca zadania. */
   assigneeId?: string | null;
-  /** Własna kolumna tablicy przestrzeni; brak / `null` / nieznane id = „Do przypisania”. */
+  /** Własna kolumna tablicy listy; brak / `null` / nieznane id = „Do przypisania”. */
   boardColumnId?: string | null;
 }
 

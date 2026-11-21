@@ -130,7 +130,7 @@ describe('przeciągnięcie karty', () => {
   });
 });
 
-describe('własne kolumny przestrzeni', () => {
+describe('własne kolumny listy', () => {
   const C1 = '00000000-0000-4000-8000-0000000000c1';
   const C2 = '00000000-0000-4000-8000-0000000000c2';
   const C3 = '00000000-0000-4000-8000-0000000000c3';
@@ -161,28 +161,28 @@ describe('własne kolumny przestrzeni', () => {
   });
 
   it('dodanie, zmiana nazwy, przeniesienie i usunięcie kolumny', () => {
-    const added = addBoardColumnOps('w', defs, '  Na później ', () => C3);
+    const added = addBoardColumnOps('L1', defs, '  Na później ', () => C3);
     expect(added.id).toBe(C3);
-    expect(added.ops).toEqual([{ table: 'workspaces', id: 'w', patch: { board_columns: [...defs, { id: C3, name: 'Na później' }] } }]);
-    expect(() => addBoardColumnOps('w', defs, '  ')).toThrow();
+    expect(added.ops).toEqual([{ table: 'lists', id: 'L1', patch: { board_columns: [...defs, { id: C3, name: 'Na później' }] } }]);
+    expect(() => addBoardColumnOps('L1', defs, '  ')).toThrow();
 
-    expect(renameBoardColumnOps('w', defs, C1, 'Pomysły')).toEqual([]);
-    expect(renameBoardColumnOps('w', defs, C1, 'Idee')[0]!.patch).toEqual({ board_columns: [{ id: C1, name: 'Idee' }, defs[1]] });
+    expect(renameBoardColumnOps('L1', defs, C1, 'Pomysły')).toEqual([]);
+    expect(renameBoardColumnOps('L1', defs, C1, 'Idee')[0]!.patch).toEqual({ board_columns: [{ id: C1, name: 'Idee' }, defs[1]] });
 
-    expect(moveBoardColumnOps('w', defs, C1, 0)).toEqual([]);
-    expect(moveBoardColumnOps('w', defs, C1, 1)[0]!.patch).toEqual({ board_columns: [defs[1], defs[0]] });
-    expect(moveBoardColumnOps('w', defs, C2, 0)[0]!.patch).toEqual({ board_columns: [defs[1], defs[0]] });
+    expect(moveBoardColumnOps('L1', defs, C1, 0)).toEqual([]);
+    expect(moveBoardColumnOps('L1', defs, C1, 1)[0]!.patch).toEqual({ board_columns: [defs[1], defs[0]] });
+    expect(moveBoardColumnOps('L1', defs, C2, 0)[0]!.patch).toEqual({ board_columns: [defs[1], defs[0]] });
 
-    const removed = removeBoardColumnOps('w', defs, C2, cards);
+    const removed = removeBoardColumnOps('L1', defs, C2, cards);
     expect(removed.ops).toEqual([
-      { table: 'workspaces', id: 'w', patch: { board_columns: [defs[0]] } },
+      { table: 'lists', id: 'L1', patch: { board_columns: [defs[0]] } },
       { table: 'tasks', id: 'a', patch: { board_column_id: null } },
     ]);
     expect(removed.undo).toEqual([
-      { table: 'workspaces', id: 'w', patch: { board_columns: defs } },
+      { table: 'lists', id: 'L1', patch: { board_columns: defs } },
       { table: 'tasks', id: 'a', patch: { board_column_id: C2 } },
     ]);
-    expect(removeBoardColumnOps('w', [defs[0]!], C1, [])).toEqual({ ops: [{ table: 'workspaces', id: 'w', patch: { board_columns: null } }], undo: [{ table: 'workspaces', id: 'w', patch: { board_columns: [defs[0]] } }] });
+    expect(removeBoardColumnOps('L1', [defs[0]!], C1, [])).toEqual({ ops: [{ table: 'lists', id: 'L1', patch: { board_columns: null } }], undo: [{ table: 'lists', id: 'L1', patch: { board_columns: [defs[0]] } }] });
   });
 
   it('odczyt z bazy i kolumna zadania', () => {

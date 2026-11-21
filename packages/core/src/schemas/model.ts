@@ -37,7 +37,7 @@ export const TimeZone = z.string().refine((zone) => {
 
 // ── jsonb ────────────────────────────────────────────────────────────────────────────────────
 
-/** `workspaces.board_columns`: własna kolumna tablicy przestrzeni (v1.x). */
+/** `lists.board_columns`: własna kolumna tablicy listy (v1.x). */
 export const BoardColumnDef = z.object({ id: Id, name: name(60) });
 export type BoardColumnDef = z.infer<typeof BoardColumnDef>;
 /** Własne kolumny tablicy w kolejności wyświetlania; `null` = brak. */
@@ -152,7 +152,7 @@ export const WorkspaceRow = z.object({
   icon: Icon.nullable(),
   sort_key: SortKey,
   archived_at: Instant.nullable(),
-  /** Własne kolumny tablicy przestrzeni (`BoardColumns`); `null` = brak. */
+  /** Nieużywane — własne kolumny są per lista (`ListRow.board_columns`); zostaje w bazie. */
   board_columns: BoardColumns.nullable(),
 });
 
@@ -172,6 +172,8 @@ export const ListRow = z
     sort_key: SortKey,
     view_prefs: ViewPrefs,
     archived_at: Instant.nullable(),
+    /** Własne kolumny tablicy listy (`BoardColumns`); `null` = brak. */
+    board_columns: BoardColumns.nullable(),
   })
   .refine((l) => !l.start_date || !l.end_date || l.start_date <= l.end_date, { message: 'Koniec projektu przed początkiem.', path: ['end_date'] })
   .refine((l) => l.kind === 'project' || (!l.project_status && !l.start_date && !l.end_date), { message: 'Daty i status mają tylko projekty.', path: ['kind'] });
@@ -203,7 +205,7 @@ export const TaskRow = z
     postpone_count: z.number().int().min(0),
     /** Odpowiedzialny (`collaborators.id`); `null` = twórca zadania. */
     assignee_id: Id.nullable(),
-    /** Własna kolumna tablicy (`workspaces.board_columns`); `null` / nieznane id = „Do przypisania”. */
+    /** Własna kolumna tablicy (`lists.board_columns` listy zadania); `null` / nieznane id = „Do przypisania”. */
     board_column_id: Id.nullable(),
   })
   .refine((t) => t.due_date || (!t.due_time && !t.start_date), { message: 'Godzina i początek wymagają terminu.', path: ['due_date'] })

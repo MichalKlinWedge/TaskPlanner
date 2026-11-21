@@ -3,7 +3,7 @@
 /**
  * Tablica kanban (M10) na webie: kolumny z `core/kanban.ts`, przeciąganie kart (dnd-kit) zmienia
  * atrybut kolumny i kolejność (`board_sort_key`), szybkie dodanie na dole kolumny z atrybutem
- * kolumny, zwijanie kolumn. Tryb „Własne”: kolumny przestrzeni tablicy (`workspaces.board_columns`) —
+ * kolumny, zwijanie kolumn. Tryb „Własne”: kolumny listy tablicy (`lists.board_columns`) —
  * dodawanie, zmiana nazwy, usuwanie (z cofnięciem) i przeciąganie kolumn za uchwyt. Warunek z PoC-5: kolumna rysuje porcję kart (`PAGE`) — tylko one są
  * sortowalne, reszta po „Pokaż więcej”.
  */
@@ -119,6 +119,7 @@ function Column({
   const [shown, setShown] = useState(PAGE);
   const [collapsed, setCollapsed] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [adding, setAdding] = useState(false);
   const ref = (node: HTMLElement | null) => {
     setNodeRef(node);
     sortRef?.(node);
@@ -215,10 +216,25 @@ function Column({
             </button>
           </>
         ) : null}
+        <button
+          type="button"
+          className={`text-base leading-none hover:text-[var(--accent)] ${adding ? "text-[var(--accent)]" : "text-[var(--muted)]"}`}
+          onClick={() => setAdding((a) => !a)}
+          aria-label={`Dodaj zadanie w kolumnie ${column.label}`}
+          aria-expanded={adding}
+          title="Dodaj zadanie w tej kolumnie"
+        >
+          +
+        </button>
         <button type="button" className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]" onClick={() => setCollapsed(true)} aria-label={`Zwiń kolumnę ${column.label}`} title="Zwiń">
           ⟨
         </button>
       </header>
+      {adding ? (
+        <div className="mb-1.5">
+          <QuickAdd placeholder={`Dodaj do „${column.label}”`} listId={listId} autoFocus onCancel={() => setAdding(false)} {...add} />
+        </div>
+      ) : null}
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <ul className="flex min-h-12 flex-col gap-1.5">
           {visible.map((t) => (
@@ -300,10 +316,29 @@ function AddColumn({ onAdd }: { onAdd: (name: string) => void }) {
 }
 
 /**
- * Tablica z zadań `tasks` (lista, przestrzeń albo wynik filtra). `listId` — lista nowych kart;
- * `showList` — nazwa listy na karcie (tablica z kilku list).
+ * Tablica z zadań `tasks` (lista, przestrzeń albo wynik filtra). `listId` — lista nowych kart (pole
+ * dodawania nad tablicą i „+” w nagłówku kolumny z jej polami); `showList` — nazwa listy na karcie.
  */
-export function Board({ data, ctx, tasks, by, onBy, listId, showList }: { data: AppData; ctx: ViewContext; tasks: readonly ViewTask[]; by: BoardBy; onBy: (by: BoardBy) => void; listId?: string; showList: boolean }) {
+export function Board({
+  data,
+  ctx,
+  tasks,
+  by,
+  onBy,
+  listId,
+  showList,
+  addLabel,
+}: {
+  data: AppData;
+  ctx: ViewContext;
+  tasks: readonly ViewTask[];
+  by: BoardBy;
+  onBy: (by: BoardBy) => void;
+  listId?: string;
+  showList: boolean;
+  /** Podpowiedź pola dodawania nad tablicą (dokąd trafi zadanie). */
+  addLabel?: string;
+}) {
   const { run, notify } = useTaskActions();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const lists = useMemo(() => {
@@ -312,14 +347,15 @@ export function Board({ data, ctx, tasks, by, onBy, listId, showList }: { data: 
   }, [data.lists, tasks, listId]);
   // Przestrzeń tablicy: wybrana albo wspólna dla jej list (tagi przestrzeni, własne kolumny).
   const space = ctx.workspaceId ?? (lists.length && lists.every((l) => l.workspaceId === lists[0]!.workspaceId) ? lists[0]!.workspaceId : null);
-  const workspace = space ? data.workspaces.find((w) => w.id === space) : undefined;
   const custom = by === "custom";
-  const defs = workspace?.boardColumns ?? NO_COLUMNS;
+  // Własne kolumny należą do listy: tylko tablica jednej listy (widok listy albo przestrzeń z jedną listą).
+  const owner = lists.length === 1 ? lists[0] : undefined;
+  const defs = owner?.boardColumns ?? NO_COLUMNS;
   // Kolumny tagów: tagi przestrzeni tablicy + użyte na kartach.
   const tags = useMemo(() => tagsForWorkspace(data.tags, space, tasks.flatMap((t) => t.tagIds)), [data.tags, space, tasks]);
   const columns = useMemo(
-    () => (custom && !workspace ? [] : boardColumns(tasks, by, { today: ctx.today, firstDayOfWeek: ctx.firstDayOfWeek }, { tags, lists, columns: defs })),
-    [tasks, by, custom, workspace, ctx.today, ctx.firstDayOfWeek, tags, lists, defs],
+    () => (custom && !owner ? [] : boardColumns(tasks, by, { today: ctx.today, firstDayOfWeek: ctx.firstDayOfWeek }, { tags, lists, columns: defs })),
+    [tasks, by, custom, owner, ctx.today, ctx.firstDayOfWeek, tags, lists, defs],
   );
   const columnIds = useMemo(() => (custom ? defs.map((d) => columnSortId(d.id)) : []), [custom, defs]);
   // Kolumny po ostatniej własnej zmianie: dwie zmiany szybciej niż odświeżenie zapytania nie nadpisują się.
@@ -331,7 +367,7 @@ export function Board({ data, ctx, tasks, by, onBy, listId, showList }: { data: 
     try {
       const result = make(latest.current);
       const { ops, undo } = Array.isArray(result) ? { ops: result, undo: undefined } : result;
-      const next = ops.find((op) => op.table === "workspaces")?.patch.board_columns;
+      const next = ops.find((op) => op.table === "lists")?.patch.board_columns;
       if (next !== undefined) latest.current = (next as BoardColumnDef[] | null) ?? [];
       void run(ops, text ? { text, undo } : undefined);
     } catch (e) {
@@ -344,7 +380,7 @@ export function Board({ data, ctx, tasks, by, onBy, listId, showList }: { data: 
     const dragged = active.data.current as CardData | ColumnDragData | undefined;
     if (dragged && "kind" in dragged) {
       const target = over.data.current as ColumnDragData | undefined;
-      if (workspace && target?.kind === "column") editColumns((current) => moveBoardColumnOps(workspace.id, current, dragged.key, current.findIndex((d) => d.id === target.key)));
+      if (owner && target?.kind === "column") editColumns((current) => moveBoardColumnOps(owner.id, current, dragged.key, current.findIndex((d) => d.id === target.key)));
       return;
     }
     const from = dragged;
@@ -381,23 +417,26 @@ export function Board({ data, ctx, tasks, by, onBy, listId, showList }: { data: 
           ))}
         </Select>
         {by === "status" ? <span className="text-[var(--muted)]">„Gotowe” z ostatnich 7 dni</span> : null}
-        {custom && workspace ? <span className="text-[var(--muted)]">Kolumny przestrzeni „{workspace.name}” — przeciągnij ⠿, by zmienić kolejność</span> : null}
-        {custom && workspace ? (
+        {custom && owner ? <span className="text-[var(--muted)]">Kolumny listy „{owner.kind === "inbox" ? "Inbox" : owner.name}” — przeciągnij ⠿, by zmienić kolejność</span> : null}
+        {custom && owner ? (
           <div className="ml-auto">
-            <AddColumn onAdd={(name) => editColumns((current) => addBoardColumnOps(workspace.id, current, name))} />
+            <AddColumn onAdd={(name) => editColumns((current) => addBoardColumnOps(owner.id, current, name))} />
           </div>
         ) : null}
       </div>
-      {custom && !workspace ? (
-        <p className="py-6 text-sm text-[var(--muted)]" data-testid="board-custom-no-space">
-          Własne kolumny należą do jednej przestrzeni — wybierz przestrzeń w pasku bocznym albo otwórz tablicę listy.
+      <div className="max-w-xl">
+        <QuickAdd listId={listId} placeholder={addLabel ?? "Dodaj zadanie"} />
+      </div>
+      {custom && !owner ? (
+        <p className="py-6 text-sm text-[var(--muted)]" data-testid="board-custom-no-list">
+          Własne kolumny należą do listy — otwórz listę i przełącz ją na „Tablica”.
         </p>
       ) : null}
       <DndContext sensors={sensors} collisionDetection={collision} onDragEnd={onDragEnd}>
         <div className="flex gap-3 overflow-x-auto pb-4" data-testid="board">
           <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
             {columns.map((c) =>
-              custom && workspace && c.key !== "none" ? (
+              custom && owner && c.key !== "none" ? (
                 <SortableColumn
                   key={c.key}
                   column={c}
@@ -406,8 +445,8 @@ export function Board({ data, ctx, tasks, by, onBy, listId, showList }: { data: 
                   today={ctx.today}
                   listId={listId}
                   showList={showList}
-                  onRename={(name) => editColumns((current) => renameBoardColumnOps(workspace.id, current, c.key, name))}
-                  onRemove={() => editColumns((current) => removeBoardColumnOps(workspace.id, current, c.key, data.tasks), `Usunięto kolumnę „${c.label}”`)}
+                  onRename={(name) => editColumns((current) => renameBoardColumnOps(owner.id, current, c.key, name))}
+                  onRemove={() => editColumns((current) => removeBoardColumnOps(owner.id, current, c.key, data.tasks), `Usunięto kolumnę „${c.label}”`)}
                 />
               ) : (
                 <Column key={c.key} column={c} by={by} data={data} today={ctx.today} listId={listId} showList={showList} />

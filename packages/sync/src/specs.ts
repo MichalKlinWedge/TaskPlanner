@@ -44,8 +44,8 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     scope: 'self',
   },
   lists: {
-    columns: columns<'lists'>()(['scope_id', 'kind', 'name', 'color', 'icon', 'description_md', 'start_date', 'end_date', 'project_status', 'sort_key', 'view_prefs', 'archived_at']),
-    json: ['view_prefs'],
+    columns: columns<'lists'>()(['scope_id', 'kind', 'name', 'color', 'icon', 'description_md', 'start_date', 'end_date', 'project_status', 'sort_key', 'view_prefs', 'archived_at', 'board_columns']),
+    json: ['view_prefs', 'board_columns'],
     scope: 'writable',
   },
   tasks: {

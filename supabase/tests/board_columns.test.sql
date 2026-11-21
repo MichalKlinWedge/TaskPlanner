@@ -1,4 +1,4 @@
--- v1.x: własne kolumny tablicy przestrzeni (migracja *_v1x_board_columns.sql).
+-- v1.x: własne kolumny tablicy listy (migracje *_v1x_board_columns.sql, *_v1x_list_board_columns.sql).
 -- Uruchomienie: npm run test:db
 begin;
 create extension if not exists pgtap with schema extensions;
@@ -35,10 +35,10 @@ select pg_temp.push(
   pg_temp.op('lists', :L, jsonb_build_object('scope_id', :W, 'kind', 'inbox', 'name', 'Inbox'), pg_temp.h(1001)),
   pg_temp.op('tasks', :T, jsonb_build_object('list_id', :L, 'title', 'Kupić farbę'), pg_temp.h(1002)));
 
-select is((select board_columns from public.workspaces where id = :W), null, 'domyślnie bez własnych kolumn');
-select is((pg_temp.push(pg_temp.op('workspaces', :W, jsonb_build_object('board_columns', jsonb_build_array(jsonb_build_object('id', :K, 'name', 'Zakupy'))), pg_temp.h(2000))) ->> 'applied')::int, 1,
-  'board_columns zapisywalne przez push_changes');
-select is(pg_temp.code(pg_temp.push(pg_temp.op('workspaces', :W, '{"board_columns": "Zakupy"}', pg_temp.h(2100)))), '23514', 'board_columns innego typu niż tablica odrzucone');
+select is((select board_columns from public.lists where id = :L), null, 'domyślnie lista bez własnych kolumn');
+select is((pg_temp.push(pg_temp.op('lists', :L, jsonb_build_object('board_columns', jsonb_build_array(jsonb_build_object('id', :K, 'name', 'Zakupy'))), pg_temp.h(2000))) ->> 'applied')::int, 1,
+  'lists.board_columns zapisywalne przez push_changes');
+select is(pg_temp.code(pg_temp.push(pg_temp.op('lists', :L, '{"board_columns": "Zakupy"}', pg_temp.h(2100)))), '23514', 'board_columns innego typu niż tablica odrzucone');
 select is((select board_column_id from public.tasks where id = :T), null, 'zadanie domyślnie „Do przypisania”');
 select is((pg_temp.push(pg_temp.op('tasks', :T, jsonb_build_object('board_column_id', :K), pg_temp.h(2200))) ->> 'applied')::int, 1, 'board_column_id zapisywalne przez push_changes');
 select is((select board_column_id from public.tasks where id = :T), :K::uuid, 'zadanie w kolumnie');

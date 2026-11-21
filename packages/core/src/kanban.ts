@@ -1,6 +1,6 @@
 /**
  * Kanban (SPECYFIKACJA M10): kolumny według statusu, priorytetu, dnia bieżącego tygodnia, tagu,
- * listy albo własnych kolumn przestrzeni (`workspaces.board_columns`, v1.x); kolejność kart z `board_sort_key` (D15 — wspólna dla kart z wielu list; bez klucza —
+ * listy albo własnych kolumn listy (`lists.board_columns`, v1.x); kolejność kart z `board_sort_key` (D15 — wspólna dla kart z wielu list; bez klucza —
  * automatycznie: priorytet, termin) i operacje przeciągnięcia karty (zmiana atrybutu kolumny +
  * miejsce w kolumnie). Web i telefon (uproszczony) liczą to samo.
  */
@@ -26,7 +26,7 @@ export const BOARD_BY: Record<BoardBy, string> = {
   custom: 'Własne',
 };
 
-/** Pierwsza kolumna trybu „Własne”: zadania bez kolumny albo z kolumną spoza przestrzeni. */
+/** Pierwsza kolumna trybu „Własne”: zadania bez kolumny albo z kolumną spoza listy. */
 export const BOARD_UNASSIGNED = 'Do przypisania';
 
 /** Kolumny statusu (anulowane nie są na tablicy). */
@@ -46,7 +46,7 @@ export interface BoardColumn {
 export interface BoardLookup {
   lists?: readonly { id: string; name: string; sortKey: string }[];
   tags?: readonly { id: string; name: string; sortKey: string }[];
-  /** Własne kolumny przestrzeni tablicy (tryb `custom`). */
+  /** Własne kolumny listy tablicy (tryb `custom`). */
   columns?: readonly BoardColumnDef[];
 }
 
@@ -207,9 +207,9 @@ export function boardDropOps(
   return { ops, undo };
 }
 
-// ── Własne kolumny przestrzeni ──────────────────────────────────────────────────────────────────
+// ── Własne kolumny listy ────────────────────────────────────────────────────────────────────────
 
-/** Własne kolumny z `workspaces.board_columns` (tekst JSON z lokalnej bazy albo tablica); uszkodzone → `[]`. */
+/** Własne kolumny z `lists.board_columns` (tekst JSON z lokalnej bazy albo tablica); uszkodzone → `[]`. */
 export function boardColumnDefs(raw: unknown): BoardColumnDef[] {
   let value = raw;
   if (typeof raw === 'string') {
@@ -223,9 +223,9 @@ export function boardColumnDefs(raw: unknown): BoardColumnDef[] {
   return parsed.success ? parsed.data : [];
 }
 
-const columnsOp = (workspaceId: string, next: readonly BoardColumnDef[]): TaskOp => ({
-  table: 'workspaces',
-  id: workspaceId,
+const columnsOp = (listId: string, next: readonly BoardColumnDef[]): TaskOp => ({
+  table: 'lists',
+  id: listId,
   patch: { board_columns: next.length ? next.map((c) => ({ id: c.id, name: c.name })) : null },
 });
 
@@ -235,28 +235,28 @@ function columnName(name: string): string {
   return trimmed;
 }
 
-/** Nowa kolumna na końcu tablicy przestrzeni. */
-export function addBoardColumnOps(workspaceId: string, current: readonly BoardColumnDef[], name: string, newId: () => string = uuidv7): { ops: TaskOp[]; id: string } {
+/** Nowa kolumna na końcu tablicy listy. */
+export function addBoardColumnOps(listId: string, current: readonly BoardColumnDef[], name: string, newId: () => string = uuidv7): { ops: TaskOp[]; id: string } {
   if (current.length >= 50) throw new Error('Tablica może mieć najwyżej 50 kolumn.');
   const id = newId();
-  return { ops: [columnsOp(workspaceId, [...current, { id, name: columnName(name) }])], id };
+  return { ops: [columnsOp(listId, [...current, { id, name: columnName(name) }])], id };
 }
 
 /** Zmiana nazwy kolumny; ta sama nazwa / nieznane id — brak operacji. */
-export function renameBoardColumnOps(workspaceId: string, current: readonly BoardColumnDef[], id: string, name: string): TaskOp[] {
+export function renameBoardColumnOps(listId: string, current: readonly BoardColumnDef[], id: string, name: string): TaskOp[] {
   const next = columnName(name);
   if (!current.some((c) => c.id === id && c.name !== next)) return [];
-  return [columnsOp(workspaceId, current.map((c) => (c.id === id ? { ...c, name: next } : c)))];
+  return [columnsOp(listId, current.map((c) => (c.id === id ? { ...c, name: next } : c)))];
 }
 
 /** Przeniesienie kolumny na pozycję `index` (licząc bez niej); to samo miejsce / nieznane id — brak operacji. */
-export function moveBoardColumnOps(workspaceId: string, current: readonly BoardColumnDef[], id: string, index: number): TaskOp[] {
+export function moveBoardColumnOps(listId: string, current: readonly BoardColumnDef[], id: string, index: number): TaskOp[] {
   const from = current.findIndex((c) => c.id === id);
   if (from < 0) return [];
   const rest = current.filter((c) => c.id !== id);
   const to = Math.max(0, Math.min(index, rest.length));
   if (to === from) return [];
-  return [columnsOp(workspaceId, [...rest.slice(0, to), current[from]!, ...rest.slice(to)])];
+  return [columnsOp(listId, [...rest.slice(0, to), current[from]!, ...rest.slice(to)])];
 }
 
 /**
@@ -264,7 +264,7 @@ export function moveBoardColumnOps(workspaceId: string, current: readonly BoardC
  * kolumna na tym samym miejscu i przypisania zadań.
  */
 export function removeBoardColumnOps(
-  workspaceId: string,
+  listId: string,
   current: readonly BoardColumnDef[],
   id: string,
   tasks: readonly Pick<ViewTask, 'id' | 'boardColumnId'>[],
@@ -272,11 +272,11 @@ export function removeBoardColumnOps(
   if (!current.some((c) => c.id === id)) return { ops: [], undo: [] };
   const assigned = tasks.filter((t) => t.boardColumnId === id);
   return {
-    ops: [columnsOp(workspaceId, current.filter((c) => c.id !== id)), ...assigned.map((t): TaskOp => ({ table: 'tasks', id: t.id, patch: { board_column_id: null } }))],
-    undo: [columnsOp(workspaceId, current), ...assigned.map((t): TaskOp => ({ table: 'tasks', id: t.id, patch: { board_column_id: id } }))],
+    ops: [columnsOp(listId, current.filter((c) => c.id !== id)), ...assigned.map((t): TaskOp => ({ table: 'tasks', id: t.id, patch: { board_column_id: null } }))],
+    undo: [columnsOp(listId, current), ...assigned.map((t): TaskOp => ({ table: 'tasks', id: t.id, patch: { board_column_id: id } }))],
   };
 }
 
-/** Kolumna zadania w przestrzeni — id z `columns` albo `null` („Do przypisania”). */
+/** Kolumna zadania na liście — id z `columns` albo `null` („Do przypisania”). */
 export const taskBoardColumn = (task: Pick<ViewTask, 'boardColumnId'>, columns: readonly BoardColumnDef[]): string | null =>
   task.boardColumnId && columns.some((c) => c.id === task.boardColumnId) ? task.boardColumnId : null;

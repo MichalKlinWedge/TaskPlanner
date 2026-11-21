@@ -19,8 +19,6 @@ export interface Workspace {
   name: string;
   color: string | null;
   sortKey: string;
-  /** Własne kolumny tablicy przestrzeni (kanban „Własne”). */
-  boardColumns: BoardColumnDef[];
 }
 
 export interface List {
@@ -36,6 +34,8 @@ export interface List {
   endDate: LocalDate | null;
   /** Status projektu (przegląd tygodnia: aktywne bez następnego kroku); inne listy — `null`. */
   projectStatus: ProjectStatus | null;
+  /** Własne kolumny tablicy listy (kanban „Własne”). */
+  boardColumns: BoardColumnDef[];
 }
 
 export interface Tag {
@@ -155,10 +155,10 @@ function useTaskEntries(store: TabStore): { entries: readonly TaskEntry[]; loade
 }
 
 export function useAppData(store: TabStore, today: LocalDate): AppData {
-  const workspaces = useLocalQuery<Row>(store, "select id, name, color, sort_key, board_columns from workspaces where deleted_at is null and archived_at is null", [], ["workspaces"]);
+  const workspaces = useLocalQuery<Row>(store, "select id, name, color, sort_key from workspaces where deleted_at is null and archived_at is null", [], ["workspaces"]);
   const lists = useLocalQuery<Row>(
     store,
-    "select id, scope_id, kind, name, color, sort_key, view_prefs, start_date, end_date, project_status from lists where deleted_at is null and archived_at is null",
+    "select id, scope_id, kind, name, color, sort_key, view_prefs, start_date, end_date, project_status, board_columns from lists where deleted_at is null and archived_at is null",
     [],
     ["lists"],
   );
@@ -197,6 +197,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
             startDate: (r.start_date as LocalDate | null) ?? null,
             endDate: (r.end_date as LocalDate | null) ?? null,
             projectStatus: (r.project_status as ProjectStatus | null) ?? null,
+            boardColumns: boardColumnDefs(r.board_columns),
           };
         })
         .sort(byKey),
@@ -211,7 +212,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
 
   return useMemo(
     () => ({
-      workspaces: workspaces.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), boardColumns: boardColumnDefs(r.board_columns) })).sort(byKey),
+      workspaces: workspaces.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key) })).sort(byKey),
       lists: allLists,
       tags: tags.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), workspaceIds: tagWorkspaceIds(r.workspace_ids) })).sort(byKey),
       // Filtr z nieznanym warunkiem (nowsza wersja aplikacji) — pomijany, a nie psujący widoku.

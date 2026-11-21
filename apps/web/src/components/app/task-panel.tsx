@@ -124,7 +124,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
   }
 
   const update = (patch: Record<string, unknown>) => run([{ table: "tasks", id: task.id, patch }]);
-  const boardColumnDefs = data.workspaces.find((w) => w.id === task.workspaceId)?.boardColumns ?? [];
+  const boardColumnDefs = data.lists.find((l) => l.id === task.listId)?.boardColumns ?? [];
   const parent = task.parentId ? data.tasks.find((t) => t.id === task.parentId) : undefined;
   const children = data.tasks.filter((t) => t.parentId === task.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
   const workspaceName = new Map(data.workspaces.map((w) => [w.id, w.name]));

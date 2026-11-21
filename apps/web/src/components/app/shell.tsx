@@ -321,6 +321,7 @@ export function Shell({
           onBy={setBoardBy}
           listId={targetInbox?.id}
           showList
+          addLabel={targetInbox ? `Dodaj do Inboxu („${data.workspaces.find((w) => w.id === targetInbox.workspaceId)?.name ?? ""}”)` : undefined}
         />
       </>
     ) : route.view === "calendar" ? (
