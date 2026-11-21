@@ -73,7 +73,7 @@ import { TaskTimeField } from "./focus";
 import { QuickAdd } from "./quick-add";
 import { RecurrenceEditor } from "./recurrence-editor";
 import { TaskItem, useTaskActions } from "./task-item";
-import { Button, IconButton, Input, navLinkClass, Select } from "./ui";
+import { Button, CommitInput, IconButton, Input, navLinkClass, Select } from "./ui";
 
 type Row = Record<string, string | number | null>;
 
@@ -207,16 +207,16 @@ export function TaskPanel({ taskId }: { taskId: string }) {
           />
         </Field>
         <Field label="Początek">
-          <Input type="date" value={task.startDate ?? ""} max={task.dueDate ?? undefined} disabled={!task.dueDate} onChange={(e) => void update(datesPatch(task, { start_date: (e.target.value || null) as LocalDate | null }))} />
+          <CommitInput type="date" value={task.startDate ?? ""} max={task.dueDate ?? undefined} disabled={!task.dueDate} onCommit={(value) => void update(datesPatch(task, { start_date: (value || null) as LocalDate | null }))} />
         </Field>
         <div className="flex items-end text-xs text-[var(--muted)]">
           {task.dueDate ? `${relativeDay(task.dueDate, today, "distance")}${task.durationMin ? ` · ${formatMinutes(task.durationMin)}` : ""}` : "Bez terminu"}
         </div>
         <Field label="Termin">
-          <Input type="date" value={task.dueDate ?? ""} onChange={(e) => void update(datesPatch(task, { due_date: (e.target.value || null) as LocalDate | null }))} />
+          <CommitInput type="date" value={task.dueDate ?? ""} onCommit={(value) => void update(datesPatch(task, { due_date: (value || null) as LocalDate | null }))} />
         </Field>
         <Field label="Godzina">
-          <Input type="time" value={task.dueTime ?? ""} disabled={!task.dueDate} onChange={(e) => void update(datesPatch(task, { due_time: (e.target.value || null) as LocalTime | null }))} />
+          <CommitInput type="time" value={task.dueTime ?? ""} disabled={!task.dueDate} onCommit={(value) => void update(datesPatch(task, { due_time: (value || null) as LocalTime | null }))} />
         </Field>
       </div>
 

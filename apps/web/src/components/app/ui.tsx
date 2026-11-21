@@ -1,7 +1,7 @@
 "use client";
 
 /** Proste elementy formularzy i przycisków aplikacji (Tailwind, kolory z `globals.css`). */
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
 
 type Kind = "primary" | "secondary" | "ghost" | "danger";
 
@@ -44,6 +44,81 @@ export const inputClass =
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${inputClass} ${props.className ?? ""}`} />;
+}
+
+/**
+ * Pole zapisywane dopiero po skończonej edycji (`type="date"` / `"time"` zapisujące od razu do bazy).
+ * Pisanie z klawiatury zmienia tylko szkic — zapis przy opuszczeniu pola, Enterze albo zamknięciu
+ * panelu; wybór myszą z kalendarza / listy zapisuje od razu. Inaczej każdy znak („2” z „2026”,
+ * „3” z „35”) szedł do bazy jako pełna wartość, a odświeżone pole gubiło edytowany segment.
+ */
+export function CommitInput({
+  value,
+  onCommit,
+  onChange,
+  onFocus,
+  onBlur,
+  onKeyDown,
+  onPointerDown,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "defaultValue"> & { value: string; onCommit: (value: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
+  const [seen, setSeen] = useState(value);
+  const typing = useRef(false);
+  const pending = useRef<{ next: string; commit: (value: string) => void } | null>(null);
+  if (seen !== value) {
+    setSeen(value);
+    if (!focused) setDraft(null);
+  }
+  const commit = (next: string) => {
+    pending.current = null;
+    if (next !== value) onCommit(next);
+  };
+  useEffect(
+    () => () => {
+      const left = pending.current;
+      if (left) left.commit(left.next);
+    },
+    [],
+  );
+  return (
+    <Input
+      {...props}
+      value={draft ?? value}
+      onFocus={(e) => {
+        setFocused(true);
+        onFocus?.(e);
+      }}
+      onKeyDown={(e) => {
+        typing.current = true;
+        if (e.key === "Enter" && draft !== null && !e.currentTarget.validity.badInput) commit(draft);
+        onKeyDown?.(e);
+      }}
+      onPointerDown={(e) => {
+        typing.current = false;
+        onPointerDown?.(e);
+      }}
+      onChange={(e) => {
+        const next = e.target.value;
+        setDraft(next);
+        if (typing.current) pending.current = { next, commit: onCommit };
+        else commit(next);
+        onChange?.(e);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        typing.current = false;
+        // Niedokończona data („23.11.rrrr”) = `badInput` z pustą wartością — wróć do zapisanej zamiast ją czyścić.
+        if (e.currentTarget.validity.badInput) setDraft(null);
+        else if (draft !== null) {
+          commit(draft);
+          if (draft === value) setDraft(null);
+        }
+        onBlur?.(e);
+      }}
+    />
+  );
 }
 
 export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
