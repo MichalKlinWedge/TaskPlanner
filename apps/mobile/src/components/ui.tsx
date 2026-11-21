@@ -31,10 +31,14 @@ export function Section({ title, children }: { title?: string; children: ReactNo
   );
 }
 
-export function P({ children, muted, tone, mono }: { children: ReactNode; muted?: boolean; tone?: 'ok' | 'bad'; mono?: boolean }) {
+export function P({ children, muted, tone, mono, onPress }: { children: ReactNode; muted?: boolean; tone?: 'ok' | 'bad'; mono?: boolean; onPress?: () => void }) {
   const p = usePalette();
   const color = tone ? p[tone] : muted ? p.muted : p.fg;
-  return <Text style={[styles.p, { color }, mono && styles.mono]}>{children}</Text>;
+  return (
+    <Text style={[styles.p, { color }, mono && styles.mono]} onPress={onPress}>
+      {children}
+    </Text>
+  );
 }
 
 export function Button({ title, onPress, disabled, kind = 'primary' }: { title: string; onPress: () => void; disabled?: boolean; kind?: 'primary' | 'secondary' | 'danger' }) {

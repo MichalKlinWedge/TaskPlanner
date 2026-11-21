@@ -1,4 +1,4 @@
-import { LOGIN_INVITE_NOTE } from '@taskplanner/core';
+import { ACCOUNT_DELETE_NOTE, LOGIN_INVITE_NOTE } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Switch, Text, View } from 'react-native';
@@ -9,7 +9,7 @@ import { ErrorsSection } from '@/components/errors-section';
 import { SyncIndicator } from '@/components/sync-indicator';
 import { Button, Field, P, Row, Screen, Section, usePalette } from '@/components/ui';
 import { useView } from '@/lib/app-data';
-import { sendMagicLink, signInWithGoogle, signOut, verifyEmailCode } from '@/lib/auth';
+import { deleteAccount, sendMagicLink, signInWithGoogle, signOut, verifyEmailCode } from '@/lib/auth';
 import { CLOUD_SERVER, saveServerConfig, serverConfig, sessionUser } from '@/lib/config';
 import { useSyncStatus } from '@/lib/local-query';
 import { mutate, onSessionChange, type PullPerf } from '@/lib/sync';
@@ -36,6 +36,40 @@ function FocusSection() {
           }}
         />
       </View>
+      {error ? <P tone="bad">{error}</P> : null}
+    </Section>
+  );
+}
+
+/** „Usuń konto”: konto i dane na serwerze (`account-delete`), potem wylogowanie z czyszczeniem telefonu. */
+function DeleteAccountSection({ email }: { email: string | null }) {
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const matches = !!email && typed.trim().toLowerCase() === email.toLowerCase();
+  const remove = () => {
+    setBusy(true);
+    setError(null);
+    deleteAccount(typed)
+      .then(() => router.replace('/'))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Section title="Usuń konto">
+      <P muted>{ACCOUNT_DELETE_NOTE}</P>
+      <Field label="Adres e-mail konta" value={typed} onChangeText={setTyped} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" />
+      <Button
+        kind="danger"
+        title={busy ? 'Usuwanie…' : 'Usuń konto'}
+        disabled={busy || !matches}
+        onPress={() =>
+          Alert.alert('Usunąć konto?', 'Konto i wszystkie dane na serwerze znikną. Tego nie da się cofnąć.', [
+            { text: 'Anuluj', style: 'cancel' },
+            { text: 'Usuń', style: 'destructive', onPress: remove },
+          ])
+        }
+      />
       {error ? <P tone="bad">{error}</P> : null}
     </Section>
   );
@@ -191,6 +225,8 @@ export default function Settings() {
       <BackgroundStatus />
 
       <ErrorsSection />
+
+      {user.online && !relogin ? <DeleteAccountSection email={user.email} /> : null}
 
       <Section title="Serwer Supabase">
         <P muted>

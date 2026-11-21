@@ -717,6 +717,12 @@ isOneToOne: false
 "account_secret_set":
 { Args: { "p_account": string,"p_secret": string }; Returns: undefined
                            },
+"attachment_quota_bytes":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
+"attachment_usage":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
 "calendar_kick":
 { Args: { "p_user": string }; Returns: undefined
                            },

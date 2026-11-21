@@ -131,6 +131,20 @@ async function signedIn(user: User): Promise<User> {
   return user;
 }
 
+/**
+ * Usunięcie konta ze wszystkimi danymi na serwerze (Edge Function `account-delete`; potwierdzeniem
+ * jest adres e-mail konta), potem wylogowanie z czyszczeniem danych telefonu.
+ */
+export async function deleteAccount(email: string): Promise<void> {
+  const { error } = await supabaseClient().functions.invoke('account-delete', { body: { email: email.trim() } });
+  if (error) {
+    const context = (error as { context?: Response }).context;
+    const body = context ? ((await context.json().catch(() => null)) as { error?: string } | null) : null;
+    throw new Error(body?.error ?? error.message);
+  }
+  await signOut();
+}
+
 export async function signOut() {
   await supabaseClient()
     .auth.signOut()

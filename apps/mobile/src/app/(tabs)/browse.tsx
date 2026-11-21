@@ -1,16 +1,17 @@
 /**
  * „Przeglądaj”: wyszukiwarka, przestrzenie → listy i projekty, tagi i zapisane filtry z licznikami
  * otwartych zadań liczonymi jak na webie (`isOpen`, `selectFiltered` z core: wszystkie poziomy drzewa,
- * bez nawyków, tagi w bieżącej przestrzeni), kosz, ustawienia, narzędzia PoC.
+ * bez nawyków, tagi w bieżącej przestrzeni), kosz, ustawienia, narzędzia PoC (tylko po włączeniu, `devToolsEnabled`).
  */
 import { isOpen, LIST_KIND, selectFiltered, tagsForWorkspace } from '@taskplanner/core';
 import { router, type Href } from 'expo-router';
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { SyncBanner } from '@/components/sync-banner';
 import { ColorDot, usePalette } from '@/components/ui';
 import { useView } from '@/lib/app-data';
+import { devToolsEnabled, onDevToolsChange } from '@/lib/config';
 import { perfStart, usePerfReady } from '@/lib/perf';
 
 function Item({ title, hint, count, color, href, indent }: { title: string; hint?: string; count?: number; color?: string | null; href: Href; indent?: boolean }) {
@@ -50,6 +51,7 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 export default function BrowseScreen() {
   const p = usePalette();
   const { data, ctx, workspaceId } = useView();
+  const devTools = useSyncExternalStore(onDevToolsChange, devToolsEnabled);
   usePerfReady('tab:browse', data.loaded);
   const counts = useMemo(() => {
     const byList = new Map<string, number>();
@@ -125,7 +127,7 @@ export default function BrowseScreen() {
         <Item title="Współpracownicy" hint="Osoby do wskazania w zadaniach (tylko informacyjnie)" href="/collaborators" />
         <Item title="Kosz" hint="Usunięte w ostatnich 30 dniach" href="/trash" />
         <Item title="Konto i synchronizacja" hint="Logowanie, stan synchronizacji, przypomnienia" href="/settings" />
-        <Item title="Narzędzia PoC" hint="Widżet, przypomnienia testowe, samosprawdzenie" href="/dev" />
+        {devTools ? <Item title="Narzędzia PoC" hint="Widżet, przypomnienia testowe, samosprawdzenie" href="/dev" /> : null}
       </Group>
     </ScrollView>
   );

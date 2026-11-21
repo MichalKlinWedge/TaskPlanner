@@ -73,3 +73,27 @@ export function readJson<T>(key: string, fallback: T): T {
 export function writeJson(key: string, value: unknown) {
   Storage.setItemSync(key, JSON.stringify(value));
 }
+
+// ── Narzędzia PoC ─────────────────────────────────────────────────────────────────────────────
+
+const DEV_TOOLS_KEY = 'devTools.enabled';
+const devToolsListeners = new Set<() => void>();
+
+/**
+ * Czy „Narzędzia PoC” są widoczne w „Przeglądaj”. Domyślnie ukryte (zmieniają dane — np. tryb
+ * widżetu dodaje przykładowe zadania), w buildzie deweloperskim zawsze widoczne; włącza je
+ * siedmiokrotne stuknięcie numeru wersji w Ustawieniach → „Aktualizacje”. Trasy (`/dev`,
+ * `taskplanner://widget` itd.) działają niezależnie — używa ich Maestro.
+ */
+export const devToolsEnabled = (): boolean => __DEV__ || Storage.getItemSync(DEV_TOOLS_KEY) === '1';
+
+export function setDevToolsEnabled(enabled: boolean): void {
+  if (enabled) Storage.setItemSync(DEV_TOOLS_KEY, '1');
+  else Storage.removeItemSync(DEV_TOOLS_KEY);
+  for (const listener of devToolsListeners) listener();
+}
+
+export function onDevToolsChange(listener: () => void): () => void {
+  devToolsListeners.add(listener);
+  return () => devToolsListeners.delete(listener);
+}

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { createFileQueue, FileUploadError, memoryFileStore, retryDelayMs, type PendingFile } from '../files.ts';
+import { ATTACHMENT_QUOTA_BYTES, attachmentQuotaMessage } from '@taskplanner/core';
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+import { createFileQueue, FileUploadError, memoryFileStore, retryDelayMs, supabaseUploader, type PendingFile } from '../files.ts';
 
 const file = (id: string) => ({ id, taskId: 't1', storagePath: `u/t1/${id}-a.jpg`, name: 'a.jpg', mime: 'image/jpeg', size: 3 });
 
@@ -89,5 +92,27 @@ describe('kolejka plików', () => {
     const [a, b] = await Promise.all([queue.flush(), queue.flush()]);
     expect(calls).toBe(1);
     expect(a + b).toBe(2); // ten sam przebieg, ten sam wynik
+  });
+});
+
+describe('supabaseUploader', () => {
+  const client = (message: string, statusCode: number, used: number) =>
+    ({
+      storage: { from: () => ({ upload: async () => ({ error: { message, statusCode } }) }) },
+      rpc: async () => ({ data: { used, quota: ATTACHMENT_QUOTA_BYTES }, error: null }),
+    }) as unknown as SupabaseClient;
+  const rls = 'new row violates row-level security policy';
+
+  it('odmowa RLS przy pełnym limicie — bez ponawiania, z komunikatem o miejscu', async () => {
+    const error = await supabaseUploader(client(rls, 403, ATTACHMENT_QUOTA_BYTES + 5))('u/t/a.txt', new Uint8Array([1]), 'text/plain').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(FileUploadError);
+    expect((error as FileUploadError).permanent).toBe(true);
+    expect((error as FileUploadError).message).toBe(attachmentQuotaMessage(ATTACHMENT_QUOTA_BYTES + 5));
+  });
+
+  it('odmowa RLS w limicie (zadania jeszcze nie ma) — ponowienie', async () => {
+    const error = await supabaseUploader(client(rls, 403, 1000))('u/t/a.txt', new Uint8Array([1]), 'text/plain').catch((e: unknown) => e);
+    expect((error as FileUploadError).permanent).toBe(false);
+    expect((error as FileUploadError).message).toBe(rls);
   });
 });

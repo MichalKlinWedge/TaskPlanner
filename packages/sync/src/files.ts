@@ -11,6 +11,7 @@
  * Wysyłka zależy od zadania na serwerze (reguły Storage sprawdzają zadanie), więc odmowa dostępu
  * jest ponawiana: zadanie z tego samego offline'u dociera z najbliższą synchronizacją.
  */
+import { attachmentQuotaMessage } from '@taskplanner/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type FileData = Blob | Uint8Array;
@@ -142,6 +143,12 @@ export function supabaseUploader(client: SupabaseClient, bucket = 'attachments')
     if (!error) return;
     const status = Number((error as { statusCode?: string | number; status?: number }).statusCode ?? (error as { status?: number }).status);
     if (status === 409 || /already exists|duplicate/i.test(error.message)) return;
+    // Odmowa RLS przy wyczerpanym limicie konta (`attachment_usage`) — bez ponawiania, z komunikatem.
+    if (/row-level security/i.test(error.message)) {
+      const { data: usage } = await client.rpc('attachment_usage');
+      const { used, quota } = (usage ?? {}) as { used?: number; quota?: number };
+      if (typeof used === 'number' && typeof quota === 'number' && used >= quota) throw new FileUploadError(attachmentQuotaMessage(used, quota), true);
+    }
     // 413 za duży, 415 / 400 zły typ — bez ponawiania; 403 (zadania jeszcze nie ma na serwerze) i sieć — ponowienie.
     throw new FileUploadError(error.message, status === 413 || status === 415 || (status === 400 && !/row-level security/i.test(error.message)));
   };

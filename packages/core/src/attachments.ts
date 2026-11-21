@@ -2,6 +2,7 @@
  * Załączniki i linki (M5, Etap 10): ścieżka pliku w Storage, wiersze `attachments`, link → zadanie
  * i uzupełnienie tytułu z podglądu strony (`link-preview`). Wspólne dla webu i telefonu.
  */
+import { formatBytes } from './format.ts';
 import { uuidv7 } from './ids.ts';
 import { AttachmentPreview, MAX_ATTACHMENT_BYTES } from './schemas/model.ts';
 import type { TaskOp } from './tasks.ts';
@@ -176,3 +177,10 @@ export function linkPreviewOps(attachment: { id: string; url: string }, task: { 
   if (task && title && task.title.trim() === attachment.url) ops.push({ table: 'tasks', id: task.id, patch: { title } });
   return ops;
 }
+
+/** Limit miejsca na załączniki jednego konta — musi się zgadzać z `attachment_quota_bytes()` (migracja `*_v1x_attachment_quota.sql`). */
+export const ATTACHMENT_QUOTA_BYTES = 262_144_000;
+
+/** Komunikat, gdy serwer odrzucił plik, bo konto wyczerpało limit załączników. */
+export const attachmentQuotaMessage = (used: number, quota: number = ATTACHMENT_QUOTA_BYTES): string =>
+  `Brak miejsca na załączniki: zajęte ${formatBytes(used)} z ${formatBytes(quota)}. Poproś właściciela aplikacji o większy limit (usunięcie załącznika na razie nie zwalnia miejsca).`;

@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 };
 
 // Data ostatniej zmiany treści — zmieniaj razem z treścią.
-const UPDATED = "19 listopada 2026";
+const UPDATED = "21 listopada 2026";
 
 /**
  * Polityka prywatności (publiczna, bez logowania) — wymagana przy weryfikacji aplikacji OAuth
@@ -39,7 +39,8 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong>Treści, które wpisujesz:</strong> przestrzenie, listy, zadania i ich opisy, tagi, przypomnienia, nawyki, wpisy czasu pracy, zapisane
-            filtry i ustawienia (strefa czasowa, godziny pracy).
+            filtry i ustawienia (strefa czasowa, godziny pracy), komentarze i nazwy osób wskazanych w zadaniach, a także pliki dodane jako załączniki
+            (do 250 MB na konto).
           </li>
           <li>
             <strong>Urządzenia:</strong> nazwa i rodzaj urządzenia oraz — jeśli włączysz powiadomienia w przeglądarce — dane subskrypcji Web Push potrzebne
@@ -47,10 +48,12 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong>Kalendarz Google (tylko jeśli go połączysz):</strong> lista kalendarzy oraz wydarzenia (tytuł, czas, miejsce) z okna od 30 dni wstecz do
-            180 dni naprzód, w trybie tylko do odczytu (<code>calendar.readonly</code>). Wydarzenia są pokazywane obok zadań w planie dnia.
+            180 dni naprzód (<code>calendar.readonly</code>), pokazywane obok zadań w planie dnia. Jeśli włączysz zapis zadań do kalendarza, aplikacja
+            tworzy w Twoim Google osobny kalendarz „Task Planner” i zmienia wyłącznie jego wydarzenia (<code>calendar.app.created</code>).
           </li>
           <li>
-            <strong>Dziennik techniczny:</strong> historia zmian zadań (co, kiedy i z którego urządzenia zmieniono) — do przywracania wcześniejszych wersji.
+            <strong>Dziennik techniczny:</strong> historia zmian zadań (co, kiedy i z którego urządzenia zmieniono) — do przywracania wcześniejszych wersji
+            — oraz dziennik błędów aplikacji (treść błędu, miejsce w kodzie, wersja aplikacji), przechowywany 90 dni.
           </li>
         </ul>
         <p>Nie zbieramy danych o lokalizacji, kontaktów, danych analitycznych ani plików cookie służących do śledzenia.</p>
@@ -88,6 +91,20 @@ export default function PrivacyPage() {
         </ul>
       </Section>
 
+      <Section title="Kto ma dostęp">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>Konto można założyć tylko na zaproszenie. Konta są od siebie oddzielone: inni użytkownicy nie widzą Twoich danych ani tego, że masz konto.</li>
+          <li>
+            Właściciel aplikacji, jako administrator serwera, ma techniczny dostęp do bazy danych i kopii zapasowych. Nie przegląda Twoich danych — korzysta
+            z tego dostępu tylko do utrzymania aplikacji, naprawy błędów albo na Twoją prośbę.
+          </li>
+          <li>
+            Kopia zapasowa całej bazy powstaje co noc, jest zaszyfrowana i przechowywana do 30 dni (GitHub Actions); służy wyłącznie do odtworzenia
+            serwera po awarii.
+          </li>
+        </ul>
+      </Section>
+
       <Section title="Usunięcie danych">
         <ul className="list-disc space-y-1 pl-5">
           <li>Odłączenie Kalendarza Google w aplikacji usuwa tokeny dostępu i pobrane wydarzenia. Dostęp możesz też cofnąć w ustawieniach konta Google.</li>
@@ -96,7 +113,10 @@ export default function PrivacyPage() {
             Kopia danych na urządzeniu zostaje po wylogowaniu (osobna dla każdego konta) — usuniesz ją, czyszcząc dane witryny w przeglądarce albo dane
             aplikacji w ustawieniach Androida.
           </li>
-          <li>Usunięcie konta wraz ze wszystkimi danymi na serwerze — na prośbę wysłaną z adresu e-mail konta do właściciela aplikacji.</li>
+          <li>
+            Usunięcie konta wraz ze wszystkimi danymi na serwerze (zadania, załączniki, połączone kalendarze) — samodzielnie w Ustawieniach → „Usuń konto”
+            albo na prośbę wysłaną z adresu e-mail konta do właściciela aplikacji. Dane znikają z kopii zapasowych, gdy te wygasną (do 30 dni).
+          </li>
         </ul>
       </Section>
 

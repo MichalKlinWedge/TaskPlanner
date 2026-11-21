@@ -1,6 +1,6 @@
 # Edge Functions
 
-Funkcje Deno (SPECYFIKACJA §2). Od PoC-6: `calendar-sync`, `inbound-email`, `reminders-push`. Dalej: `link-preview` (Etap 10).
+Funkcje Deno (SPECYFIKACJA §2). Od PoC-6: `calendar-sync`, `inbound-email`, `reminders-push`. Dalej: `link-preview` (Etap 10), `account-delete` (v1.x — usunięcie własnego konta z danymi, plikami i kalendarzami).
 
 - `_shared/` — wspólny kod. Wszystko poza `runtime.ts` działa bez Deno i ma testy w Node (`tools/edge-tests`).
   Logika z `packages/core` przez import względny (`../../../packages/core/src/….ts`).

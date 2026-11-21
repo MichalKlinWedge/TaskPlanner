@@ -10,6 +10,7 @@ import { closeStore, storeFor, useLocalQuery, useStaleLeader, useStoreStatus } f
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useTheme } from "@/lib/theme";
 
+import { AccountCard } from "./account-card";
 import { BackupCard } from "./backup-card";
 import { CalendarsCard } from "./calendars-card";
 import { CaptureCard } from "./capture-card";
@@ -104,6 +105,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
             <InstallCard />
             <ErrorsCard />
             <OfflineCard />
+            <AccountCard email={email} />
           </>
         }
       />

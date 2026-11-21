@@ -173,6 +173,10 @@ export const SIGNUP_NOT_INVITED = 'signup_not_invited';
 /** Podpis ekranu logowania (web i telefon): kto może się zalogować. */
 export const LOGIN_INVITE_NOTE = 'Dostęp na zaproszenie — zaloguj się adresem e-mail, który dostał zaproszenie od właściciela aplikacji.';
 
+/** Ustawienia → „Usuń konto” (web i telefon, Edge Function `account-delete`). */
+export const ACCOUNT_DELETE_NOTE =
+  'Usuwa konto i wszystkie dane na serwerze: zadania, listy, nawyki, załączniki i połączone kalendarze. Tego nie da się cofnąć — jeśli chcesz zachować dane, najpierw zrób kopię zapasową. Wpisz adres e-mail konta, żeby potwierdzić.';
+
 export const AUTH_ERROR: Record<string, string> = {
   // GoTrue zwraca `otp_expired` także dla błędnie wpisanego kodu („Token has expired or is invalid”).
   otp_expired: 'Kod albo link z maila jest błędny, wygasł lub został już użyty — sprawdź kod albo wyślij nowy.',
