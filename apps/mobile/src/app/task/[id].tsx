@@ -6,6 +6,7 @@
  * Każda zmiana to `mutate` jednego pola — synchronizacja scala zmiany z innych urządzeń (§6).
  */
 import {
+  canEditScope,
   BOARD_UNASSIGNED,
   taskBoardColumn,
   addCommentOps,
@@ -87,6 +88,19 @@ const LAGS = [-2, -1, 0, 1, 2, 3, 5, 7, 10, 14, 21, 30];
 /** Wynik arkusza wyboru → akcja (bez zwracania wartości do `onPress`). */
 const then = <T,>(choice: Promise<T>, act: (value: T) => unknown) => void choice.then((value) => void act(value));
 
+/**
+ * Część ekranu, którą da się zmieniać. W przestrzeni udostępnionej do podglądu wyszarzona i bez
+ * dotyku (przewijanie działa — gesty przechodzą do `ScrollView`); zapis i tak odrzuciłby silnik.
+ */
+function Editable({ readOnly, children }: { readOnly: boolean; children: ReactNode }) {
+  if (!readOnly) return <>{children}</>;
+  return (
+    <View pointerEvents="none" accessibilityState={{ disabled: true }} style={{ opacity: 0.5, gap: 12 }}>
+      {children}
+    </View>
+  );
+}
+
 function Block({ title, children, right }: { title: string; children: ReactNode; right?: ReactNode }) {
   const p = usePalette();
   return (
@@ -154,6 +168,7 @@ export default function TaskScreen() {
   // Własne kolumny tablicy listy zadania (tryb „Własne”) — tylko zadania najwyższego poziomu.
   const boardDefs = data.lists.find((l) => l.id === task.listId)?.boardColumns ?? [];
   const boardColumn = taskBoardColumn(task, boardDefs);
+  const readOnly = !canEditScope(data.workspaces.find((w) => w.id === task.workspaceId)?.role);
 
   const remove = () => {
     const ops = deleteTaskOps(data.tasks, task.id, new Date());
@@ -173,104 +188,112 @@ export default function TaskScreen() {
           </Pressable>
         ) : null}
 
-        <View style={styles.titleRow}>
-          <Pressable
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: closed }}
-            accessibilityLabel={closed ? 'Przywróć zadanie' : 'Ukończ zadanie'}
-            hitSlop={10}
-            onPress={() => void toggle(task)}
-            style={[styles.check, { borderColor: color, backgroundColor: closed ? color : 'transparent' }]}
-          >
-            {closed ? <Text style={styles.tick}>✓</Text> : null}
-          </Pressable>
-          <TitleField key={`${task.id}:${task.title}`} value={task.title} onSave={(title) => void update({ title })} />
-        </View>
+        {readOnly ? (
+          <Text style={[styles.readOnly, { color: p.muted, backgroundColor: p.selected }]}>
+            Przestrzeń „{data.workspaces.find((w) => w.id === task.workspaceId)?.name ?? ''}” jest udostępniona Ci tylko do podglądu — zadania nie da się zmienić.
+          </Text>
+        ) : null}
 
-        <View style={styles.grid}>
-          <Cell
-            label="Status"
-            value={TASK_STATUS[task.status]}
-            onPress={() =>
-              then(pickOption<TaskStatus>(
-                'Status',
-                STATUSES.map((s) => ({ label: TASK_STATUS[s], value: s, selected: s === task.status })),
-              ), (s) => s && s !== task.status && update(s === 'done' || s === 'cancelled' ? { status: s, completed_at: new Date().toISOString() } : { status: s, completed_at: null }))
-            }
-          />
-          <Cell label="Priorytet" value={PRIORITY[task.priority].label} tone={color} onPress={() => then(pickPriority('Priorytet', task.priority), (v) => v && v !== task.priority && update({ priority: v }))} />
-          <Cell
-            label="Lista"
-            value={listLabel(data, task.listId)}
-            onPress={() =>
-              then(pickList(data, 'Przenieś do listy', task.listId), (listId) => listId && listId !== task.listId && run(moveTaskOps(data.tasks, task.id, listId), { text: `Przeniesiono do ${listLabel(data, listId)}` }))
-            }
-          />
-          <Cell
-            label="Czas"
-            value={task.durationMin ? formatMinutes(task.durationMin) : '—'}
-            onPress={() =>
-              then(pickOption<number>('Czas trwania', [
-                ...DURATIONS.map((m) => ({ label: formatMinutes(m), value: m, selected: m === task.durationMin })),
-                { label: 'Bez czasu', value: 0, tone: 'bad' as const },
-              ]), (m) => m !== undefined && update({ duration_min: m || null }))
-            }
-          />
-          <Cell
-            label="Termin"
-            value={task.dueDate ? relativeDay(task.dueDate, today) : 'Bez terminu'}
-            tone={task.dueDate && task.dueDate < today && !closed ? p.bad : undefined}
-            onPress={() =>
-              then(pickDate({ title: 'Termin', value: task.dueDate, today, allowNone: true, firstDayOfWeek: data.settings.firstDayOfWeek }), 
-                (d) => d !== undefined && d !== task.dueDate && update(datesPatch(task, { due_date: d })),
-              )
-            }
-          />
-          <Cell
-            label="Godzina"
-            value={task.dueTime ?? '—'}
-            disabled={!task.dueDate}
-            onPress={() => then(pickTime({ title: 'Godzina', value: task.dueTime, allowNone: true }), (t) => t !== undefined && t !== task.dueTime && update(datesPatch(task, { due_time: t })))}
-          />
-          <Cell
-            label="Początek"
-            value={task.startDate ? relativeDay(task.startDate, today) : '—'}
-            disabled={!task.dueDate}
-            onPress={() =>
-              then(pickDate({ title: 'Początek (zakres do terminu)', value: task.startDate, today, allowNone: true, firstDayOfWeek: data.settings.firstDayOfWeek }), 
-                (d) => d !== undefined && d !== task.startDate && update(datesPatch(task, { start_date: d })),
-              )
-            }
-          />
-          <View style={[styles.cell, { borderColor: 'transparent', justifyContent: 'center' }]}>
-            <Text style={{ color: p.muted, fontSize: 12 }}>{task.dueDate ? relativeDay(task.dueDate, today, 'distance') : 'Bez terminu'}</Text>
+        <Editable readOnly={readOnly}>
+          <View style={styles.titleRow}>
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: closed }}
+              accessibilityLabel={closed ? 'Przywróć zadanie' : 'Ukończ zadanie'}
+              hitSlop={10}
+              onPress={() => void toggle(task)}
+              style={[styles.check, { borderColor: color, backgroundColor: closed ? color : 'transparent' }]}
+            >
+              {closed ? <Text style={styles.tick}>✓</Text> : null}
+            </Pressable>
+            <TitleField key={`${task.id}:${task.title}`} value={task.title} onSave={(title) => void update({ title })} />
           </View>
-          {boardDefs.length && task.kind === 'task' && !task.parentId ? (
+
+          <View style={styles.grid}>
             <Cell
-              label="Kolumna tablicy"
-              value={boardDefs.find((d) => d.id === boardColumn)?.name ?? BOARD_UNASSIGNED}
+              label="Status"
+              value={TASK_STATUS[task.status]}
               onPress={() =>
-                then(pickOption<string>('Kolumna tablicy', [
-                  { label: BOARD_UNASSIGNED, value: '', selected: !boardColumn },
-                  ...boardDefs.map((d) => ({ label: d.name, value: d.id, selected: d.id === boardColumn })),
-                ]), (v) => v !== undefined && (v || null) !== boardColumn && update({ board_column_id: v || null }))
+                then(pickOption<TaskStatus>(
+                  'Status',
+                  STATUSES.map((s) => ({ label: TASK_STATUS[s], value: s, selected: s === task.status })),
+                ), (s) => s && s !== task.status && update(s === 'done' || s === 'cancelled' ? { status: s, completed_at: new Date().toISOString() } : { status: s, completed_at: null }))
               }
             />
-          ) : null}
-        </View>
+            <Cell label="Priorytet" value={PRIORITY[task.priority].label} tone={color} onPress={() => then(pickPriority('Priorytet', task.priority), (v) => v && v !== task.priority && update({ priority: v }))} />
+            <Cell
+              label="Lista"
+              value={listLabel(data, task.listId)}
+              onPress={() =>
+                then(pickList(data, 'Przenieś do listy', task.listId), (listId) => listId && listId !== task.listId && run(moveTaskOps(data.tasks, task.id, listId), { text: `Przeniesiono do ${listLabel(data, listId)}` }))
+              }
+            />
+            <Cell
+              label="Czas"
+              value={task.durationMin ? formatMinutes(task.durationMin) : '—'}
+              onPress={() =>
+                then(pickOption<number>('Czas trwania', [
+                  ...DURATIONS.map((m) => ({ label: formatMinutes(m), value: m, selected: m === task.durationMin })),
+                  { label: 'Bez czasu', value: 0, tone: 'bad' as const },
+                ]), (m) => m !== undefined && update({ duration_min: m || null }))
+              }
+            />
+            <Cell
+              label="Termin"
+              value={task.dueDate ? relativeDay(task.dueDate, today) : 'Bez terminu'}
+              tone={task.dueDate && task.dueDate < today && !closed ? p.bad : undefined}
+              onPress={() =>
+                then(pickDate({ title: 'Termin', value: task.dueDate, today, allowNone: true, firstDayOfWeek: data.settings.firstDayOfWeek }), 
+                  (d) => d !== undefined && d !== task.dueDate && update(datesPatch(task, { due_date: d })),
+                )
+              }
+            />
+            <Cell
+              label="Godzina"
+              value={task.dueTime ?? '—'}
+              disabled={!task.dueDate}
+              onPress={() => then(pickTime({ title: 'Godzina', value: task.dueTime, allowNone: true }), (t) => t !== undefined && t !== task.dueTime && update(datesPatch(task, { due_time: t })))}
+            />
+            <Cell
+              label="Początek"
+              value={task.startDate ? relativeDay(task.startDate, today) : '—'}
+              disabled={!task.dueDate}
+              onPress={() =>
+                then(pickDate({ title: 'Początek (zakres do terminu)', value: task.startDate, today, allowNone: true, firstDayOfWeek: data.settings.firstDayOfWeek }), 
+                  (d) => d !== undefined && d !== task.startDate && update(datesPatch(task, { start_date: d })),
+                )
+              }
+            />
+            <View style={[styles.cell, { borderColor: 'transparent', justifyContent: 'center' }]}>
+              <Text style={{ color: p.muted, fontSize: 12 }}>{task.dueDate ? relativeDay(task.dueDate, today, 'distance') : 'Bez terminu'}</Text>
+            </View>
+            {boardDefs.length && task.kind === 'task' && !task.parentId ? (
+              <Cell
+                label="Kolumna tablicy"
+                value={boardDefs.find((d) => d.id === boardColumn)?.name ?? BOARD_UNASSIGNED}
+                onPress={() =>
+                  then(pickOption<string>('Kolumna tablicy', [
+                    { label: BOARD_UNASSIGNED, value: '', selected: !boardColumn },
+                    ...boardDefs.map((d) => ({ label: d.name, value: d.id, selected: d.id === boardColumn })),
+                  ]), (v) => v !== undefined && (v || null) !== boardColumn && update({ board_column_id: v || null }))
+                }
+              />
+            ) : null}
+          </View>
 
-        <PeopleField key={`people:${task.id}`} task={task} data={data} />
-        <RecurrenceField key={`rec:${task.id}`} task={task} data={data} today={today} timeZone={data.settings.timeZone} onSave={(patch) => void update(patch)} />
-        <TimeField task={task} />
-        <TagsField task={task} data={data} />
-        <RemindersField task={task} today={today} />
-        <DependenciesField key={`dep:${task.id}`} task={task} data={data} />
+          <PeopleField key={`people:${task.id}`} task={task} data={data} />
+          <RecurrenceField key={`rec:${task.id}`} task={task} data={data} today={today} timeZone={data.settings.timeZone} onSave={(patch) => void update(patch)} />
+          <TimeField task={task} />
+          <TagsField task={task} data={data} />
+          <RemindersField task={task} today={today} />
+          <DependenciesField key={`dep:${task.id}`} task={task} data={data} />
 
-        <Block title="Opis">
-          <DescriptionField taskId={task.id} />
-        </Block>
+          <Block title="Opis">
+            <DescriptionField taskId={task.id} />
+          </Block>
+        </Editable>
 
-        <AttachmentsField taskId={task.id} />
+        <AttachmentsField taskId={task.id} readOnly={readOnly} />
 
         <Block title={`Podzadania${children.length ? ` · ${children.filter((c) => c.status === 'done').length}/${children.filter((c) => c.status !== 'cancelled').length}` : ''}`}>
           <View style={{ marginHorizontal: -12 }}>
@@ -278,20 +301,22 @@ export default function TaskScreen() {
               <TaskRow key={c.id} task={c} today={today} />
             ))}
           </View>
-          {canAddSubtask(data.tasks, task.id) ? (
+          {readOnly ? null : canAddSubtask(data.tasks, task.id) ? (
             <QuickAddField parent={{ id: task.id, listId: task.listId }} placeholder="Dodaj podzadanie" />
           ) : (
             <Text style={{ color: p.muted, fontSize: 12 }}>Najwyżej 4 poziomy zadań — tu nie można dodać kolejnego.</Text>
           )}
         </Block>
 
-        <CommentsField key={`com:${task.id}`} task={task} data={data} today={today} />
+        <Editable readOnly={readOnly}>
+          <CommentsField key={`com:${task.id}`} task={task} data={data} today={today} />
+        </Editable>
 
         <View style={styles.footer}>
           <Text style={{ color: p.muted, fontSize: 12, flex: 1 }}>
             Dodano {task.createdAt.startsWith('1970') ? 'teraz (jeszcze nie wysłane)' : shortDate(task.createdAt.slice(0, 10))}
           </Text>
-          <Button kind="danger" title="Przenieś do kosza" onPress={remove} />
+          <Button kind="danger" title="Przenieś do kosza" disabled={readOnly} onPress={remove} />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -899,6 +924,7 @@ function DescriptionField({ taskId }: { taskId: string }) {
 const styles = StyleSheet.create({
   body: { padding: 12, gap: 12, paddingBottom: 60 },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  readOnly: { fontSize: 13, borderRadius: 8, padding: 8 },
   check: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   tick: { color: '#fff', fontSize: 14, fontWeight: '700' },
   title: { flex: 1, fontSize: 20, fontWeight: '600', paddingVertical: 4 },

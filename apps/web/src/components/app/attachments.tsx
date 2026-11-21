@@ -197,7 +197,8 @@ export function AttachmentsProvider({ store, userId, children }: { store: TabSto
 type Shown = { id: string; storagePath: string | null; name: string; mime: string | null };
 
 /** Sekcja „Załączniki” w panelu zadania: linki, pliki (z wysyłanymi), dodawanie i podgląd. */
-export function AttachmentsField({ task }: { task: ViewTask }) {
+/** `readOnly` — przestrzeń udostępniona do podglądu: tylko otwieranie, bez dodawania i usuwania. */
+export function AttachmentsField({ task, readOnly = false }: { task: ViewTask; readOnly?: boolean }) {
   const { data } = useAppEnv();
   const { run, notify } = useTaskActions();
   const api = useAttachments();
@@ -246,23 +247,23 @@ export function AttachmentsField({ task }: { task: ViewTask }) {
       className={`border-t border-[var(--line)] pt-3 ${over ? "rounded-md bg-[var(--accent)]/5 outline-2 outline-dashed outline-[var(--accent)]" : ""}`}
       aria-label="Załączniki"
       onDragOver={(e) => {
-        if ([...e.dataTransfer.types].includes("Files")) {
+        if (!readOnly && [...e.dataTransfer.types].includes("Files")) {
           e.preventDefault();
           setOver(true);
         }
       }}
       onDragLeave={() => setOver(false)}
-      onDrop={onDrop}
-      onPaste={onPaste}
+      onDrop={readOnly ? undefined : onDrop}
+      onPaste={readOnly ? undefined : onPaste}
     >
       <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold tracking-wide text-[var(--muted)] uppercase">
         Załączniki
         {items.length + waiting.length ? <span className="font-normal normal-case">· {items.length + waiting.length}</span> : null}
         <span className="ml-auto flex gap-1 normal-case">
-          <Button className="px-2 py-0.5 text-xs" onClick={() => picker.current?.click()}>
+          <Button className="px-2 py-0.5 text-xs" disabled={readOnly} onClick={() => picker.current?.click()}>
             📎 Plik
           </Button>
-          <Button className="px-2 py-0.5 text-xs" onClick={() => setLinking((v) => !v)}>
+          <Button className="px-2 py-0.5 text-xs" disabled={readOnly} onClick={() => setLinking((v) => !v)}>
             🔗 Link
           </Button>
         </span>
@@ -296,7 +297,7 @@ export function AttachmentsField({ task }: { task: ViewTask }) {
       {links.length ? (
         <ul className="mb-2 flex flex-col gap-1" aria-label="Linki">
           {links.map((a) => (
-            <LinkRow key={a.id} item={a} onRemove={() => remove(a)} />
+            <LinkRow key={a.id} item={a} onRemove={readOnly ? undefined : () => remove(a)} />
           ))}
         </ul>
       ) : null}
@@ -304,7 +305,7 @@ export function AttachmentsField({ task }: { task: ViewTask }) {
       {files.length || waiting.length ? (
         <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Pliki">
           {files.map((a) => (
-            <FileTile key={a.id} item={a} onOpen={() => setShown(a)} onRemove={() => remove(a)} />
+            <FileTile key={a.id} item={a} onOpen={() => setShown(a)} onRemove={readOnly ? undefined : () => remove(a)} />
           ))}
           {waiting.map((p) => (
             <PendingTile key={p.id} file={p} onOpen={() => setShown({ id: p.id, storagePath: null, name: p.name, mime: p.mime })} />
@@ -312,13 +313,15 @@ export function AttachmentsField({ task }: { task: ViewTask }) {
         </ul>
       ) : null}
 
-      {!items.length && !waiting.length && !linking ? <p className="text-xs text-[var(--muted)]">Przeciągnij tu pliki albo wklej obraz (Ctrl+V) — do 25 MB.</p> : null}
+      {!items.length && !waiting.length && !linking ? (
+        <p className="text-xs text-[var(--muted)]">{readOnly ? "Brak załączników." : "Przeciągnij tu pliki albo wklej obraz (Ctrl+V) — do 25 MB."}</p>
+      ) : null}
       {shown ? <PreviewDialog item={shown} onClose={() => setShown(null)} /> : null}
     </section>
   );
 }
 
-function LinkRow({ item, onRemove }: { item: Attachment; onRemove: () => void }) {
+function LinkRow({ item, onRemove }: { item: Attachment; onRemove?: () => void }) {
   const p = item.preview;
   return (
     <li className="group flex items-center gap-2 rounded-md border border-[var(--line)] px-2 py-1.5 text-sm" data-attachment-id={item.id}>
@@ -327,9 +330,11 @@ function LinkRow({ item, onRemove }: { item: Attachment; onRemove: () => void })
         <span className="block truncate">{item.name}</span>
         <span className="block truncate text-xs text-[var(--muted)]">{p === null ? "Pobieranie podglądu…" : [p.siteName, p.description].filter(Boolean).join(" · ") || item.url}</span>
       </a>
-      <button type="button" aria-label={`Usuń „${item.name}”`} className="text-xs opacity-50 group-hover:opacity-100 hover:text-[var(--danger)]" onClick={onRemove}>
-        ✕
-      </button>
+      {onRemove ? (
+        <button type="button" aria-label={`Usuń „${item.name}”`} className="text-xs opacity-50 group-hover:opacity-100 hover:text-[var(--danger)]" onClick={onRemove}>
+          ✕
+        </button>
+      ) : null}
     </li>
   );
 }
@@ -354,7 +359,7 @@ function Thumb({ item }: { item: { id: string; storagePath: string | null; mime:
   return <span className="flex h-20 items-center justify-center text-3xl" aria-hidden>{attachmentView(item.mime) === "pdf" ? "📄" : image ? "🖼" : "📦"}</span>;
 }
 
-function FileTile({ item, onOpen, onRemove }: { item: Attachment; onOpen: () => void; onRemove: () => void }) {
+function FileTile({ item, onOpen, onRemove }: { item: Attachment; onOpen: () => void; onRemove?: () => void }) {
   return (
     <li className="group relative rounded-md border border-[var(--line)] p-1.5 text-xs" data-attachment-id={item.id}>
       <button type="button" className="block w-full text-left" onClick={onOpen} title={`Otwórz „${item.name}”`}>
@@ -362,9 +367,11 @@ function FileTile({ item, onOpen, onRemove }: { item: Attachment; onOpen: () => 
         <span className="mt-1 block truncate">{item.name}</span>
         <span className="block text-[var(--muted)]">{item.size !== null ? formatBytes(item.size) : ""}</span>
       </button>
-      <button type="button" aria-label={`Usuń „${item.name}”`} className="absolute top-1 right-1 rounded bg-[var(--surface)] px-1 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-[var(--danger)]" onClick={onRemove}>
-        ✕
-      </button>
+      {onRemove ? (
+        <button type="button" aria-label={`Usuń „${item.name}”`} className="absolute top-1 right-1 rounded bg-[var(--surface)] px-1 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-[var(--danger)]" onClick={onRemove}>
+          ✕
+        </button>
+      ) : null}
     </li>
   );
 }

@@ -4,7 +4,7 @@
  * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
  * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { assigneeOf, collaboratorBadge, completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { assigneeOf, canEditScope, collaboratorBadge, completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -152,6 +152,8 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
   const attachments = data.attachments.get(task.id)?.length ?? 0;
   const assignee = assigneeOf(task.assigneeId, data.collaborators);
   const closed = task.kind === "habit" ? Boolean(habitDone) : !isOpen(task);
+  // Przestrzeń udostępniona do podglądu: zadanie da się otworzyć, ale nie odhaczyć.
+  const readOnly = !canEditScope(data.workspaces.find((w) => w.id === task.workspaceId)?.role);
   const date = virtualDate ?? task.dueDate;
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
@@ -191,8 +193,10 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           role="checkbox"
           aria-checked={closed}
           aria-label={closed ? `Przywróć „${task.title}”` : `Ukończ „${task.title}”`}
+          disabled={readOnly}
+          title={readOnly ? "Tylko podgląd" : undefined}
           onClick={() => void toggle(task, { habitDone })}
-          className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 text-[11px] text-white transition hover:opacity-80"
+          className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 text-[11px] text-white transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ borderColor: color, background: closed ? color : `${color}14` }}
         >
           {closed ? "✓" : ""}

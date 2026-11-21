@@ -9,6 +9,7 @@
 import {
   addCommentOps,
   BOARD_UNASSIGNED,
+  canEditScope,
   addDependencyOps,
   addParticipantByNameOps,
   addParticipantOps,
@@ -91,6 +92,18 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/**
+ * Część panelu, którą da się zmieniać. W przestrzeni udostępnionej do podglądu `fieldset disabled`
+ * wyszarza i blokuje wszystkie pola i przyciski w środku (zapis i tak odrzuciłby silnik).
+ */
+function Editable({ readOnly, children }: { readOnly: boolean; children: ReactNode }) {
+  return (
+    <fieldset disabled={readOnly} className="m-0 min-w-0 border-0 p-0 disabled:opacity-60">
+      {children}
+    </fieldset>
+  );
+}
+
 function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="border-t border-[var(--line)] pt-3">
@@ -128,6 +141,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
   const parent = task.parentId ? data.tasks.find((t) => t.id === task.parentId) : undefined;
   const children = data.tasks.filter((t) => t.parentId === task.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
   const workspaceName = new Map(data.workspaces.map((w) => [w.id, w.name]));
+  const readOnly = !canEditScope(data.workspaces.find((w) => w.id === task.workspaceId)?.role);
 
   const remove = () => {
     const ops = deleteTaskOps(data.tasks, task.id, new Date());
@@ -142,118 +156,125 @@ export function TaskPanel({ taskId }: { taskId: string }) {
           ↑ {parent.title}
         </button>
       ) : null}
-      <div className="flex items-start gap-2">
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={task.status === "done"}
-          aria-label={task.status === "done" ? "Przywróć zadanie" : "Ukończ zadanie"}
-          onClick={() => void toggle(task)}
-          className="mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-xs text-white"
-          style={{ borderColor: PRIORITY[task.priority].color, background: task.status === "done" ? PRIORITY[task.priority].color : "transparent" }}
-        >
-          {task.status === "done" ? "✓" : ""}
-        </button>
-        <TitleField key={`${task.id}:${task.title}`} value={task.title} onSave={(title) => void update({ title })} />
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <Field label="Status">
-          <Select value={task.status} onChange={(e) => void update(e.target.value === "done" || e.target.value === "cancelled" ? { status: e.target.value, completed_at: new Date().toISOString() } : { status: e.target.value, completed_at: null })}>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {TASK_STATUS[s]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Priorytet">
-          <Select value={task.priority} onChange={(e) => void update({ priority: Number(e.target.value) })}>
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {PRIORITY[p].label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Lista">
-          <Select
-            value={task.listId}
-            onChange={(e) => void run(moveTaskOps(data.tasks, task.id, e.target.value))}
+      {readOnly ? (
+        <p className="mb-2 rounded-md bg-[var(--hover)] px-2 py-1 text-xs text-[var(--muted)]" data-testid="task-read-only">
+          Przestrzeń „{workspaceName.get(task.workspaceId)}” jest udostępniona Ci tylko do podglądu — zadania nie da się zmienić.
+        </p>
+      ) : null}
+      <Editable readOnly={readOnly}>
+        <div className="flex items-start gap-2">
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={task.status === "done"}
+            aria-label={task.status === "done" ? "Przywróć zadanie" : "Ukończ zadanie"}
+            onClick={() => void toggle(task)}
+            className="mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-xs text-white"
+            style={{ borderColor: PRIORITY[task.priority].color, background: task.status === "done" ? PRIORITY[task.priority].color : "transparent" }}
           >
-            {data.workspaces.map((w) => (
-              <optgroup key={w.id} label={w.name}>
-                {data.lists
-                  .filter((l) => l.workspaceId === w.id)
-                  .map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.kind === "inbox" ? `Inbox (${w.name})` : `${l.name} · ${LIST_KIND[l.kind]}`}
-                    </option>
-                  ))}
-              </optgroup>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Czas (min)">
-          <Input
-            key={`${task.id}:${task.durationMin}`}
-            type="number"
-            min={1}
-            max={10080}
-            step={5}
-            defaultValue={task.durationMin ?? ""}
-            placeholder="—"
-            onBlur={(e) => {
-              const value = e.target.value ? Math.round(Number(e.target.value)) : null;
-              if (value !== task.durationMin && (value === null || (value >= 1 && value <= 10080))) void update({ duration_min: value });
-            }}
-          />
-        </Field>
-        <Field label="Początek">
-          <CommitInput type="date" value={task.startDate ?? ""} max={task.dueDate ?? undefined} disabled={!task.dueDate} onCommit={(value) => void update(datesPatch(task, { start_date: (value || null) as LocalDate | null }))} />
-        </Field>
-        <div className="flex items-end text-xs text-[var(--muted)]">
-          {task.dueDate ? `${relativeDay(task.dueDate, today, "distance")}${task.durationMin ? ` · ${formatMinutes(task.durationMin)}` : ""}` : "Bez terminu"}
+            {task.status === "done" ? "✓" : ""}
+          </button>
+          <TitleField key={`${task.id}:${task.title}`} value={task.title} onSave={(title) => void update({ title })} />
         </div>
-        <Field label="Termin">
-          <CommitInput type="date" value={task.dueDate ?? ""} onCommit={(value) => void update(datesPatch(task, { due_date: (value || null) as LocalDate | null }))} />
-        </Field>
-        <Field label="Godzina">
-          <CommitInput type="time" value={task.dueTime ?? ""} disabled={!task.dueDate} onCommit={(value) => void update(datesPatch(task, { due_time: (value || null) as LocalTime | null }))} />
-        </Field>
-        {boardColumnDefs.length && task.kind === "task" && !task.parentId ? (
-          <Field label="Kolumna tablicy">
-            <Select aria-label="Kolumna tablicy" value={taskBoardColumn(task, boardColumnDefs) ?? ""} onChange={(e) => void update({ board_column_id: e.target.value || null })}>
-              <option value="">{BOARD_UNASSIGNED}</option>
-              {boardColumnDefs.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <Field label="Status">
+            <Select value={task.status} onChange={(e) => void update(e.target.value === "done" || e.target.value === "cancelled" ? { status: e.target.value, completed_at: new Date().toISOString() } : { status: e.target.value, completed_at: null })}>
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {TASK_STATUS[s]}
                 </option>
               ))}
             </Select>
           </Field>
+          <Field label="Priorytet">
+            <Select value={task.priority} onChange={(e) => void update({ priority: Number(e.target.value) })}>
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {PRIORITY[p].label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Lista">
+            <Select
+              value={task.listId}
+              onChange={(e) => void run(moveTaskOps(data.tasks, task.id, e.target.value))}
+            >
+              {data.workspaces.map((w) => (
+                <optgroup key={w.id} label={w.name}>
+                  {data.lists
+                    .filter((l) => l.workspaceId === w.id)
+                    .map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.kind === "inbox" ? `Inbox (${w.name})` : `${l.name} · ${LIST_KIND[l.kind]}`}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Czas (min)">
+            <Input
+              key={`${task.id}:${task.durationMin}`}
+              type="number"
+              min={1}
+              max={10080}
+              step={5}
+              defaultValue={task.durationMin ?? ""}
+              placeholder="—"
+              onBlur={(e) => {
+                const value = e.target.value ? Math.round(Number(e.target.value)) : null;
+                if (value !== task.durationMin && (value === null || (value >= 1 && value <= 10080))) void update({ duration_min: value });
+              }}
+            />
+          </Field>
+          <Field label="Początek">
+            <CommitInput type="date" value={task.startDate ?? ""} max={task.dueDate ?? undefined} disabled={!task.dueDate} onCommit={(value) => void update(datesPatch(task, { start_date: (value || null) as LocalDate | null }))} />
+          </Field>
+          <div className="flex items-end text-xs text-[var(--muted)]">
+            {task.dueDate ? `${relativeDay(task.dueDate, today, "distance")}${task.durationMin ? ` · ${formatMinutes(task.durationMin)}` : ""}` : "Bez terminu"}
+          </div>
+          <Field label="Termin">
+            <CommitInput type="date" value={task.dueDate ?? ""} onCommit={(value) => void update(datesPatch(task, { due_date: (value || null) as LocalDate | null }))} />
+          </Field>
+          <Field label="Godzina">
+            <CommitInput type="time" value={task.dueTime ?? ""} disabled={!task.dueDate} onCommit={(value) => void update(datesPatch(task, { due_time: (value || null) as LocalTime | null }))} />
+          </Field>
+          {boardColumnDefs.length && task.kind === "task" && !task.parentId ? (
+            <Field label="Kolumna tablicy">
+              <Select aria-label="Kolumna tablicy" value={taskBoardColumn(task, boardColumnDefs) ?? ""} onChange={(e) => void update({ board_column_id: e.target.value || null })}>
+                <option value="">{BOARD_UNASSIGNED}</option>
+                {boardColumnDefs.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
+        </div>
+
+        <PeopleField key={`people:${task.id}`} task={task} />
+
+        {task.kind === "habit" ? (
+          <Block title="Nawyk">
+            <a href={`#/habit/${task.id}`} className={`self-start ${navLinkClass}`}>
+              Statystyki, harmonogram i cel →
+            </a>
+          </Block>
         ) : null}
-      </div>
 
-      <PeopleField key={`people:${task.id}`} task={task} />
+        <RecurrenceField key={`rec:${task.id}`} task={task} onSave={(patch) => void update(patch)} timeZone={timeZone} today={today} />
 
-      {task.kind === "habit" ? (
-        <Block title="Nawyk">
-          <a href={`#/habit/${task.id}`} className={`self-start ${navLinkClass}`}>
-            Statystyki, harmonogram i cel →
-          </a>
+        <TagsField task={task} userId={userId} />
+
+        <RemindersField key={`rem:${task.id}`} task={task} />
+
+        <Block title="Opis">
+          <DescriptionEditor key={task.id} taskId={task.id} readOnly={readOnly} />
         </Block>
-      ) : null}
-
-      <RecurrenceField key={`rec:${task.id}`} task={task} onSave={(patch) => void update(patch)} timeZone={timeZone} today={today} />
-
-      <TagsField task={task} userId={userId} />
-
-      <RemindersField key={`rem:${task.id}`} task={task} />
-
-      <Block title="Opis">
-        <DescriptionEditor key={task.id} taskId={task.id} />
-      </Block>
+      </Editable>
 
       <Block title={`Podzadania${children.length ? ` · ${children.filter((c) => c.status === "done").length}/${children.filter((c) => c.status !== "cancelled").length}` : ""}`}>
         {children.length ? (
@@ -263,20 +284,22 @@ export function TaskPanel({ taskId }: { taskId: string }) {
             ))}
           </ul>
         ) : null}
-        {canAddSubtask(data.tasks, task.id) ? (
+        {readOnly ? null : canAddSubtask(data.tasks, task.id) ? (
           <QuickAdd parent={{ id: task.id, listId: task.listId }} placeholder="Dodaj podzadanie" />
         ) : (
           <p className="text-xs text-[var(--muted)]">Najwyżej 4 poziomy zadań — tu nie można dodać kolejnego.</p>
         )}
       </Block>
 
-      <AttachmentsField key={`att:${task.id}`} task={task} />
+      <AttachmentsField key={`att:${task.id}`} task={task} readOnly={readOnly} />
 
-      <TaskTimeField task={task} />
+      <Editable readOnly={readOnly}>
+        <TaskTimeField task={task} />
 
-      <DependenciesField key={`dep:${task.id}`} task={task} />
+        <DependenciesField key={`dep:${task.id}`} task={task} />
 
-      <CommentsField key={`com:${task.id}`} task={task} />
+        <CommentsField key={`com:${task.id}`} task={task} />
+      </Editable>
 
       <History
         key={`hist:${task.id}`}
@@ -287,7 +310,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
 
       <div className="mt-4 flex items-center justify-between border-t border-[var(--line)] pt-3 text-xs text-[var(--muted)]">
         <span>Dodano {task.createdAt.startsWith("1970") ? "teraz (jeszcze nie wysłane)" : shortDate(task.createdAt.slice(0, 10))}</span>
-        <Button kind="danger" onClick={remove}>
+        <Button kind="danger" disabled={readOnly} onClick={remove}>
           Przenieś do kosza
         </Button>
       </div>
@@ -650,7 +673,7 @@ function TitleField({ value, onSave }: { value: string; onSave: (title: string) 
           e.currentTarget.blur();
         }
       }}
-      className="min-w-0 flex-1 resize-none rounded-md border border-transparent bg-transparent px-1 py-0.5 text-lg font-semibold outline-none hover:border-[var(--line)] focus:border-[var(--accent)]"
+      className="min-w-0 flex-1 resize-none rounded-md border border-transparent bg-transparent px-1 py-0.5 text-lg font-semibold outline-none hover:border-[var(--line)] focus:border-[var(--accent)] disabled:cursor-not-allowed disabled:hover:border-transparent"
     />
   );
 }
@@ -820,7 +843,7 @@ function RemindersField({ task }: { task: ViewTask }) {
 }
 
 /** Opis zadania w Markdown — w panelu i w trybie skupienia. */
-export function DescriptionEditor({ taskId }: { taskId: string }) {
+export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string; readOnly?: boolean }) {
   const { store } = useAppEnv();
   const { run } = useTaskActions();
   const { rows, ms } = useLocalQuery<Row>(store, "select description_md from tasks where id = ?", [taskId], ["tasks"]);
@@ -829,12 +852,16 @@ export function DescriptionEditor({ taskId }: { taskId: string }) {
     extensions: descriptionExtensions,
     content: "",
     immediatelyRender: false,
+    editable: !readOnly,
     editorProps: { attributes: { "aria-label": "Opis zadania" } },
     onBlur: ({ editor: e }) => {
       const markdown = descriptionMarkdown(e).trim();
       if (markdown !== saved.trim()) void run([{ table: "tasks", id: taskId, patch: { description_md: markdown || null } }]);
     },
   });
+  useEffect(() => {
+    if (editor && editor.isEditable === readOnly) editor.setEditable(!readOnly);
+  }, [editor, readOnly]);
   // Treść z bazy, gdy edytor nie ma fokusu (zmiana z innego urządzenia nie przerywa pisania).
   useEffect(() => {
     if (!editor || ms === null || editor.isFocused) return;

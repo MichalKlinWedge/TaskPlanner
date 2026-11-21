@@ -73,7 +73,8 @@ function photoName(mime?: string) {
 
 type Shown = { id: string; storagePath: string | null; name: string; mime: string | null };
 
-export function AttachmentsField({ taskId }: { taskId: string }) {
+/** `readOnly` — przestrzeń udostępniona do podglądu: tylko otwieranie, bez dodawania i usuwania. */
+export function AttachmentsField({ taskId, readOnly = false }: { taskId: string; readOnly?: boolean }) {
   const p = usePalette();
   const { run, notify } = useTaskActions();
   const items = useAttachments(taskId);
@@ -146,10 +147,10 @@ export function AttachmentsField({ taskId }: { taskId: string }) {
     <View style={[styles.block, { borderColor: p.border, backgroundColor: p.card }]}>
       <Text style={[styles.title, { color: p.muted }]}>{`ZAŁĄCZNIKI${count ? ` · ${count}` : ''}`}</Text>
       <View style={styles.actions}>
-        <Action label="📷 Aparat" onPress={() => void camera()} />
-        <Action label="🖼 Galeria" onPress={() => void gallery()} />
-        <Action label="📎 Plik" onPress={() => void document()} />
-        <Action label="🔗 Link" onPress={() => setLinking((v) => !v)} />
+        <Action label="📷 Aparat" disabled={readOnly} onPress={() => void camera()} />
+        <Action label="🖼 Galeria" disabled={readOnly} onPress={() => void gallery()} />
+        <Action label="📎 Plik" disabled={readOnly} onPress={() => void document()} />
+        <Action label="🔗 Link" disabled={readOnly} onPress={() => setLinking((v) => !v)} />
       </View>
       {linking ? (
         <View style={styles.linkRow}>
@@ -175,7 +176,7 @@ export function AttachmentsField({ taskId }: { taskId: string }) {
           key={a.id}
           accessibilityRole="link"
           onPress={() => a.url && void Linking.openURL(a.url)}
-          onLongPress={() => remove(a)}
+          onLongPress={readOnly ? undefined : () => remove(a)}
           style={[styles.link, { borderColor: p.border }]}
         >
           <Text style={{ color: p.fg }} numberOfLines={1}>
@@ -190,7 +191,7 @@ export function AttachmentsField({ taskId }: { taskId: string }) {
       {files.length || waiting.length ? (
         <View style={styles.grid}>
           {files.map((a) => (
-            <Tile key={a.id} item={a} subtitle={a.size !== null ? formatBytes(a.size) : ''} onOpen={() => void open(a)} onRemove={() => remove(a)} />
+            <Tile key={a.id} item={a} subtitle={a.size !== null ? formatBytes(a.size) : ''} onOpen={() => void open(a)} onRemove={readOnly ? undefined : () => remove(a)} />
           ))}
           {waiting.map((f) => (
             <PendingTile key={f.id} file={f} offline={offline} onOpen={() => void open({ id: f.id, storagePath: null, name: f.name, mime: f.mime })} />
@@ -209,10 +210,16 @@ export function AttachmentsField({ taskId }: { taskId: string }) {
   );
 }
 
-function Action({ label, onPress, primary }: { label: string; onPress: () => void; primary?: boolean }) {
+function Action({ label, onPress, primary, disabled }: { label: string; onPress: () => void; primary?: boolean; disabled?: boolean }) {
   const p = usePalette();
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.action, { borderColor: primary ? p.accent : p.border, backgroundColor: primary ? p.accent : 'transparent', opacity: pressed ? 0.6 : 1 }]}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [styles.action, { borderColor: primary ? p.accent : p.border, backgroundColor: primary ? p.accent : 'transparent', opacity: disabled ? 0.4 : pressed ? 0.6 : 1 }]}
+    >
       <Text style={{ color: primary ? '#fff' : p.fg, fontSize: 13, fontWeight: '600' }}>{label}</Text>
     </Pressable>
   );
@@ -237,7 +244,7 @@ function Thumb({ item }: { item: { id: string; storagePath: string | null; mime:
   return <Text style={styles.icon}>{kind === 'pdf' ? '📄' : kind === 'image' ? '🖼' : '📦'}</Text>;
 }
 
-function Tile({ item, subtitle, onOpen, onRemove }: { item: Attachment; subtitle: string; onOpen: () => void; onRemove: () => void }) {
+function Tile({ item, subtitle, onOpen, onRemove }: { item: Attachment; subtitle: string; onOpen: () => void; onRemove?: () => void }) {
   const p = usePalette();
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz „${item.name}”`} onPress={onOpen} onLongPress={onRemove} style={[styles.tile, { borderColor: p.border }]}>
