@@ -16,7 +16,13 @@ import { loadTask, type AppData } from './app-data';
 import { headlessData } from './headless';
 import { localEngine } from './sync';
 
-export const CHANNEL_ID = 'reminders';
+/**
+ * Kanał z jawnym dźwiękiem. Dźwięku i ważności kanału Androida nie da się zmienić po jego
+ * utworzeniu (a użytkownik mógł go wyciszyć), więc zmiana = nowy identyfikator; stare kanały
+ * usuwa `setupNotifications`, a przeplanowanie przenosi zaplanowane na nowy.
+ */
+export const CHANNEL_ID = 'reminders-sound';
+export const LEGACY_CHANNEL_IDS = ['reminders'];
 /** Bez „:” i „-” (wymóg `setNotificationCategoryAsync`). */
 export const CATEGORY_ID = 'task_reminder';
 /** Przypomnienie nawyku (Etap 8): „Zrobione” zapisuje wpis dnia bez otwierania aplikacji. */
@@ -127,7 +133,8 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
       const content = reminderBody(task, fire, fire.fireAt, task.timeZone ?? timeZone);
       const existing = ours.get(id);
       const old = existing?.content as { title?: string | null; body?: string | null; data?: Partial<ReminderData> } | undefined;
-      if (existing && old?.data?.at === at && old.title === content.title && old.body === content.body && !!old.data?.habit === (task.kind === 'habit')) continue;
+      const sameChannel = (existing?.trigger as { channelId?: string | null } | undefined)?.channelId === CHANNEL_ID;
+      if (existing && sameChannel && old?.data?.at === at && old.title === content.title && old.body === content.body && !!old.data?.habit === (task.kind === 'habit')) continue;
       if (existing) await Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined);
       await Notifications.scheduleNotificationAsync({
         identifier: id,

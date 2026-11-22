@@ -134,7 +134,9 @@ export async function closeOrphans(d: FocusData) {
 // ── Powiadomienia ────────────────────────────────────────────────────────────────────────────
 
 export const FOCUS_CHANNEL = 'focus';
-export const FOCUS_END_CHANNEL = 'focus-end';
+/** Z jawnym dźwiękiem; poprzedni (`focus-end`) usuwany — patrz `CHANNEL_ID` w `scheduler.ts`. */
+export const FOCUS_END_CHANNEL = 'focus-end-sound';
+const LEGACY_FOCUS_END_CHANNELS = ['focus-end'];
 /** Trwałe powiadomienie (i alarm końca pracy, który je podmienia). */
 const ONGOING_ID = 'focus';
 /** Alarm końca przerwy. */
@@ -158,9 +160,12 @@ export async function setupFocusNotifications() {
   await Notifications.setNotificationChannelAsync(FOCUS_END_CHANNEL, {
     name: 'Koniec etapu skupienia',
     importance: AndroidImportance.HIGH,
+    sound: 'default',
+    enableVibrate: true,
     vibrationPattern: [0, 300, 150, 300],
     lockscreenVisibility: AndroidNotificationVisibility.PUBLIC,
   });
+  for (const id of LEGACY_FOCUS_END_CHANNELS) await Notifications.deleteNotificationChannelAsync(id).catch(() => undefined);
   const background = { opensAppToForeground: false };
   await Notifications.setNotificationCategoryAsync(FOCUS_CATEGORY.running, [
     { identifier: FOCUS_ACTION.pause, buttonTitle: 'Pauza', options: background },
@@ -241,7 +246,7 @@ async function syncOnce(given?: FocusNow) {
   if (!(await Notifications.getPermissionsAsync()).granted) return;
   const { state, settings, userId, timeZone } = given ?? (await loadFocus());
   const title = await taskTitle(state.taskId);
-  const signature = JSON.stringify([focusStamp(state), state.taskId, title, settings, timeZone ?? null]);
+  const signature = JSON.stringify([focusStamp(state), state.taskId, title, settings, timeZone ?? null, FOCUS_END_CHANNEL]);
   if (readJson<string | null>(SYNC_KEY, null) === signature) return;
   await Notifications.cancelScheduledNotificationAsync(ONGOING_ID).catch(() => undefined);
   await Notifications.cancelScheduledNotificationAsync(BREAK_END_ID).catch(() => undefined);

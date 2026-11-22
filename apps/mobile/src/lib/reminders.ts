@@ -20,7 +20,7 @@ import { Platform } from 'react-native';
 import { readJson, writeJson } from './config';
 import { FOCUS_ACTION, setupFocusNotifications, syncFocusNotifications, type FocusNotificationData } from './focus';
 import { completeTaskById, focusCommand, habitDoneById, postponeTaskById, pushNow, type FocusCommand } from './headless';
-import { ACTION, CATEGORY_ID, CHANNEL_ID, HABIT_CATEGORY_ID, scheduleReminders, snoozeNotification, type ReminderData } from './scheduler';
+import { ACTION, CATEGORY_ID, CHANNEL_ID, HABIT_CATEGORY_ID, LEGACY_CHANNEL_IDS, scheduleReminders, snoozeNotification, type ReminderData } from './scheduler';
 import { createTask, reminderListId } from './tasks';
 import { toLocalDate, toLocalTime } from './time';
 import { refreshWidgets } from '../widget/refresh';
@@ -105,9 +105,12 @@ export async function setupNotifications() {
   await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
     name: 'Przypomnienia o zadaniach',
     importance: AndroidImportance.HIGH,
+    sound: 'default',
+    enableVibrate: true,
     vibrationPattern: [0, 200, 120, 200],
     lockscreenVisibility: AndroidNotificationVisibility.PUBLIC,
   });
+  for (const id of LEGACY_CHANNEL_IDS) await Notifications.deleteNotificationChannelAsync(id).catch(() => undefined);
   await Notifications.setNotificationCategoryAsync(CATEGORY_ID, [
     { identifier: ACTION.complete, buttonTitle: 'Ukończ', options: { opensAppToForeground: false } },
     { identifier: ACTION.snooze, buttonTitle: 'Odłóż 10 min', options: { opensAppToForeground: false } },
