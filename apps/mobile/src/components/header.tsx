@@ -1,6 +1,7 @@
 /**
  * Nagłówek zakładek: przełącznik przestrzeni (M2, „Wszystkie” albo jedna), wyszukiwarka i kropka
- * stanu synchronizacji (zielona / szara w trakcie / czerwona po błędzie; dotknięcie = Ustawienia).
+ * stanu synchronizacji (zielona / szara w trakcie / czerwona po błędzie; dotknięcie = Ustawienia),
+ * obok niej ikona dostępnej aktualizacji aplikacji (dotknięcie = Ustawienia → „Aktualizacje”).
  */
 import { focusRemaining, focusElapsed, formatTimer } from '@taskplanner/core';
 import { router } from 'expo-router';
@@ -8,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { setCurrentWorkspace, useAppData, useWorkspace } from '@/lib/app-data';
+import { useAppUpdate } from '@/lib/app-update';
 import { sessionUser } from '@/lib/config';
 import { isTicking, useFocusData } from '@/lib/focus';
 import { useSyncStatus } from '@/lib/local-query';
@@ -59,6 +61,25 @@ export function SyncDot() {
   );
 }
 
+/** Ikona nowej wersji APK (zostaje też po „Później” na banerze); w trakcie pobierania — procent. */
+export function UpdateIcon() {
+  const p = usePalette();
+  const state = useAppUpdate();
+  if (!state.release) return null;
+  const progress = state.status === 'downloading' && state.progress !== null ? `${Math.round(state.progress * 100)}%` : null;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Dostępna aktualizacja ${state.release.version}. Otwórz ustawienia`}
+      hitSlop={8}
+      onPress={() => router.push('/settings')}
+      style={[styles.update, { backgroundColor: p.accent }]}
+    >
+      <Text style={styles.updateText}>{progress ?? '⬇'}</Text>
+    </Pressable>
+  );
+}
+
 /** Wskaźnik timera skupienia (też uruchomionego na innym urządzeniu); dotknięcie — ekran skupienia. */
 export function FocusChip() {
   const p = usePalette();
@@ -93,6 +114,7 @@ export function HeaderRight() {
       <Pressable accessibilityRole="button" accessibilityLabel="Szukaj" hitSlop={10} onPress={() => router.push('/search')}>
         <Text style={{ color: p.fg, fontSize: 19 }}>⌕</Text>
       </Pressable>
+      <UpdateIcon />
       <SyncDot />
     </View>
   );
@@ -103,4 +125,6 @@ const styles = StyleSheet.create({
   switcher: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4 },
   dotWrap: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   dot: { width: 10, height: 10, borderRadius: 5 },
+  update: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' },
+  updateText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
 });
