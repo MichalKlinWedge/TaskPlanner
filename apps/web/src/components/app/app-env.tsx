@@ -4,7 +4,7 @@
  * Wspólne dane powłoki dla komponentów głębiej w drzewie (szybkie dodawanie, panel zadania,
  * wiersze zadań): lokalna baza, dane widoków, użytkownik, dziś i otwieranie panelu zadania.
  */
-import type { LocalDate } from "@taskplanner/core";
+import type { LocalDate, ProfileSettings } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useContext } from "react";
 
@@ -15,6 +15,8 @@ export interface AppEnv {
   data: AppData;
   userId: string;
   timeZone?: string;
+  /** Ustawienia profilu (sparsowane, z domyślnymi). */
+  settings: ProfileSettings;
   today: LocalDate;
   /** Bieżąca przestrzeń; `null` = „Wszystkie”. */
   workspaceId: string | null;

@@ -81,7 +81,8 @@ import { TaskTimeField } from "./focus";
 import { QuickAdd } from "./quick-add";
 import { RecurrenceEditor } from "./recurrence-editor";
 import { TaskItem, useTaskActions } from "./task-item";
-import { Button, CommitInput, IconButton, Input, navLinkClass, PANEL_HEADING, PANEL_SECTION, Select } from "./ui";
+import { PanelSection } from "./panel-section";
+import { Button, CommitInput, IconButton, Input, navLinkClass, Select } from "./ui";
 
 type Row = Record<string, string | number | null>;
 
@@ -109,12 +110,13 @@ function Editable({ readOnly, children }: { readOnly: boolean; children: ReactNo
   );
 }
 
-function Block({ title, children }: { title: string; children: ReactNode }) {
+/** Zwijana sekcja panelu; klucz = tytuł bez licznika („Podzadania · 2/3” → „Podzadania”). */
+function Block({ id, title, children }: { id?: string; title: string; children: ReactNode }) {
+  const [base, ...count] = title.split(" · ");
   return (
-    <section className={PANEL_SECTION}>
-      <h3 className={PANEL_HEADING}>{title}</h3>
+    <PanelSection id={id ?? base} title={base} count={count.join(" · ") || undefined}>
       {children}
-    </section>
+    </PanelSection>
   );
 }
 
@@ -185,7 +187,8 @@ export function TaskPanel({ taskId }: { taskId: string }) {
           <TitleField key={`${task.id}:${task.title}`} value={task.title} onSave={(title) => void update({ title })} />
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-3 @xl:grid-cols-3">
+        <Block id="details" title="Szczegóły">
+        <div className="grid grid-cols-2 gap-3 @xl:grid-cols-3">
           <Field label="Status">
             <Select value={task.status} onChange={(e) => void update(e.target.value === "done" || e.target.value === "cancelled" ? { status: e.target.value, completed_at: new Date().toISOString() } : { status: e.target.value, completed_at: null })}>
               {STATUSES.map((s) => (
@@ -262,6 +265,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
             </Field>
           ) : null}
         </div>
+        </Block>
 
         {task.kind === "task" ? <ParentField key={`parent:${task.id}`} task={task} parent={parent} /> : null}
 
@@ -808,7 +812,7 @@ function PanelFrame({ onClose, children }: { onClose: () => void; children: Reac
   };
 
   return (
-    <div data-task-panel className="fixed inset-0 z-30 flex bg-[var(--surface)] lg:static lg:z-auto lg:shrink-0 lg:border-l lg:border-[var(--line)]">
+    <div data-task-panel className="fixed inset-0 z-30 flex bg-[var(--background)] lg:static lg:z-auto lg:shrink-0 lg:border-l lg:border-[var(--line)]">
       <div
         role="separator"
         aria-orientation="vertical"
@@ -1073,11 +1077,18 @@ interface Change {
 }
 
 /** Historia zmian z serwera (`activity_log`) — tylko online; zmiany offline pojawią się po wysłaniu. */
-function History({ taskId, lists, people }: { taskId: string; lists: Map<string, string>; people: Map<string, string> }) {
+function History(props: { taskId: string; lists: Map<string, string>; people: Map<string, string> }) {
+  return (
+    <PanelSection id="history" title="Historia zmian" defaultCollapsed>
+      <HistoryRows {...props} />
+    </PanelSection>
+  );
+}
+
+/** Wpisy `activity_log` — pobierane dopiero po rozwinięciu sekcji (zwinięta nie renderuje treści). */
+function HistoryRows({ taskId, lists, people }: { taskId: string; lists: Map<string, string>; people: Map<string, string> }) {
   const [state, setState] = useState<{ rows: Change[]; error: string | null } | null>(null);
-  const [open, setOpen] = useState(false);
   useEffect(() => {
-    if (!open) return;
     let alive = true;
     void supabaseBrowser()
       .from("activity_log")
@@ -1089,7 +1100,7 @@ function History({ taskId, lists, people }: { taskId: string; lists: Map<string,
     return () => {
       alive = false;
     };
-  }, [open, taskId]);
+  }, [taskId]);
 
   const value = useMemo(
     () => (field: string, v: unknown): string => {
@@ -1109,18 +1120,12 @@ function History({ taskId, lists, people }: { taskId: string; lists: Map<string,
     [lists, people],
   );
 
-  return (
-    <section className={PANEL_SECTION}>
-      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="text-xs font-semibold tracking-wide text-[var(--muted)] uppercase hover:text-[var(--foreground)]">
-        {open ? "▾" : "▸"} Historia zmian
-      </button>
-      {open ? (
-        state === null ? (
-          <p className="mt-2 text-xs text-[var(--muted)]">Wczytywanie…</p>
-        ) : state.error ? (
-          <p className="mt-2 text-xs text-[var(--muted)]">{state.error}</p>
-        ) : (
-          <ol className="mt-2 flex flex-col gap-2 text-xs">
+  return state === null ? (
+    <p className="text-xs text-[var(--muted)]">Wczytywanie…</p>
+  ) : state.error ? (
+    <p className="text-xs text-[var(--muted)]">{state.error}</p>
+  ) : (
+          <ol className="flex flex-col gap-2 text-xs">
             {state.rows.map((row, i) => {
               // Wpis z utworzenia ma wszystkie kolumny — puste pomijamy; kolejność ręczna nie jest „zmianą”.
               const created = "kind" in row.changes && "list_id" in row.changes && "title" in row.changes;
@@ -1142,8 +1147,5 @@ function History({ taskId, lists, people }: { taskId: string; lists: Map<string,
             })}
             {!state.rows.length ? <li className="text-[var(--muted)]">Brak zapisanych zmian.</li> : null}
           </ol>
-        )
-      ) : null}
-    </section>
   );
 }

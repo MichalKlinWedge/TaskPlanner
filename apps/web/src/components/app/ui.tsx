@@ -39,10 +39,6 @@ export function IconButton({ label, className = "", ...props }: ButtonHTMLAttrib
 export const navLinkClass =
   "inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--line)] bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--foreground)]";
 
-/** Sekcja panelu zadania: wyraźny odstęp nad linią podziału, żeby sekcje się nie zlewały. */
-export const PANEL_SECTION = "mt-6 border-t border-[var(--line)] pt-4";
-export const PANEL_HEADING = "mb-2.5 text-xs font-semibold tracking-wide text-[var(--foreground)]/70 uppercase";
-
 export const inputClass =
   "min-w-0 rounded-md border border-[var(--line)] bg-[var(--surface)] px-3 py-1.5 text-sm outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] disabled:cursor-not-allowed disabled:bg-[var(--hover)] disabled:opacity-60";
 

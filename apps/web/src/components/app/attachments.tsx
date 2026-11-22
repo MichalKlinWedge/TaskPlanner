@@ -31,7 +31,8 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 
 import { useAppEnv } from "./app-env";
 import { useTaskActions } from "./task-item";
-import { Button, Input, PANEL_HEADING, PANEL_SECTION } from "./ui";
+import { PanelSection, useSectionCollapsed } from "./panel-section";
+import { Button, Input } from "./ui";
 
 // ── Kolejka i podgląd linków ─────────────────────────────────────────────────────────────────
 
@@ -239,13 +240,45 @@ export function AttachmentsField({ task, readOnly = false }: { task: ViewTask; r
     add(files);
   };
 
+  const [collapsed, toggleSection] = useSectionCollapsed("attachments");
   const links = items.filter((a) => a.kind === "link");
   const files = items.filter((a) => a.kind === "file");
 
   return (
-    <section
-      className={`${PANEL_SECTION} ${over ? "rounded-md bg-[var(--accent)]/5 outline-2 outline-dashed outline-[var(--accent)]" : ""}`}
-      aria-label="Załączniki"
+    <PanelSection
+      id="attachments"
+      title="Załączniki"
+      count={items.length + waiting.length || undefined}
+      className={over ? "outline-2 outline-dashed outline-[var(--accent)]" : ""}
+      actions={
+        <>
+          <Button className="px-2 py-0.5 text-xs" disabled={readOnly} onClick={() => picker.current?.click()}>
+            📎 Plik
+          </Button>
+          <Button
+            className="px-2 py-0.5 text-xs"
+            disabled={readOnly}
+            onClick={() => {
+              // Formularz linku jest w treści sekcji — zwiniętą najpierw rozwijamy.
+              if (collapsed) toggleSection();
+              setLinking((v) => collapsed || !v);
+            }}
+          >
+            🔗 Link
+          </Button>
+          <input
+            ref={picker}
+            type="file"
+            multiple
+            hidden
+            aria-label="Wybierz pliki"
+            onChange={(e) => {
+              add([...(e.target.files ?? [])]);
+              e.target.value = "";
+            }}
+          />
+        </>
+      }
       onDragOver={(e) => {
         if (!readOnly && [...e.dataTransfer.types].includes("Files")) {
           e.preventDefault();
@@ -256,29 +289,6 @@ export function AttachmentsField({ task, readOnly = false }: { task: ViewTask; r
       onDrop={readOnly ? undefined : onDrop}
       onPaste={readOnly ? undefined : onPaste}
     >
-      <h3 className={`${PANEL_HEADING} flex items-center gap-2`}>
-        Załączniki
-        {items.length + waiting.length ? <span className="font-normal normal-case">· {items.length + waiting.length}</span> : null}
-        <span className="ml-auto flex gap-1 normal-case">
-          <Button className="px-2 py-0.5 text-xs" disabled={readOnly} onClick={() => picker.current?.click()}>
-            📎 Plik
-          </Button>
-          <Button className="px-2 py-0.5 text-xs" disabled={readOnly} onClick={() => setLinking((v) => !v)}>
-            🔗 Link
-          </Button>
-        </span>
-      </h3>
-      <input
-        ref={picker}
-        type="file"
-        multiple
-        hidden
-        aria-label="Wybierz pliki"
-        onChange={(e) => {
-          add([...(e.target.files ?? [])]);
-          e.target.value = "";
-        }}
-      />
       {linking ? (
         <form
           className="mb-2 flex gap-2"
@@ -317,7 +327,7 @@ export function AttachmentsField({ task, readOnly = false }: { task: ViewTask; r
         <p className="text-xs text-[var(--muted)]">{readOnly ? "Brak załączników." : "Przeciągnij tu pliki albo wklej obraz (Ctrl+V) — do 25 MB."}</p>
       ) : null}
       {shown ? <PreviewDialog item={shown} onClose={() => setShown(null)} /> : null}
-    </section>
+    </PanelSection>
   );
 }
 

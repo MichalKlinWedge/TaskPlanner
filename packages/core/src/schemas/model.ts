@@ -105,6 +105,8 @@ export const ProfileSettings = z.object({
   dailyReview: z.object({ enabled: z.boolean().default(false), time: LocalTime.default('20:00') }).prefault({}),
   weeklyReview: z.object({ enabled: z.boolean().default(false), weekday: IsoWeekday.default(7), time: LocalTime.default('18:00') }).prefault({}),
   theme: z.enum(['system', 'light', 'dark']).default('system'),
+  /** Panel zadania (web): zwinięte / rozwinięte sekcje — id sekcji → `true` = zwinięta (brak = domyślny stan sekcji). */
+  taskPanel: z.object({ collapsed: z.record(z.string().max(40), z.boolean()).default({}) }).prefault({}),
   /** Onboarding zakończony (M1) — bez niego aplikacja po zalogowaniu pokazuje kreator. */
   onboarded: z.boolean().default(false),
 });

@@ -118,8 +118,12 @@ describe('ustawienia profilu', () => {
       dailyReview: { enabled: false, time: '20:00' },
       weeklyReview: { enabled: false, weekday: 7, time: '18:00' },
       theme: 'system',
+      taskPanel: { collapsed: {} },
       onboarded: false,
     });
+  });
+  it('stan sekcji panelu zadania zostaje w ustawieniach', () => {
+    expect(ProfileSettings.parse({ taskPanel: { collapsed: { history: false, opis: true } } }).taskPanel.collapsed).toEqual({ history: false, opis: true });
   });
   it('częściowe ustawienia uzupełnia, błędne odrzuca', () => {
     expect(ProfileSettings.parse({ focus: { focusMin: 50 }, workHours: { start: '08:00' } }).focus.shortBreakMin).toBe(5);
