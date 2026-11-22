@@ -1,8 +1,10 @@
 /**
  * Uproszczona tablica kanban (MVP-4, M10 na telefonie): kolumny z `core/kanban.ts`
  * (`boardColumns`) — jedna kolumna na ekranie, przełączana zakładkami z licznikami; kartę
- * przenosi menu „⇄” (do innej kolumny na początek, wyżej / niżej w kolumnie) przez `boardDropOps`,
- * jak przeciąganie na webie (atrybut kolumny + `board_sort_key`, z „Cofnij”). Kolumna bez wartości
+ * przenosi menu „⇄” (do innej kolumny na początek, wyżej / niżej w kolumnie) albo przytrzymanie i
+ * przeciągnięcie (`BoardCard`: miejsce w kolumnie — kreska; zakładka innej kolumny — na jej początek;
+ * przy krawędzi listy przewija) przez `boardDropOps`, jak przeciąganie na webie (atrybut kolumny +
+ * `board_sort_key`, z „Cofnij”). Na tablicy przytrzymanie przeciąga zamiast zaznaczać. Kolumna bez wartości
  * („Do przypisania” / „Bez terminu” / „Bez tagu”) jest pierwsza i przypięta — przewijają się pozostałe.
  * Tryb „Własne” (tylko tablica listy): kolumny z `lists.board_columns` — dodanie, zmiana nazwy,
  * przesunięcie, usunięcie (z „Cofnij”) jak na webie; „Dodaj kartę” nad kartami ustawia pola kolumny.
@@ -29,17 +31,20 @@ import {
   type TaskOp,
   type ViewTask,
 } from '@taskplanner/core';
+import * as Haptics from 'expo-haptics';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import Storage from 'expo-sqlite/kv-store';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type ReactNode } from 'react';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTaskActions } from '@/components/actions';
 import { FilterBar } from '@/components/filter-bar';
 import { pickOption, type Option } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
-import { TaskRow } from '@/components/task-row';
+import { RowsInteractive, TaskRow } from '@/components/task-row';
 import { Chip, usePalette } from '@/components/ui';
 import { listEditable, listLabel, useView } from '@/lib/app-data';
 import { mutate } from '@/lib/sync';
@@ -48,6 +53,26 @@ const BY_KEY = 'board.by';
 const NO_FILTER: FilterQuery = {};
 
 type Move = { kind: 'column'; key: string } | { kind: 'up' } | { kind: 'down' };
+/** Cel przeciągania: miejsce w bieżącej kolumnie (indeks bez przeciąganej karty) albo zakładka innej kolumny. */
+type Drop = { kind: 'list'; index: number } | { kind: 'column'; key: string };
+type Rect = { x: number; y: number; w: number; h: number };
+type ViewRef = ComponentRef<typeof View>;
+/** Strefa przy górnej / dolnej krawędzi listy, w której przeciąganie przewija (px). */
+const EDGE = 56;
+
+/** Gest karty: z `BoardScreen` przez ref — stałe funkcje, więc gest nie konfiguruje się przy każdym rysowaniu. */
+interface DragApi {
+  start: (task: ViewTask, card: ViewRef | null, x: number, y: number) => void;
+  move: (dx: number, dy: number) => void;
+  end: (canceled: boolean) => void;
+}
+
+const measure = (view: ViewRef | null | undefined): Promise<Rect | null> =>
+  new Promise((resolve) => (view ? view.measureInWindow((x, y, w, h) => resolve({ x, y, w, h })) : resolve(null)));
+
+const dropKey = (d: Drop | null) => (!d ? '' : d.kind === 'list' ? `#${d.index}` : `>${d.key}`);
+
+const inside = (r: Rect, x: number, y: number, slop = 6) => x >= r.x - slop && x <= r.x + r.w + slop && y >= r.y - slop && y <= r.y + r.h + slop;
 
 export default function BoardScreen() {
   const p = usePalette();
@@ -176,16 +201,150 @@ export default function BoardScreen() {
     if (!move) return;
     const target = move.kind === 'column' ? columns.find((c) => c.key === move.key) : from;
     if (!target) return;
+    dropCard(task, from, target, move.kind === 'column' ? 0 : move.kind === 'up' ? at - 1 : at + 1);
+  };
+  const dropCard = (task: ViewTask, from: BoardColumn, target: BoardColumn, index: number) => {
     if (by === 'tag' && target.key !== from.key && target.key !== 'none' && task.tagIds.includes(target.key)) return notify('Zadanie ma już ten tag.');
-    const index = move.kind === 'column' ? 0 : move.kind === 'up' ? at - 1 : at + 1;
     const { ops, undo } = boardDropOps(task, data.tasks, by, from.key, target.key, target.tasks, index, { today, now: new Date(), timeZone: ctx.timeZone });
     void run(ops, target.key === from.key ? undefined : { text: `„${task.title}” → ${target.label}`, undo });
+  };
+
+  // ── Przeciąganie karty ──────────────────────────────────────────────────────────────────────
+  // Wszystko we współrzędnych okna (`measureInWindow`): karta, zakładki, lista; palec = karta +
+  // miejsce chwytu + przesunięcie gestu. Miejsce w kolumnie liczy się w treści listy (położenia
+  // komórek z `onLayout`, przewinięcie od startu), więc działa też w trakcie przewijania.
+  const [drag, setDrag] = useState<ViewTask | null>(null);
+  const [drop, setDropState] = useState<Drop | null>(null);
+  const dropRef = useRef<Drop | null>(null);
+  const setDrop = (next: Drop | null) => {
+    if (dropKey(dropRef.current) === dropKey(next)) return;
+    dropRef.current = next;
+    setDropState(next);
+  };
+  const listRef = useRef<FlatList<ViewTask>>(null);
+  const rootRef = useRef<ViewRef>(null);
+  const listBox = useRef<ViewRef>(null);
+  // Zmienne mapy (nie do rysowania): zakładki kolumn i położenia kart z komórek listy.
+  const [chipViews] = useState(() => new Map<string, ViewRef>());
+  const [cells] = useState(() => new Map<string, { y: number; h: number }>());
+  const scroll = useRef(0);
+  const ghostY = useSharedValue(0);
+  const ghost = useAnimatedStyle(() => ({ transform: [{ translateY: ghostY.value }] }));
+  const session = useRef<{
+    task: ViewTask;
+    from: BoardColumn;
+    card: Rect;
+    root: Rect;
+    list: Rect;
+    chips: { key: string; rect: Rect }[];
+    grab: { x: number; y: number };
+    cellY: number;
+    scroll0: number;
+    t: { x: number; y: number };
+    frame: number | null;
+  } | null>(null);
+
+  const locate = () => {
+    const s = session.current;
+    if (!s) return;
+    const fx = s.card.x + s.grab.x + s.t.x;
+    const fy = s.card.y + s.grab.y + s.t.y;
+    ghostY.set(s.card.y - s.root.y + s.t.y);
+    const chip = s.chips.find((c) => inside(c.rect, fx, fy));
+    if (chip) return setDrop(chip.key === s.from.key ? null : { kind: 'column', key: chip.key });
+    if (fy < s.list.y - EDGE) return setDrop(null);
+    // Środek palca w treści listy → liczba kart (bez przeciąganej) nad nim.
+    const contentY = s.cellY + s.grab.y + s.t.y + (scroll.current - s.scroll0);
+    let index = 0;
+    for (const t of s.from.tasks) {
+      if (t.id === s.task.id) continue;
+      const cell = cells.get(t.id);
+      if (!cell || cell.y + cell.h / 2 > contentY) break;
+      index++;
+    }
+    setDrop({ kind: 'list', index });
+  };
+  // Przewijanie przy krawędzi listy — co klatkę, szybciej im bliżej krawędzi.
+  const tick = () => {
+    const s = session.current;
+    if (!s) return;
+    const fy = s.card.y + s.grab.y + s.t.y;
+    const top = s.list.y + EDGE - fy;
+    const bottom = fy - (s.list.y + s.list.h - EDGE);
+    const speed = top > 0 ? -Math.min(top, EDGE) / 4 : bottom > 0 ? Math.min(bottom, EDGE) / 4 : 0;
+    if (speed && !(speed < 0 && scroll.current <= 0)) {
+      scroll.current = Math.max(0, scroll.current + speed);
+      listRef.current?.scrollToOffset({ offset: scroll.current, animated: false });
+      locate();
+    }
+    s.frame = requestAnimationFrame(tick);
+  };
+  const dragApi = useRef<DragApi>(null!);
+  useLayoutEffect(() => {
+    dragApi.current = {
+      start: (task, card, x, y) => {
+        if (!column) return;
+        const from = column;
+        void Haptics.selectionAsync().catch(() => undefined);
+        void Promise.all([measure(card), measure(rootRef.current), measure(listBox.current), ...[...chipViews].map(async ([key, v]) => ({ key, rect: await measure(v) }))]).then(
+          ([cardRect, root, list, ...chips]) => {
+            if (!cardRect || !root || !list) return;
+            const t = session.current?.t ?? { x: 0, y: 0 };
+            session.current = {
+              task,
+              from,
+              card: cardRect,
+              root,
+              list,
+              chips: chips.flatMap((c) => (c.rect ? [{ key: c.key, rect: c.rect }] : [])),
+              grab: { x, y },
+              cellY: cells.get(task.id)?.y ?? 0,
+              scroll0: scroll.current,
+              t,
+              frame: null,
+            };
+            setDrag(task);
+            locate();
+            session.current.frame = requestAnimationFrame(tick);
+          },
+        );
+      },
+      move: (dx, dy) => {
+        if (!session.current) return;
+        session.current.t = { x: dx, y: dy };
+        locate();
+      },
+      end: (canceled) => {
+        const s = session.current;
+        const target = dropRef.current;
+        session.current = null;
+        if (s?.frame != null) cancelAnimationFrame(s.frame);
+        setDrag(null);
+        setDrop(null);
+        if (!s || canceled || !target) return;
+        if (target.kind === 'column') {
+          const to = columns.find((c) => c.key === target.key);
+          if (to) dropCard(s.task, s.from, to, 0);
+          return;
+        }
+        const at = s.from.tasks.filter((t) => t.id !== s.task.id).length;
+        const was = s.from.tasks.findIndex((t) => t.id === s.task.id);
+        if (target.index !== was) dropCard(s.task, s.from, s.from, Math.min(target.index, at));
+      },
+    };
+  });
+  const rest = drag && column ? column.tasks.filter((t) => t.id !== drag.id) : (column?.tasks ?? []);
+  const insertBefore = drop?.kind === 'list' ? (rest[drop.index]?.id ?? null) : undefined;
+  const hover = drop?.kind === 'column' ? drop.key : null;
+  const chipRef = (key: string) => (v: ViewRef | null) => {
+    if (v) chipViews.set(key, v);
+    else chipViews.delete(key);
   };
 
   const title = list ? `Tablica · ${list.name}` : `Tablica · ${data.workspaces.find((w) => w.id === ctx.workspaceId)?.name ?? 'wszystko'}`;
 
   return (
-    <View style={{ flex: 1, backgroundColor: p.bg }}>
+    <View ref={rootRef} collapsable={false} style={{ flex: 1, backgroundColor: p.bg }}>
       <Stack.Screen options={{ title }} />
       <View style={styles.top}>
         <Pressable
@@ -202,12 +361,16 @@ export default function BoardScreen() {
       <View style={styles.tabRow}>
         {pinned ? (
           <View style={[styles.pinned, { borderColor: p.border }]}>
-            <Chip label={`${pinned.label} ${pinned.tasks.length}`} selected={pinned.key === column?.key} onPress={() => setSelected(pinned.key)} />
+            <View ref={chipRef(pinned.key)} collapsable={false}>
+              <Chip label={`${pinned.label} ${pinned.tasks.length}`} selected={pinned.key === column?.key || hover === pinned.key} onPress={() => setSelected(pinned.key)} />
+            </View>
           </View>
         ) : null}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={[styles.tabs, pinned ? { paddingLeft: 8 } : null]}>
           {scrolled.map((c) => (
-            <Chip key={c.key} label={`${c.label} ${c.tasks.length}`} selected={c.key === column?.key} onPress={() => setSelected(c.key)} />
+            <View key={c.key} ref={chipRef(c.key)} collapsable={false}>
+              <Chip label={`${c.label} ${c.tasks.length}`} selected={c.key === column?.key || hover === c.key} onPress={() => setSelected(c.key)} />
+            </View>
           ))}
           {by === 'custom' && list && !locked ? <Chip label="+ Kolumna" onPress={() => setNaming({ id: null, name: '' })} /> : null}
         </ScrollView>
@@ -272,41 +435,107 @@ export default function BoardScreen() {
         </View>
       ) : null}
       {column ? (
-        <FlatList
-          ListHeaderComponent={
-            locked ? undefined : (
-              <View style={styles.addCard}>
-                <QuickAddField key={`${by}:${column.key}`} listId={list?.id} placeholder="Dodaj kartę" {...addProps} />
-              </View>
-            )
-          }
-          keyboardShouldPersistTaps="handled"
-          data={column.tasks}
-          keyExtractor={(t) => t.id}
-          renderItem={({ item }) => (
-            <View style={[styles.card, { borderColor: p.border }]}>
-              <View style={{ flex: 1 }}>
-                <TaskRow
-                  task={item}
-                  today={today}
-                  showDate={by !== 'weekday'}
-                  listName={list ? undefined : listLabel(data, item.listId)}
-                  progress={children.get(item.id)}
-                  tagNames={by === 'tag' ? undefined : item.tagIds.map((id) => tagName.get(id) ?? '').filter(Boolean)}
-                />
-              </View>
-              <Pressable accessibilityRole="button" accessibilityLabel={`Przenieś „${item.title}”`} hitSlop={6} onPress={() => void moveCard(item, column)} style={styles.move}>
-                <Text style={{ color: p.accent, fontSize: 18 }}>⇄</Text>
-              </Pressable>
-            </View>
-          )}
-          ListEmptyComponent={<Text style={[styles.empty, { color: p.muted }]}>Pusta kolumna.</Text>}
-          contentContainerStyle={{ paddingBottom: 48 + insets.bottom }}
-        />
+        <View ref={listBox} collapsable={false} style={{ flex: 1 }}>
+          <CellLayouts.Provider value={cells}>
+            <FlatList
+              ref={listRef}
+              ListHeaderComponent={
+                locked ? undefined : (
+                  <View style={styles.addCard}>
+                    <QuickAddField key={`${by}:${column.key}`} listId={list?.id} placeholder="Dodaj kartę" {...addProps} />
+                  </View>
+                )
+              }
+              keyboardShouldPersistTaps="handled"
+              data={column.tasks}
+              extraData={insertBefore}
+              keyExtractor={(t) => t.id}
+              CellRendererComponent={Cell}
+              onScroll={(e) => (scroll.current = e.nativeEvent.contentOffset.y)}
+              scrollEventThrottle={16}
+              scrollEnabled={!drag}
+              renderItem={({ item }) => (
+                <BoardCard task={item} api={dragApi} enabled={!locked}>
+                  {insertBefore === item.id ? <View style={[styles.dropLine, { backgroundColor: p.accent }]} /> : null}
+                  <View style={[styles.card, { borderColor: p.border, opacity: drag?.id === item.id ? 0.3 : 1 }]}>
+                    <View style={{ flex: 1 }}>
+                      <TaskRow
+                        task={item}
+                        today={today}
+                        showDate={by !== 'weekday'}
+                        listName={list ? undefined : listLabel(data, item.listId)}
+                        progress={children.get(item.id)}
+                        tagNames={by === 'tag' ? undefined : item.tagIds.map((id) => tagName.get(id) ?? '').filter(Boolean)}
+                      />
+                    </View>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Przenieś „${item.title}”`} hitSlop={6} onPress={() => void moveCard(item, column)} style={styles.move}>
+                      <Text style={{ color: p.accent, fontSize: 18 }}>⇄</Text>
+                    </Pressable>
+                  </View>
+                </BoardCard>
+              )}
+              ListFooterComponent={insertBefore === null ? <View style={[styles.dropLine, { backgroundColor: p.accent }]} /> : undefined}
+              ListEmptyComponent={<Text style={[styles.empty, { color: p.muted }]}>Pusta kolumna.</Text>}
+              contentContainerStyle={{ paddingBottom: 48 + insets.bottom }}
+            />
+          </CellLayouts.Provider>
+        </View>
       ) : (
         <Text style={[styles.empty, { color: p.muted }]}>{by === 'tag' ? 'Brak tagów.' : 'Brak kolumn.'}</Text>
       )}
+      {drag ? (
+        <Animated.View pointerEvents="none" style={[styles.ghost, { backgroundColor: p.bg, borderColor: p.accent }, ghost]}>
+          <RowsInteractive.Provider value={false}>
+            <TaskRow task={drag} today={today} showDate={by !== 'weekday'} progress={children.get(drag.id)} />
+          </RowsInteractive.Provider>
+        </Animated.View>
+      ) : null}
     </View>
+  );
+}
+
+/** Położenia kart w treści listy (y, wysokość) — z komórek `FlatList`, dla miejsca upuszczenia. */
+const CellLayouts = createContext<Map<string, { y: number; h: number }> | null>(null);
+
+function Cell({ item, onLayout, onFocusCapture, style, children }: {
+  item: ViewTask;
+  onLayout?: (e: LayoutChangeEvent) => void;
+  onFocusCapture?: ComponentProps<typeof View>['onFocusCapture'];
+  style?: StyleProp<ViewStyle>;
+  children?: ReactNode;
+}) {
+  const layouts = useContext(CellLayouts);
+  return (
+    <View
+      style={style}
+      onFocusCapture={onFocusCapture}
+      onLayout={(e) => {
+        layouts?.set(item.id, { y: e.nativeEvent.layout.y, h: e.nativeEvent.layout.height });
+        onLayout?.(e);
+      }}
+    >
+      {children}
+    </View>
+  );
+}
+
+/** Karta tablicy z gestem przeciągania: przytrzymanie (300 ms, przed zaznaczaniem wiersza po 350 ms), potem ruch. */
+function BoardCard({ task, api, enabled, children }: { task: ViewTask; api: { current: DragApi }; enabled: boolean; children: ReactNode }) {
+  const ref = useRef<ViewRef>(null);
+  const pan = usePanGesture({
+    enabled,
+    runOnJS: true,
+    activateAfterLongPress: 300,
+    onActivate: (e) => api.current.start(task, ref.current, e.x, e.y),
+    onUpdate: (e) => api.current.move(e.translationX, e.translationY),
+    onDeactivate: (e) => api.current.end(e.canceled),
+  });
+  return (
+    <GestureDetector gesture={pan}>
+      <View ref={ref} collapsable={false}>
+        {children}
+      </View>
+    </GestureDetector>
   );
 }
 
@@ -324,5 +553,7 @@ const styles = StyleSheet.create({
   addCard: { paddingHorizontal: 12 },
   card: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth },
   move: { paddingHorizontal: 14, paddingVertical: 12 },
+  dropLine: { height: 3, marginHorizontal: 8, borderRadius: 2 },
+  ghost: { position: 'absolute', top: 0, left: 6, right: 6, borderWidth: 1.5, borderRadius: 8, overflow: 'hidden', elevation: 8, opacity: 0.95 },
   empty: { padding: 24, textAlign: 'center' },
 });
