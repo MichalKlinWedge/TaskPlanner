@@ -4,7 +4,7 @@
  * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
  * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { assigneeOf, collaboratorBadge, columnDate, completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, LIST_COLUMN, type ListColumn, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { assigneeOf, collaboratorBadge, columnDate, completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, toggleTaskTagOps, LIST_COLUMN, type ListColumn, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
@@ -149,14 +149,23 @@ export interface TaskItemProps {
   columns?: readonly ListColumn[];
   /** „+” przy tytule: dodanie podzadania (widok listy ustawia górne pole na to zadanie). */
   onAddSubtask?: () => void;
+  /** Tagi jako kolumny (`view_prefs.tagColumns`): ✓ = zadanie ma tag, klik przełącza. */
+  tagColumns?: readonly TagColumn[];
+}
+
+export interface TagColumn {
+  id: string;
+  name: string;
+  color: string | null;
 }
 
 /** Szerokości kolumn — wspólne dla wiersza i nagłówka `TaskColumnsHeader`. */
 const COLUMN_WIDTH: Record<ListColumn, string> = { assignee: "w-24 sm:w-36", start: "w-16 sm:w-24", due: "w-16 sm:w-24" };
+const TAG_WIDTH = "w-14 sm:w-20";
 
 /** Nagłówek kolumn nad wierszami listy. */
-export function TaskColumnsHeader({ columns }: { columns: readonly ListColumn[] }) {
-  if (!columns.length) return null;
+export function TaskColumnsHeader({ columns, tagColumns = [] }: { columns: readonly ListColumn[]; tagColumns?: readonly TagColumn[] }) {
+  if (!columns.length && !tagColumns.length) return null;
   return (
     <div className="flex gap-2 border-b border-[var(--line)] pb-1 text-xs font-medium text-[var(--muted)]" data-testid="list-columns-header">
       <span className="flex-1" />
@@ -165,12 +174,17 @@ export function TaskColumnsHeader({ columns }: { columns: readonly ListColumn[] 
           {LIST_COLUMN[c]}
         </span>
       ))}
+      {tagColumns.map((t) => (
+        <span key={t.id} className={`${TAG_WIDTH} shrink-0 truncate`} title={`Tag @${t.name}`} style={t.color ? { color: t.color } : undefined}>
+          @{t.name}
+        </span>
+      ))}
     </div>
   );
 }
 
-export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask }: TaskItemProps) {
-  const { toggle } = useTaskActions();
+export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, tagColumns = [] }: TaskItemProps) {
+  const { toggle, run } = useTaskActions();
   const { openTask, selectedIds, select, data } = useAppEnv();
   const selected = selectedIds.has(task.id);
   const attachments = data.attachments.get(task.id)?.length ?? 0;
@@ -190,7 +204,15 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
     openTask(task.id);
   };
   const dueColumn = columns.includes("due");
-  const assigneeColumn = columns.includes("assignee");
+  // Osoby przy tytule: odpowiedzialny (pełny znaczek), potem uczestnicy (obrys); nieznani pominięci.
+  const people = [
+    ...(assignee ? [{ person: assignee, role: "Odpowiedzialny" }] : []),
+    ...(data.participants.get(task.id) ?? [])
+      .filter((id) => id !== task.assigneeId)
+      .map((id) => assigneeOf(id, data.collaborators))
+      .filter((c) => c !== null)
+      .map((person) => ({ person, role: "Uczestnik" })),
+  ];
 
   return (
     <li
@@ -261,17 +283,34 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           ) : null}
           {task.status === "in_progress" || task.status === "waiting" ? <span>{task.status === "in_progress" ? "w trakcie" : "oczekuje"}</span> : null}
           {attachments ? <span title={`Załączniki: ${attachments}`}>📎 {attachments}</span> : null}
-          {assignee && !assigneeColumn ? (
-            <span className="inline-flex items-center gap-1" title={`Odpowiedzialny: ${assignee.name}`}>
-              <span aria-hidden className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-100 px-1 text-[10px] font-semibold text-sky-900 dark:bg-sky-900/60 dark:text-sky-100">
-                {collaboratorBadge(assignee)}
-              </span>
-              <span className="sr-only">Odpowiedzialny: {assignee.name}</span>
-            </span>
-          ) : null}
           {listName ? <span className="truncate">{listName}</span> : null}
         </span>
       </button>
+      {people.length ? (
+        <span className="mt-0.5 flex shrink-0 items-center gap-0.5" data-testid="task-people">
+          {people.slice(0, 4).map(({ person, role }) => (
+            <span
+              key={person.id}
+              title={`${role}: ${person.name}`}
+              className={`inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold ${
+                role === "Odpowiedzialny"
+                  ? "bg-sky-100 text-sky-900 dark:bg-sky-900/60 dark:text-sky-100"
+                  : "border border-sky-300 text-sky-800 dark:border-sky-700 dark:text-sky-200"
+              }`}
+            >
+              {collaboratorBadge(person)}
+              <span className="sr-only">
+                {role}: {person.name}
+              </span>
+            </span>
+          ))}
+          {people.length > 4 ? (
+            <span className="text-[10px] text-[var(--muted)]" title={people.slice(4).map(({ person }) => person.name).join(", ")}>
+              +{people.length - 4}
+            </span>
+          ) : null}
+        </span>
+      ) : null}
       {onAddSubtask ? (
         <button
           type="button"
@@ -311,6 +350,32 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           )}
         </span>
       ))}
+      {tagColumns.map((tag) => {
+        const on = task.tagIds.includes(tag.id);
+        const locked = readOnly || Boolean(virtualDate) || task.kind !== "task";
+        return (
+          <span key={tag.id} className={`${TAG_WIDTH} mt-0.5 shrink-0 ${closed ? "opacity-50" : ""}`} data-tag-column={tag.id}>
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={on}
+              aria-label={`Tag @${tag.name}: „${task.title}”`}
+              title={locked ? (on ? `@${tag.name}` : undefined) : on ? `Zdejmij @${tag.name}` : `Dodaj @${tag.name}`}
+              disabled={locked}
+              onClick={() => {
+                const { ops, undo } = toggleTaskTagOps(task.id, tag.id, !on);
+                void run(ops, { text: on ? `Zdjęto @${tag.name} z „${task.title}”` : `Dodano @${tag.name} do „${task.title}”`, undo });
+              }}
+              className={`flex h-[18px] w-[18px] items-center justify-center rounded border text-[11px] font-bold transition enabled:hover:border-[var(--accent)] disabled:cursor-default ${
+                on ? "border-transparent text-white" : "border-[var(--line)] text-transparent"
+              } ${locked && !on ? "opacity-40" : ""}`}
+              style={on ? { background: tag.color ?? "var(--accent)" } : undefined}
+            >
+              ✓
+            </button>
+          </span>
+        );
+      })}
     </li>
   );
 }

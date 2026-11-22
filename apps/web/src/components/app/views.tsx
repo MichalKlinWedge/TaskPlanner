@@ -31,6 +31,7 @@ import {
   selectUpcoming,
   SORT_BY,
   sortTasks,
+  tagsForWorkspace,
   TRASH_DAYS,
   VIEW_SECTION,
   withCompleted,
@@ -291,20 +292,52 @@ function AddInline({ date, listId }: { date: LocalDate; listId: string }) {
 
 // ── Lista / projekt ──────────────────────────────────────────────────────────────────────────
 
-/** „Kolumny”: dodatkowe kolumny listy (odpowiedzialny, początek, koniec) zapisywane w `view_prefs.columns`. */
-function ColumnsPicker({ value, onChange }: { value: readonly ListColumn[]; onChange: (next: ListColumn[]) => void }) {
+/**
+ * „Kolumny”: dodatkowe kolumny listy (odpowiedzialny, początek, koniec — `view_prefs.columns`) i tagi
+ * jako kolumny (`view_prefs.tagColumns`, w kolejności zaznaczania; tagi widoczne w przestrzeni listy).
+ */
+function ColumnsPicker({
+  value,
+  onChange,
+  tags,
+  tagValue,
+  onTagsChange,
+}: {
+  value: readonly ListColumn[];
+  onChange: (next: ListColumn[]) => void;
+  tags: readonly { id: string; name: string }[];
+  tagValue: readonly string[];
+  onTagsChange: (next: string[]) => void;
+}) {
+  const count = value.length + tagValue.length;
   return (
     <details className="relative" data-testid="list-columns">
       <summary className="cursor-pointer list-none rounded-md border border-[var(--line)] px-2 py-1 text-xs hover:bg-[var(--hover)]">
-        Kolumny{value.length ? ` (${value.length})` : ""} ▾
+        Kolumny{count ? ` (${count})` : ""} ▾
       </summary>
-      <div className="absolute z-20 mt-1 w-44 rounded-md border border-[var(--line)] bg-[var(--background)] p-2 shadow-lg">
+      <div className="absolute z-20 mt-1 max-h-80 w-52 overflow-y-auto rounded-md border border-[var(--line)] bg-[var(--background)] p-2 shadow-lg">
         {(Object.keys(LIST_COLUMN) as ListColumn[]).map((c) => (
           <label key={c} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-[var(--hover)]">
             <input type="checkbox" checked={value.includes(c)} onChange={(e) => onChange(orderedColumns(e.target.checked ? [...value, c] : value.filter((v) => v !== c)))} />
             {LIST_COLUMN[c]}
           </label>
         ))}
+        <p className="mt-2 border-t border-[var(--line)] px-1 pt-2 text-xs font-medium text-[var(--muted)]">Tagi</p>
+        {tags.length ? (
+          tags.map((t) => (
+            <label key={t.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-[var(--hover)]" data-testid="tag-column-option">
+              <input
+                type="checkbox"
+                checked={tagValue.includes(t.id)}
+                disabled={!tagValue.includes(t.id) && tagValue.length >= 10}
+                onChange={(e) => onTagsChange(e.target.checked ? [...tagValue, t.id] : tagValue.filter((v) => v !== t.id))}
+              />
+              <span className="truncate">@{t.name}</span>
+            </label>
+          ))
+        ) : (
+          <p className="px-1 py-1 text-xs text-[var(--muted)]">Brak tagów w tej przestrzeni.</p>
+        )}
       </div>
     </details>
   );
@@ -319,6 +352,11 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
   const groupBy: GroupBy = list.prefs.groupBy ?? "none";
   const completed: CompletedMode = list.prefs.completed ?? "today";
   const columns = orderedColumns(list.prefs.columns);
+  const tagColumnIds = list.prefs.tagColumns;
+  const tagColumns = useMemo(
+    () => (tagColumnIds ?? []).flatMap((id) => data.tags.filter((t) => t.id === id).map((t) => ({ id: t.id, name: t.name, color: t.color }))),
+    [tagColumnIds, data.tags],
+  );
 
   const kanban = list.prefs.view === "kanban";
   const tasks = useMemo(() => withCompleted(data.tasks.filter((t) => t.listId === list.id), completed, ctx), [data.tasks, list.id, completed, ctx]);
@@ -380,7 +418,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
       ) : (
         <p className="text-xs text-[var(--muted)]" data-testid="list-read-only">{READONLY_LIST_NOTE}</p>
       )}
-      {!tasks.length ? <Empty>Brak zadań.</Empty> : <TaskColumnsHeader columns={columns} />}
+      {!tasks.length ? <Empty>Brak zadań.</Empty> : <TaskColumnsHeader columns={columns} tagColumns={tagColumns} />}
       {rows ? (
         <SortableTaskList ids={rows.map((n) => n.task.id)}>
           {rows.map((node) => (
@@ -393,6 +431,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
               collapsed={node.children.length ? collapsed.has(node.task.id) : undefined}
               onCollapse={() => toggle(node.task.id)}
               columns={columns}
+              tagColumns={tagColumns}
               onAddSubtask={subtaskAction(node.task)}
             />
           ))}
@@ -402,13 +441,13 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
           group.label ? (
             <Section key={group.key} title={group.label} count={group.tasks.length}>
               {group.tasks.map((t) => (
-                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} onAddSubtask={subtaskAction(t)} />
+                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} tagColumns={tagColumns} onAddSubtask={subtaskAction(t)} />
               ))}
             </Section>
           ) : (
             <ul key={group.key} className="divide-y divide-[var(--line)]">
               {group.tasks.map((t) => (
-                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} onAddSubtask={subtaskAction(t)} />
+                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} tagColumns={tagColumns} onAddSubtask={subtaskAction(t)} />
               ))}
             </ul>
           ),
@@ -476,6 +515,14 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
               const prefs = { ...list.prefs };
               delete prefs.columns;
               if (next.length) prefs.columns = next;
+              void store.mutate("lists", list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
+            }}
+            tags={tagsForWorkspace(data.tags, list.workspaceId, tagColumnIds)}
+            tagValue={tagColumns.map((t) => t.id)}
+            onTagsChange={(next) => {
+              const prefs = { ...list.prefs };
+              delete prefs.tagColumns;
+              if (next.length) prefs.tagColumns = next;
               void store.mutate("lists", list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
             }}
           />

@@ -59,6 +59,8 @@ export const ViewPrefs = z.object({
   filter: FilterQuery.optional().catch(undefined),
   /** Kolumny pokazane w widoku listy (kolejność stała: `LIST_COLUMN`); uszkodzone pomijane. */
   columns: z.array(ListColumn).max(3).optional().catch(undefined),
+  /** Tagi jako kolumny listy (✓ = zadanie ma tag; klik przełącza); id tagów, nieznane pomijane. */
+  tagColumns: z.array(Id).max(10).optional().catch(undefined),
 });
 export type ViewPrefs = z.infer<typeof ViewPrefs>;
 

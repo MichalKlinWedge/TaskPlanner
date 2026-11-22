@@ -96,6 +96,8 @@ export interface AppData {
   habitCompletions: Map<string, HabitCompletion[]>;
   /** Załączniki: id zadania → wiersze (od najstarszego — id to UUIDv7). */
   attachments: Map<string, Attachment[]>;
+  /** Uczestnicy: id zadania → id współpracowników (w kolejności dodania) — znaczki przy tytule. */
+  participants: Map<string, string[]>;
   loaded: boolean;
 }
 
@@ -199,6 +201,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
     [],
     ["attachments"],
   );
+  const participants = useLocalQuery<Row>(store, "select task_id, collaborator_id from task_participants where deleted_at is null order by rowid", [], ["task_participants"]);
 
   const allLists = useMemo(
     () =>
@@ -272,8 +275,13 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
         map.set(item.taskId, [...(map.get(item.taskId) ?? []), item]);
         return map;
       }, new Map<string, Attachment[]>()),
+      participants: participants.rows.reduce((map, r) => {
+        const id = String(r.task_id);
+        map.set(id, [...(map.get(id) ?? []), String(r.collaborator_id)]);
+        return map;
+      }, new Map<string, string[]>()),
       loaded: workspaces.ms !== null && lists.ms !== null && tasks.loaded,
     }),
-    [workspaces, lists.ms, allLists, tags, filters, collaborators, sharedPeople, tasks.loaded, viewTaskList, habits, attachments, today],
+    [workspaces, lists.ms, allLists, tags, filters, collaborators, sharedPeople, tasks.loaded, viewTaskList, habits, attachments, participants, today],
   );
 }

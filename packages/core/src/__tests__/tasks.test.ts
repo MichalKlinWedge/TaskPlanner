@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { completionId, tagId, taskTagId } from '../ids.ts';
 import { parseQuickAdd } from '../quick-add.ts';
 import {
+  toggleTaskTagOps,
   bulkTaskOps,
   attachSubtaskOps,
   canAddSubtask,
@@ -454,5 +455,16 @@ describe('widoczność tagów w przestrzeniach', () => {
     expect(tagWorkspaceIds('zły json')).toBeNull();
     expect(tagWorkspacesPatch([])).toEqual({ workspace_ids: null });
     expect(tagWorkspacesPatch(['a', 'a', 'b'])).toEqual({ workspace_ids: ['a', 'b'] });
+  });
+});
+
+describe('kolumna tagu', () => {
+  it('przełącza tag zadania z cofnięciem', () => {
+    const task = '01900000-0000-7000-8000-0000000000a1';
+    const tag = '01900000-0000-7000-8000-0000000000b1';
+    const { ops, undo } = toggleTaskTagOps(task, tag, false, '2026-11-22T10:00:00Z');
+    expect(ops).toEqual([{ table: 'task_tags', id: taskTagId(task, tag), patch: { task_id: task, tag_id: tag, deleted_at: '2026-11-22T10:00:00.000Z' } }]);
+    expect(undo[0]!.patch.deleted_at).toBeNull();
+    expect(toggleTaskTagOps(task, tag, true).ops[0]!.patch.deleted_at).toBeNull();
   });
 });
