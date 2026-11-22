@@ -62,6 +62,10 @@ export const LIST_COLUMN: Record<'assignee' | 'start' | 'due', string> = {
   due: 'Koniec',
 };
 
+/** Wybrane kolumny listy w stałej kolejności `LIST_COLUMN`, bez powtórzeń i nieznanych. */
+export const orderedColumns = <C extends keyof typeof LIST_COLUMN>(columns: readonly C[] | undefined): C[] =>
+  (Object.keys(LIST_COLUMN) as C[]).filter((c) => columns?.includes(c));
+
 export const SORT_BY: Record<'manual' | 'priority' | 'due' | 'created', string> = {
   manual: 'Ręcznie',
   priority: 'Priorytet',

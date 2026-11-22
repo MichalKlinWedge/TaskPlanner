@@ -12,7 +12,9 @@ import {
   groupTasks,
   isEmptyFilter,
   isOpen,
+  LIST_COLUMN,
   LIST_KIND,
+  orderedColumns,
   plural,
   progress,
   SORT_BY,
@@ -21,6 +23,7 @@ import {
   type CompletedMode,
   type FilterQuery,
   type GroupBy,
+  type ListColumn,
   type SortBy,
   type ViewPrefs,
 } from '@taskplanner/core';
@@ -30,9 +33,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
 import { FilterBar } from '@/components/filter-bar';
-import { pickOption } from '@/components/pickers';
+import { pickMany, pickOption } from '@/components/pickers';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
+import { TaskColumnsHeader } from '@/components/task-row';
 import { usePalette } from '@/components/ui';
 import { useListShareBadge, useView } from '@/lib/app-data';
 import { usePerfReady } from '@/lib/perf';
@@ -71,6 +75,8 @@ export default function ListScreen() {
   const groupBy: GroupBy = list?.prefs.groupBy ?? 'none';
   const completed: CompletedMode = list?.prefs.completed ?? 'today';
   const filter = list?.prefs.filter;
+  const prefColumns = list?.prefs.columns;
+  const columns = useMemo(() => orderedColumns(prefColumns), [prefColumns]);
 
   const tasks = useMemo(() => {
     const own = data.tasks.filter((t) => t.listId === id);
@@ -87,6 +93,7 @@ export default function ListScreen() {
           key: 'tree',
           data: nodes.map((node) =>
             row(node.task, {
+              columns,
               depth: node.depth,
               progress: node.children.length ? progress(node) : undefined,
               collapsed: node.children.length ? collapsed.has(node.task.id) : undefined,
@@ -106,11 +113,11 @@ export default function ListScreen() {
       key: g.key,
       title: g.label || undefined,
       count: g.label ? g.tasks.length : undefined,
-      data: g.tasks.map((t) => row(t, { key: `${g.key}:${t.id}` })),
+      data: g.tasks.map((t) => row(t, { key: `${g.key}:${t.id}`, columns })),
     }));
     // `row` zależy od danych — przeliczane razem z nimi.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tree, tasks, collapsed, sortBy, groupBy, data.lists, data.tags, today]);
+  }, [tree, tasks, collapsed, sortBy, groupBy, data.lists, data.tags, today, columns]);
 
   if (!list) {
     return (
@@ -128,6 +135,13 @@ export default function ListScreen() {
     if (!isEmptyFilter(next)) prefs.filter = next;
     void mutate('lists', list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
   };
+  const setColumns = (next: readonly ListColumn[]) => {
+    const prefs = { ...list.prefs };
+    delete prefs.columns;
+    const ordered = orderedColumns(next);
+    if (ordered.length) prefs.columns = ordered;
+    void mutate('lists', list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
+  };
   const workspace = data.workspaces.find((w) => w.id === list.workspaceId)?.name;
   const title = `${list.kind === 'inbox' ? `Inbox · ${workspace ?? ''}` : list.name}${share ? ` ${share.icon}` : ''}`;
 
@@ -142,11 +156,25 @@ export default function ListScreen() {
               <Pref label="Sortowanie" value={sortBy} labels={SORT_BY} onChange={(v) => setPrefs({ sortBy: v })} />
               <Pref label="Grupy" value={groupBy} labels={GROUP_BY} onChange={(v) => setPrefs({ groupBy: v })} />
               <Pref label="Ukończone" value={completed} labels={COMPLETED_MODE} onChange={(v) => setPrefs({ completed: v })} />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Kolumny: ${columns.length ? columns.map((c) => LIST_COLUMN[c]).join(', ') : 'brak'}`}
+                onPress={() =>
+                  void pickMany<ListColumn>(
+                    'Kolumny',
+                    (Object.keys(LIST_COLUMN) as ListColumn[]).map((c) => ({ label: LIST_COLUMN[c], value: c, selected: columns.includes(c) })),
+                  ).then((v) => v && setColumns(v))
+                }
+                style={[styles.pref, { borderColor: p.border }]}
+              >
+                <Text style={{ color: p.fg, fontSize: 13 }}>Kolumny{columns.length ? ` (${columns.length})` : ''}</Text>
+              </Pressable>
               <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/board', params: { list: list.id } })} style={[styles.pref, { borderColor: p.border }]}>
                 <Text style={{ color: p.accent, fontSize: 13 }}>▦ Tablica</Text>
               </Pressable>
             </View>
             <FilterBar query={filter ?? {}} onChange={setFilter} hide={['lists']} />
+            {tasks.length ? <TaskColumnsHeader columns={columns} /> : null}
           </ScreenHeader>
         }
         empty="Brak zadań."

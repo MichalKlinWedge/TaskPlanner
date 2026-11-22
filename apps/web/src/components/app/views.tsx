@@ -20,6 +20,7 @@ import {
   isOpen,
   LIST_COLUMN,
   LIST_KIND,
+  orderedColumns,
   plural,
   progress,
   relativeDay,
@@ -54,7 +55,7 @@ import { DayDnd, DayDrop, DraggableTaskItem, SortableTaskItem, SortableTaskList 
 import { TaskExportButton } from "./export";
 import { HabitTodayItem } from "./habits";
 import { QuickAdd } from "./quick-add";
-import { orderedColumns, TaskColumnsHeader, TaskItem, useTaskActions } from "./task-item";
+import { TaskColumnsHeader, TaskItem, useTaskActions } from "./task-item";
 import { Button, Select } from "./ui";
 
 export interface ViewProps {

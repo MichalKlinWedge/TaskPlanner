@@ -8,7 +8,7 @@
  * wartości współdzielone i trzy widoki animowane na wiersz) dochodzi dopiero po pierwszym
  * narysowaniu listy (`RowsInteractive` z `TaskSections`), a metadane to jeden `Text` z jednym zagnieżdżonym.
  */
-import { assigneeOf, collaboratorBadge, describeRecurrence, isOpen, PRIORITY, relativeDay, type LocalDate, type ViewTask } from '@taskplanner/core';
+import { assigneeOf, collaboratorBadge, columnDate, describeRecurrence, isOpen, LIST_COLUMN, PRIORITY, relativeDay, type ListColumn, type LocalDate, type ViewTask } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { createContext, memo, useContext, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -37,6 +37,27 @@ export interface TaskRowProps {
   /** Nawyk odhaczony dziś. */
   habitDone?: boolean;
   tagNames?: readonly string[];
+  /** Dodatkowe kolumny listy (`view_prefs.columns`, kolejność `orderedColumns`) — po prawej stronie wiersza. */
+  columns?: readonly ListColumn[];
+}
+
+/** Szerokości kolumn — wspólne dla wiersza i nagłówka `TaskColumnsHeader`. */
+const COLUMN_WIDTH: Record<ListColumn, number> = { assignee: 72, start: 50, due: 56 };
+
+/** Nagłówek kolumn nad wierszami listy. */
+export function TaskColumnsHeader({ columns }: { columns: readonly ListColumn[] }) {
+  const p = usePalette();
+  if (!columns.length) return null;
+  return (
+    <View style={[styles.columnsHeader, { borderColor: p.border }]}>
+      <View style={{ flex: 1 }} />
+      {columns.map((c) => (
+        <Text key={c} style={[styles.column, { width: COLUMN_WIDTH[c], color: p.muted, fontWeight: '600' }]} numberOfLines={1}>
+          {LIST_COLUMN[c]}
+        </Text>
+      ))}
+    </View>
+  );
 }
 
 /**
@@ -45,7 +66,7 @@ export interface TaskRowProps {
  */
 export const RowsInteractive = createContext(true);
 
-export const TaskRow = memo(function TaskRow({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, tagNames }: TaskRowProps) {
+export const TaskRow = memo(function TaskRow({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, tagNames, columns }: TaskRowProps) {
   const p = usePalette();
   const actions = useTaskActions();
   const { toggle, selected, toggleSelected } = actions;
@@ -60,14 +81,18 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
   const swipeable = !virtualDate && !selecting && interactive;
   const assignee = assigneeOf(task.assigneeId, useAppData().collaborators);
 
+  // Kolumna „Koniec” / „Odpowiedzialny” zastępuje to samo w szarym wierszu pod tytułem.
+  const dueColumn = !!columns?.includes('due');
+  const assigneeColumn = !!columns?.includes('assignee');
+
   const meta = [
-    showDate && date ? { text: relativeDay(date, today), bad: overdue } : null,
-    task.dueTime ? { text: task.dueTime } : null,
+    showDate && date && !dueColumn ? { text: relativeDay(date, today), bad: overdue } : null,
+    task.dueTime && !dueColumn ? { text: task.dueTime } : null,
     task.recurrence ? { text: `↻ ${describeRecurrence(task.recurrence)}` } : null,
     progress && progress.total > 0 ? { text: `☑ ${progress.done}/${progress.total}` } : null,
     task.status === 'in_progress' ? { text: 'w trakcie' } : task.status === 'waiting' ? { text: 'oczekuje' } : null,
     listName ? { text: listName } : null,
-    assignee ? { text: `👤 ${collaboratorBadge(assignee)}` } : null,
+    assignee && !assigneeColumn ? { text: `👤 ${collaboratorBadge(assignee)}` } : null,
     ...(tagNames ?? []).map((t) => ({ text: `@${t}` })),
   ].filter(Boolean) as { text: string; bad?: boolean }[];
   // Wyróżniony (zaległy termin) jest zawsze pierwszy: jeden zagnieżdżony `Text` zamiast jednego na pozycję.
@@ -124,6 +149,17 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
           </Text>
         ) : null}
       </View>
+      {columns?.map((c) => {
+        const value = c === 'assignee' ? (assignee?.name ?? null) : c === 'start' ? (task.startDate ? columnDate(task.startDate, today) : null) : date ? columnDate(date, today) : null;
+        return (
+          <View key={c} style={{ width: COLUMN_WIDTH[c], paddingTop: 2, opacity: closed ? 0.5 : 1 }}>
+            <Text style={[styles.column, { color: value ? (c === 'due' && overdue ? p.bad : p.fg) : p.muted }]} numberOfLines={2}>
+              {value ?? '—'}
+            </Text>
+            {c === 'due' && date && task.dueTime ? <Text style={[styles.column, { color: overdue ? p.bad : p.muted }]}>{task.dueTime}</Text> : null}
+          </View>
+        );
+      })}
     </Pressable>
   );
 
@@ -167,6 +203,8 @@ const styles = StyleSheet.create({
   text: { flex: 1, gap: 2 },
   title: { fontSize: 16, lineHeight: 21 },
   meta: { fontSize: 12.5 },
+  column: { fontSize: 12 },
+  columnsHeader: { flexDirection: 'row', gap: 10, paddingRight: 12, paddingTop: 6, paddingBottom: 4, borderBottomWidth: StyleSheet.hairlineWidth },
   bad: { fontWeight: '600' },
   action: { flex: 1, justifyContent: 'center' },
   left: { alignItems: 'flex-start', paddingLeft: 20 },

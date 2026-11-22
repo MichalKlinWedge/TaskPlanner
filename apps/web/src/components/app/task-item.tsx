@@ -152,9 +152,6 @@ export interface TaskItemProps {
 /** Szerokości kolumn — wspólne dla wiersza i nagłówka `TaskColumnsHeader`. */
 const COLUMN_WIDTH: Record<ListColumn, string> = { assignee: "w-24 sm:w-36", start: "w-16 sm:w-24", due: "w-16 sm:w-24" };
 
-/** Kolumny w stałej kolejności, bez powtórzeń. */
-export const orderedColumns = (columns: readonly ListColumn[] | undefined): ListColumn[] => (Object.keys(LIST_COLUMN) as ListColumn[]).filter((c) => columns?.includes(c));
-
 /** Nagłówek kolumn nad wierszami listy. */
 export function TaskColumnsHeader({ columns }: { columns: readonly ListColumn[] }) {
   if (!columns.length) return null;
