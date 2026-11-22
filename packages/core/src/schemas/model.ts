@@ -14,7 +14,7 @@ import { HabitSettings } from '../habits.ts';
 import { Recurrence } from '../recurrence.ts';
 import { ReviewStats } from '../review.ts';
 import { CompletedMode, FilterQuery, GroupBy, SortBy } from '../views.ts';
-import { IsoWeekday, ListKind, LocalDate, LocalTime, Priority, ProjectStatus, ReminderKind, SortKey, TaskStatus } from './primitives.ts';
+import { GuestAccess, IsoWeekday, ListKind, LocalDate, LocalTime, Priority, ProjectStatus, ReminderKind, SortKey, TaskStatus } from './primitives.ts';
 
 // ── Typy pomocnicze ──────────────────────────────────────────────────────────────────────────
 
@@ -174,6 +174,8 @@ export const ListRow = z
     archived_at: Instant.nullable(),
     /** Własne kolumny tablicy listy (`BoardColumns`); `null` = brak. */
     board_columns: BoardColumns.nullable(),
+    /** Dostęp gości współdzielonej przestrzeni (`hidden` / `view` / `edit`); zmienia tylko właściciel. */
+    guest_access: GuestAccess.default('edit'),
   })
   .refine((l) => !l.start_date || !l.end_date || l.start_date <= l.end_date, { message: 'Koniec projektu przed początkiem.', path: ['end_date'] })
   .refine((l) => l.kind === 'project' || (!l.project_status && !l.start_date && !l.end_date), { message: 'Daty i status mają tylko projekty.', path: ['kind'] });

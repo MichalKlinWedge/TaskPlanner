@@ -15,6 +15,7 @@ select is(
         and column_name not in ('id', 'scope_id', 'created_at', 'updated_at', 'created_by', 'row_version', 'field_clock')
       order by 1),
   array[
+    'lists.guest_access = ''edit''::text',
     'lists.kind = ''list''::text',
     'lists.sort_key = ''n''::text',
     'lists.view_prefs = ''{}''::jsonb',

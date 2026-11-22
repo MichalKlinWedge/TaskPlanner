@@ -74,6 +74,25 @@ describe('planPushes', () => {
     expect(plan([{ scope_id: W, user_id: U }])).toBe(1);
     expect(plan([{ scope_id: W, user_id: OTHER }])).toBe(0);
   });
+
+  it('lista ukryta przed gościem: jego przypomnienie milknie, właściciela — dzwoni', () => {
+    const W = '00000000-0000-4000-8000-0000000000c3';
+    const plan = (role: string, hidden: boolean) =>
+      planPushes(
+        {
+          devices: [device('d1')],
+          reminders: [reminder({ scope_id: W, tasks: { ...task, list_id: 'l1' } })],
+          profiles,
+          memberships: [{ scope_id: W, user_id: U, role }],
+          hiddenLists: hidden ? [{ id: 'l1', scope_id: W }] : [],
+        },
+        { now: AT },
+      ).length;
+    expect(plan('editor', false)).toBe(1);
+    expect(plan('editor', true)).toBe(0);
+    expect(plan('viewer', true)).toBe(0);
+    expect(plan('owner', true)).toBe(1);
+  });
 });
 
 describe('planPushes — koniec etapu skupienia (Etap 7)', () => {

@@ -3,7 +3,7 @@
  * Dwa urządzenia tego samego użytkownika (telefon, web), trzecie z przesuniętym zegarem,
  * obcy użytkownik. `npm run test:sync` (wymaga `npm run supabase -- start`).
  */
-import { advanceFocus, completionId, FOCUS_IDLE, focusEntryId, focusStepOps, inboxId, parseFocusState, pauseFocus, startFocus, uuidv7 } from '@taskplanner/core';
+import { advanceFocus, completionId, FOCUS_IDLE, focusEntryId, focusStepOps, inboxId, parseFocusState, pauseFocus, READONLY_LIST_NOTE, startFocus, uuidv7 } from '@taskplanner/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { READONLY_SCOPE_MESSAGE } from '../engine.ts';
@@ -299,6 +299,79 @@ describe('v1.x: współdzielona przestrzeń', () => {
       expect(await device.engine.get('workspaces', W)).toBeUndefined();
       expect(await roleOf(device)).toBeUndefined();
     }
+  });
+
+  it('dostęp gości do list: ukryta znika i wraca, podgląd blokuje zapis edytora, przeniesienie na ukrytą = _gone', async () => {
+    const visible = await sharedTask('Na Inboxie');
+    const listV = uuidv7();
+    const listH = uuidv7();
+    const taskV = uuidv7();
+    const taskH = uuidv7();
+    const subH = uuidv7();
+    const tagH = uuidv7();
+    const reminderH = uuidv7();
+    await phone.engine.mutateMany([
+      { table: 'lists', id: listV, patch: { scope_id: W, kind: 'list', name: 'Do czytania', sort_key: 'b' } },
+      { table: 'lists', id: listH, patch: { scope_id: W, kind: 'list', name: 'Tajna', sort_key: 'c' } },
+      { table: 'tasks', id: taskV, patch: { list_id: listV, title: 'Czytaj' } },
+      { table: 'tasks', id: taskH, patch: { list_id: listH, title: 'Tajne' } },
+      { table: 'tasks', id: subH, patch: { parent_id: taskH, list_id: listH, title: 'Tajne podzadanie' } },
+      { table: 'reminders', id: reminderH, patch: { task_id: taskH, kind: 'relative', offset_min: 15 } },
+      { table: 'tags', id: tagH, patch: { name: `tajny-${tagH.slice(-6)}` } },
+    ]);
+    await phone.engine.sync();
+    expect(phone.rejected).toEqual([]);
+    const editorUser = await createUser('edytor-list');
+    const editor = await open(editorUser, 'editor-list');
+    await share(editorUser.email, 'editor');
+    const invites = (await editor.client.rpc('my_scope_invites')).data as { id: string }[];
+    expect((await editor.client.rpc('accept_scope_invite', { p_id: invites[0]!.id })).error).toBeNull();
+    await editor.engine.sync();
+    expect((await row(editor, 'tasks', taskH))?.title).toBe('Tajne');
+    expect(await editor.engine.get('reminders', reminderH)).toBeDefined();
+
+    // Edytor nie zmienia dostępu gości.
+    await expect(editor.engine.mutate('lists', listV, { guest_access: 'view' })).rejects.toThrow(READONLY_LIST_NOTE);
+
+    // Właściciel: „Do czytania” tylko do podglądu, „Tajna” ukryta → u edytora znika lista z zadaniami i dziećmi.
+    await phone.engine.mutateMany([
+      { table: 'lists', id: listV, patch: { guest_access: 'view' } },
+      { table: 'lists', id: listH, patch: { guest_access: 'hidden' } },
+    ]);
+    await phone.engine.sync();
+    await editor.engine.sync();
+    expect(await editor.engine.get('lists', listH)).toBeUndefined();
+    expect(await row(editor, 'tasks', taskH)).toBeUndefined();
+    expect(await row(editor, 'tasks', subH)).toBeUndefined();
+    expect(await editor.engine.get('reminders', reminderH)).toBeUndefined();
+    expect((await editor.engine.get('lists', listV))?.guest_access).toBe('view');
+    expect(await editor.engine.get('lists', L)).toBeDefined();
+
+    // Lista tylko do podglądu: zmiana zadania, nowe zadanie i przeniesienie odrzucone lokalnie (nic w outboksie).
+    await expect(editor.engine.mutate('tasks', taskV, { title: 'Nie wolno' })).rejects.toThrow(READONLY_LIST_NOTE);
+    await expect(editor.engine.mutate('tasks', uuidv7(), { list_id: listV, title: 'Nowe' })).rejects.toThrow(READONLY_LIST_NOTE);
+    await expect(editor.engine.mutate('tasks', visible, { list_id: listV })).rejects.toThrow(READONLY_LIST_NOTE);
+    expect(await editor.engine.pendingCount()).toBe(0);
+    await editor.engine.mutate('tasks', visible, { title: 'Inbox wolno' });
+    await editor.engine.sync();
+    expect(editor.rejected).toEqual([]);
+
+    // Przeniesienie na ukrytą listę (właściciel) → znika u edytora w przyroście.
+    await phone.engine.sync();
+    await phone.engine.mutate('tasks', visible, { list_id: listH });
+    await phone.engine.sync();
+    await editor.engine.sync();
+    expect(await row(editor, 'tasks', visible)).toBeUndefined();
+
+    // Odsłonięcie: zakres od zera, wiersze wracają.
+    await phone.engine.mutate('lists', listH, { guest_access: 'edit' });
+    await phone.engine.sync();
+    await editor.engine.sync();
+    expect((await editor.engine.get('lists', listH))?.name).toBe('Tajna');
+    expect((await row(editor, 'tasks', taskH))?.title).toBe('Tajne');
+    expect((await row(editor, 'tasks', visible))?.title).toBe('Inbox wolno');
+    expect(await editor.engine.get('reminders', reminderH)).toBeDefined();
+    expect(editor.rejected).toEqual([]);
   });
 });
 

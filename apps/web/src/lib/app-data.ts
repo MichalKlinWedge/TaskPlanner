@@ -6,7 +6,7 @@
  * (także z innej karty i z synchronizacji) — zadania przyrostowo (`createTaskCache`: tylko zmienione
  * wiersze, gotowe `ViewTask` reszty zostają); reguły widoków liczy `@taskplanner/core`.
  */
-import { AttachmentPreview, boardColumnDefs, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type BoardColumnDef, type Collaborator, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ScopeRole, type ViewTask } from "@taskplanner/core";
+import { AttachmentPreview, boardColumnDefs, canEditList, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type BoardColumnDef, type Collaborator, type GuestAccess, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ScopeRole, type ViewTask } from "@taskplanner/core";
 import { createTaskCache, type TabStore, type TaskEntry } from "@taskplanner/sync";
 import { useEffect, useMemo, useState } from "react";
 
@@ -38,6 +38,14 @@ export interface List {
   projectStatus: ProjectStatus | null;
   /** Własne kolumny tablicy listy (kanban „Własne”). */
   boardColumns: BoardColumnDef[];
+  /** Dostęp gości współdzielonej przestrzeni (`lists.guest_access`). */
+  guestAccess: GuestAccess;
+}
+
+/** Czy zalogowany może zmieniać listę i jej zadania (rola w przestrzeni + dostęp gości listy). */
+export function listEditable(data: Pick<AppData, "lists" | "workspaces">, listId: string | null | undefined): boolean {
+  const list = data.lists.find((l) => l.id === listId);
+  return canEditList(data.workspaces.find((w) => w.id === list?.workspaceId)?.role, list?.guestAccess);
 }
 
 export interface Tag {
@@ -165,7 +173,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
   );
   const lists = useLocalQuery<Row>(
     store,
-    "select id, scope_id, kind, name, color, sort_key, view_prefs, start_date, end_date, project_status, board_columns from lists where deleted_at is null and archived_at is null",
+    "select id, scope_id, kind, name, color, sort_key, view_prefs, start_date, end_date, project_status, board_columns, guest_access from lists where deleted_at is null and archived_at is null",
     [],
     ["lists"],
   );
@@ -205,6 +213,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
             endDate: (r.end_date as LocalDate | null) ?? null,
             projectStatus: (r.project_status as ProjectStatus | null) ?? null,
             boardColumns: boardColumnDefs(r.board_columns),
+            guestAccess: (r.guest_access as GuestAccess | null) ?? "edit",
           };
         })
         .sort(byKey),

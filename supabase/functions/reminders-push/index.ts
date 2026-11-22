@@ -16,7 +16,7 @@
  */
 import * as webpush from '@negrel/webpush';
 
-import { planPushes, pushDevices, type CompletionRow, type DeviceRow, type MembershipRow, type PlannedPush, type ProfileRow, type ReminderRow } from '../_shared/reminders.ts';
+import { planPushes, pushDevices, type CompletionRow, type DeviceRow, type HiddenListRow, type MembershipRow, type PlannedPush, type ProfileRow, type ReminderRow } from '../_shared/reminders.ts';
 import { admin, env, HttpError, json, optionalEnv, requireCron, route, serve } from '../_shared/runtime.ts';
 
 let server: webpush.ApplicationServer | null = null;
@@ -35,7 +35,7 @@ const pushTopic = (fireKey: string) => {
   return `${reminder.replaceAll('-', '').slice(0, 24)}${day.replaceAll('-', '')}`.slice(0, 32);
 };
 
-const TASK_COLUMNS = 'id, kind, status, title, due_date, due_time, recurrence, habit, time_zone, deleted_at';
+const TASK_COLUMNS = 'id, list_id, kind, status, title, due_date, due_time, recurrence, habit, time_zone, deleted_at';
 
 serve(async (req, url) => {
   // Klucz publiczny VAPID dla przeglądarki (`pushManager.subscribe`) — jawny, bez logowania.
@@ -59,7 +59,12 @@ serve(async (req, url) => {
   if (!devices.length) return json({ devices: 0, sent: 0, ms: Date.now() - started });
   const users = [...new Set(devices.map((d) => d.scope_id))];
 
-  const [{ data: reminderRows, error: remError }, { data: profileRows, error: profError }, { data: memberRows, error: memError }] = await Promise.all([
+  const [
+    { data: reminderRows, error: remError },
+    { data: profileRows, error: profError },
+    { data: memberRows, error: memError },
+    { data: hiddenRows, error: hiddenError },
+  ] = await Promise.all([
     db
       .from('reminders')
       .select(`id, task_id, kind, offset_min, at_date, at_time, created_by, scope_id, tasks!inner(${TASK_COLUMNS})`)
@@ -68,11 +73,13 @@ serve(async (req, url) => {
       .is('tasks.deleted_at', null)
       .not('tasks.status', 'in', '(done,cancelled)'),
     db.from('profiles').select('id, settings, focus').in('id', users),
-    db.from('scope_members').select('scope_id, user_id').in('user_id', users),
+    db.from('scope_members').select('scope_id, user_id, role').in('user_id', users),
+    db.from('lists').select('id, scope_id').eq('guest_access', 'hidden'),
   ]);
   if (remError) throw remError;
   if (profError) throw profError;
   if (memError) throw memError;
+  if (hiddenError) throw hiddenError;
   const reminders = (reminderRows ?? []) as unknown as ReminderRow[];
 
   // Nawyki: wpisy od początku bieżącego tygodnia / miesiąca (cel „N razy”) w każdej strefie — z zapasem dnia.
@@ -94,7 +101,14 @@ serve(async (req, url) => {
   }
 
   const plan = planPushes(
-    { devices, reminders, profiles: (profileRows ?? []) as ProfileRow[], completions, memberships: (memberRows ?? []) as MembershipRow[] },
+    {
+      devices,
+      reminders,
+      profiles: (profileRows ?? []) as ProfileRow[],
+      completions,
+      memberships: (memberRows ?? []) as MembershipRow[],
+      hiddenLists: (hiddenRows ?? []) as HiddenListRow[],
+    },
     { now, allowHttp },
   );
   const summary = { devices: devices.length, due: plan.length, claimed: 0, sent: 0, retry: 0, gone: 0, failed: 0 };

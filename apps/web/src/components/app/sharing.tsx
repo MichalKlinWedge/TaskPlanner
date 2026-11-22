@@ -6,7 +6,7 @@
  * Dane na serwerze (RPC z `lib/sharing.ts`) — wymaga sieci; po przyjęciu albo opuszczeniu przestrzeni
  * `store.sync()` pobiera (albo usuwa z urządzenia) jej dane.
  */
-import { inviteLink, plural, SCOPE_ROLE, SCOPE_ROLE_HINT, shareEmail, WORKSPACE_SHARE_NOTE, type ShareRole } from "@taskplanner/core";
+import { GUEST_ACCESS, GUEST_ACCESS_HINT, GUEST_ACCESS_NOTE, inviteLink, plural, SCOPE_ROLE, SCOPE_ROLE_HINT, shareEmail, WORKSPACE_SHARE_NOTE, type GuestAccess, type ShareRole } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
@@ -28,6 +28,7 @@ import {
 import { Button, Input, Notice, Select } from "./ui";
 
 const ROLES: ShareRole[] = ["editor", "viewer"];
+const ACCESS: GuestAccess[] = ["edit", "view", "hidden"];
 const date = (iso: string) => new Date(iso).toLocaleDateString("pl-PL", { dateStyle: "medium" });
 const offlineText = "Udostępnianie wymaga połączenia z internetem.";
 const message = (e: unknown) => (typeof navigator !== "undefined" && !navigator.onLine ? offlineText : e instanceof Error ? e.message : String(e));
@@ -42,8 +43,21 @@ async function copy(text: string): Promise<boolean> {
   }
 }
 
-/** Członkowie przestrzeni, zaproszenia (właściciel) i „Opuść przestrzeń” (pozostali). */
-export function SharingPanel({ store, workspaceId, workspaceName }: { store: TabStore; workspaceId: string; workspaceName: string }) {
+/**
+ * Członkowie przestrzeni, zaproszenia (właściciel) i „Opuść przestrzeń” (pozostali). `lists` (tylko
+ * właściciel) — dostęp gości do każdej listy; zapis lokalny, działa też offline.
+ */
+export function SharingPanel({
+  store,
+  workspaceId,
+  workspaceName,
+  lists,
+}: {
+  store: TabStore;
+  workspaceId: string;
+  workspaceName: string;
+  lists?: { id: string; name: string; guestAccess: GuestAccess }[];
+}) {
   const [sharing, setSharing] = useState<WorkspaceSharing | null>(null);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<ShareRole>("editor");
@@ -91,6 +105,9 @@ export function SharingPanel({ store, workspaceId, workspaceName }: { store: Tab
       setInfo(`Zaproszenie dla ${normalized} czeka w aplikacji tej osoby${copied ? " — link skopiowany do schowka, możesz go też wysłać" : ""}.`);
     });
   };
+
+  const setAccess = (listId: string, guestAccess: GuestAccess) =>
+    store.mutate("lists", listId, { guest_access: guestAccess }).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
 
   const leave = () => {
     if (!window.confirm(`Opuścić przestrzeń „${workspaceName}”? Jej zadania znikną z Twoich urządzeń; wrócisz tylko z nowym zaproszeniem.`)) return;
@@ -170,6 +187,32 @@ export function SharingPanel({ store, workspaceId, workspaceName }: { store: Tab
             <InviteRow key={i.id} invite={i} busy={busy} onRevoke={() => void act(() => revokeInvite(i.id))} onCopied={setInfo} />
           ))}
         </ul>
+      ) : null}
+      {lists?.length ? (
+        <div className="mt-3 border-t border-[var(--line)] pt-3" data-testid="list-access">
+          <p className="mb-1 font-medium">Dostęp do list</p>
+          <p className="mb-2 text-xs opacity-60">{GUEST_ACCESS_NOTE}</p>
+          <ul className="flex flex-col gap-1">
+            {lists.map((l) => (
+              <li key={l.id} className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate">{l.name}</span>
+                <Select
+                  aria-label={`Dostęp gości do listy ${l.name}`}
+                  title={GUEST_ACCESS_HINT[l.guestAccess]}
+                  value={l.guestAccess}
+                  onChange={(e) => void setAccess(l.id, e.target.value as GuestAccess)}
+                  className="w-32"
+                >
+                  {ACCESS.map((a) => (
+                    <option key={a} value={a} title={GUEST_ACCESS_HINT[a]}>
+                      {GUEST_ACCESS[a]}
+                    </option>
+                  ))}
+                </Select>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
       {sharing && !owner ? (
         <div className="mt-2 flex items-center gap-2">

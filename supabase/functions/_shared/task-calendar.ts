@@ -50,6 +50,8 @@ export const DEFAULT_ZONE = 'Europe/Warsaw';
 export const WRITE_SCOPE_ERROR = 'Brak zgody na zapis w Google — połącz konto ponownie, żeby wysyłać zadania do kalendarza „Task Planner”.';
 /** Starsze zadania nie dostają nowych wydarzeń (istniejące są dalej uzgadniane). */
 const CREATE_FROM_DAYS = 30;
+/** Id, którego nie ma żadna lista — filtr `not in`, gdy nic nie jest ukryte. */
+const NO_LIST = '00000000-0000-0000-0000-000000000000';
 
 /** Znacznik kalendarza w jego opisie: po utracie wiersza w bazie przejmujemy go zamiast tworzyć drugi. */
 export const calendarMarker = (userId: string) => `taskplanner:${userId}`;
@@ -352,14 +354,21 @@ class TaskCalendarRun {
     ) as { id: string } | null;
     if (!inbox) return;
     const pushed: TaskProjection = { ...change.theirs, marked: false };
-    const taskId = check(
-      await this.db.rpc('calendar_task_create', {
-        p_calendar: this.calendar.id,
-        p_task: taskFromEvent(ev, change.theirs, inbox.id, this.ctx),
-        p_link: { external_id: ev.id, etag: ev.etag ?? null, pushed },
-      }),
-      'calendar_task_create',
-    ) as string;
+    let taskId: string;
+    try {
+      taskId = check(
+        await this.db.rpc('calendar_task_create', {
+          p_calendar: this.calendar.id,
+          p_task: taskFromEvent(ev, change.theirs, inbox.id, this.ctx),
+          p_link: { external_id: ev.id, etag: ev.etag ?? null, pushed },
+        }),
+        'calendar_task_create',
+      ) as string;
+    } catch (error) {
+      // Inbox przestrzeni udostępniony właścicielowi kalendarza tylko do podglądu (albo ukryty) — pomijamy.
+      console.warn('calendar_task_create', ev.id, (error as Error).message);
+      return;
+    }
     this.result.imported++;
     this.remember({ calendar_id: this.calendar.id, task_id: taskId, external_id: ev.id, etag: ev.etag ?? null, pushed });
   }
@@ -369,10 +378,13 @@ class TaskCalendarRun {
   private async desiredTasks(): Promise<TaskForCalendar[]> {
     const ids = [...this.ctx.workspaceIds];
     if (!ids.length) return [];
+    // Listy ukryte przed właścicielem kalendarza (gość współdzielonej przestrzeni) — ich zadania znikają z Google.
+    const hidden = (check(await this.db.rpc('hidden_lists', { p_user: this.calendar.user_id }), 'hidden_lists') as string[] | null) ?? [];
     const out: TaskForCalendar[] = [];
     for (let from = 0; ; from += 1000) {
       const rows = check(
         await this.db.from('tasks').select(TASK_COLUMNS).in('scope_id', ids).not('due_time', 'is', null).is('deleted_at', null)
+          .not('list_id', 'in', `(${hidden.length ? hidden.join(',') : NO_LIST})`)
           .order('id').range(from, from + 999),
         'tasks',
       ) as TaskForCalendar[];

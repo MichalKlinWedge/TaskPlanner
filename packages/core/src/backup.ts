@@ -69,7 +69,7 @@ export interface InvalidRow {
  * sprawdza `supabase/tests/backup.test.sql` (`completed_at = now()` ustawia zawsze klient).
  */
 export const BACKUP_DEFAULTS: Partial<Record<BackupTable, Record<string, unknown>>> = {
-  lists: { kind: 'list', sort_key: 'n', view_prefs: {} },
+  lists: { guest_access: 'edit', kind: 'list', sort_key: 'n', view_prefs: {} },
   profiles: { settings: {} },
   saved_filters: { query: {}, sort_key: 'n' },
   tags: { sort_key: 'n' },

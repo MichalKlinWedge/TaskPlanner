@@ -4,9 +4,11 @@
  * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
  * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { assigneeOf, canEditScope, collaboratorBadge, completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { assigneeOf, collaboratorBadge, completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+
+import { listEditable } from "@/lib/app-data";
 
 import { useAppEnv } from "./app-env";
 
@@ -152,8 +154,8 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
   const attachments = data.attachments.get(task.id)?.length ?? 0;
   const assignee = assigneeOf(task.assigneeId, data.collaborators);
   const closed = task.kind === "habit" ? Boolean(habitDone) : !isOpen(task);
-  // Przestrzeń udostępniona do podglądu: zadanie da się otworzyć, ale nie odhaczyć.
-  const readOnly = !canEditScope(data.workspaces.find((w) => w.id === task.workspaceId)?.role);
+  // Przestrzeń albo lista udostępniona do podglądu: zadanie da się otworzyć, ale nie odhaczyć.
+  const readOnly = !listEditable(data, task.listId);
   const date = virtualDate ?? task.dueDate;
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;

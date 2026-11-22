@@ -289,14 +289,14 @@ isOneToOne: false
                   ]
                 },"lists": {
                   Row: {
-                    "archived_at": string | null,"board_columns": Json | null,"color": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"description_md": string | null,"end_date": string | null,"field_clock": NonNullable<Json>,"icon": string | null,"id": string,"kind": string,"name": string,"project_status": string | null,"row_version": number,"scope_id": string,"sort_key": string,"start_date": string | null,"updated_at": string,"view_prefs": NonNullable<Json>
+                    "archived_at": string | null,"board_columns": Json | null,"color": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"description_md": string | null,"end_date": string | null,"field_clock": NonNullable<Json>,"guest_access": string,"icon": string | null,"id": string,"kind": string,"name": string,"project_status": string | null,"row_version": number,"scope_id": string,"sort_key": string,"start_date": string | null,"updated_at": string,"view_prefs": NonNullable<Json>
                   }
                   ComputedFields: never
                   Insert: {
-                    "archived_at"?: string | null,"board_columns"?: Json | null,"color"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"end_date"?: string | null,"field_clock"?: NonNullable<Json>,"icon"?: string | null,"id": string,"kind"?: string,"name": string,"project_status"?: string | null,"row_version"?: number,"scope_id": string,"sort_key"?: string,"start_date"?: string | null,"updated_at"?: string,"view_prefs"?: NonNullable<Json>
+                    "archived_at"?: string | null,"board_columns"?: Json | null,"color"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"end_date"?: string | null,"field_clock"?: NonNullable<Json>,"guest_access"?: string,"icon"?: string | null,"id": string,"kind"?: string,"name": string,"project_status"?: string | null,"row_version"?: number,"scope_id": string,"sort_key"?: string,"start_date"?: string | null,"updated_at"?: string,"view_prefs"?: NonNullable<Json>
                   }
                   Update: {
-                    "archived_at"?: string | null,"board_columns"?: Json | null,"color"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"end_date"?: string | null,"field_clock"?: NonNullable<Json>,"icon"?: string | null,"id"?: string,"kind"?: string,"name"?: string,"project_status"?: string | null,"row_version"?: number,"scope_id"?: string,"sort_key"?: string,"start_date"?: string | null,"updated_at"?: string,"view_prefs"?: NonNullable<Json>
+                    "archived_at"?: string | null,"board_columns"?: Json | null,"color"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"end_date"?: string | null,"field_clock"?: NonNullable<Json>,"guest_access"?: string,"icon"?: string | null,"id"?: string,"kind"?: string,"name"?: string,"project_status"?: string | null,"row_version"?: number,"scope_id"?: string,"sort_key"?: string,"start_date"?: string | null,"updated_at"?: string,"view_prefs"?: NonNullable<Json>
                   }
                   Relationships: [
                     {
@@ -828,6 +828,9 @@ isOneToOne: false
 "has_scope_access":
 { Args: { "p_scope": string }; Returns: boolean
                            },
+"hidden_lists":
+{ Args: { "p_user"?: string }; Returns: (string)[]
+                           },
 "hook_before_user_created":
 { Args: { "event": Json }; Returns: Json
                            },
@@ -837,10 +840,16 @@ isOneToOne: false
 "is_app_admin":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },
+"list_access":
+{ Args: { "p_list": string,"p_user"?: string }; Returns: string
+                           },
 "list_invites":
 { Args: Record<PropertyKey, never>; Returns: {
               "accounts": number,"created_at": string,"note": string,"pattern": string
             }[]
+                           },
+"list_visible":
+{ Args: { "p_list": string }; Returns: boolean
                            },
 "my_scope_invites":
 { Args: Record<PropertyKey, never>; Returns: Json
@@ -878,6 +887,12 @@ isOneToOne: false
 "rotate_inbound_token":
 { Args: Record<PropertyKey, never>; Returns: string
                            },
+"row_lists":
+{ Args: { "p_row": Json,"p_table": string }; Returns: (string)[]
+                           },
+"row_visible":
+{ Args: { "p_row": Json,"p_table": string }; Returns: boolean
+                           },
 "scope_role":
 { Args: { "p_scope": string }; Returns: string
                            },
@@ -895,6 +910,9 @@ isOneToOne: false
                            },
 "synced_tables":
 { Args: Record<PropertyKey, never>; Returns: (string)[]
+                           },
+"task_visible":
+{ Args: { "p_task": string }; Returns: boolean
                            },
 "workspace_sharing":
 { Args: { "p_scope": string }; Returns: Json

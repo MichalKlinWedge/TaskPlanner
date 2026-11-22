@@ -1,6 +1,6 @@
 "use client";
 
-import { canEditScope, COLORS, inboxId, keyBetween, LIST_KIND, reorderPatches, SCOPE_ROLE, uuidv7, type ListKind, type ScopeRole } from "@taskplanner/core";
+import { canEditScope, COLORS, GUEST_ACCESS, GUEST_ACCESS_HINT, inboxId, keyBetween, LIST_KIND, listAccess, reorderPatches, SCOPE_ROLE, uuidv7, type GuestAccess, type ListKind, type ScopeRole } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useState, type FormEvent } from "react";
 
@@ -27,6 +27,8 @@ interface ListRow extends Record<string, string | number | null> {
   color: string | null;
   sort_key: string;
   archived_at: string | null;
+  /** Dostęp gości (`lists.guest_access`); `null` = lista jeszcze niezsynchronizowana (domyślnie `edit`). */
+  guest_access: GuestAccess | null;
   open: number;
 }
 
@@ -44,7 +46,7 @@ export function WorkspacesScreen({ store }: { store: TabStore }) {
   );
   const { rows: lists } = useLocalQuery<ListRow>(
     store,
-    `select l.id, l.scope_id, l.kind, l.name, l.color, l.sort_key, l.archived_at,
+    `select l.id, l.scope_id, l.kind, l.name, l.color, l.sort_key, l.archived_at, l.guest_access,
             (select count(*) from tasks t where t.list_id = l.id and t.deleted_at is null and t.status not in ('done', 'cancelled')) as open
        from lists l where l.deleted_at is null`,
     [],
@@ -193,9 +195,16 @@ function WorkspaceCard({
           </Button>
         ) : null}
       </div>
-      {people ? <SharingPanel store={store} workspaceId={workspace.id} workspaceName={workspace.name} /> : null}
+      {people ? (
+        <SharingPanel
+          store={store}
+          workspaceId={workspace.id}
+          workspaceName={workspace.name}
+          lists={owner ? [...(inbox ? [inbox] : []), ...activeOthers].map((l) => ({ id: l.id, name: l.name, guestAccess: l.guest_access ?? "edit" })) : undefined}
+        />
+      ) : null}
       <ul className="mt-3 flex flex-col divide-y divide-[var(--line)] border-t border-[var(--line)]">
-        {inbox ? <ListItem store={store} list={inbox} run={run} editable={editable} /> : null}
+        {inbox ? <ListItem store={store} list={inbox} run={run} editable={editable} role={workspace.role} /> : null}
         {others.map((list, index) => (
           <ListItem
             key={list.id}
@@ -203,6 +212,7 @@ function WorkspaceCard({
             list={list}
             run={run}
             editable={editable}
+            role={workspace.role}
             canUp={!list.archived_at && index > 0}
             canDown={!list.archived_at && index < activeOthers.length - 1}
             onMove={(delta) => void moveList(list, delta)}
@@ -218,7 +228,8 @@ function ListItem({
   store,
   list,
   run,
-  editable,
+  editable: scopeEditable,
+  role,
   canUp,
   canDown,
   onMove,
@@ -227,6 +238,7 @@ function ListItem({
   list: ListRow;
   run: (work: () => Promise<void>) => Promise<void>;
   editable: boolean;
+  role: ScopeRole | null;
   canUp?: boolean;
   canDown?: boolean;
   onMove?: (delta: number) => void;
@@ -234,6 +246,10 @@ function ListItem({
   const update = (patch: Record<string, unknown>) => run(() => store.mutate("lists", list.id, patch));
   const archived = Boolean(list.archived_at);
   const inbox = list.kind === "inbox";
+  const owner = role === null || role === "owner";
+  const guestAccess = list.guest_access ?? "edit";
+  // Gość: lista tylko do podglądu blokuje też nazwę, kolor, kolejność i archiwizację.
+  const editable = scopeEditable && listAccess(role, guestAccess) === "edit";
   return (
     <li className={`flex flex-wrap items-center gap-2 py-2 text-sm ${archived ? "opacity-60" : ""}`}>
       {editable ? (
@@ -243,6 +259,16 @@ function ListItem({
       )}
       {inbox || !editable ? <span className="font-medium">{list.name}</span> : <EditableName value={list.name} max={200} onSave={(name) => void update({ name })} />}
       <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs">{LIST_KIND[list.kind]}</span>
+      {owner && guestAccess !== "edit" ? (
+        <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs" title={GUEST_ACCESS_HINT[guestAccess]} data-testid="list-guest-access">
+          dla gości: {GUEST_ACCESS[guestAccess].toLowerCase()}
+        </span>
+      ) : null}
+      {!owner && scopeEditable && !editable ? (
+        <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs" title="Właściciel udostępnił Ci tę listę tylko do podglądu">
+          tylko podgląd
+        </span>
+      ) : null}
       {Number(list.open) > 0 ? <span className="text-xs opacity-60">{list.open} otwartych</span> : null}
       <span className="flex-1" />
       {!inbox && editable ? (

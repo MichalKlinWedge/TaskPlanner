@@ -3,7 +3,7 @@
  * i projekty z nazwą, kolorem, rodzajem, kolejnością i archiwizacją. Szybkie zadanie do Inboxu —
  * do sprawdzenia kryterium MVP-1 (zadanie z trybu samolotowego na serwerze po włączeniu sieci).
  */
-import { canEditScope, inboxId, LIST_KIND, plural, PROJECT_STATUS, type ListKind, type ProjectStatus, type ScopeRole } from '@taskplanner/core';
+import { canEditScope, GUEST_ACCESS, GUEST_ACCESS_HINT, GUEST_ACCESS_NOTE, inboxId, LIST_KIND, listAccess, plural, PROJECT_STATUS, type GuestAccess, type ListKind, type ProjectStatus, type ScopeRole } from '@taskplanner/core';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert } from 'react-native';
@@ -19,6 +19,7 @@ import { archiveList, createList, listItems, moveItem, removeList, updateList, t
 const TASKS = ['zadanie', 'zadania', 'zadań'] as const;
 const KINDS = ['list', 'project'] as const satisfies readonly Exclude<ListKind, 'inbox'>[];
 const STATUSES = Object.keys(PROJECT_STATUS) as ProjectStatus[];
+const ACCESS: GuestAccess[] = ['edit', 'view', 'hidden'];
 
 export default function Workspace() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -29,6 +30,9 @@ export default function Workspace() {
   );
   // Przestrzeń udostępniona do podglądu: tylko odczyt (silnik i tak odrzuca zapis).
   const editable = canEditScope(workspace?.role);
+  const owner = !workspace?.role || workspace.role === 'owner';
+  // Gość: lista tylko do podglądu (`lists.guest_access`) jest zablokowana jak cała przestrzeń.
+  const listEditable = (l: ListItem) => editable && listAccess(workspace?.role, l.guest_access ?? 'edit') === 'edit';
   const lists = useLocalQuery(['lists', 'tasks'], (engine) => listItems(engine, id), [id]) ?? [];
   const [name, setName] = useState('');
   const [kind, setKind] = useState<Exclude<ListKind, 'inbox'>>('list');
@@ -43,10 +47,31 @@ export default function Workspace() {
   const archived = lists.filter((l) => l.kind !== 'inbox' && l.archived_at);
 
   const subtitle = (l: ListItem) =>
-    [LIST_KIND[l.kind], l.kind === 'project' && l.project_status ? PROJECT_STATUS[l.project_status] : null, plural(l.open, TASKS)].filter(Boolean).join(' · ');
+    [
+      LIST_KIND[l.kind],
+      l.kind === 'project' && l.project_status ? PROJECT_STATUS[l.project_status] : null,
+      plural(l.open, TASKS),
+      owner && (l.guest_access ?? 'edit') !== 'edit' ? `dla gości: ${GUEST_ACCESS[l.guest_access!].toLowerCase()}` : null,
+      !owner && editable && !listEditable(l) ? 'tylko podgląd' : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+  /** Dostęp gości (tylko właściciel). */
+  const access = (l: ListItem) =>
+    owner ? (
+      <>
+        <P muted>Dla gości: {GUEST_ACCESS_HINT[l.guest_access ?? 'edit']}.</P>
+        <Row>
+          {ACCESS.map((a) => (
+            <Chip key={a} label={GUEST_ACCESS[a]} selected={(l.guest_access ?? 'edit') === a} onPress={() => void updateList(l, { guest_access: a }).catch(onError)} />
+          ))}
+        </Row>
+      </>
+    ) : null;
 
   const row = (l: ListItem, index: number, group: ListItem[]) =>
-    !editable ? (
+    !listEditable(l) ? (
       <EditableItem key={l.id} name={l.name} color={l.color} subtitle={subtitle(l)} archived={!!l.archived_at} onError={onError} />
     ) : (
       <EditableItem
@@ -67,6 +92,7 @@ export default function Workspace() {
             <Chip key={k} label={LIST_KIND[k]} selected={l.kind === k} onPress={() => void updateList(l, { kind: k }).catch(onError)} />
           ))}
         </Row>
+        {access(l)}
         {l.kind === 'project' ? (
           <Row>
             {STATUSES.map((s) => (
@@ -95,7 +121,7 @@ export default function Workspace() {
       <SyncIndicator />
       {error ? <P tone="bad">{error}</P> : null}
 
-      {editable ? (
+      {inbox && listEditable(inbox) ? (
         <Section title="Szybkie zadanie do Inboxu">
           <Row>
             <Field label="Tytuł" value={task} onChangeText={setTask} maxLength={500} style={{ minWidth: 200 }} />
@@ -114,8 +140,9 @@ export default function Workspace() {
       ) : null}
 
       {inbox ? (
-        <EditableItem name={inbox.name} color={inbox.color} subtitle={subtitle(inbox)} onColor={editable ? (c) => updateList(inbox, { color: c }) : undefined} onError={onError}>
+        <EditableItem name={inbox.name} color={inbox.color} subtitle={subtitle(inbox)} onColor={listEditable(inbox) ? (c) => updateList(inbox, { color: c }) : undefined} onError={onError}>
           <P muted>Inbox jest jeden na przestrzeń — nie zmienia nazwy i nie da się go usunąć.</P>
+          {access(inbox)}
         </EditableItem>
       ) : null}
       {active.map((l, i) => row(l, i, active))}
@@ -149,6 +176,7 @@ export default function Workspace() {
         </>
       ) : null}
 
+      {owner ? <P muted>{GUEST_ACCESS_NOTE} Ustawisz go przy każdej liście („Edytuj”).</P> : null}
       <SharingSection workspaceId={id} name={workspace?.name ?? ''} />
     </Screen>
   );

@@ -44,7 +44,7 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     scope: 'self',
   },
   lists: {
-    columns: columns<'lists'>()(['scope_id', 'kind', 'name', 'color', 'icon', 'description_md', 'start_date', 'end_date', 'project_status', 'sort_key', 'view_prefs', 'archived_at', 'board_columns']),
+    columns: columns<'lists'>()(['scope_id', 'kind', 'name', 'color', 'icon', 'description_md', 'start_date', 'end_date', 'project_status', 'sort_key', 'view_prefs', 'archived_at', 'board_columns', 'guest_access']),
     json: ['view_prefs', 'board_columns'],
     scope: 'writable',
   },
@@ -201,7 +201,7 @@ export function localSchema(): string[] {
   );
   statements.push('create index if not exists _outbox_status on _outbox (status, seq)');
   statements.push('create table if not exists _meta (key text primary key, value text not null)');
-  // Zakresy użytkownika z rolą z ostatniego `pull_changes` (współdzielenie przestrzeni, v1.x).
-  statements.push('create table if not exists _scopes (id text primary key, kind text not null, role text not null)');
+  // Zakresy użytkownika z rolą i ukrytymi listami (JSON) z ostatniego `pull_changes` (współdzielenie przestrzeni, v1.x).
+  statements.push("create table if not exists _scopes (id text primary key, kind text not null, role text not null, hidden text not null default '[]')");
   return statements;
 }

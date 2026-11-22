@@ -37,11 +37,12 @@ import {
   type SortBy,
   type ViewContext,
   type ViewPrefs,
+  READONLY_LIST_NOTE,
 } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useMemo, useState, type ReactNode } from "react";
 
-import type { AppData, List } from "@/lib/app-data";
+import { listEditable, type AppData, type List } from "@/lib/app-data";
 import { useLocalQuery } from "@/lib/local-store";
 
 import { Board } from "./board";
@@ -305,7 +306,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
 
   const listBody = (
       <>
-      <QuickAdd listId={list.id} placeholder={`Dodaj do „${list.name}”`} />
+      {listEditable(data, list.id) ? <QuickAdd listId={list.id} placeholder={`Dodaj do „${list.name}”`} /> : <p className="text-xs text-[var(--muted)]" data-testid="list-read-only">{READONLY_LIST_NOTE}</p>}
       {!tasks.length ? <Empty>Brak zadań.</Empty> : null}
       {rows ? (
         <SortableTaskList ids={rows.map((n) => n.task.id)}>

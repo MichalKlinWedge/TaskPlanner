@@ -41,7 +41,7 @@ import { pickOption, type Option } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
 import { TaskRow } from '@/components/task-row';
 import { Chip, usePalette } from '@/components/ui';
-import { listLabel, useView } from '@/lib/app-data';
+import { listEditable, listLabel, useView } from '@/lib/app-data';
 import { mutate } from '@/lib/sync';
 
 const BY_KEY = 'board.by';
@@ -56,6 +56,8 @@ export default function BoardScreen() {
   const { data, today, ctx } = useView();
   const { run, notify } = useTaskActions();
   const list = listId ? data.lists.find((l) => l.id === listId) : undefined;
+  // Lista tylko do podglądu (gość): bez dodawania kart i zmian kolumn.
+  const locked = list ? !listEditable(data, list.id) : false;
   const [localBy, setLocalBy] = useState<BoardBy>(() => (Storage.getItemSync(BY_KEY) as BoardBy | null) ?? 'status');
   // Własne kolumny należą do listy — tablica przestrzeni (bez `?list=`) ich nie ma.
   const savedBy: BoardBy = list ? (list.prefs.boardBy ?? 'status') : localBy;
@@ -207,7 +209,7 @@ export default function BoardScreen() {
           {scrolled.map((c) => (
             <Chip key={c.key} label={`${c.label} ${c.tasks.length}`} selected={c.key === column?.key} onPress={() => setSelected(c.key)} />
           ))}
-          {by === 'custom' && list ? <Chip label="+ Kolumna" onPress={() => setNaming({ id: null, name: '' })} /> : null}
+          {by === 'custom' && list && !locked ? <Chip label="+ Kolumna" onPress={() => setNaming({ id: null, name: '' })} /> : null}
         </ScrollView>
       </View>
       {naming ? (
@@ -230,7 +232,7 @@ export default function BoardScreen() {
             <Text style={{ color: p.muted }}>Anuluj</Text>
           </Pressable>
         </View>
-      ) : customColumn && list ? (
+      ) : customColumn && list && !locked ? (
         <View style={styles.columnTools}>
           <Text style={{ color: p.muted, fontSize: 12, flex: 1 }} numberOfLines={1}>
             Kolumna „{customColumn.label}”
@@ -272,9 +274,11 @@ export default function BoardScreen() {
       {column ? (
         <FlatList
           ListHeaderComponent={
-            <View style={styles.addCard}>
-              <QuickAddField key={`${by}:${column.key}`} listId={list?.id} placeholder="Dodaj kartę" {...addProps} />
-            </View>
+            locked ? undefined : (
+              <View style={styles.addCard}>
+                <QuickAddField key={`${by}:${column.key}`} listId={list?.id} placeholder="Dodaj kartę" {...addProps} />
+              </View>
+            )
           }
           keyboardShouldPersistTaps="handled"
           data={column.tasks}

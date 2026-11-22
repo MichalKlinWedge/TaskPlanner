@@ -67,6 +67,7 @@ import {
 import { EditorContent, useEditor } from "@tiptap/react";
 import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
+import { listEditable } from "@/lib/app-data";
 import { useDependencies } from "@/lib/dependencies";
 import { descriptionExtensions, descriptionMarkdown } from "@/lib/editor";
 import { useLocalQuery } from "@/lib/local-store";
@@ -143,7 +144,8 @@ export function TaskPanel({ taskId }: { taskId: string }) {
   const parent = task.parentId ? data.tasks.find((t) => t.id === task.parentId) : undefined;
   const children = data.tasks.filter((t) => t.parentId === task.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
   const workspaceName = new Map(data.workspaces.map((w) => [w.id, w.name]));
-  const readOnly = !canEditScope(data.workspaces.find((w) => w.id === task.workspaceId)?.role);
+  const scopeReadOnly = !canEditScope(data.workspaces.find((w) => w.id === task.workspaceId)?.role);
+  const readOnly = !listEditable(data, task.listId);
 
   const remove = () => {
     const ops = deleteTaskOps(data.tasks, task.id, new Date());
@@ -160,7 +162,9 @@ export function TaskPanel({ taskId }: { taskId: string }) {
       ) : null}
       {readOnly ? (
         <p className="mb-2 rounded-md bg-[var(--hover)] px-2 py-1 text-xs text-[var(--muted)]" data-testid="task-read-only">
-          Przestrzeń „{workspaceName.get(task.workspaceId)}” jest udostępniona Ci tylko do podglądu — zadania nie da się zmienić.
+          {scopeReadOnly
+            ? `Przestrzeń „${workspaceName.get(task.workspaceId)}” jest udostępniona Ci tylko do podglądu — zadania nie da się zmienić.`
+            : `Lista „${data.lists.find((l) => l.id === task.listId)?.name ?? ""}” jest udostępniona Ci tylko do podglądu — zadania nie da się zmienić.`}
         </p>
       ) : null}
       <Editable readOnly={readOnly}>

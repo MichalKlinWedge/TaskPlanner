@@ -24,6 +24,9 @@ export type TaskStatus = z.infer<typeof TaskStatus>;
 
 export const ListKind = z.enum(['inbox', 'project', 'list']);
 export type ListKind = z.infer<typeof ListKind>;
+/** `lists.guest_access` — co z listą mogą członkowie przestrzeni inni niż właściciel (v1.x). */
+export const GuestAccess = z.enum(['hidden', 'view', 'edit']);
+export type GuestAccess = z.infer<typeof GuestAccess>;
 
 export const ProjectStatus = z.enum(['active', 'on_hold', 'done']);
 export type ProjectStatus = z.infer<typeof ProjectStatus>;

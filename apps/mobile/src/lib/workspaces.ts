@@ -2,7 +2,7 @@
  * Przestrzenie i listy (M2) na lokalnej bazie: odczyt do ekranu „Przestrzenie i listy” i zapisy
  * przez `mutate` (wiersz + outbox). Kolejność = `sort_key` z `keyBetween` / `reorderPatches`.
  */
-import { inboxId, keyBetween, reorderPatches, uuidv7, type ListKind, type ProjectStatus, type ScopeRole } from '@taskplanner/core';
+import { inboxId, keyBetween, reorderPatches, uuidv7, type GuestAccess, type ListKind, type ProjectStatus, type ScopeRole } from '@taskplanner/core';
 import type { SqlRow, SyncEngine } from '@taskplanner/sync';
 
 import { localEngine, mutate } from './sync';
@@ -27,6 +27,8 @@ export interface ListItem {
   sort_key: string;
   project_status: ProjectStatus | null;
   archived_at: string | null;
+  /** Dostęp gości (`lists.guest_access`); `null` = jeszcze niezsynchronizowana (jak `edit`). */
+  guest_access: GuestAccess | null;
   /** Niezakończone zadania (bez podzadań). */
   open: number;
   /** Wszystkie nieusunięte zadania (lista z zadaniami nie znika, tylko się archiwizuje). */
@@ -46,7 +48,7 @@ export async function workspaceItems(engine: SyncEngine): Promise<WorkspaceItem[
 
 export async function listItems(engine: SyncEngine, workspaceId: string): Promise<ListItem[]> {
   const rows = await engine.db.all<SqlRow>(
-    `select l.id, l.scope_id, l.kind, l.name, l.color, l.sort_key, l.project_status, l.archived_at,
+    `select l.id, l.scope_id, l.kind, l.name, l.color, l.sort_key, l.project_status, l.archived_at, l.guest_access,
             (select count(*) from tasks t where t.list_id = l.id and t.deleted_at is null and t.parent_id is null
                and t.status not in ('done', 'cancelled')) as open,
             (select count(*) from tasks t where t.list_id = l.id and t.deleted_at is null) as total
@@ -95,7 +97,10 @@ export async function createList(workspaceId: string, input: { name: string; kin
 }
 
 /** Zmiana listy; Inbox ma stałą nazwę i rodzaj. Projekt → lista czyści daty i status (reguła modelu). */
-export async function updateList(list: ListItem, patch: { name?: string; color?: string | null; kind?: Exclude<ListKind, 'inbox'>; project_status?: ProjectStatus }) {
+export async function updateList(
+  list: ListItem,
+  patch: { name?: string; color?: string | null; kind?: Exclude<ListKind, 'inbox'>; project_status?: ProjectStatus; guest_access?: GuestAccess },
+) {
   if (list.kind === 'inbox' && (patch.name !== undefined || patch.kind !== undefined)) throw new Error('Inbox ma stałą nazwę i rodzaj.');
   const out: Record<string, unknown> = { ...patch };
   if (patch.name !== undefined) out.name = patch.name.trim();

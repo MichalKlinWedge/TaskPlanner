@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { canEditScope, inviteLink, inviteTokenFrom, shareEmail } from '../sharing.ts';
+import { canEditList, canEditScope, inviteLink, inviteTokenFrom, listAccess, shareEmail } from '../sharing.ts';
 
 describe('współdzielenie przestrzeni', () => {
   it('adres zapraszanej osoby: normalizacja, bez domen', () => {
@@ -22,5 +22,17 @@ describe('współdzielenie przestrzeni', () => {
     expect(canEditScope('viewer')).toBe(false);
     expect(canEditScope('editor')).toBe(true);
     expect(canEditScope(null)).toBe(true);
+  });
+
+  it('dostęp do listy = słabsze z roli i ustawienia listy', () => {
+    expect(listAccess('owner', 'hidden')).toBe('edit');
+    expect(listAccess(null, 'view')).toBe('edit');
+    expect(listAccess('editor', 'edit')).toBe('edit');
+    expect(listAccess('editor', 'view')).toBe('view');
+    expect(listAccess('editor', 'hidden')).toBe('hidden');
+    expect(listAccess('viewer', 'edit')).toBe('view');
+    expect(listAccess('viewer', 'hidden')).toBe('hidden');
+    expect(canEditList('editor', undefined)).toBe(true);
+    expect(canEditList('viewer', 'edit')).toBe(false);
   });
 });

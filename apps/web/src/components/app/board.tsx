@@ -13,7 +13,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { addBoardColumnOps, BOARD_BY, type BoardColumnDef, type TaskOp, boardColumns, boardDropOps, describeRecurrence, moveBoardColumnOps, removeBoardColumnOps, renameBoardColumnOps, isOpen, PRIORITY, relativeDay, tagsForWorkspace, type BoardBy, type BoardColumn, type LocalDate, type ViewContext, type ViewTask } from "@taskplanner/core";
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
-import type { AppData } from "@/lib/app-data";
+import { listEditable, type AppData } from "@/lib/app-data";
 
 import { useAppEnv } from "./app-env";
 import { QuickAdd } from "./quick-add";
@@ -220,9 +220,11 @@ function Column({
         </button>
       </header>
       {/* Dodanie nad kartami — widoczne bez przewijania długiej kolumny. */}
-      <div className="mb-1.5">
-        <QuickAdd placeholder="Dodaj kartę" listId={listId} {...add} />
-      </div>
+      {!listId || listEditable(data, listId) ? (
+        <div className="mb-1.5">
+          <QuickAdd placeholder="Dodaj kartę" listId={listId} {...add} />
+        </div>
+      ) : null}
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <ul className="flex min-h-12 flex-col gap-1.5">
           {visible.map((t) => (
@@ -337,6 +339,8 @@ export function Board({
   const custom = by === "custom";
   // Własne kolumny należą do listy: tylko tablica jednej listy (widok listy albo przestrzeń z jedną listą).
   const owner = lists.length === 1 ? lists[0] : undefined;
+  // Lista tylko do podglądu (gość): bez dodawania kart i zmian kolumn.
+  const locked = listId ? !listEditable(data, listId) : false;
   const defs = owner?.boardColumns ?? NO_COLUMNS;
   // Kolumny tagów: tagi przestrzeni tablicy + użyte na kartach.
   const tags = useMemo(() => tagsForWorkspace(data.tags, space, tasks.flatMap((t) => t.tagIds)), [data.tags, space, tasks]);
@@ -408,15 +412,17 @@ export function Board({
         </Select>
         {by === "status" ? <span className="text-[var(--muted)]">„Gotowe” z ostatnich 7 dni</span> : null}
         {custom && owner ? <span className="text-[var(--muted)]">Kolumny listy „{owner.kind === "inbox" ? "Inbox" : owner.name}” — przeciągnij ⠿, by zmienić kolejność</span> : null}
-        {custom && owner ? (
+        {custom && owner && !locked ? (
           <div className="ml-auto">
             <AddColumn onAdd={(name) => editColumns((current) => addBoardColumnOps(owner.id, current, name))} />
           </div>
         ) : null}
       </div>
-      <div className="max-w-xl">
-        <QuickAdd listId={listId} placeholder={addLabel ?? "Dodaj zadanie"} />
-      </div>
+      {locked ? null : (
+        <div className="max-w-xl">
+          <QuickAdd listId={listId} placeholder={addLabel ?? "Dodaj zadanie"} />
+        </div>
+      )}
       {custom && !owner ? (
         <p className="py-6 text-sm text-[var(--muted)]" data-testid="board-custom-no-list">
           Własne kolumny należą do listy — otwórz listę i przełącz ją na „Tablica”.
@@ -433,7 +439,7 @@ export function Board({
           <div className="flex gap-3 sm:min-w-0 sm:flex-1 sm:overflow-x-auto sm:pb-4" data-testid="board-scroll">
           <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
             {scrolled.map((c) =>
-              custom && owner && c.key !== "none" ? (
+              custom && owner && !locked && c.key !== "none" ? (
                 <SortableColumn
                   key={c.key}
                   column={c}

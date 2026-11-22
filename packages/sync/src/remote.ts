@@ -34,11 +34,19 @@ export interface ScopeInfo {
   kind: 'workspace' | 'personal';
   version: number;
   role: 'owner' | 'editor' | 'viewer';
+  /** Listy przestrzeni ukryte przed tym użytkownikiem (`lists.guest_access = 'hidden'`, nie właściciel). */
+  hidden?: string[];
+}
+
+/** Wiersz, który przestał być widoczny (ukryta lista) — klient usuwa swoją kopię. */
+export interface GoneRow {
+  table: SyncedTable;
+  id: string;
 }
 
 export interface PullResult {
   scopes: Record<string, ScopeInfo>;
-  tables: Partial<Record<SyncedTable | ReadonlyTable, RemoteRow[]>>;
+  tables: Partial<Record<SyncedTable | ReadonlyTable, RemoteRow[]>> & { _gone?: GoneRow[] };
   /** Jest dalszy ciąg: `scopes[id].version` to wtedy kursor, od którego pytać dalej. */
   more?: boolean;
   serverHlc: Hlc;

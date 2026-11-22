@@ -4,6 +4,7 @@
  * z listy zaproszonych do aplikacji (`allowed_emails`) — udostępnienie nie wpuszcza nowych kont.
  */
 import { invitePattern, isDomainInvite } from './invites.ts';
+import type { GuestAccess } from './schemas/primitives.ts';
 
 export type ScopeRole = 'owner' | 'editor' | 'viewer';
 export type ShareRole = Exclude<ScopeRole, 'owner'>;
@@ -48,3 +49,38 @@ export function inviteTokenFrom(url: string): string | null {
 
 /** Czy rola pozwala zmieniać dane przestrzeni (`null` = brak informacji z serwera — jak właściciel). */
 export const canEditScope = (role: ScopeRole | null | undefined): boolean => role !== 'viewer';
+
+// ── Dostęp gości do list (migracja `*_v1x_list_guest_access.sql`) ──────────────────────────────
+
+export const GUEST_ACCESS: Record<GuestAccess, string> = {
+  hidden: 'Ukryta',
+  view: 'Podgląd',
+  edit: 'Edycja',
+};
+
+export const GUEST_ACCESS_HINT: Record<GuestAccess, string> = {
+  hidden: 'osoby, którym udostępniono przestrzeń, nie widzą listy ani jej zadań',
+  view: 'osoby, którym udostępniono przestrzeń, tylko czytają',
+  edit: 'edytorzy zmieniają zadania, rola Podgląd tylko czyta',
+};
+
+export const GUEST_ACCESS_NOTE =
+  'Dostęp do listy dotyczy wszystkich osób, którym udostępniono przestrzeń (Ty jako właściciel zawsze masz pełny). Liczy się słabsze z dwóch: rola osoby i ustawienie listy.';
+
+export const READONLY_LIST_NOTE = 'Ta lista jest udostępniona Ci tylko do podglądu — zadań nie da się zmienić.';
+
+/**
+ * Co użytkownik może z listą: właściciel (i brak roli — dane własne) zawsze `edit`, gość — słabsze
+ * z roli w przestrzeni i ustawienia listy (`viewer` nigdy nie edytuje). Ta sama reguła co
+ * `public.list_access` w bazie.
+ */
+export function listAccess(role: ScopeRole | null | undefined, guestAccess: GuestAccess | null | undefined): GuestAccess {
+  if (!role || role === 'owner') return 'edit';
+  if (guestAccess === 'hidden') return 'hidden';
+  if (role === 'viewer' || guestAccess === 'view') return 'view';
+  return 'edit';
+}
+
+/** Czy użytkownik może zmieniać listę i jej zadania. */
+export const canEditList = (role: ScopeRole | null | undefined, guestAccess: GuestAccess | null | undefined): boolean =>
+  listAccess(role, guestAccess) === 'edit';

@@ -3,7 +3,7 @@
  * `mutate` zapisuje wiersz i wpis outboxu w jednej transakcji, `sync` wysyła outbox
  * (`push_changes`) i pobiera przyrosty (`pull_changes`), Realtime jest tylko sygnałem do pobrania.
  */
-import { HlcClock, uuidv7, type Hlc } from '@taskplanner/core';
+import { HlcClock, READONLY_LIST_NOTE, uuidv7, type Hlc } from '@taskplanner/core';
 
 import { addChange, type ChangeSet, type TableChanges } from './changes.ts';
 import type { LocalDb, SqlRow } from './local-db.ts';
@@ -74,13 +74,19 @@ const CALENDAR_KEEP_DAYS = 30;
 
 export const READONLY_SCOPE_MESSAGE = 'Ta przestrzeń jest udostępniona Ci tylko do podglądu — zmiany może wprowadzać jej właściciel albo edytor.';
 
-/** Zmiana w przestrzeni, w której użytkownik ma rolę `viewer` (cała operacja `mutateMany` się wycofuje). */
+/**
+ * Zmiana w przestrzeni, w której użytkownik ma rolę `viewer`, albo w liście udostępnionej mu tylko do
+ * podglądu (`lists.guest_access`) — cała operacja `mutateMany` się wycofuje.
+ */
 export class ReadOnlyScopeError extends Error {
-  constructor() {
-    super(READONLY_SCOPE_MESSAGE);
+  constructor(message = READONLY_SCOPE_MESSAGE) {
+    super(message);
     this.name = 'ReadOnlyScopeError';
   }
 }
+
+/** Tabele z kolumną `task_id` (dzieci zadania) — do czyszczenia danych ukrytych list. */
+const TASK_CHILD_TABLES = SYNCED_TABLES.filter((t) => (TABLES[t].columns as readonly string[]).includes('task_id'));
 
 export class SyncEngine {
   readonly db: LocalDb;
@@ -116,6 +122,9 @@ export class SyncEngine {
 
   private async init() {
     for (const statement of localSchema()) await this.db.run(statement);
+    // `_scopes` sprzed dostępu gości do list (v1.x): bez kolumny `hidden`.
+    const scopeColumns = new Set((await this.db.all<{ name: string }>('select name from pragma_table_info(?)', ['_scopes'])).map((c) => c.name));
+    if (!scopeColumns.has('hidden')) await this.db.run("alter table _scopes add column hidden text not null default '[]'");
     // Baza z wcześniejszej wersji: brakujące kolumny dochodzą jako puste (wartości przyjdą z serwera
     // przy następnej zmianie wiersza; puste = domyślne, jak w bazie).
     for (const table of SYNCED_TABLES) {
@@ -213,6 +222,11 @@ export class SyncEngine {
       const out: Hlc[] = [];
       // Przestrzeń udostępniona do podglądu: serwer i tak odrzuci zmianę (TP003), więc nie zapisujemy jej lokalnie.
       const readOnly = new Set((await tx.all("select id from _scopes where role = 'viewer'")).map((r) => String(r.id)));
+      // Gość (edytor): listy tylko do podglądu i zakaz zmiany dostępu gości — jak `stamp_row` w bazie.
+      const guestScopes = new Set((await tx.all("select id from _scopes where role <> 'owner'")).map((r) => String(r.id)));
+      const readOnlyLists = guestScopes.size
+        ? new Set((await tx.all("select l.id from lists l join _scopes s on s.id = l.scope_id where s.role = 'editor' and l.guest_access = 'view'")).map((r) => String(r.id)))
+        : new Set<string>();
       for (const { table, id, patch } of ops) {
         const fields = Object.keys(patch);
         const stamp = this.clock.tick();
@@ -225,6 +239,13 @@ export class SyncEngine {
         row.field_clock = JSON.stringify(clock);
         await this.deriveScope(tx, table, row);
         if (readOnly.size && (readOnly.has(String(row.scope_id)) || readOnly.has(String(current?.scope_id)))) throw new ReadOnlyScopeError();
+        if (guestScopes.has(String(row.scope_id)) || guestScopes.has(String(current?.scope_id))) {
+          if (table === 'lists') {
+            if ((row.guest_access ?? 'edit') !== 'edit' || (current && (current.guest_access ?? 'edit') !== 'edit')) throw new ReadOnlyScopeError(READONLY_LIST_NOTE);
+          } else if (readOnlyLists.size && (await this.rowLists(tx, table, row, current)).some((list) => readOnlyLists.has(list))) {
+            throw new ReadOnlyScopeError(READONLY_LIST_NOTE);
+          }
+        }
         await this.upsert(tx, table, row);
         await tx.run('insert into _outbox (op_id, tbl, row_id, data, hlc) values (?, ?, ?, ?, ?)', [uuidv7(this.now()), table, id, JSON.stringify(patch), stamp]);
         out.push(stamp);
@@ -265,6 +286,63 @@ export class SyncEngine {
     } else if (rule === 'derived') {
       row.scope_id = (await taskScope(row.task_id)) ?? row.scope_id ?? null;
     }
+  }
+
+  /** Listy wiersza przed i po zmianie (zadanie — jego lista, dziecko zadania — lista zadania, zależność — obu zadań). */
+  private async rowLists(tx: LocalDb, table: SyncedTable, row: SqlRow, current: SqlRow | undefined): Promise<string[]> {
+    const tasks = new Set<unknown>();
+    const lists = new Set<unknown>();
+    for (const r of current ? [row, current] : [row]) {
+      if (table === 'tasks') lists.add(r.list_id);
+      else if (table === 'task_dependencies') [r.predecessor_id, r.successor_id].forEach((id) => tasks.add(id));
+      else if (TASK_CHILD_TABLES.includes(table)) tasks.add(r.task_id);
+    }
+    const taskIds = [...tasks].filter((id): id is string => typeof id === 'string');
+    if (taskIds.length) {
+      for (const r of await tx.all(`select list_id from tasks where id in (${taskIds.map(() => '?').join(', ')})`, taskIds)) lists.add(r.list_id);
+    }
+    return [...lists].filter((id): id is string => typeof id === 'string');
+  }
+
+  /**
+   * Usunięcie z urządzenia list, które stały się ukryte, i zadań, które na nie trafiły — razem
+   * z podzadaniami, dziećmi zadań, zależnościami i niewysłanymi zmianami tych wierszy (serwer i tak
+   * by je odrzucił). Bez outboxu: to nie jest usunięcie danych, tylko utrata wglądu.
+   */
+  private async purge(tx: LocalDb, { lists = [], tasks = [] }: { lists?: readonly string[]; tasks?: readonly string[] }, touched: ChangeSet) {
+    const taskIds = new Set(tasks);
+    for (const part of chunks(lists, MAX_PARAMS)) {
+      for (const r of await tx.all(`select id from tasks where list_id in (${part.map(() => '?').join(', ')})`, part)) taskIds.add(String(r.id));
+    }
+    for (let frontier = [...taskIds]; frontier.length; ) {
+      const next: string[] = [];
+      for (const part of chunks(frontier, MAX_PARAMS)) {
+        for (const r of await tx.all(`select id from tasks where parent_id in (${part.map(() => '?').join(', ')})`, part)) {
+          if (!taskIds.has(String(r.id))) {
+            taskIds.add(String(r.id));
+            next.push(String(r.id));
+          }
+        }
+      }
+      frontier = next;
+    }
+    /** `where` z jednym `(?)` na listę id (albo `perId` takich miejsc). */
+    const drop = async (table: SyncedTable, where: string, ids: readonly string[], perId = 1) => {
+      for (const part of chunks(ids, Math.floor((MAX_PARAMS - 1) / perId))) {
+        const condition = where.replaceAll('(?)', `(${part.map(() => '?').join(', ')})`);
+        const params = Array.from({ length: perId }, () => part).flat();
+        await tx.run(`delete from _outbox where tbl = ? and row_id in (select id from ${table} where ${condition})`, [table, ...params]);
+        await tx.run(`delete from ${table} where ${condition}`, params);
+      }
+      addChange(touched, table, null);
+    };
+    const allTasks = [...taskIds];
+    if (allTasks.length) {
+      for (const table of TASK_CHILD_TABLES) await drop(table, 'task_id in (?)', allTasks);
+      await drop('task_dependencies', 'predecessor_id in (?) or successor_id in (?)', allTasks, 2);
+      await drop('tasks', 'id in (?)', allTasks);
+    }
+    if (lists.length) await drop('lists', 'id in (?)', lists);
   }
 
   private upsert(tx: LocalDb, table: SyncedTable, row: SqlRow) {
@@ -431,6 +509,7 @@ export class SyncEngine {
     let count = 0;
     let began = 0;
     let mergeMs = 0;
+    let more = result.more === true;
     await this.db.transaction(async (tx) => {
       began = Date.now();
       // Tabela po tabeli (rodzice przed dziećmi): jedno zapytanie o lokalne wiersze, scalenie w JS,
@@ -458,6 +537,16 @@ export class SyncEngine {
           await this.upsert(tx, table, row);
         }
       }
+      // Wiersze, które przestały być widoczne (przeniesione na ukrytą listę) — usuwane u siebie.
+      for (const gone of result.tables._gone ?? []) {
+        if (gone.table === 'tasks') await this.purge(tx, { tasks: [gone.id] }, touched);
+        else if (gone.table === 'lists') await this.purge(tx, { lists: [gone.id] }, touched);
+        else if ((SYNCED_TABLES as readonly string[]).includes(gone.table)) {
+          await tx.run('delete from _outbox where tbl = ? and row_id = ?', [gone.table, gone.id]);
+          await tx.run(`delete from ${gone.table} where id = ?`, [gone.id]);
+          addChange(touched, gone.table, gone.id);
+        }
+      }
       for (const table of READONLY_TABLES) {
         for (const remote of (result.tables[table] ?? []) as RemoteRow[]) {
           await this.applyReadonly(tx, table, remote);
@@ -477,22 +566,40 @@ export class SyncEngine {
           }
         }
       }
+      // Ukryte listy (`lists.guest_access = 'hidden'`, nie właściciel): nowo ukryte znikają z urządzenia,
+      // odsłonięte — zakres od zera (ich wiersze nie przyszły w przyrostach).
+      const storedScopes = await tx.all<{ id: string; kind: string; role: string; hidden: string }>('select id, kind, role, hidden from _scopes');
+      const storedHidden = new Map(storedScopes.map((s) => [s.id, new Set<string>(JSON.parse(s.hidden || '[]') as string[])]));
+      const repull: string[] = [];
+      for (const [id, info] of Object.entries(result.scopes)) {
+        const before = storedHidden.get(id) ?? new Set<string>();
+        const after = new Set(info.hidden ?? []);
+        const hidden = [...after].filter((list) => !before.has(list));
+        if (hidden.length) await this.purge(tx, { lists: hidden }, touched);
+        if ([...before].some((list) => !after.has(list)) && this.since[id] !== undefined) repull.push(id);
+      }
       // Role w zakresach (współdzielone przestrzenie, `viewer` = tylko odczyt) — widoki czytają `_scopes`
       // razem z `workspaces`, więc zmiana roli odświeża je jak zmiana przestrzeni.
-      const roles = Object.entries(result.scopes).map(([id, info]) => `${id}:${info.kind}:${info.role}`).sort();
-      const stored = (await tx.all("select id || ':' || kind || ':' || role as r from _scopes order by r")).map((row) => String(row.r));
+      const scopeKey = (id: string, kind: string, role: string, hidden: Iterable<string>) => `${id}:${kind}:${role}:${[...hidden].sort().join('|')}`;
+      const roles = Object.entries(result.scopes).map(([id, info]) => scopeKey(id, info.kind, info.role, info.hidden ?? [])).sort();
+      const stored = storedScopes.map((s) => scopeKey(s.id, s.kind, s.role, storedHidden.get(s.id) ?? [])).sort();
       if (roles.join() !== stored.join()) {
         await tx.run('delete from _scopes');
-        for (const [id, info] of Object.entries(result.scopes)) await tx.run('insert into _scopes (id, kind, role) values (?, ?, ?)', [id, info.kind, info.role]);
+        for (const [id, info] of Object.entries(result.scopes)) {
+          await tx.run('insert into _scopes (id, kind, role, hidden) values (?, ?, ?, ?)', [id, info.kind, info.role, JSON.stringify(info.hidden ?? [])]);
+        }
         addChange(touched, 'workspaces', null);
+        addChange(touched, 'lists', null);
       }
       this.since = Object.fromEntries(Object.entries(result.scopes).map(([id, info]) => [id, info.version]));
+      for (const id of repull) this.since[id] = 0;
+      if (repull.length) more = true;
       await this.setMeta(tx, 'since', JSON.stringify(this.since));
       this.clock.receive(result.serverHlc);
       await this.setMeta(tx, 'clock', this.clock.last);
     });
     const written = Date.now();
-    return { more: result.more === true, rows: count, fetchMs: fetched - started, writeMs: written - began, waitMs: began - fetched, mergeMs };
+    return { more, rows: count, fetchMs: fetched - started, writeMs: written - began, waitMs: began - fetched, mergeMs };
   }
 }
 

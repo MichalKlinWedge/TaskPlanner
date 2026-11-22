@@ -7,7 +7,7 @@
  * Reguły widoków liczy `@taskplanner/core` — tu jest tylko mapowanie wierszy, jak na webie
  * (`apps/web/src/lib/app-data.ts`).
  */
-import { boardColumnDefs, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type BoardColumnDef, type Collaborator, type HabitCompletion, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask, type ScopeRole } from '@taskplanner/core';
+import { boardColumnDefs, canEditList, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type BoardColumnDef, type Collaborator, type GuestAccess, type HabitCompletion, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask, type ScopeRole } from '@taskplanner/core';
 import { createTaskCache, TASK_COLUMNS, type SqlRow, type SyncEngine, type TaskCache, type TaskEntry } from '@taskplanner/sync';
 import Storage from 'expo-sqlite/kv-store';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -37,6 +37,14 @@ export interface List {
   projectStatus: ProjectStatus | null;
   /** Własne kolumny tablicy listy (tryb „Własne”, core `boardColumnDefs`). */
   boardColumns: BoardColumnDef[];
+  /** Dostęp gości współdzielonej przestrzeni (`lists.guest_access`). */
+  guestAccess: GuestAccess;
+}
+
+/** Czy zalogowany może zmieniać listę i jej zadania (rola w przestrzeni + dostęp gości listy). */
+export function listEditable(data: Pick<AppData, 'lists' | 'workspaces'>, listId: string | null | undefined): boolean {
+  const list = data.lists.find((l) => l.id === listId);
+  return canEditList(data.workspaces.find((w) => w.id === list?.workspaceId)?.role, list?.guestAccess);
 }
 
 export interface Tag {
@@ -143,7 +151,7 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
   const queried = Date.now();
   const [workspaces, lists, tags, filters, collaborators, entries, habits] = await Promise.all([
     db.all<SqlRow>('select w.id, w.name, w.color, w.sort_key, s.role from workspaces w left join _scopes s on s.id = w.id where w.deleted_at is null and w.archived_at is null'),
-    db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs, project_status, board_columns from lists where deleted_at is null and archived_at is null'),
+    db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs, project_status, board_columns, guest_access from lists where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, name, color, sort_key, workspace_ids from tags where deleted_at is null'),
     db.all<SqlRow>('select id, name, icon, query, sort_key from saved_filters where deleted_at is null'),
     db.all<SqlRow>('select id, name, email, acronym, archived_at, workspace_ids from collaborators where deleted_at is null'),
@@ -167,6 +175,7 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
         prefs: prefs.success ? prefs.data : {},
         projectStatus: (r.project_status as ProjectStatus | null) ?? null,
         boardColumns: boardColumnDefs(r.board_columns),
+        guestAccess: (r.guest_access as GuestAccess | null) ?? 'edit',
       };
     })
     .sort(byKey);

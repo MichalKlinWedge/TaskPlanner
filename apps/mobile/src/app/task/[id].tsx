@@ -76,7 +76,7 @@ import { RecurrenceEditor } from '@/components/recurrence-editor';
 import { pickList, pickPriority } from '@/components/task-menus';
 import { TaskRow } from '@/components/task-row';
 import { Button, usePalette } from '@/components/ui';
-import { listLabel, useView, type AppData } from '@/lib/app-data';
+import { listEditable, listLabel, useView, type AppData } from '@/lib/app-data';
 import { spentMinutes, useFocusData } from '@/lib/focus';
 import { useLocalQuery } from '@/lib/local-query';
 import { rememberRecent } from '@/lib/recent';
@@ -170,7 +170,8 @@ export default function TaskScreen() {
   // Własne kolumny tablicy listy zadania (tryb „Własne”) — tylko zadania najwyższego poziomu.
   const boardDefs = data.lists.find((l) => l.id === task.listId)?.boardColumns ?? [];
   const boardColumn = taskBoardColumn(task, boardDefs);
-  const readOnly = !canEditScope(data.workspaces.find((w) => w.id === task.workspaceId)?.role);
+  const scopeReadOnly = !canEditScope(data.workspaces.find((w) => w.id === task.workspaceId)?.role);
+  const readOnly = !listEditable(data, task.listId);
 
   const remove = () => {
     const ops = deleteTaskOps(data.tasks, task.id, new Date());
@@ -192,7 +193,9 @@ export default function TaskScreen() {
 
         {readOnly ? (
           <Text style={[styles.readOnly, { color: p.muted, backgroundColor: p.selected }]}>
-            Przestrzeń „{data.workspaces.find((w) => w.id === task.workspaceId)?.name ?? ''}” jest udostępniona Ci tylko do podglądu — zadania nie da się zmienić.
+            {scopeReadOnly
+              ? `Przestrzeń „${data.workspaces.find((w) => w.id === task.workspaceId)?.name ?? ''}” jest udostępniona Ci tylko do podglądu — zadania nie da się zmienić.`
+              : `Lista „${data.lists.find((l) => l.id === task.listId)?.name ?? ''}” jest udostępniona Ci tylko do podglądu — zadania nie da się zmienić.`}
           </Text>
         ) : null}
 

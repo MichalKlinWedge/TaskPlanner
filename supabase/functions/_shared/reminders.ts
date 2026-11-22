@@ -40,6 +40,8 @@ export interface ReminderRow {
   scope_id?: string;
   tasks: {
     id: string;
+    /** Lista zadania — przypomnienie z listy ukrytej przed autorem (gościem) nie dzwoni. */
+    list_id?: string;
     kind: string;
     status: string;
     title: string;
@@ -94,6 +96,13 @@ export function pushDevices(devices: readonly DeviceRow[], { allowHttp = false }
 export interface MembershipRow {
   scope_id: string;
   user_id: string;
+  role?: string;
+}
+
+/** Lista ukryta przed gośćmi (`lists.guest_access = 'hidden'`). */
+export interface HiddenListRow {
+  id: string;
+  scope_id: string;
 }
 
 export function planPushes(
@@ -103,7 +112,15 @@ export function planPushes(
     profiles,
     completions = [],
     memberships,
-  }: { devices: readonly DeviceRow[]; reminders: readonly ReminderRow[]; profiles: readonly ProfileRow[]; completions?: readonly CompletionRow[]; memberships?: readonly MembershipRow[] },
+    hiddenLists = [],
+  }: {
+    devices: readonly DeviceRow[];
+    reminders: readonly ReminderRow[];
+    profiles: readonly ProfileRow[];
+    completions?: readonly CompletionRow[];
+    memberships?: readonly MembershipRow[];
+    hiddenLists?: readonly HiddenListRow[];
+  },
   { now, allowHttp = false }: { now: Date | string; allowHttp?: boolean },
 ): PlannedPush[] {
   const at = new Date(now).getTime();
@@ -116,6 +133,13 @@ export function planPushes(
   for (const c of completions) habitCompletions.set(c.task_id, [...(habitCompletions.get(c.task_id) ?? []), toHabitCompletion(c)]);
 
   const member = new Set((memberships ?? []).map((m) => `${m.scope_id}:${m.user_id}`));
+  const owner = new Set((memberships ?? []).filter((m) => m.role === 'owner').map((m) => `${m.scope_id}:${m.user_id}`));
+  const hiddenScope = new Map(hiddenLists.map((l) => [l.id, l.scope_id]));
+  /** Lista ukryta przed użytkownikiem (nie jest właścicielem jej przestrzeni). */
+  const hiddenFor = (listId: string | undefined, userId: string) => {
+    const scope = listId ? hiddenScope.get(listId) : undefined;
+    return scope !== undefined && !owner.has(`${scope}:${userId}`);
+  };
 
   const plan: PlannedPush[] = [];
   for (const [userId, userDevices] of byUser) {
@@ -136,7 +160,15 @@ export function planPushes(
       }
     }
     // Współdzielona przestrzeń (v1.x): przypomnienie dzwoni u autora, dopóki należy do przestrzeni.
-    const rows = reminders.filter((r) => r.created_by === userId && r.tasks && !r.tasks.deleted_at && (!memberships || !r.scope_id || member.has(`${r.scope_id}:${userId}`)));
+    // Lista ukryta przed gościem: jego przypomnienia z niej milkną (wracają po odsłonięciu).
+    const rows = reminders.filter(
+      (r) =>
+        r.created_by === userId &&
+        r.tasks &&
+        !r.tasks.deleted_at &&
+        (!memberships || !r.scope_id || member.has(`${r.scope_id}:${userId}`)) &&
+        !hiddenFor(r.tasks.list_id, userId),
+    );
     if (!rows.length) continue;
     const tasks = new Map<string, ReminderTask>();
     for (const r of rows) {
