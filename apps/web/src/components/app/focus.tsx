@@ -55,7 +55,7 @@ import type { Route } from "@/lib/route";
 import { useAppEnv } from "./app-env";
 import { TaskItem, useTaskActions } from "./task-item";
 import { DescriptionEditor } from "./task-panel";
-import { Button, Input, navLinkClass } from "./ui";
+import { Button, Input, navLinkClass, PANEL_HEADING, PANEL_SECTION } from "./ui";
 
 type Row = Record<string, string | number | null>;
 
@@ -317,8 +317,8 @@ export function TaskTimeField({ task }: { task: ViewTask }) {
     setAdding(false);
   };
   return (
-    <section className="border-t border-[var(--line)] pt-3" aria-label="Czas pracy">
-      <h3 className="mb-2 text-xs font-semibold tracking-wide text-[var(--muted)] uppercase">Czas pracy</h3>
+    <section className={PANEL_SECTION} aria-label="Czas pracy">
+      <h3 className={PANEL_HEADING}>Czas pracy</h3>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span data-testid="task-spent">
           {spent ? `Spędzono ${formatMinutes(spent)}` : "Jeszcze bez czasu pracy"}

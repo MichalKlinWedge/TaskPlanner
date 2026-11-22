@@ -163,7 +163,7 @@ export function Shell({
           !!target?.isConnected &&
           e.button === 0 &&
           !scrollbar &&
-          !target.closest('aside[aria-label="Zadanie"], #sidebar, [role=dialog], [role=status], [data-task-id], [data-card]'),
+          !target.closest('aside[aria-label="Zadanie"], [data-task-panel], #sidebar, [role=dialog], [role=status], [data-task-id], [data-card]'),
       };
     };
     const onClick = () => {

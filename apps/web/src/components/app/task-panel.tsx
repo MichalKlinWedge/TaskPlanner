@@ -65,7 +65,7 @@ import {
   type ViewTask,
 } from "@taskplanner/core";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { listEditable } from "@/lib/app-data";
 import { useDependencies } from "@/lib/dependencies";
@@ -79,7 +79,7 @@ import { TaskTimeField } from "./focus";
 import { QuickAdd } from "./quick-add";
 import { RecurrenceEditor } from "./recurrence-editor";
 import { TaskItem, useTaskActions } from "./task-item";
-import { Button, CommitInput, IconButton, Input, navLinkClass, Select } from "./ui";
+import { Button, CommitInput, IconButton, Input, navLinkClass, PANEL_HEADING, PANEL_SECTION, Select } from "./ui";
 
 type Row = Record<string, string | number | null>;
 
@@ -109,8 +109,8 @@ function Editable({ readOnly, children }: { readOnly: boolean; children: ReactNo
 
 function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="border-t border-[var(--line)] pt-3">
-      <h3 className="mb-2 text-xs font-semibold tracking-wide text-[var(--muted)] uppercase">{title}</h3>
+    <section className={PANEL_SECTION}>
+      <h3 className={PANEL_HEADING}>{title}</h3>
       {children}
     </section>
   );
@@ -183,7 +183,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
           <TitleField key={`${task.id}:${task.title}`} value={task.title} onSave={(title) => void update({ title })} />
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="mt-3 grid grid-cols-2 gap-3 @xl:grid-cols-3">
           <Field label="Status">
             <Select value={task.status} onChange={(e) => void update(e.target.value === "done" || e.target.value === "cancelled" ? { status: e.target.value, completed_at: new Date().toISOString() } : { status: e.target.value, completed_at: null })}>
               {STATUSES.map((s) => (
@@ -705,19 +705,85 @@ function CommentsField({ task }: { task: ViewTask }) {
   );
 }
 
+const PANEL_WIDTH_KEY = "tp-task-panel-width";
+const PANEL_WIDTH = { default: 512, min: 384, max: 960 };
+
+/** Szerokość panelu (px) w granicach: nie mniej niż `min` i tak, by obok został widok (~34rem na menu i listę). */
+function clampPanelWidth(width: number) {
+  const room = typeof window === "undefined" ? PANEL_WIDTH.max : window.innerWidth - 544;
+  return Math.round(Math.max(PANEL_WIDTH.min, Math.min(width, PANEL_WIDTH.max, room)));
+}
+
+function storedPanelWidth() {
+  try {
+    const value = Number(localStorage.getItem(PANEL_WIDTH_KEY));
+    return value > 0 ? value : PANEL_WIDTH.default;
+  } catch {
+    return PANEL_WIDTH.default;
+  }
+}
+
+/**
+ * Panel po prawej (na telefonie pełny ekran). Na szerokim ekranie lewą krawędź da się przeciągnąć
+ * (albo strzałkami po jej zaznaczeniu) — szerokość zostaje w `localStorage`, dwuklik przywraca domyślną.
+ */
 function PanelFrame({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const [width, setWidth] = useState(storedPanelWidth);
+  const save = (value: number) => {
+    const next = clampPanelWidth(value);
+    setWidth(next);
+    try {
+      localStorage.setItem(PANEL_WIDTH_KEY, String(next));
+    } catch {}
+  };
+
+  const drag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const handle = event.currentTarget;
+    const startX = event.clientX;
+    const startWidth = clampPanelWidth(width);
+    handle.setPointerCapture(event.pointerId);
+    const move = (e: PointerEvent) => save(startWidth + startX - e.clientX);
+    const end = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  };
+
   return (
-    <aside
-      aria-label="Zadanie"
-      className="fixed inset-0 z-30 overflow-y-auto bg-[var(--surface)] p-4 lg:static lg:z-auto lg:w-[26rem] lg:shrink-0 lg:border-l lg:border-[var(--line)]"
-    >
-      <div className="mb-1 flex justify-end">
-        <IconButton label="Zamknij panel (Esc)" onClick={onClose}>
-          ✕
-        </IconButton>
-      </div>
-      {children}
-    </aside>
+    <div data-task-panel className="fixed inset-0 z-30 flex bg-[var(--surface)] lg:static lg:z-auto lg:shrink-0 lg:border-l lg:border-[var(--line)]">
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Szerokość panelu zadania"
+        aria-valuenow={clampPanelWidth(width)}
+        aria-valuemin={PANEL_WIDTH.min}
+        aria-valuemax={PANEL_WIDTH.max}
+        tabIndex={0}
+        title="Przeciągnij, aby zmienić szerokość (dwuklik — domyślna)"
+        className="-ml-px hidden w-1.5 shrink-0 cursor-col-resize touch-none hover:bg-[var(--accent)]/30 focus-visible:bg-[var(--accent)]/30 focus-visible:outline-none active:bg-[var(--accent)]/40 lg:block"
+        onPointerDown={drag}
+        onDoubleClick={() => save(PANEL_WIDTH.default)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+            e.preventDefault();
+            save(clampPanelWidth(width) + (e.key === "ArrowLeft" ? 32 : -32));
+          }
+        }}
+      />
+      <aside aria-label="Zadanie" className="@container min-w-0 flex-1 overflow-y-auto p-4 lg:w-[var(--tp-panel-width)] lg:flex-none lg:p-5" style={{ "--tp-panel-width": `${clampPanelWidth(width)}px` } as CSSProperties}>
+        <div className="mb-1 flex justify-end">
+          <IconButton label="Zamknij panel (Esc)" onClick={onClose}>
+            ✕
+          </IconButton>
+        </div>
+        {children}
+      </aside>
+    </div>
   );
 }
 
@@ -991,7 +1057,7 @@ function History({ taskId, lists, people }: { taskId: string; lists: Map<string,
   );
 
   return (
-    <section className="border-t border-[var(--line)] pt-3">
+    <section className={PANEL_SECTION}>
       <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="text-xs font-semibold tracking-wide text-[var(--muted)] uppercase hover:text-[var(--foreground)]">
         {open ? "▾" : "▸"} Historia zmian
       </button>

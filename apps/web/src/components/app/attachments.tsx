@@ -31,7 +31,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 
 import { useAppEnv } from "./app-env";
 import { useTaskActions } from "./task-item";
-import { Button, Input } from "./ui";
+import { Button, Input, PANEL_HEADING, PANEL_SECTION } from "./ui";
 
 // ── Kolejka i podgląd linków ─────────────────────────────────────────────────────────────────
 
@@ -244,7 +244,7 @@ export function AttachmentsField({ task, readOnly = false }: { task: ViewTask; r
 
   return (
     <section
-      className={`border-t border-[var(--line)] pt-3 ${over ? "rounded-md bg-[var(--accent)]/5 outline-2 outline-dashed outline-[var(--accent)]" : ""}`}
+      className={`${PANEL_SECTION} ${over ? "rounded-md bg-[var(--accent)]/5 outline-2 outline-dashed outline-[var(--accent)]" : ""}`}
       aria-label="Załączniki"
       onDragOver={(e) => {
         if (!readOnly && [...e.dataTransfer.types].includes("Files")) {
@@ -256,7 +256,7 @@ export function AttachmentsField({ task, readOnly = false }: { task: ViewTask; r
       onDrop={readOnly ? undefined : onDrop}
       onPaste={readOnly ? undefined : onPaste}
     >
-      <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold tracking-wide text-[var(--muted)] uppercase">
+      <h3 className={`${PANEL_HEADING} flex items-center gap-2`}>
         Załączniki
         {items.length + waiting.length ? <span className="font-normal normal-case">· {items.length + waiting.length}</span> : null}
         <span className="ml-auto flex gap-1 normal-case">
