@@ -67,7 +67,7 @@ export function PanelSection({
         {actions ? <span className="flex shrink-0 items-center gap-1 normal-case">{actions}</span> : null}
       </div>
       {collapsed ? null : (
-        <div id={bodyId} className="border-t border-[var(--line)] px-3 pt-3 pb-3">
+        <div id={bodyId} className="@container border-t border-[var(--line)] px-3 pt-3 pb-3">
           {children}
         </div>
       )}

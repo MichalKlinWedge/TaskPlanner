@@ -763,6 +763,7 @@ function CommentsField({ task }: { task: ViewTask }) {
 }
 
 const PANEL_WIDTH_KEY = "tp-task-panel-width";
+const PANEL_FULL_KEY = "tp-task-panel-full";
 const PANEL_WIDTH = { default: 512, min: 384, max: 960 };
 
 /** Szerokość panelu (px) w granicach: nie mniej niż `min` i tak, by obok został widok (~34rem na menu i listę). */
@@ -786,6 +787,20 @@ function storedPanelWidth() {
  */
 function PanelFrame({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   const [width, setWidth] = useState(storedPanelWidth);
+  // Pełny widok: panel zajmuje miejsce widoku (do menu po lewej), sekcje jako kafelki obok siebie.
+  const [full, setFull] = useState(() => {
+    try {
+      return localStorage.getItem(PANEL_FULL_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleFull = () => {
+    setFull(!full);
+    try {
+      localStorage.setItem(PANEL_FULL_KEY, full ? "0" : "1");
+    } catch {}
+  };
   const save = (value: number) => {
     const next = clampPanelWidth(value);
     setWidth(next);
@@ -812,7 +827,8 @@ function PanelFrame({ onClose, children }: { onClose: () => void; children: Reac
   };
 
   return (
-    <div data-task-panel className="fixed inset-0 z-30 flex bg-[var(--background)] lg:static lg:z-auto lg:shrink-0 lg:border-l lg:border-[var(--line)]">
+    // `data-task-panel="full"` ukrywa <main> obok (reguła `:has` w shell.tsx).
+    <div data-task-panel={full ? "full" : ""} className={`fixed inset-0 z-30 flex bg-[var(--background)] lg:static lg:z-auto lg:border-l lg:border-[var(--line)] ${full ? "lg:min-w-0 lg:flex-1" : "lg:shrink-0"}`}>
       <div
         role="separator"
         aria-orientation="vertical"
@@ -822,7 +838,7 @@ function PanelFrame({ onClose, children }: { onClose: () => void; children: Reac
         aria-valuemax={PANEL_WIDTH.max}
         tabIndex={0}
         title="Przeciągnij, aby zmienić szerokość (dwuklik — domyślna)"
-        className="-ml-px hidden w-1.5 shrink-0 cursor-col-resize touch-none hover:bg-[var(--accent)]/30 focus-visible:bg-[var(--accent)]/30 focus-visible:outline-none active:bg-[var(--accent)]/40 lg:block"
+        className={`-ml-px hidden w-1.5 shrink-0 cursor-col-resize touch-none hover:bg-[var(--accent)]/30 focus-visible:bg-[var(--accent)]/30 focus-visible:outline-none active:bg-[var(--accent)]/40 ${full ? "" : "lg:block"}`}
         onPointerDown={drag}
         onDoubleClick={() => save(PANEL_WIDTH.default)}
         onKeyDown={(e) => {
@@ -832,13 +848,29 @@ function PanelFrame({ onClose, children }: { onClose: () => void; children: Reac
           }
         }}
       />
-      <aside aria-label="Zadanie" className="@container min-w-0 flex-1 overflow-y-auto p-4 lg:w-[var(--tp-panel-width)] lg:flex-none lg:p-5" style={{ "--tp-panel-width": `${clampPanelWidth(width)}px` } as CSSProperties}>
-        <div className="mb-1 flex justify-end">
+      <aside
+        aria-label="Zadanie"
+        className={`@container min-w-0 flex-1 overflow-y-auto p-4 lg:p-5 ${full ? "" : "lg:w-[var(--tp-panel-width)] lg:flex-none"}`}
+        style={{ "--tp-panel-width": `${clampPanelWidth(width)}px` } as CSSProperties}
+      >
+        <div className="mb-1 flex justify-end gap-1">
+          <IconButton label={full ? "Zwykły panel" : "Pełny widok — wszystkie sekcje obok siebie"} className="hidden lg:inline-flex" aria-pressed={full} onClick={toggleFull}>
+            {full ? "⤡" : "⤢"}
+          </IconButton>
           <IconButton label="Zamknij panel (Esc)" onClick={onClose}>
             ✕
           </IconButton>
         </div>
-        {children}
+        {/* Kafelki: sekcje (też z <fieldset>, który znika z układu przez `contents`) zawijają się w kolumny ≥ 22rem; reszta na całą szerokość. */}
+        <div
+          className={
+            full
+              ? "lg:grid lg:grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] lg:items-start lg:gap-x-4 lg:[&>*:not(section)]:col-span-full lg:[&>fieldset]:contents lg:[&>fieldset>*:not(section)]:col-span-full"
+              : ""
+          }
+        >
+          {children}
+        </div>
       </aside>
     </div>
   );
