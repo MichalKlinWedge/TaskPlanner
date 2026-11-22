@@ -12,6 +12,7 @@ import { listEditable } from "@/lib/app-data";
 import { clampWidth, type ColumnWidths, type WidthColumn } from "@/lib/list-widths";
 
 import { useAppEnv } from "./app-env";
+import { TAG_CHIP, tagChipStyle } from "./tag-chip";
 
 // ── Akcje ────────────────────────────────────────────────────────────────────────────────────
 
@@ -378,8 +379,8 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
                 {tags.map((tag) => (
                   <span
                     key={tag.id}
-                    className="max-w-full truncate rounded-full bg-black/5 px-1.5 py-px text-[11px] dark:bg-white/10"
-                    style={tag.color ? { background: `${tag.color}26`, color: tag.color } : undefined}
+                    className={`max-w-full truncate px-1.5 py-px text-[11px] ${TAG_CHIP}`}
+                    style={tagChipStyle(tag.color)}
                     title={`@${tag.name}`}
                   >
                     {tag.name}

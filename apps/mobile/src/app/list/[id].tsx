@@ -91,9 +91,8 @@ export default function ListScreen() {
   }, [data.tasks, id, filter, today, completed, ctx]);
   const tree = sortBy === 'manual' && groupBy === 'none';
   const baseRow = rowMaker(data, today);
-  const tagNameOf = (tagId: string) => data.tags.find((t) => t.id === tagId)?.name ?? '';
   const row: typeof baseRow = (task, props) =>
-    baseRow(task, columnTags && columns.includes('tags') ? { tagNames: task.tagIds.filter((tagId) => columnTags.has(tagId)).map(tagNameOf).filter(Boolean), ...props } : props);
+    baseRow(task, columnTags && columns.includes('tags') ? { tagItems: task.tagIds.filter((tagId) => columnTags.has(tagId)).flatMap((tagId) => data.tags.find((t) => t.id === tagId) ?? []), ...props } : props);
 
   const sections: TaskSection[] = useMemo(() => {
     if (tree) {

@@ -37,7 +37,7 @@ export default function TagScreen() {
               <EditNameBar
                 name={tag.name}
                 label="Nazwa tagu"
-                color={{ value: tag.color, onChange: (color) => update({ color }) }}
+                color={{ value: tag.color, onChange: (color) => update({ color }), onClear: () => update({ color: null }) }}
                 onSave={(name) => update({ name: name.replace(/^[@#]/, '').slice(0, 60) })}
                 onDelete={() => {
                   update({ deleted_at: new Date().toISOString() });

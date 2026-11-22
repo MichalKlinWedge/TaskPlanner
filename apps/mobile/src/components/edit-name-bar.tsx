@@ -16,7 +16,7 @@ export function EditNameBar({
   name: string;
   label: string;
   /** `undefined` — bez wyboru koloru. */
-  color?: { value: string | null; onChange: (color: string) => void };
+  color?: { value: string | null; onChange: (color: string) => void; onClear?: () => void };
   onSave: (name: string) => void;
   onDelete: () => void;
   deleteTitle: string;
@@ -29,7 +29,7 @@ export function EditNameBar({
       {editing ? (
         <>
           <Field label={label} value={draft} onChangeText={setDraft} maxLength={100} autoFocus />
-          {color ? <ColorPicker value={color.value} onChange={color.onChange} /> : null}
+          {color ? <ColorPicker value={color.value} onChange={color.onChange} onClear={color.onClear} /> : null}
           <Row>
             <Button
               title="Zapisz"

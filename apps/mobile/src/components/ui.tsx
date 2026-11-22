@@ -96,11 +96,22 @@ export function ColorDot({ color, size = 12 }: { color: string | null; size?: nu
   return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color ?? 'transparent', borderWidth: 1, borderColor: color ?? p.border }} />;
 }
 
-/** Paleta kolorów z `@taskplanner/core` (`COLORS`). */
-export function ColorPicker({ value, onChange }: { value: string | null; onChange: (color: string) => void }) {
+/** Paleta kolorów z `@taskplanner/core` (`COLORS`); z `onClear` także „bez koloru” (∅). */
+export function ColorPicker({ value, onChange, onClear }: { value: string | null; onChange: (color: string) => void; onClear?: () => void }) {
   const p = usePalette();
   return (
     <View style={styles.row}>
+      {onClear ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Bez koloru"
+          accessibilityState={{ selected: !value }}
+          onPress={onClear}
+          style={[styles.swatch, styles.noColor, { borderColor: !value ? p.fg : p.border }]}
+        >
+          <Text style={{ color: p.muted, fontSize: 14 }}>∅</Text>
+        </Pressable>
+      ) : null}
       {COLORS.map((c) => (
         <Pressable
           key={c.value}
@@ -132,4 +143,5 @@ const styles = StyleSheet.create({
   chip: { borderWidth: 1, borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 },
   chipText: { fontSize: 14 },
   swatch: { width: 30, height: 30, borderRadius: 15, borderWidth: 3 },
+  noColor: { alignItems: 'center', justifyContent: 'center' },
 });

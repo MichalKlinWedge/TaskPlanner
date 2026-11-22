@@ -80,6 +80,7 @@ import { AttachmentsField } from "./attachments";
 import { TaskTimeField } from "./focus";
 import { QuickAdd } from "./quick-add";
 import { RecurrenceEditor } from "./recurrence-editor";
+import { TAG_CHIP, TagColorPicker, tagChipStyle } from "./tag-chip";
 import { TaskItem, useTaskActions } from "./task-item";
 import { PanelSection } from "./panel-section";
 import { Button, CommitInput, IconButton, Input, navLinkClass, Select } from "./ui";
@@ -966,7 +967,10 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
   const { data } = useAppEnv();
   const { run } = useTaskActions();
   const [name, setName] = useState("");
+  // Tag, któremu wybieramy kolor (klik w kropkę na chipie).
+  const [coloring, setColoring] = useState<string | null>(null);
   const byId = new Map(data.tags.map((t) => [t.id, t]));
+  const colored = coloring && task.tagIds.includes(coloring) ? byId.get(coloring) : undefined;
   const add = (event: FormEvent) => {
     event.preventDefault();
     const value = name.trim().replace(/^[@#]/, "");
@@ -978,7 +982,16 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
     <Block title="Tagi">
       <div className="flex flex-wrap items-center gap-1.5">
         {task.tagIds.map((id) => (
-          <span key={id} className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
+          <span key={id} className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs ${TAG_CHIP}`} style={tagChipStyle(byId.get(id)?.color)}>
+            <button
+              type="button"
+              aria-label={`Kolor tagu ${byId.get(id)?.name ?? ""}`}
+              aria-expanded={coloring === id}
+              title="Kolor tagu"
+              className="h-2.5 w-2.5 shrink-0 rounded-full border border-current"
+              style={{ background: byId.get(id)?.color ?? "transparent" }}
+              onClick={() => setColoring((c) => (c === id ? null : id))}
+            />
             {byId.get(id)?.name ?? "…"}
             <button
               type="button"
@@ -1002,6 +1015,19 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
           </datalist>
         </form>
       </div>
+      {colored ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs" data-testid="tag-color">
+          <span className="text-[var(--muted)]">Kolor @{colored.name}:</span>
+          <TagColorPicker
+            value={colored.color}
+            label={`Kolor tagu ${colored.name}`}
+            onChange={(color) => {
+              void run([{ table: "tags", id: colored.id, patch: { color } }]);
+              setColoring(null);
+            }}
+          />
+        </div>
+      ) : null}
     </Block>
   );
 }

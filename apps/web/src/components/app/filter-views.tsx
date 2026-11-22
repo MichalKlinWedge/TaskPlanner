@@ -4,7 +4,7 @@
  * Widok tagu i zapisanego filtra (M4) oraz „Zapisz jako filtr” z chipów dowolnego widoku. Wynik
  * liczy `applyFilter` z `core`; bez warunku statusu widać tylko otwarte zadania.
  */
-import { COLORS, filterChips, isEmptyFilter, keyBetween, plural, selectFiltered, sortTasks, tagWorkspacesPatch, uuidv7, type FilterQuery, type ViewContext, type ViewTask } from "@taskplanner/core";
+import { filterChips, isEmptyFilter, keyBetween, plural, selectFiltered, sortTasks, tagWorkspacesPatch, uuidv7, type FilterQuery, type ViewContext, type ViewTask } from "@taskplanner/core";
 import { useState, type FormEvent } from "react";
 
 import type { AppData, SavedFilter, Tag } from "@/lib/app-data";
@@ -13,6 +13,7 @@ import type { Route } from "@/lib/route";
 import { useAppEnv } from "./app-env";
 import { TaskExportButton } from "./export";
 import { FilterBar } from "./filter-bar";
+import { TagColorPicker } from "./tag-chip";
 import { TaskItem, useTaskActions } from "./task-item";
 import { Button, Input } from "./ui";
 
@@ -100,11 +101,7 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
         )}
         <span className="text-sm text-[var(--muted)]">{plural(count, ["zadanie", "zadania", "zadań"])}</span>
         <span className="flex-1" />
-        <div className="flex gap-1" role="radiogroup" aria-label="Kolor tagu">
-          {COLORS.map((c) => (
-            <button key={c.value} type="button" role="radio" aria-checked={c.value === tag.color} aria-label={c.label} title={c.label} onClick={() => void update({ color: c.value })} className="h-4 w-4 rounded-full ring-offset-1 aria-checked:ring-2 aria-checked:ring-[var(--accent)]" style={{ background: c.value }} />
-          ))}
-        </div>
+        <TagColorPicker value={tag.color} onChange={(color) => void update({ color })} />
         <Button
           kind="ghost"
           onClick={() => {

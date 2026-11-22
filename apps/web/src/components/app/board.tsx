@@ -17,6 +17,7 @@ import { listEditable, type AppData } from "@/lib/app-data";
 
 import { useAppEnv } from "./app-env";
 import { QuickAdd } from "./quick-add";
+import { TAG_CHIP, tagChipStyle } from "./tag-chip";
 import { useTaskActions } from "./task-item";
 import { Button, Input, Select } from "./ui";
 
@@ -57,7 +58,7 @@ interface ColumnEdit {
   onRemove: () => void;
 }
 
-const Card = memo(function Card({ task, column, today, tagNames, listName, progress }: { task: ViewTask; column: string; today: LocalDate; tagNames: string[]; listName?: string; progress?: { done: number; total: number } }) {
+const Card = memo(function Card({ task, column, today, tags, listName, progress }: { task: ViewTask; column: string; today: LocalDate; tags: readonly { id: string; name: string; color: string | null }[]; listName?: string; progress?: { done: number; total: number } }) {
   const { openTask, select, selectedIds } = useAppEnv();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cardId(column, task.id), data: { taskId: task.id, column } satisfies CardData });
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
@@ -81,9 +82,9 @@ const Card = memo(function Card({ task, column, today, tagNames, listName, progr
         {task.dueDate ? <span className={overdue ? "font-medium text-[var(--danger)]" : ""}>{relativeDay(task.dueDate, today)}{task.dueTime ? ` ${task.dueTime}` : ""}</span> : null}
         {task.recurrence ? <span title={describeRecurrence(task.recurrence)}>↻</span> : null}
         {progress && progress.total ? <span title="Podzadania">☑ {progress.done}/{progress.total}</span> : null}
-        {tagNames.map((n) => (
-          <span key={n} className="rounded bg-amber-100 px-1 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
-            {n}
+        {tags.map((tag) => (
+          <span key={tag.id} className={`px-1.5 ${TAG_CHIP}`} style={tagChipStyle(tag.color)}>
+            {tag.name}
           </span>
         ))}
         {listName ? <span className="truncate">{listName}</span> : null}
@@ -125,7 +126,7 @@ function Column({
   };
   const visible = column.tasks.slice(0, shown);
   const ids = useMemo(() => visible.map((t) => cardId(column.key, t.id)), [visible, column.key]);
-  const tagName = useMemo(() => new Map(data.tags.map((t) => [t.id, t.name])), [data.tags]);
+  const tagById = useMemo(() => new Map(data.tags.map((t) => [t.id, t])), [data.tags]);
   const listName = useMemo(() => new Map(data.lists.map((l) => [l.id, l.kind === "inbox" ? "Inbox" : l.name])), [data.lists]);
   const children = useMemo(() => {
     const map = new Map<string, { done: number; total: number }>();
@@ -228,7 +229,7 @@ function Column({
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <ul className="flex min-h-12 flex-col gap-1.5">
           {visible.map((t) => (
-            <Card key={t.id} task={t} column={column.key} today={today} tagNames={t.tagIds.map((id) => tagName.get(id) ?? "").filter(Boolean)} listName={showList ? listName.get(t.listId) : undefined} progress={children.get(t.id)} />
+            <Card key={t.id} task={t} column={column.key} today={today} tags={t.tagIds.flatMap((id) => tagById.get(id) ?? [])} listName={showList ? listName.get(t.listId) : undefined} progress={children.get(t.id)} />
           ))}
         </ul>
       </SortableContext>

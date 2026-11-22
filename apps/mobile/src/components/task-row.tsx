@@ -37,6 +37,8 @@ export interface TaskRowProps {
   /** Nawyk odhaczony dziś. */
   habitDone?: boolean;
   tagNames?: readonly string[];
+  /** Tagi w kolumnie „Tagi” (bąbelki w kolorze tagu); brak — z `tagNames` bez koloru. */
+  tagItems?: readonly { id: string; name: string; color: string | null }[];
   /** Dodatkowe kolumny listy (`view_prefs.columns`, kolejność `orderedColumns`) — po prawej stronie wiersza. */
   columns?: readonly ListColumn[];
 }
@@ -66,7 +68,8 @@ export function TaskColumnsHeader({ columns }: { columns: readonly ListColumn[] 
  */
 export const RowsInteractive = createContext(true);
 
-export const TaskRow = memo(function TaskRow({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, tagNames, columns }: TaskRowProps) {
+export const TaskRow = memo(function TaskRow({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, tagNames, tagItems, columns }: TaskRowProps) {
+  const tagBubbles = columns?.includes('tags') ? (tagItems ?? (tagNames ?? []).map((name) => ({ id: name, name, color: null }))) : [];
   const p = usePalette();
   const actions = useTaskActions();
   const { toggle, selected, toggleSelected } = actions;
@@ -153,10 +156,10 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
         if (c === 'tags')
           return (
             <View key={c} style={[styles.tags, { width: COLUMN_WIDTH[c], opacity: closed ? 0.5 : 1 }]}>
-              {tagNames?.length ? (
-                tagNames.map((name) => (
-                  <Text key={name} style={[styles.tag, { color: p.fg, backgroundColor: p.border }]} numberOfLines={1}>
-                    {name}
+              {tagBubbles.length ? (
+                tagBubbles.map((tag) => (
+                  <Text key={tag.id} style={[styles.tag, tag.color ? { color: tag.color, backgroundColor: `${tag.color}33` } : { color: p.fg, backgroundColor: p.border }]} numberOfLines={1}>
+                    {tag.name}
                   </Text>
                 ))
               ) : (

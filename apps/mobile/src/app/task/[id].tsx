@@ -459,7 +459,7 @@ function TagsField({ task, data }: { task: ViewTask; data: AppData }) {
           <Pill
             key={tagId}
             label={`@${byId.get(tagId)?.name ?? '…'}  ×`}
-            color="#d97706"
+            color={byId.get(tagId)?.color ?? '#d97706'}
             onPress={() => void run([{ table: 'task_tags', id: taskTagId(task.id, tagId), patch: { deleted_at: new Date().toISOString() } }])}
           />
         ))}
