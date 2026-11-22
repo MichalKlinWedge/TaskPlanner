@@ -120,6 +120,11 @@ body {
 .tp-timeline .wx-gantt {
   font-family: inherit;
 }
+/* Obudowy motywu (`Willow` / `WillowDark`) nie mają wysokości — bez tego Gantt rośnie do wszystkich
+   wierszy, ramka go ucina i nie ma przewijania w pionie (SVAR przewija `.wx-gantt`). */
+.tp-timeline .wx-theme {
+  height: 100%;
+}
 /* Postęp wynika z ukończonych zadań — bez uchwytu do przeciągania. */
 .tp-timeline .wx-progress-marker {
   display: none;
