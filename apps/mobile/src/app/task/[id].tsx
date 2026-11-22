@@ -16,7 +16,9 @@ import {
   assigneeChoices,
   assigneeOf,
   assignTaskOps,
+  attachSubtaskOps,
   canAddSubtask,
+  subtaskCandidates,
   clampLag,
   collaboratorMatches,
   collaboratorsForWorkspace,
@@ -302,7 +304,10 @@ export default function TaskScreen() {
             ))}
           </View>
           {readOnly ? null : canAddSubtask(data.tasks, task.id) ? (
-            <QuickAddField parent={{ id: task.id, listId: task.listId }} placeholder="Dodaj podzadanie" />
+            <>
+              <QuickAddField parent={{ id: task.id, listId: task.listId }} placeholder="Dodaj podzadanie" />
+              <AttachSubtask key={`sub:${task.id}`} task={task} data={data} />
+            </>
           ) : (
             <Text style={{ color: p.muted, fontSize: 12 }}>Najwyżej 4 poziomy zadań — tu nie można dodać kolejnego.</Text>
           )}
@@ -711,6 +716,73 @@ function RemindersField({ task, today }: { task: ViewTask; today: LocalDate }) {
  * (następnicy) z odstępem w dniach i naruszeniem; dodanie wyszukaniem otwartego zadania z tej samej
  * przestrzeni przez `addDependencyOps` (cykl, duplikat i inna przestrzeń są blokowane).
  */
+/** Podpięcie istniejącego zadania z tej samej listy jako podzadania (core `subtaskCandidates`), jak na webie. */
+function AttachSubtask({ task, data }: { task: ViewTask; data: AppData }) {
+  const p = usePalette();
+  const { run, notify } = useTaskActions();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const all = useMemo(() => (open ? subtaskCandidates(data.tasks, task.id) : []), [open, data.tasks, task.id]);
+  const needle = normalizeText(query.trim());
+  const candidates = (needle ? all.filter((t) => normalizeText(t.title).includes(needle)) : all).slice(0, 8);
+  const titleOf = (id: string | null) => (id ? (data.tasks.find((t) => t.id === id)?.title ?? '') : '');
+
+  const close = () => {
+    setOpen(false);
+    setQuery('');
+  };
+  const attach = (child: ViewTask) => {
+    const result = attachSubtaskOps(data.tasks, task.id, child.id);
+    if (!result) return notify('Tego zadania nie można podpiąć (cykl albo więcej niż 4 poziomy).');
+    void run(result.ops, { text: `„${child.title}” jest podzadaniem „${task.title}”`, undo: result.undo });
+    setQuery('');
+  };
+
+  if (!open) {
+    return (
+      <View style={styles.pills}>
+        <Pill label="+ Z istniejących…" color={p.accent} onPress={() => setOpen(true)} />
+      </View>
+    );
+  }
+  return (
+    <View style={{ gap: 6 }}>
+      <View style={styles.pills}>
+        <TextInput
+          autoFocus
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Szukaj zadania na tej liście"
+          placeholderTextColor={p.muted}
+          accessibilityLabel="Szukaj zadania do podpięcia"
+          returnKeyType="done"
+          onSubmitEditing={() => candidates[0] && attach(candidates[0])}
+          style={[styles.input, { flex: 1, color: p.fg, borderColor: p.border }]}
+        />
+        <Pill label="Anuluj" onPress={close} />
+      </View>
+      {candidates.map((t) => (
+        <Pressable key={t.id} accessibilityRole="button" accessibilityLabel={`Podepnij „${t.title}”`} onPress={() => attach(t)} style={[styles.candidate, { borderColor: p.border }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: p.fg, fontSize: 15 }} numberOfLines={1}>
+              {t.title}
+            </Text>
+            {t.parentId ? (
+              <Text style={{ color: p.muted, fontSize: 12 }} numberOfLines={1}>
+                ↳ {titleOf(t.parentId)}
+              </Text>
+            ) : null}
+          </View>
+          {t.dueDate ? <Text style={{ color: p.muted, fontSize: 12 }}>{shortDate(t.dueDate)}</Text> : null}
+        </Pressable>
+      ))}
+      {!candidates.length ? (
+        <Text style={{ color: p.muted, fontSize: 12 }}>{needle ? 'Brak otwartych zadań o takim tytule na tej liście.' : 'Brak zadań na tej liście, które można podpiąć.'}</Text>
+      ) : null}
+    </View>
+  );
+}
+
 function DependenciesField({ task, data }: { task: ViewTask; data: AppData }) {
   const p = usePalette();
   const { run, notify } = useTaskActions();
