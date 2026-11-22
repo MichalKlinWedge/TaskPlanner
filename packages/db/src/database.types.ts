@@ -446,12 +446,6 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
-      foreignKeyName: "scope_collaborators_collaborator_id_fkey"
-      columns: ["collaborator_id"]
-isOneToOne: false
-      referencedRelation: "collaborators"
-      referencedColumns: ["id"]
-    },{
       foreignKeyName: "scope_collaborators_scope_id_fkey"
       columns: ["scope_id"]
 isOneToOne: false
@@ -516,12 +510,6 @@ isOneToOne: false
       columns: ["scope_id"]
 isOneToOne: false
       referencedRelation: "sync_scopes"
-      referencedColumns: ["id"]
-    },{
-      foreignKeyName: "scope_tags_tag_id_fkey"
-      columns: ["tag_id"]
-isOneToOne: false
-      referencedRelation: "tags"
       referencedColumns: ["id"]
     }
                   ]
@@ -656,12 +644,6 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
-      foreignKeyName: "task_participants_collaborator_id_fkey"
-      columns: ["collaborator_id"]
-isOneToOne: false
-      referencedRelation: "collaborators"
-      referencedColumns: ["id"]
-    },{
       foreignKeyName: "task_participants_scope_id_fkey"
       columns: ["scope_id"]
 isOneToOne: false
@@ -694,12 +676,6 @@ isOneToOne: false
       referencedRelation: "sync_scopes"
       referencedColumns: ["id"]
     },{
-      foreignKeyName: "task_tags_tag_id_fkey"
-      columns: ["tag_id"]
-isOneToOne: false
-      referencedRelation: "tags"
-      referencedColumns: ["id"]
-    },{
       foreignKeyName: "task_tags_task_id_fkey"
       columns: ["task_id"]
 isOneToOne: false
@@ -720,12 +696,6 @@ isOneToOne: false
                   }
                   Relationships: [
                     {
-      foreignKeyName: "tasks_assignee_id_fkey"
-      columns: ["assignee_id"]
-isOneToOne: false
-      referencedRelation: "collaborators"
-      referencedColumns: ["id"]
-    },{
       foreignKeyName: "tasks_list_id_fkey"
       columns: ["list_id"]
 isOneToOne: false

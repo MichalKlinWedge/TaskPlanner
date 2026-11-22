@@ -31,6 +31,7 @@ import {
   taskDepth,
   taskTagOps,
   withSharedTags,
+  type SharedTagFields,
   scopeTag,
   toViewTask,
   type LocalTaskRow,
@@ -461,7 +462,7 @@ describe('widoczność tagów w przestrzeniach', () => {
 });
 
 describe('tagi innych członków przestrzeni (scope_tags)', () => {
-  const own = [
+  const own: SharedTagFields[] = [
     { id: 'own-pilne', name: 'pilne', color: null, sortKey: 'a1', workspaceIds: null },
     { id: 'own-dom', name: 'dom', color: '#16A34A', sortKey: 'a0', workspaceIds: ['w-home'] },
   ];
