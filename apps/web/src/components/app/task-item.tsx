@@ -6,7 +6,7 @@
  */
 import { assigneeOf, collaboratorBadge, columnDate, completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, LIST_COLUMN, type ListColumn, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
 import { listEditable } from "@/lib/app-data";
 
@@ -147,6 +147,8 @@ export interface TaskItemProps {
   dnd?: { ref: (el: HTMLElement | null) => void; style: CSSProperties; handle: Record<string, unknown>; dragging: boolean };
   /** Dodatkowe kolumny widoku listy (`view_prefs.columns`) — po prawej, w kolejności `LIST_COLUMN`. */
   columns?: readonly ListColumn[];
+  /** „+” przy tytule: dodanie podzadania (widok listy ustawia górne pole na to zadanie). */
+  onAddSubtask?: () => void;
 }
 
 /** Szerokości kolumn — wspólne dla wiersza i nagłówka `TaskColumnsHeader`. */
@@ -167,7 +169,7 @@ export function TaskColumnsHeader({ columns }: { columns: readonly ListColumn[] 
   );
 }
 
-export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [] }: TaskItemProps) {
+export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask }: TaskItemProps) {
   const { toggle } = useTaskActions();
   const { openTask, selectedIds, select, data } = useAppEnv();
   const selected = selectedIds.has(task.id);
@@ -180,6 +182,13 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
   // Kolumna „Koniec” / „Odpowiedzialny” zastępuje to samo w szarym wierszu pod tytułem.
+  const onOpen = (e: MouseEvent) => {
+    // Ctrl / Shift + klik — zaznaczanie wielu (operacje grupowe), zwykły klik — panel.
+    if (e.ctrlKey || e.metaKey) return select(task.id, "toggle");
+    if (e.shiftKey) return select(task.id, "range");
+    select(task.id);
+    openTask(task.id);
+  };
   const dueColumn = columns.includes("due");
   const assigneeColumn = columns.includes("assignee");
 
@@ -227,17 +236,14 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           {closed ? "✓" : ""}
         </button>
       )}
-      <button
-        type="button"
-        className="min-w-0 flex-1 cursor-pointer text-left"
+      <div
+        className="flex min-w-0 flex-1 cursor-pointer items-start gap-1"
         onClick={(e) => {
-          // Ctrl / Shift + klik — zaznaczanie wielu (operacje grupowe), zwykły klik — panel.
-          if (e.ctrlKey || e.metaKey) return select(task.id, "toggle");
-          if (e.shiftKey) return select(task.id, "range");
-          select(task.id);
-          openTask(task.id);
+          // Puste miejsce obok tytułu działa jak tytuł.
+          if (e.target === e.currentTarget) onOpen(e);
         }}
       >
+      <button type="button" className="min-w-0 cursor-pointer text-left" onClick={onOpen}>
         <span className={`block break-words ${closed ? "line-through opacity-50" : ""}`}>{task.title}</span>
         <span className="flex flex-wrap items-center gap-x-2 text-xs text-[var(--muted)]">
           {showDate && date && !dueColumn ? <span className={overdue ? "font-medium text-[var(--danger)]" : ""}>{relativeDay(date, today)}</span> : null}
@@ -266,6 +272,19 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           {listName ? <span className="truncate">{listName}</span> : null}
         </span>
       </button>
+      {onAddSubtask ? (
+        <button
+          type="button"
+          aria-label={`Dodaj podzadanie do „${task.title}”`}
+          title="Dodaj podzadanie"
+          onClick={onAddSubtask}
+          className="mt-px shrink-0 rounded px-1 text-base leading-5 font-semibold text-[var(--accent)] opacity-0 group-hover:opacity-100 hover:bg-[var(--hover)] focus:opacity-100"
+          data-testid="add-subtask"
+        >
+          +
+        </button>
+      ) : null}
+      </div>
       {columns.map((c) => (
         <span key={c} className={`${COLUMN_WIDTH[c]} mt-0.5 shrink-0 truncate text-xs ${closed ? "opacity-50" : ""}`} data-column={c}>
           {c === "assignee" ? (

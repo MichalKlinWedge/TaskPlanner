@@ -8,6 +8,7 @@
 import {
   addDays,
   buildTree,
+  canAddSubtask,
   descendants,
   capitalized,
   COMPLETED_MODE,
@@ -312,6 +313,8 @@ function ColumnsPicker({ value, onChange }: { value: readonly ListColumn[]; onCh
 export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; ctx: ViewContext; list: List; store: TabStore; toolbar?: ReactNode }) {
   const { notify } = useTaskActions();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  // „+” przy zadaniu: górne pole dodaje podzadania tego zadania, po dodaniu wraca do zwykłego trybu.
+  const [subParent, setSubParent] = useState<{ id: string; title: string } | null>(null);
   const sortBy: SortBy = list.prefs.sortBy ?? "manual";
   const groupBy: GroupBy = list.prefs.groupBy ?? "none";
   const completed: CompletedMode = list.prefs.completed ?? "today";
@@ -336,9 +339,47 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
       return next;
     });
 
+  const editable = listEditable(data, list.id);
+  const addSubtask = (task: { id: string; title: string }) => {
+    setSubParent({ id: task.id, title: task.title });
+    setCollapsed((current) => {
+      if (!current.has(task.id)) return current;
+      const next = new Set(current);
+      next.delete(task.id);
+      return next;
+    });
+    document.querySelector("[data-list-quick-add]")?.scrollIntoView({ block: "nearest" });
+  };
+  const subtaskAction = (task: { id: string; title: string; kind: string }) =>
+    editable && task.kind === "task" && canAddSubtask(data.tasks, task.id) ? () => addSubtask(task) : undefined;
+
   const listBody = (
       <>
-      {listEditable(data, list.id) ? <QuickAdd listId={list.id} placeholder={`Dodaj do „${list.name}”`} /> : <p className="text-xs text-[var(--muted)]" data-testid="list-read-only">{READONLY_LIST_NOTE}</p>}
+      {editable ? (
+        <div data-list-quick-add>
+          {subParent ? (
+            <p className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]" data-testid="subtask-context">
+              <span className="truncate">
+                ↳ Podzadanie do <strong className="font-medium text-[var(--foreground)]">„{subParent.title}”</strong>
+              </span>
+              <button type="button" className="shrink-0 rounded px-1 hover:bg-[var(--hover)]" onClick={() => setSubParent(null)} aria-label="Wróć do dodawania zadań na liście" title="Esc — wróć do dodawania na listę">
+                ✕
+              </button>
+            </p>
+          ) : null}
+          <QuickAdd
+            key={subParent?.id ?? "list"}
+            listId={list.id}
+            parent={subParent ? { id: subParent.id, listId: list.id } : undefined}
+            placeholder={subParent ? `Dodaj podzadanie do „${subParent.title}”` : `Dodaj do „${list.name}”`}
+            autoFocus={!!subParent}
+            onAdded={subParent ? (more) => !more && setSubParent(null) : undefined}
+            onCancel={subParent ? () => setSubParent(null) : undefined}
+          />
+        </div>
+      ) : (
+        <p className="text-xs text-[var(--muted)]" data-testid="list-read-only">{READONLY_LIST_NOTE}</p>
+      )}
       {!tasks.length ? <Empty>Brak zadań.</Empty> : <TaskColumnsHeader columns={columns} />}
       {rows ? (
         <SortableTaskList ids={rows.map((n) => n.task.id)}>
@@ -352,6 +393,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
               collapsed={node.children.length ? collapsed.has(node.task.id) : undefined}
               onCollapse={() => toggle(node.task.id)}
               columns={columns}
+              onAddSubtask={subtaskAction(node.task)}
             />
           ))}
         </SortableTaskList>
@@ -360,13 +402,13 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
           group.label ? (
             <Section key={group.key} title={group.label} count={group.tasks.length}>
               {group.tasks.map((t) => (
-                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} />
+                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} onAddSubtask={subtaskAction(t)} />
               ))}
             </Section>
           ) : (
             <ul key={group.key} className="divide-y divide-[var(--line)]">
               {group.tasks.map((t) => (
-                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} />
+                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} onAddSubtask={subtaskAction(t)} />
               ))}
             </ul>
           ),
