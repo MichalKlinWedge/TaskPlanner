@@ -7,12 +7,17 @@
  * aktywni podpowiadają się przy zadaniach — oraz przestrzenie, w których osoba się podpowiada (jak
  * przy tagach; żadna = wszystkie). Usunięcie zabiera osobę z uczestników, a zadania, za które
  * odpowiadała, wracają do twórcy (z cofnięciem).
+ *
+ * Niżej, tylko do odczytu: konta i zaproszenia z udostępnionych przestrzeni (`workspace_sharing`,
+ * wymaga sieci; „+ Dodaj” zakłada z nich własnego współpracownika) oraz osoby wpisane przez
+ * innych członków (`scope_collaborators`, `shared`).
  */
-import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, plural, type Collaborator } from "@taskplanner/core";
-import { useState, type FormEvent } from "react";
+import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, nameFromEmail, plural, SCOPE_ROLE, spacePeople, type Collaborator, type SpaceSharing } from "@taskplanner/core";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import type { AppData } from "@/lib/app-data";
 import { useLocalQuery } from "@/lib/local-store";
+import { workspaceSharing } from "@/lib/sharing";
 
 import { useAppEnv } from "./app-env";
 import { WorkspaceChips } from "./filter-views";
@@ -51,6 +56,10 @@ export function CollaboratorsView() {
   const [error, setError] = useState<string | null>(null);
   const people = collaboratorsByStatus(ownCollaborators(data.collaborators));
   const inactive = people.filter((c) => !isActiveCollaborator(c)).length;
+  const shared = collaboratorsByStatus(data.collaborators.filter((c) => c.shared));
+  const spaces = useSpaceSharing(data.workspaces);
+  const accounts = useMemo(() => (spaces.list ? spacePeople(spaces.list, data.collaborators) : []), [spaces.list, data.collaborators]);
+  const workspaceName = (id: string) => data.workspaces.find((w) => w.id === id)?.name;
 
   const add = (event: FormEvent) => {
     event.preventDefault();
@@ -185,8 +194,91 @@ export function CollaboratorsView() {
       ) : (
         <p className="py-6 text-sm text-[var(--muted)]">Brak współpracowników — dodaj osobę przyciskiem „+ Nowa osoba” albo wpisz nazwę w polu „+ osoba” w zadaniu.</p>
       )}
+
+      {accounts.length || spaces.error ? (
+        <section className="mt-6" aria-label="Osoby w udostępnionych przestrzeniach">
+          <h2 className="border-b border-[var(--line)] pb-1 text-sm font-semibold">Osoby w udostępnionych przestrzeniach</h2>
+          {spaces.error ? <p className="py-2 text-xs text-[var(--muted)]">{spaces.error}</p> : null}
+          <ul className="divide-y divide-[var(--line)] text-sm" data-testid="space-people">
+            {accounts.map((person) => (
+              <li key={person.email} className="flex items-center gap-3 px-1 py-2">
+                <span aria-hidden className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 px-1.5 text-[11px] font-semibold text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100">
+                  {initials(nameFromEmail(person.email) || person.email)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{person.email}</span>
+                  <span className="block text-xs text-[var(--muted)]">
+                    {person.spaces.map((s) => `${s.workspace} — ${s.pending ? `zaproszenie (${SCOPE_ROLE[s.role].toLowerCase()})` : SCOPE_ROLE[s.role].toLowerCase()}`).join(" · ")}
+                  </span>
+                </span>
+                {person.collaboratorId ? (
+                  <span className="text-xs text-[var(--muted)]">na Twojej liście</span>
+                ) : (
+                  <Button
+                    kind="ghost"
+                    title="Załóż współpracownika z tym adresem — będzie go można wskazać w zadaniach"
+                    onClick={() => {
+                      setError(null);
+                      setEditing(null);
+                      setAdding({ ...EMPTY, name: nameFromEmail(person.email), email: person.email, workspaceIds: person.spaces.map((s) => s.workspaceId) });
+                      window.scrollTo({ top: 0 });
+                    }}
+                  >
+                    + Dodaj
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {shared.length ? (
+        <section className="mt-6" aria-label="Wpisani przez innych członków przestrzeni">
+          <h2 className="border-b border-[var(--line)] pb-1 text-sm font-semibold">Wpisani przez innych członków przestrzeni</h2>
+          <p className="pt-1 text-xs text-[var(--muted)]">Można ich wskazać w zadaniach tych przestrzeni; zmienia ich osoba, która ich wpisała.</p>
+          <ul className="divide-y divide-[var(--line)] text-sm" data-testid="shared-collaborators">
+            {shared.map((person) => (
+              <li key={person.id} className={`flex items-center gap-3 px-1 py-2 ${isActiveCollaborator(person) ? "" : "opacity-60"}`}>
+                <span aria-hidden className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 px-1.5 text-[11px] font-semibold text-sky-900 dark:bg-sky-900/50 dark:text-sky-100">
+                  {collaboratorBadge(person)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium">
+                    {person.name}
+                    {isActiveCollaborator(person) ? null : <span className="ml-2 rounded bg-[var(--hover)] px-1.5 py-0.5 text-[11px] font-normal text-[var(--muted)]">nieaktywny</span>}
+                  </span>
+                  <span className="block text-xs text-[var(--muted)]">{(person.workspaceIds ?? []).map(workspaceName).filter(Boolean).join(", ")}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
   );
+}
+
+/**
+ * Członkowie i zaproszenia przestrzeni udostępnionych albo własnych (czekające zaproszenia widzi
+ * tylko właściciel). Z serwera — bez sieci komunikat zamiast listy.
+ */
+function useSpaceSharing(workspaces: AppData["workspaces"]): { list: SpaceSharing[] | null; error: string | null } {
+  const targets = workspaces.filter((w) => w.role === "owner" || (w.members ?? 1) > 1).map((w) => ({ id: w.id, name: w.name, members: w.members ?? 1 }));
+  const key = JSON.stringify(targets);
+  const [state, setState] = useState<{ key: string; list: SpaceSharing[] | null; error: string | null }>({ key: "", list: null, error: null });
+  useEffect(() => {
+    const list: { id: string; name: string }[] = JSON.parse(key);
+    if (!list.length) return;
+    let cancelled = false;
+    Promise.all(list.map(async (w): Promise<SpaceSharing> => ({ workspaceId: w.id, workspace: w.name, ...(await workspaceSharing(w.id)) })))
+      .then((result) => !cancelled && setState({ key, list: result, error: null }))
+      .catch(() => !cancelled && setState({ key, list: null, error: "Osoby z udostępnionych przestrzeni widać tylko z połączeniem z serwerem." }));
+    return () => {
+      cancelled = true;
+    };
+  }, [key]);
+  return state.key === key ? state : { list: null, error: null };
 }
 
 function PersonFields({ draft, onChange, workspaces, autoFocus }: { draft: Draft; onChange: (draft: Draft) => void; workspaces: AppData["workspaces"]; autoFocus?: boolean }) {

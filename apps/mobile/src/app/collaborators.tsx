@@ -4,9 +4,13 @@
  * znaczka przy zadaniu, status — tylko aktywni podpowiadają się przy zadaniach, przestrzenie, w których
  * osoba się podpowiada — jak przy tagach, żadna = wszystkie), usunięcie z „Cofnij”
  * (osoba znika z uczestników, zadania wracają do twórcy).
+ *
+ * Niżej, tylko do odczytu: konta i zaproszenia z udostępnionych przestrzeni (`workspace_sharing`,
+ * wymaga sieci; „+ Dodaj” wypełnia formularz nowej osoby) oraz osoby wpisane przez innych członków
+ * (`scope_collaborators`, `shared`).
  */
-import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, plural, type Collaborator } from '@taskplanner/core';
-import { useState } from 'react';
+import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, nameFromEmail, plural, SCOPE_ROLE, spacePeople, type Collaborator, type SpaceSharing } from '@taskplanner/core';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { confirm, useTaskActions } from '@/components/actions';
@@ -14,6 +18,7 @@ import { Button, Field, P, Row, Screen, Section, usePalette } from '@/components
 import { WorkspaceChips } from '@/components/workspace-chips';
 import { useAppData, type AppData } from '@/lib/app-data';
 import { useLocalQuery } from '@/lib/local-query';
+import { workspaceSharing } from '@/lib/sharing';
 import { localEngine } from '@/lib/sync';
 
 interface Usage {
@@ -51,6 +56,9 @@ export default function Collaborators() {
   const [editing, setEditing] = useState<{ id: string; draft: Draft } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const people = collaboratorsByStatus(ownCollaborators(data.collaborators));
+  const shared = collaboratorsByStatus(data.collaborators.filter((c) => c.shared));
+  const spaces = useSpaceSharing(data.workspaces);
+  const accounts = useMemo(() => (spaces.list ? spacePeople(spaces.list, data.collaborators) : []), [spaces.list, data.collaborators]);
 
   const add = () => {
     const result = collaboratorSaveOps(data.userId, data.collaborators, draft);
@@ -131,6 +139,68 @@ export default function Collaborators() {
         {!people.length ? <P muted>Brak współpracowników — dodaj osobę poniżej albo wpisz nazwę w polu „+ osoba” w zadaniu.</P> : null}
       </Section>
 
+      {accounts.length || spaces.error ? (
+        <Section title="Osoby w udostępnionych przestrzeniach">
+          {spaces.error ? <P muted>{spaces.error}</P> : null}
+          {accounts.map((person) => (
+            <View key={person.email} style={[styles.person, styles.line, { borderColor: p.border }]}>
+              <View style={[styles.badge, { backgroundColor: p.ok }]}>
+                <Text style={styles.badgeText}>{initials(nameFromEmail(person.email) || person.email)}</Text>
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ color: p.fg, fontSize: 15 }} numberOfLines={1}>
+                  {person.email}
+                </Text>
+                <Text style={{ color: p.muted, fontSize: 12 }}>
+                  {person.spaces.map((s) => `${s.workspace} — ${s.pending ? `zaproszenie (${SCOPE_ROLE[s.role].toLowerCase()})` : SCOPE_ROLE[s.role].toLowerCase()}`).join(' · ')}
+                </Text>
+              </View>
+              {person.collaboratorId ? (
+                <Text style={{ color: p.muted, fontSize: 12 }}>na liście</Text>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Dodaj ${person.email} do współpracowników`}
+                  onPress={() => {
+                    setError(null);
+                    setDraft({ ...EMPTY, name: nameFromEmail(person.email), email: person.email, workspaceIds: person.spaces.map((s) => s.workspaceId) });
+                  }}
+                  style={[styles.add, { borderColor: p.border }]}
+                >
+                  <Text style={{ color: p.accent, fontSize: 13 }}>+ Dodaj</Text>
+                </Pressable>
+              )}
+            </View>
+          ))}
+          {accounts.some((a) => !a.collaboratorId) ? <P muted>„+ Dodaj” wypełnia formularz „Nowa osoba” poniżej.</P> : null}
+        </Section>
+      ) : null}
+
+      {shared.length ? (
+        <Section title="Wpisani przez innych członków przestrzeni">
+          <P muted>Można ich wskazać w zadaniach tych przestrzeni; zmienia ich osoba, która ich wpisała.</P>
+          {shared.map((person) => (
+            <View key={person.id} style={[styles.person, styles.line, { borderColor: p.border, opacity: isActiveCollaborator(person) ? 1 : 0.55 }]}>
+              <View style={[styles.badge, { backgroundColor: p.accent }]}>
+                <Text style={styles.badgeText}>{collaboratorBadge(person)}</Text>
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ color: p.fg, fontSize: 16 }}>
+                  {person.name}
+                  {isActiveCollaborator(person) ? '' : '  · nieaktywny'}
+                </Text>
+                <Text style={{ color: p.muted, fontSize: 12 }}>
+                  {(person.workspaceIds ?? [])
+                    .map((id) => data.workspaces.find((w) => w.id === id)?.name)
+                    .filter(Boolean)
+                    .join(', ')}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </Section>
+      ) : null}
+
       <Section title="Nowa osoba">
         <PersonFields draft={draft} onChange={setDraft} workspaces={data.workspaces} />
         <Button title="Dodaj" disabled={!draft.name.trim()} onPress={add} />
@@ -138,6 +208,25 @@ export default function Collaborators() {
       </Section>
     </Screen>
   );
+}
+
+/** Członkowie i zaproszenia przestrzeni udostępnionych albo własnych — z serwera, bez sieci komunikat. */
+function useSpaceSharing(workspaces: AppData['workspaces']): { list: SpaceSharing[] | null; error: string | null } {
+  const targets = workspaces.filter((w) => w.role === 'owner' || (w.members ?? 1) > 1).map((w) => ({ id: w.id, name: w.name, members: w.members ?? 1 }));
+  const key = JSON.stringify(targets);
+  const [state, setState] = useState<{ key: string; list: SpaceSharing[] | null; error: string | null }>({ key: '', list: null, error: null });
+  useEffect(() => {
+    const list: { id: string; name: string }[] = JSON.parse(key);
+    if (!list.length) return;
+    let cancelled = false;
+    Promise.all(list.map(async (w): Promise<SpaceSharing> => ({ workspaceId: w.id, workspace: w.name, ...(await workspaceSharing(w.id)) })))
+      .then((result) => !cancelled && setState({ key, list: result, error: null }))
+      .catch(() => !cancelled && setState({ key, list: null, error: 'Osoby z udostępnionych przestrzeni widać tylko z połączeniem z serwerem.' }));
+    return () => {
+      cancelled = true;
+    };
+  }, [key]);
+  return state.key === key ? state : { list: null, error: null };
 }
 
 function PersonFields({ draft, onChange, workspaces }: { draft: Draft; onChange: (draft: Draft) => void; workspaces: AppData['workspaces'] }) {
@@ -167,4 +256,5 @@ const styles = StyleSheet.create({
   line: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   badge: { minWidth: 32, height: 32, borderRadius: 16, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
   badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  add: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
 });

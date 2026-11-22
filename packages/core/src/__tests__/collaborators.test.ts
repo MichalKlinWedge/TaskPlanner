@@ -16,9 +16,11 @@ import {
   deleteCollaboratorOps,
   findCollaborator,
   initials,
+  nameFromEmail,
   ownCollaborators,
   removeParticipantOps,
   sortCollaborators,
+  spacePeople,
   withSharedCollaborators,
   type Collaborator,
 } from '../collaborators.ts';
@@ -208,5 +210,43 @@ describe('osoby z udostępnionych przestrzeni', () => {
     const other = addParticipantByNameOps(USER, all, TASK, 'Ewa Kot', 'b0000000-0000-4000-8000-000000000009');
     expect(other.ok && other.created).toBe(true);
     expect(collaboratorSaveOps(USER, all, { name: 'Ewa Kot' }).ok).toBe(true);
+  });
+});
+
+describe('osoby z przestrzeni (konta i zaproszenia)', () => {
+  it('jedna pozycja na adres, bez siebie i wygasłych zaproszeń, z własnym wpisem', () => {
+    const people_ = spacePeople(
+      [
+        {
+          workspaceId: 'w1',
+          workspace: 'Wspólna',
+          members: [
+            { email: 'ja@x.pl', role: 'owner', me: true },
+            { email: 'Anna@Example.com', role: 'editor' },
+          ],
+          invites: [
+            { email: 'nowy@x.pl', role: 'viewer' },
+            { email: 'stary@x.pl', role: 'viewer', expired: true },
+          ],
+        },
+        { workspaceId: 'w2', workspace: 'Dom', members: [{ email: 'anna@example.com', role: 'viewer' }, { email: 'ja@x.pl', role: 'editor', me: true }] },
+      ],
+      people,
+    );
+    expect(people_.map((p) => p.email)).toEqual(['anna@example.com', 'nowy@x.pl']);
+    expect(people_[0]).toEqual({
+      email: 'anna@example.com',
+      collaboratorId: anna.id,
+      spaces: [
+        { workspaceId: 'w1', workspace: 'Wspólna', role: 'editor', pending: false },
+        { workspaceId: 'w2', workspace: 'Dom', role: 'viewer', pending: false },
+      ],
+    });
+    expect(people_[1]).toMatchObject({ collaboratorId: null, spaces: [{ pending: true, role: 'viewer' }] });
+  });
+
+  it('nazwa z adresu', () => {
+    expect(nameFromEmail('jan.kowalski@firma.pl')).toBe('Jan Kowalski');
+    expect(nameFromEmail('ola_m-n@x.pl')).toBe('Ola M N');
   });
 });

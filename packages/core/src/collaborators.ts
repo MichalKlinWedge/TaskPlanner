@@ -275,3 +275,54 @@ export function initials(name: string): string {
     .map((w) => Array.from(w)[0]!.toLocaleUpperCase('pl'))
     .join('');
 }
+
+// ── Osoby z udostępnionych przestrzeni ───────────────────────────────────────────────────────
+
+/** Członkowie i zaproszenia jednej przestrzeni (`workspace_sharing`). */
+export interface SpaceSharing {
+  workspaceId: string;
+  workspace: string;
+  members: readonly { email: string; role: 'owner' | 'editor' | 'viewer'; me?: boolean }[];
+  invites?: readonly { email: string; role: 'editor' | 'viewer'; expired?: boolean }[];
+}
+
+/** Konto (albo zaproszony adres) z przestrzeni, z rolą w każdej z nich. */
+export interface SpacePerson {
+  email: string;
+  spaces: { workspaceId: string; workspace: string; role: 'owner' | 'editor' | 'viewer'; pending: boolean }[];
+  /** Własny współpracownik z tym adresem (już na liście). */
+  collaboratorId: string | null;
+}
+
+/**
+ * Osoby z udostępnionych przestrzeni bez zalogowanego: konta członków i ważne zaproszenia, jedna
+ * pozycja na adres (bez wielkości liter), alfabetycznie; `collaboratorId` — własny wpis z tym e-mailem.
+ */
+export function spacePeople(spaces: readonly SpaceSharing[], own: readonly Collaborator[]): SpacePerson[] {
+  const byEmail = new Map<string, SpacePerson>();
+  const mine = new Map(ownCollaborators(own).filter((c) => c.email).map((c) => [c.email!.toLowerCase(), c.id]));
+  const add = (email: string, space: SpacePerson['spaces'][number]) => {
+    const key = email.trim().toLowerCase();
+    if (!key) return;
+    const person = byEmail.get(key) ?? { email: key, spaces: [], collaboratorId: mine.get(key) ?? null };
+    if (!person.spaces.some((s) => s.workspaceId === space.workspaceId)) person.spaces.push(space);
+    byEmail.set(key, person);
+  };
+  for (const space of spaces) {
+    const me = space.members.find((m) => m.me)?.email.toLowerCase();
+    for (const m of space.members) if (!m.me && m.email.toLowerCase() !== me) add(m.email, { workspaceId: space.workspaceId, workspace: space.workspace, role: m.role, pending: false });
+    for (const i of space.invites ?? []) if (!i.expired) add(i.email, { workspaceId: space.workspaceId, workspace: space.workspace, role: i.role, pending: true });
+  }
+  return [...byEmail.values()].sort((a, b) => a.email.localeCompare(b.email));
+}
+
+/** Nazwa na start z adresu: „jan.kowalski@firma.pl” → „Jan Kowalski”. */
+export function nameFromEmail(email: string): string {
+  const local = email.split('@')[0] ?? '';
+  return local
+    .split(/[._-]+/u)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toLocaleUpperCase('pl') + w.slice(1))
+    .join(' ')
+    .slice(0, 100);
+}
