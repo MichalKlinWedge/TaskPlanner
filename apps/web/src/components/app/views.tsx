@@ -18,6 +18,7 @@ import {
   groupTasks,
   habitsForDay,
   isOpen,
+  LIST_COLUMN,
   LIST_KIND,
   plural,
   progress,
@@ -33,6 +34,7 @@ import {
   withCompleted,
   type CompletedMode,
   type GroupBy,
+  type ListColumn,
   type LocalDate,
   type SortBy,
   type ViewContext,
@@ -52,7 +54,7 @@ import { DayDnd, DayDrop, DraggableTaskItem, SortableTaskItem, SortableTaskList 
 import { TaskExportButton } from "./export";
 import { HabitTodayItem } from "./habits";
 import { QuickAdd } from "./quick-add";
-import { TaskItem, useTaskActions } from "./task-item";
+import { orderedColumns, TaskColumnsHeader, TaskItem, useTaskActions } from "./task-item";
 import { Button, Select } from "./ui";
 
 export interface ViewProps {
@@ -287,12 +289,32 @@ function AddInline({ date, listId }: { date: LocalDate; listId: string }) {
 
 // ── Lista / projekt ──────────────────────────────────────────────────────────────────────────
 
+/** „Kolumny”: dodatkowe kolumny listy (odpowiedzialny, początek, koniec) zapisywane w `view_prefs.columns`. */
+function ColumnsPicker({ value, onChange }: { value: readonly ListColumn[]; onChange: (next: ListColumn[]) => void }) {
+  return (
+    <details className="relative" data-testid="list-columns">
+      <summary className="cursor-pointer list-none rounded-md border border-[var(--line)] px-2 py-1 text-xs hover:bg-[var(--hover)]">
+        Kolumny{value.length ? ` (${value.length})` : ""} ▾
+      </summary>
+      <div className="absolute z-20 mt-1 w-44 rounded-md border border-[var(--line)] bg-[var(--background)] p-2 shadow-lg">
+        {(Object.keys(LIST_COLUMN) as ListColumn[]).map((c) => (
+          <label key={c} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-[var(--hover)]">
+            <input type="checkbox" checked={value.includes(c)} onChange={(e) => onChange(orderedColumns(e.target.checked ? [...value, c] : value.filter((v) => v !== c)))} />
+            {LIST_COLUMN[c]}
+          </label>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; ctx: ViewContext; list: List; store: TabStore; toolbar?: ReactNode }) {
   const { notify } = useTaskActions();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const sortBy: SortBy = list.prefs.sortBy ?? "manual";
   const groupBy: GroupBy = list.prefs.groupBy ?? "none";
   const completed: CompletedMode = list.prefs.completed ?? "today";
+  const columns = orderedColumns(list.prefs.columns);
 
   const kanban = list.prefs.view === "kanban";
   const tasks = useMemo(() => withCompleted(data.tasks.filter((t) => t.listId === list.id), completed, ctx), [data.tasks, list.id, completed, ctx]);
@@ -316,7 +338,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
   const listBody = (
       <>
       {listEditable(data, list.id) ? <QuickAdd listId={list.id} placeholder={`Dodaj do „${list.name}”`} /> : <p className="text-xs text-[var(--muted)]" data-testid="list-read-only">{READONLY_LIST_NOTE}</p>}
-      {!tasks.length ? <Empty>Brak zadań.</Empty> : null}
+      {!tasks.length ? <Empty>Brak zadań.</Empty> : <TaskColumnsHeader columns={columns} />}
       {rows ? (
         <SortableTaskList ids={rows.map((n) => n.task.id)}>
           {rows.map((node) => (
@@ -328,6 +350,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
               progress={node.children.length ? progress(node) : undefined}
               collapsed={node.children.length ? collapsed.has(node.task.id) : undefined}
               onCollapse={() => toggle(node.task.id)}
+              columns={columns}
             />
           ))}
         </SortableTaskList>
@@ -336,13 +359,13 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
           group.label ? (
             <Section key={group.key} title={group.label} count={group.tasks.length}>
               {group.tasks.map((t) => (
-                <TaskItem key={t.id} task={t} today={ctx.today} />
+                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} />
               ))}
             </Section>
           ) : (
             <ul key={group.key} className="divide-y divide-[var(--line)]">
               {group.tasks.map((t) => (
-                <TaskItem key={t.id} task={t} today={ctx.today} />
+                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} />
               ))}
             </ul>
           ),
@@ -404,6 +427,15 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
               </option>
             ))}
           </Select>
+          <ColumnsPicker
+            value={columns}
+            onChange={(next) => {
+              const prefs = { ...list.prefs };
+              delete prefs.columns;
+              if (next.length) prefs.columns = next;
+              void store.mutate("lists", list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
+            }}
+          />
         </div>
       )}
       {toolbar}

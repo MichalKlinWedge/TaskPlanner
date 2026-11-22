@@ -85,6 +85,10 @@ describe('lista', () => {
     expect(ViewPrefs.parse({ completed: 'hidden', filter })).toEqual({ completed: 'hidden', filter });
     expect(ViewPrefs.parse({ completed: 'hidden', filter: { priorities: [] } })).toEqual({ completed: 'hidden' });
   });
+  it('kolumny listy; nieznana kolumna nie kasuje reszty ustawień', () => {
+    expect(ViewPrefs.parse({ columns: ['assignee', 'due'] })).toEqual({ columns: ['assignee', 'due'] });
+    expect(ViewPrefs.parse({ sortBy: 'due', columns: ['kolor'] })).toEqual({ sortBy: 'due' });
+  });
 });
 
 describe('pozostałe tabele', () => {

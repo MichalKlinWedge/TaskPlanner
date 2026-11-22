@@ -55,6 +55,13 @@ export const COMPLETED_MODE: Record<'hidden' | 'today' | 'all', string> = {
   all: 'Wszystkie ukończone',
 };
 
+/** Dodatkowe kolumny widoku listy, w kolejności wyświetlania. */
+export const LIST_COLUMN: Record<'assignee' | 'start' | 'due', string> = {
+  assignee: 'Odpowiedzialny',
+  start: 'Początek',
+  due: 'Koniec',
+};
+
 export const SORT_BY: Record<'manual' | 'priority' | 'due' | 'created', string> = {
   manual: 'Ręcznie',
   priority: 'Priorytet',

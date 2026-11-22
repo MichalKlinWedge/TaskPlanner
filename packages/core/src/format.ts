@@ -69,6 +69,10 @@ export const dayMonth = (date: string): string => localDate(date, { day: 'numeri
 /** „5 gru”. */
 export const shortDate = (date: string): string => localDate(date, { day: 'numeric', month: 'short' });
 
+/** „5 gru”, a spoza roku `today` — „5 gru 2027” (kolumny dat w widoku listy). */
+export const columnDate = (date: string, today: string): string =>
+  date.slice(0, 4) === today.slice(0, 4) ? shortDate(date) : localDate(date, { day: 'numeric', month: 'short', year: 'numeric' });
+
 /** „listopad 2026”: nagłówek miesiąca w kalendarzu wyboru dnia. */
 export const monthLabel = (date: string): string => localDate(date, { month: 'long', year: 'numeric' });
 

@@ -4,7 +4,7 @@
  * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
  * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { assigneeOf, collaboratorBadge, completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { assigneeOf, collaboratorBadge, columnDate, completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, LIST_COLUMN, type ListColumn, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -145,9 +145,32 @@ export interface TaskItemProps {
   habitDone?: boolean;
   /** Przeciąganie (`dnd.tsx`): element, styl przesunięcia i atrybuty uchwytu. */
   dnd?: { ref: (el: HTMLElement | null) => void; style: CSSProperties; handle: Record<string, unknown>; dragging: boolean };
+  /** Dodatkowe kolumny widoku listy (`view_prefs.columns`) — po prawej, w kolejności `LIST_COLUMN`. */
+  columns?: readonly ListColumn[];
 }
 
-export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd }: TaskItemProps) {
+/** Szerokości kolumn — wspólne dla wiersza i nagłówka `TaskColumnsHeader`. */
+const COLUMN_WIDTH: Record<ListColumn, string> = { assignee: "w-24 sm:w-36", start: "w-16 sm:w-24", due: "w-16 sm:w-24" };
+
+/** Kolumny w stałej kolejności, bez powtórzeń. */
+export const orderedColumns = (columns: readonly ListColumn[] | undefined): ListColumn[] => (Object.keys(LIST_COLUMN) as ListColumn[]).filter((c) => columns?.includes(c));
+
+/** Nagłówek kolumn nad wierszami listy. */
+export function TaskColumnsHeader({ columns }: { columns: readonly ListColumn[] }) {
+  if (!columns.length) return null;
+  return (
+    <div className="flex gap-2 border-b border-[var(--line)] pb-1 text-xs font-medium text-[var(--muted)]" data-testid="list-columns-header">
+      <span className="flex-1" />
+      {columns.map((c) => (
+        <span key={c} className={`${COLUMN_WIDTH[c]} shrink-0 truncate`}>
+          {LIST_COLUMN[c]}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [] }: TaskItemProps) {
   const { toggle } = useTaskActions();
   const { openTask, selectedIds, select, data } = useAppEnv();
   const selected = selectedIds.has(task.id);
@@ -159,6 +182,9 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
   const date = virtualDate ?? task.dueDate;
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
+  // Kolumna „Koniec” / „Odpowiedzialny” zastępuje to samo w szarym wierszu pod tytułem.
+  const dueColumn = columns.includes("due");
+  const assigneeColumn = columns.includes("assignee");
 
   return (
     <li
@@ -217,8 +243,8 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
       >
         <span className={`block break-words ${closed ? "line-through opacity-50" : ""}`}>{task.title}</span>
         <span className="flex flex-wrap items-center gap-x-2 text-xs text-[var(--muted)]">
-          {showDate && date ? <span className={overdue ? "font-medium text-[var(--danger)]" : ""}>{relativeDay(date, today)}</span> : null}
-          {task.dueTime ? <span>{task.dueTime}</span> : null}
+          {showDate && date && !dueColumn ? <span className={overdue ? "font-medium text-[var(--danger)]" : ""}>{relativeDay(date, today)}</span> : null}
+          {task.dueTime && !dueColumn ? <span>{task.dueTime}</span> : null}
           {task.recurrence ? <span title={describeRecurrence(task.recurrence)}>↻ {describeRecurrence(task.recurrence)}</span> : null}
           {needsDecision(task) && !closed ? (
             <span className="text-amber-700 dark:text-amber-300" title="Przesuwane 3 razy lub więcej — zrób, zmniejsz albo usuń">
@@ -232,7 +258,7 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           ) : null}
           {task.status === "in_progress" || task.status === "waiting" ? <span>{task.status === "in_progress" ? "w trakcie" : "oczekuje"}</span> : null}
           {attachments ? <span title={`Załączniki: ${attachments}`}>📎 {attachments}</span> : null}
-          {assignee ? (
+          {assignee && !assigneeColumn ? (
             <span className="inline-flex items-center gap-1" title={`Odpowiedzialny: ${assignee.name}`}>
               <span aria-hidden className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-100 px-1 text-[10px] font-semibold text-sky-900 dark:bg-sky-900/60 dark:text-sky-100">
                 {collaboratorBadge(assignee)}
@@ -243,6 +269,32 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           {listName ? <span className="truncate">{listName}</span> : null}
         </span>
       </button>
+      {columns.map((c) => (
+        <span key={c} className={`${COLUMN_WIDTH[c]} mt-0.5 shrink-0 truncate text-xs ${closed ? "opacity-50" : ""}`} data-column={c}>
+          {c === "assignee" ? (
+            assignee ? (
+              <span title={`Odpowiedzialny: ${assignee.name}`}>{assignee.name}</span>
+            ) : (
+              <span className="text-[var(--muted)]" title="Nikt nie jest wskazany — odpowiada twórca zadania">
+                —
+              </span>
+            )
+          ) : c === "start" ? (
+            task.startDate ? (
+              <span title={task.startDate}>{columnDate(task.startDate, today)}</span>
+            ) : (
+              <span className="text-[var(--muted)]">—</span>
+            )
+          ) : date ? (
+            <span className={overdue ? "font-medium text-[var(--danger)]" : ""} title={`${date}${task.dueTime ? ` ${task.dueTime}` : ""}`}>
+              {columnDate(date, today)}
+              {task.dueTime ? ` ${task.dueTime}` : ""}
+            </span>
+          ) : (
+            <span className="text-[var(--muted)]">—</span>
+          )}
+        </span>
+      ))}
     </li>
   );
 }

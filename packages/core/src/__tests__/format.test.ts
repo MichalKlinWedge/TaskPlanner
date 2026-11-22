@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { authErrorMessage, capitalized, compareCode, compareText, dayChip, dayLabel, dayMonth, formatMinutes, monthLabel, plural, pluralForm, quickAddChip, relativeDay, reminderOffset, shortDate } from '../format.ts';
+import { authErrorMessage, capitalized, compareCode, compareText, dayChip, dayLabel, dayMonth, formatMinutes, monthLabel, plural, pluralForm, quickAddChip, relativeDay, reminderOffset, shortDate, columnDate } from '../format.ts';
 import { parseQuickAdd } from '../quick-add.ts';
 import { AUTH_ERROR, PRIORITY, REMINDER_KIND, TASK_STATUS, WEEKDAY } from '../labels.ts';
 import { LocalTime, Priority } from '../schemas/primitives.ts';
@@ -41,6 +41,8 @@ describe('daty pływające', () => {
     expect(dayChip('2026-12-05')).toBe('sob., 5.12');
     expect(dayMonth('2026-12-05')).toBe('5 grudnia');
     expect(shortDate('2026-12-05')).toBe('5 gru');
+    expect(columnDate('2026-12-05', '2026-11-22')).toBe('5 gru');
+    expect(columnDate('2027-01-05', '2026-11-22')).toBe('5 sty 2027');
   });
 });
 

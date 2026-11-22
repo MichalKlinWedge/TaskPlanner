@@ -43,6 +43,10 @@ export type BoardColumnDef = z.infer<typeof BoardColumnDef>;
 /** Własne kolumny tablicy w kolejności wyświetlania; `null` = brak. */
 export const BoardColumns = z.array(BoardColumnDef).max(50);
 
+/** Dodatkowa kolumna widoku listy (v1.x): odpowiedzialny, początek, koniec (termin). */
+export const ListColumn = z.enum(['assignee', 'start', 'due']);
+export type ListColumn = z.infer<typeof ListColumn>;
+
 /** `lists.view_prefs`: ustawienia widoku listy (M2). */
 export const ViewPrefs = z.object({
   view: z.enum(['list', 'kanban', 'calendar', 'timeline']).optional(),
@@ -53,6 +57,8 @@ export const ViewPrefs = z.object({
   completed: CompletedMode.optional(),
   /** Filtr z chipów „+ Filtr” zapamiętany dla listy; uszkodzony nie psuje reszty ustawień. */
   filter: FilterQuery.optional().catch(undefined),
+  /** Kolumny pokazane w widoku listy (kolejność stała: `LIST_COLUMN`); uszkodzone pomijane. */
+  columns: z.array(ListColumn).max(3).optional().catch(undefined),
 });
 export type ViewPrefs = z.infer<typeof ViewPrefs>;
 
