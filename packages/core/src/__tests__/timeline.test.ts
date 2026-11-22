@@ -59,6 +59,20 @@ describe('wiersze osi', () => {
     expect(model.undated).toBe(2);
     expect(model.links.map((l) => l.id)).toEqual(['a>b']);
     expect(model.violations[0]).toMatchObject({ earliestStart: '2026-11-26', days: 1 });
+
+    // Z zadaniami bez terminu: całe drzewo, wiersze bez paska na końcu rodzeństwa; licznik bez zmian.
+    const all = timelineModel([{ id: 'p1', name: 'Remont', startDate: null, endDate: null }], tasks, [dep('a', 'b', 3)], { withUndated: true });
+    expect(all.rows.map((r) => [r.id, r.parentId, r.span?.start ?? null])).toEqual([
+      ['p1', null, '2026-11-20'],
+      ['a', 'p1', '2026-11-20'],
+      ['parent', 'p1', null],
+      ['kid', 'parent', '2026-11-24'],
+      ['kid2', 'parent', null],
+      ['b', 'p1', '2026-11-25'],
+      ['nodate', 'p1', null],
+    ]);
+    expect(all.undated).toBe(2);
+    expect(all.links).toEqual(model.links);
   });
 
   it('kolejność po dacie początku (bez paska — najwcześniejszy potomek), przy równej dacie ręczna', () => {

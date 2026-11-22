@@ -56,8 +56,13 @@ export interface TimelineModel {
   /** Zależności między zadaniami z paskiem na osi. */
   links: Dependency[];
   violations: Violation[];
-  /** Zadania projektów bez terminu (bez paska i bez podzadań z terminem) — tylko licznik. */
+  /** Zadania projektów bez terminu (bez paska i bez podzadań z terminem): poza osią, a z `withUndated` — wiersze bez paska. */
   undated: number;
+}
+
+export interface TimelineOptions {
+  /** Pokaż też zadania bez terminu (wiersze bez paska, na końcu rodzeństwa), żeby było widać całe drzewo projektu. */
+  withUndated?: boolean;
 }
 
 const isDone = (t: Pick<TimelineTask, 'status'>) => t.status === 'done';
@@ -66,9 +71,10 @@ const bySortKey = (a: TimelineTask, b: TimelineTask) => (a.sortKey < b.sortKey ?
 /**
  * Wiersze osi: projekty w podanej kolejności, pod nimi zadania i podzadania (bez nawyków i anulowanych)
  * po dacie początku paska (zadanie bez paska — najwcześniejszy początek potomków; bez dat na końcu),
- * przy równej dacie w kolejności ręcznej. Zadanie bez terminu zostaje tylko wtedy, gdy ma potomka z paskiem.
+ * przy równej dacie w kolejności ręcznej. Zadanie bez terminu zostaje tylko wtedy, gdy ma potomka z paskiem
+ * — albo zawsze z `withUndated`.
  */
-export function timelineModel(projects: readonly TimelineProject[], tasks: readonly TimelineTask[], deps: readonly Dependency[]): TimelineModel {
+export function timelineModel(projects: readonly TimelineProject[], tasks: readonly TimelineTask[], deps: readonly Dependency[], options: TimelineOptions = {}): TimelineModel {
   const projectIds = new Set(projects.map((p) => p.id));
   const all = tasks.filter((t) => t.kind === 'task' && t.status !== 'cancelled' && projectIds.has(t.listId));
   const byId = new Map(all.map((t) => [t.id, t]));
@@ -102,7 +108,7 @@ export function timelineModel(projects: readonly TimelineProject[], tasks: reado
   // Widoczne: z paskiem albo z widocznym potomkiem.
   const visible = new Set<string>();
   const mark = (t: TimelineTask): boolean => {
-    let shown = !!spans.get(t.id);
+    let shown = !!spans.get(t.id) || !!options.withUndated;
     for (const c of children.get(t.id) ?? []) if (mark(c)) shown = true;
     if (shown) visible.add(t.id);
     return shown;
@@ -138,7 +144,7 @@ export function timelineModel(projects: readonly TimelineProject[], tasks: reado
     });
     for (const t of top) walk(t, p.id, p.id);
   }
-  return { rows, links: linked.filter((d) => visible.has(d.predecessorId) && visible.has(d.successorId)), violations: found, undated: all.filter((t) => !visible.has(t.id)).length };
+  return { rows, links: linked.filter((d) => visible.has(d.predecessorId) && visible.has(d.successorId)), violations: found, undated: all.filter((t) => !startOf(t)).length };
 }
 
 /**

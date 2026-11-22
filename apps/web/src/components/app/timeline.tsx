@@ -53,6 +53,7 @@ type Scale = "day" | "week" | "month";
 const SCALE_KEY = "tp-timeline-scale";
 const CASCADE_KEY = "tp-timeline-cascade";
 const HIDDEN_KEY = "tp-timeline-hidden";
+const UNDATED_KEY = "tp-timeline-undated";
 const PROJECT = "p:";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -88,10 +89,11 @@ const SCALES: Record<Scale, { label: string; cellWidth: number; scales: IScaleCo
 };
 
 const shortDay = (d: unknown) => (d instanceof Date ? `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${String(d.getFullYear()).slice(2)}` : "");
+// Wiersz bez żadnej daty (`barless`) ma w SVAR zastępczy dzisiejszy dzień — w tabeli „—”.
 const COLUMNS: IColumnConfig[] = [
   { id: "text", header: "Zadanie", flexgrow: 1, width: 200, sort: false },
-  { id: "start", header: "Początek", width: 78, align: "center", sort: false, template: shortDay },
-  { id: "duration", header: "Dni", width: 44, align: "center", sort: false },
+  { id: "start", header: "Początek", width: 78, align: "center", sort: false, template: (v: unknown, row: object) => ("barless" in row ? "—" : shortDay(v)) },
+  { id: "duration", header: "Dni", width: 44, align: "center", sort: false, template: (v: unknown, row: object) => ("barless" in row ? "—" : String(v ?? "")) },
 ];
 
 function readStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
@@ -251,6 +253,8 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   const dark = useDark();
   const [scale, setScaleState] = useState<Scale>(() => readStored(SCALE_KEY, ["day", "week", "month"], "day"));
   const [cascade, setCascadeState] = useState(() => readStored(CASCADE_KEY, ["1", "0"], "1") === "1");
+  // Zadania bez terminu jako wiersze bez paska — widać całe drzewo projektu.
+  const [withUndated, setWithUndatedState] = useState(() => readStored(UNDATED_KEY, ["1", "0"], "1") === "1");
   const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set());
   const [hidden, setHiddenState] = useState<ReadonlySet<string>>(readHidden);
   const api = useRef<IApi | null>(null);
@@ -263,9 +267,9 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   const projects = useMemo(() => visibleProjects(allProjects, hidden), [allProjects, hidden]);
   // Ukryty widok nie przelicza osi; po powrocie przelicza ją tylko, gdy dane się zmieniły (inaczej SVAR
   // nie dostaje nowych tablic i nic nie rysuje — przełączenie < 150 ms).
-  const [cache, setCache] = useState(() => ({ projects, tasks: data.tasks, deps, model: timelineModel(projects, data.tasks, deps) }));
-  if (active && (cache.projects !== projects || cache.tasks !== data.tasks || cache.deps !== deps)) {
-    setCache({ projects, tasks: data.tasks, deps, model: timelineModel(projects, data.tasks, deps) });
+  const [cache, setCache] = useState(() => ({ projects, tasks: data.tasks, deps, withUndated, model: timelineModel(projects, data.tasks, deps, { withUndated }) }));
+  if (active && (cache.projects !== projects || cache.tasks !== data.tasks || cache.deps !== deps || cache.withUndated !== withUndated)) {
+    setCache({ projects, tasks: data.tasks, deps, withUndated, model: timelineModel(projects, data.tasks, deps, { withUndated }) });
   }
   const { model } = cache;
 
@@ -282,6 +286,10 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
     setCascadeState(on);
     remember(CASCADE_KEY, on ? "1" : "0");
   };
+  const setWithUndated = (on: boolean) => {
+    setWithUndatedState(on);
+    remember(UNDATED_KEY, on ? "1" : "0");
+  };
   const setHidden = (next: ReadonlySet<string>) => {
     setHiddenState(next);
     remember(HIDDEN_KEY, JSON.stringify([...next]));
@@ -295,10 +303,11 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   ];
   const exportSummary = () => `${plural(projects.length, ["projekt", "projekty", "projektów"])}, ${plural(model.rows.filter((r) => r.kind === "task").length, ["zadanie", "zadania", "zadań"])}, skala: ${SCALES[scale].label.toLowerCase()}`;
 
-  const ganttTasks = useMemo<ITask[]>(() => {
+  const { ganttTasks, barless } = useMemo(() => {
     const kinds = new Map(model.rows.map((r) => [r.id, r.kind]));
     // Darmowy SVAR nie ma wierszy bez dat: zadanie bez terminu (z podzadaniami z terminem) i pusty
     // projekt dostają zakres potomków albo dzisiejszy dzień — bez przeciągania (`update-task` blokuje).
+    // Wiersz bez żadnej daty (ani własnej, ani potomków) ma pasek ukryty (`barless`).
     const shown = new Map<string, Span>();
     for (const r of [...model.rows].reverse()) {
       const span = r.span ?? shown.get(r.id) ?? null;
@@ -309,8 +318,11 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
         if (!model.rows.find((x) => x.id === parentRow)?.span) shown.set(parentRow, up ? { start: up.start < span.start ? up.start : span.start, end: up.end > span.end ? up.end : span.end } : span);
       }
     }
-    return model.rows.map((r): ITask => {
+    const barless: string[] = [];
+    const ganttTasks = model.rows.map((r): ITask => {
       const id = r.kind === "project" ? `${PROJECT}${r.id}` : r.id;
+      const none = !shown.has(r.id);
+      if (none) barless.push(id);
       const parent = r.parentId ? (kinds.get(r.parentId) === "project" ? `${PROJECT}${r.parentId}` : r.parentId) : undefined;
       return {
         id,
@@ -323,8 +335,10 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
         open: !closed.has(id),
         violated: r.violated,
         done: r.done,
+        ...(none ? { barless: true } : {}),
       };
     });
+    return { ganttTasks, barless };
   }, [model.rows, closed, today]);
 
   const ganttLinks = useMemo<ILink[]>(() => model.links.map((d) => ({ id: d.id, type: "e2s", source: d.predecessorId, target: d.successorId, lag: d.lagDays })), [model.links]);
@@ -471,6 +485,7 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
     void run(result.ops, { text: `„${task.title}” przesunięte o ${plural(days, ["dzień", "dni", "dni"])}`, undo: result.undo });
   };
   const titleOf = (id: string) => data.tasks.find((t) => t.id === id)?.title ?? "?";
+  const barlessCss = barless.length ? `${barless.map((id) => `.tp-timeline .wx-bar[data-id=":${id}"]`).join(",")}{display:none}` : "";
   const linkCss = model.violations.map((v) => `.tp-timeline [data-link-id=":${v.dependency.id}"] .wx-line-draw{stroke:var(--danger);stroke-width:2px}`).join("");
   // Pasek projektu w kolorze projektu z paska bocznego (postęp pełnym kolorem, reszta jaśniej); bez koloru —
   // szary jak znacznik w pasku bocznym.
@@ -499,11 +514,15 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
           <input type="checkbox" checked={cascade} onChange={(e) => setCascade(e.target.checked)} />
           Przesuń zależne
         </label>
+        <label className="flex items-center gap-1.5 text-xs" title="Pokaż też zadania bez terminu (wiersze bez paska) — termin ustawisz w panelu zadania">
+          <input type="checkbox" checked={withUndated} onChange={(e) => setWithUndated(e.target.checked)} />
+          Bez terminu
+        </label>
         {allProjects.length ? <ProjectFilter projects={allProjects} hidden={hidden} onChange={setHidden} /> : null}
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <span className="text-xs text-[var(--muted)]">
             {projects.length === allProjects.length ? plural(projects.length, ["projekt", "projekty", "projektów"]) : `${projects.length} z ${plural(allProjects.length, ["projektu", "projektów", "projektów"])}`} · {plural(model.links.length, ["zależność", "zależności", "zależności"])}
-            {model.undated ? ` · ${plural(model.undated, ["zadanie", "zadania", "zadań"])} bez terminu poza osią` : ""}
+            {model.undated ? ` · ${plural(model.undated, ["zadanie", "zadania", "zadań"])} bez terminu${withUndated ? "" : " poza osią"}` : ""}
           </span>
           <ExportButton
             fileName={timelineFileName(today)}
@@ -537,7 +556,7 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
 
       {projects.length ? (
         <div className="h-[calc(100vh-11rem)] min-h-80 overflow-hidden rounded-md border border-[var(--line)]">
-          <style>{linkCss + projectCss}</style>
+          <style>{linkCss + projectCss + barlessCss}</style>
           <Chart tasks={ganttTasks} links={ganttLinks} scale={scale} start={range.start} end={range.end} highlight={highlight} dark={dark} init={init} />
         </div>
       ) : allProjects.length ? (
