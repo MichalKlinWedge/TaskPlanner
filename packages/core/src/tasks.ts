@@ -429,6 +429,48 @@ export function attachSubtaskOps(tasks: readonly SubtaskTask[], parentId: string
 }
 
 /**
+ * Otwarte zadania z listy `childId`, pod które można je przepiąć (z poddrzewem): bez niego samego i
+ * jego podzadań (cykl), bez obecnego rodzica, bez przekroczenia 4 poziomów.
+ */
+export function parentCandidates<T extends SubtaskTask>(tasks: readonly T[], childId: string): T[] {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const child = byId.get(childId);
+  if (!child) return [];
+  const below = new Set([childId, ...descendants(tasks, childId).map((d) => d.id)]);
+  const room = MAX_TASK_DEPTH - subtreeHeight(tasks, childId);
+  const depths = new Map<string, number>();
+  const depth = (t: T, guard = 0): number => {
+    const known = depths.get(t.id);
+    if (known !== undefined) return known;
+    const parent = t.parentId ? byId.get(t.parentId) : undefined;
+    const d = parent && guard <= MAX_TASK_DEPTH * 4 ? depth(parent, guard + 1) + 1 : 1;
+    depths.set(t.id, d);
+    return d;
+  };
+  return tasks.filter((t) => t.listId === child.listId && t.kind === 'task' && t.status !== 'done' && t.status !== 'cancelled' && t.id !== child.parentId && !below.has(t.id) && depth(t) <= room);
+}
+
+/**
+ * Przepięcie zadania (z podzadaniami) pod `parentId` albo odpięcie do zadań głównych listy (`null`) —
+ * na koniec nowego rodzeństwa, z cofnięciem. `null`, gdy się nie da (ten sam rodzic, cykl, inna
+ * lista, ponad 4 poziomy — `parentCandidates`).
+ */
+export function reparentTaskOps(tasks: readonly SubtaskTask[], childId: string, parentId: string | null): { ops: TaskOp[]; undo: TaskOp[] } | null {
+  const child = tasks.find((t) => t.id === childId);
+  if (!child || child.parentId === parentId) return null;
+  if (parentId !== null && !parentCandidates(tasks, childId).some((t) => t.id === parentId)) return null;
+  const last = tasks
+    .filter((t) => t.id !== childId && t.parentId === parentId && (parentId !== null || t.listId === child.listId))
+    .map((t) => t.sortKey)
+    .sort()
+    .at(-1);
+  return {
+    ops: [{ table: 'tasks', id: childId, patch: { parent_id: parentId, sort_key: keyBetween(last) } }],
+    undo: [{ table: 'tasks', id: childId, patch: { parent_id: child.parentId, sort_key: child.sortKey } }],
+  };
+}
+
+/**
  * Zmiana dat zadania z zachowaniem reguł wiersza (`TaskRow`): bez terminu nie ma godziny ani
  * początku; początek po terminie przesuwa się na termin.
  */

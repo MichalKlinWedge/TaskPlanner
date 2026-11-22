@@ -41,12 +41,14 @@ import {
   LIST_KIND,
   moveTaskOps,
   normalizeText,
+  parentCandidates,
   plural,
   PRIORITY,
   REMINDER_PRESETS,
   reminderOffset,
   relativeDay,
   removeDependencyOps,
+  reparentTaskOps,
   shortDate,
   skipOccurrenceOps,
   TASK_FIELD,
@@ -261,6 +263,8 @@ export function TaskPanel({ taskId }: { taskId: string }) {
           ) : null}
         </div>
 
+        {task.kind === "task" ? <ParentField key={`parent:${task.id}`} task={task} parent={parent} /> : null}
+
         <PeopleField key={`people:${task.id}`} task={task} />
 
         {task.kind === "habit" ? (
@@ -337,16 +341,12 @@ function AttachSubtask({ task }: { task: ViewTask }) {
   const { data } = useAppEnv();
   const { run, notify } = useTaskActions();
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
   const all = useMemo(() => (open ? subtaskCandidates(data.tasks, task.id) : []), [open, data.tasks, task.id]);
-  const needle = normalizeText(query.trim());
-  const candidates = (needle ? all.filter((t) => normalizeText(t.title).includes(needle)) : all).slice(0, 8);
 
   const attach = (child: ViewTask) => {
     const result = attachSubtaskOps(data.tasks, task.id, child.id);
     if (!result) return notify("Tego zadania nie można podpiąć (cykl albo więcej niż 4 poziomy).");
     void run(result.ops, { text: `„${child.title}” jest podzadaniem „${task.title}”`, undo: result.undo });
-    setQuery("");
   };
 
   if (!open) {
@@ -356,6 +356,59 @@ function AttachSubtask({ task }: { task: ViewTask }) {
       </Button>
     );
   }
+  return <TaskPicker candidates={all} onPick={attach} onClose={() => setOpen(false)} label="Szukaj zadania do podpięcia" empty="Brak zadań na tej liście, które można podpiąć." />;
+}
+
+/**
+ * Rodzic zadania: przepięcie pod inne zadanie tej listy albo odpięcie do zadań głównych (core
+ * `parentCandidates` / `reparentTaskOps`, z „Cofnij”).
+ */
+function ParentField({ task, parent }: { task: ViewTask; parent: ViewTask | undefined }) {
+  const { data } = useAppEnv();
+  const { run, notify } = useTaskActions();
+  const [open, setOpen] = useState(false);
+  const all = useMemo(() => (open ? parentCandidates(data.tasks, task.id) : []), [open, data.tasks, task.id]);
+
+  const move = (to: ViewTask | null) => {
+    const result = reparentTaskOps(data.tasks, task.id, to?.id ?? null);
+    if (!result) return notify("Tu nie można przepiąć zadania (cykl albo więcej niż 4 poziomy).");
+    void run(result.ops, { text: to ? `„${task.title}” jest podzadaniem „${to.title}”` : `„${task.title}” jest zadaniem głównym`, undo: result.undo });
+    setOpen(false);
+  };
+
+  return (
+    <Block title="Zadanie nadrzędne">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="min-w-0 flex-1 truncate" data-testid="task-parent">
+          {parent ? parent.title : <span className="text-[var(--muted)]">— (zadanie główne)</span>}
+        </span>
+        {open ? null : (
+          <Button kind="ghost" onClick={() => setOpen(true)}>
+            {parent ? "Przepnij…" : "Przypnij do zadania…"}
+          </Button>
+        )}
+        {parent ? (
+          <Button kind="ghost" onClick={() => move(null)}>
+            Odepnij
+          </Button>
+        ) : null}
+      </div>
+      {open ? <TaskPicker candidates={all} onPick={move} onClose={() => setOpen(false)} label="Szukaj zadania nadrzędnego" empty="Brak zadań na tej liście, pod które można przepiąć." /> : null}
+    </Block>
+  );
+}
+
+/** Wyszukiwarka zadania z listy kandydatów (8 pierwszych pasujących; Enter = pierwsze, Esc = zamknij). */
+function TaskPicker({ candidates: all, onPick, onClose, label, empty }: { candidates: readonly ViewTask[]; onPick: (task: ViewTask) => void; onClose: () => void; label: string; empty: string }) {
+  const { data } = useAppEnv();
+  const [query, setQuery] = useState("");
+  const needle = normalizeText(query.trim());
+  const candidates = (needle ? all.filter((t) => normalizeText(t.title).includes(needle)) : all).slice(0, 8);
+  const pick = (t: ViewTask) => {
+    onPick(t);
+    setQuery("");
+  };
+
   return (
     <div className="flex flex-col gap-1">
       <div className="flex gap-2">
@@ -364,24 +417,24 @@ function AttachSubtask({ task }: { task: ViewTask }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Szukaj zadania na tej liście"
-          aria-label="Szukaj zadania do podpięcia"
+          aria-label={label}
           className="min-w-0 flex-1"
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.stopPropagation();
-              setOpen(false);
-            } else if (e.key === "Enter" && candidates[0]) attach(candidates[0]);
+              onClose();
+            } else if (e.key === "Enter" && candidates[0]) pick(candidates[0]);
           }}
         />
-        <Button kind="ghost" onClick={() => setOpen(false)}>
+        <Button kind="ghost" onClick={onClose}>
           Anuluj
         </Button>
       </div>
       {candidates.length ? (
-        <ul className="rounded-md border border-[var(--line)] text-sm" aria-label="Zadania do podpięcia">
+        <ul className="rounded-md border border-[var(--line)] text-sm" aria-label={label}>
           {candidates.map((t) => (
             <li key={t.id}>
-              <button type="button" className="block w-full truncate px-2 py-1 text-left hover:bg-black/5 dark:hover:bg-white/10" onClick={() => attach(t)}>
+              <button type="button" className="block w-full truncate px-2 py-1 text-left hover:bg-black/5 dark:hover:bg-white/10" onClick={() => pick(t)}>
                 {t.title}
                 {t.parentId ? <span className="ml-2 text-xs text-[var(--muted)]">↳ {data.tasks.find((p) => p.id === t.parentId)?.title ?? ""}</span> : null}
                 {t.dueDate ? <span className="ml-2 text-xs text-[var(--muted)]">{shortDate(t.dueDate)}</span> : null}
@@ -390,7 +443,7 @@ function AttachSubtask({ task }: { task: ViewTask }) {
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-[var(--muted)]">{needle ? "Brak otwartych zadań o takim tytule na tej liście." : "Brak zadań na tej liście, które można podpiąć."}</p>
+        <p className="text-xs text-[var(--muted)]">{needle ? "Brak otwartych zadań o takim tytule na tej liście." : empty}</p>
       )}
     </div>
   );

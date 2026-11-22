@@ -18,8 +18,10 @@ import {
   endSeriesOps,
   moveTaskOps,
   openDescendants,
+  parentCandidates,
   quickAddTaskOps,
   reopenTaskPatch,
+  reparentTaskOps,
   restoreTaskOps,
   skipOccurrenceOps,
   tagsForWorkspace,
@@ -286,6 +288,25 @@ describe('podzadania, przenoszenie, kosz', () => {
     expect(attached.undo).toEqual([{ table: 'tasks', id: 'f', patch: { parent_id: null, sort_key: 'k5' } }]);
     expect(attachSubtaskOps(rows, 'c', 'a')).toBeNull();
     expect(attachSubtaskOps(rows, 'a', 'x')).toBeNull();
+
+    // Przepięcie „e” (1 poziom): bez obecnego rodzica „a”, zrobionego „b”, anulowanego „d”, innej listy i nawyku.
+    expect(parentCandidates(rows, 'e').map((t) => t.id)).toEqual(['c', 'f', 'g', 'h']);
+    // „c” z „d” (2 poziomy): rodzic najwyżej na 2. poziomie, bez obecnego „b” i własnego „d”.
+    expect(parentCandidates(rows, 'c').map((t) => t.id)).toEqual(['a', 'e', 'f', 'g', 'h']);
+    expect(parentCandidates(rows, 'a')).toEqual([]);
+
+    const moved = reparentTaskOps(rows, 'e', 'g')!;
+    expect(moved.ops[0]!.patch.parent_id).toBe('g');
+    expect((moved.ops[0]!.patch.sort_key as string) > 'k7').toBe(true);
+    expect(moved.undo).toEqual([{ table: 'tasks', id: 'e', patch: { parent_id: 'a', sort_key: 'k4' } }]);
+    // Odpięcie: na koniec zadań głównych tej listy (bez „x” z innej listy).
+    const detached = reparentTaskOps(rows, 'c', null)!;
+    expect(detached.ops[0]!.patch.parent_id).toBeNull();
+    expect((detached.ops[0]!.patch.sort_key as string) > 'ka').toBe(true);
+    expect(reparentTaskOps(rows, 'e', 'a')).toBeNull();
+    expect(reparentTaskOps(rows, 'c', 'd')).toBeNull();
+    expect(reparentTaskOps(rows, 'f', null)).toBeNull();
+    expect(reparentTaskOps(rows, 'e', 'x')).toBeNull();
   });
 
   it('daty: bez terminu nie ma godziny ani początku, początek nie po terminie', () => {

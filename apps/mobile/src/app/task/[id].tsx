@@ -41,12 +41,14 @@ import {
   manualEntryOps,
   moveTaskOps,
   normalizeText,
+  parentCandidates,
   plural,
   PRIORITY,
   REMINDER_PRESETS,
   reminderOffset,
   relativeDay,
   removeDependencyOps,
+  reparentTaskOps,
   shortDate,
   skipOccurrenceOps,
   TASK_STATUS,
@@ -286,6 +288,7 @@ export default function TaskScreen() {
             ) : null}
           </View>
 
+          {task.kind === 'task' ? <ParentField key={`parent:${task.id}`} task={task} data={data} parent={parent} /> : null}
           <PeopleField key={`people:${task.id}`} task={task} data={data} />
           <RecurrenceField key={`rec:${task.id}`} task={task} data={data} today={today} timeZone={data.settings.timeZone} onSave={(patch) => void update(patch)} />
           <TimeField task={task} />
@@ -724,21 +727,12 @@ function AttachSubtask({ task, data }: { task: ViewTask; data: AppData }) {
   const p = usePalette();
   const { run, notify } = useTaskActions();
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
   const all = useMemo(() => (open ? subtaskCandidates(data.tasks, task.id) : []), [open, data.tasks, task.id]);
-  const needle = normalizeText(query.trim());
-  const candidates = (needle ? all.filter((t) => normalizeText(t.title).includes(needle)) : all).slice(0, 8);
-  const titleOf = (id: string | null) => (id ? (data.tasks.find((t) => t.id === id)?.title ?? '') : '');
 
-  const close = () => {
-    setOpen(false);
-    setQuery('');
-  };
   const attach = (child: ViewTask) => {
     const result = attachSubtaskOps(data.tasks, task.id, child.id);
     if (!result) return notify('Tego zadania nie można podpiąć (cykl albo więcej niż 4 poziomy).');
     void run(result.ops, { text: `„${child.title}” jest podzadaniem „${task.title}”`, undo: result.undo });
-    setQuery('');
   };
 
   if (!open) {
@@ -748,6 +742,63 @@ function AttachSubtask({ task, data }: { task: ViewTask; data: AppData }) {
       </View>
     );
   }
+  return <TaskPicker data={data} candidates={all} onPick={attach} onClose={() => setOpen(false)} label="Szukaj zadania do podpięcia" verb="Podepnij" empty="Brak zadań na tej liście, które można podpiąć." />;
+}
+
+/**
+ * Rodzic zadania, jak na webie: przepięcie pod inne zadanie tej listy albo odpięcie do zadań głównych
+ * (core `parentCandidates` / `reparentTaskOps`, z „Cofnij”).
+ */
+function ParentField({ task, data, parent }: { task: ViewTask; data: AppData; parent: ViewTask | undefined }) {
+  const p = usePalette();
+  const { run, notify } = useTaskActions();
+  const [open, setOpen] = useState(false);
+  const all = useMemo(() => (open ? parentCandidates(data.tasks, task.id) : []), [open, data.tasks, task.id]);
+
+  const move = (to: ViewTask | null) => {
+    const result = reparentTaskOps(data.tasks, task.id, to?.id ?? null);
+    if (!result) return notify('Tu nie można przepiąć zadania (cykl albo więcej niż 4 poziomy).');
+    void run(result.ops, { text: to ? `„${task.title}” jest podzadaniem „${to.title}”` : `„${task.title}” jest zadaniem głównym`, undo: result.undo });
+    setOpen(false);
+  };
+
+  return (
+    <Block title="Zadanie nadrzędne">
+      <Text style={{ color: parent ? p.fg : p.muted, fontSize: 15 }} numberOfLines={2}>
+        {parent ? parent.title : '— (zadanie główne)'}
+      </Text>
+      {open ? (
+        <TaskPicker data={data} candidates={all} onPick={move} onClose={() => setOpen(false)} label="Szukaj zadania nadrzędnego" verb="Przepnij pod" empty="Brak zadań na tej liście, pod które można przepiąć." />
+      ) : (
+        <View style={styles.pills}>
+          <Pill label={parent ? 'Przepnij…' : 'Przypnij do zadania…'} color={p.accent} onPress={() => setOpen(true)} />
+          {parent ? <Pill label="Odepnij" onPress={() => move(null)} /> : null}
+        </View>
+      )}
+    </Block>
+  );
+}
+
+/** Wyszukiwarka zadania z listy kandydatów (8 pierwszych pasujących; „Gotowe” na klawiaturze = pierwsze). */
+function TaskPicker({ data, candidates: all, onPick, onClose, label, verb, empty }: {
+  data: AppData;
+  candidates: readonly ViewTask[];
+  onPick: (task: ViewTask) => void;
+  onClose: () => void;
+  label: string;
+  verb: string;
+  empty: string;
+}) {
+  const p = usePalette();
+  const [query, setQuery] = useState('');
+  const needle = normalizeText(query.trim());
+  const candidates = (needle ? all.filter((t) => normalizeText(t.title).includes(needle)) : all).slice(0, 8);
+  const titleOf = (id: string | null) => (id ? (data.tasks.find((t) => t.id === id)?.title ?? '') : '');
+  const pick = (t: ViewTask) => {
+    onPick(t);
+    setQuery('');
+  };
+
   return (
     <View style={{ gap: 6 }}>
       <View style={styles.pills}>
@@ -757,15 +808,15 @@ function AttachSubtask({ task, data }: { task: ViewTask; data: AppData }) {
           onChangeText={setQuery}
           placeholder="Szukaj zadania na tej liście"
           placeholderTextColor={p.muted}
-          accessibilityLabel="Szukaj zadania do podpięcia"
+          accessibilityLabel={label}
           returnKeyType="done"
-          onSubmitEditing={() => candidates[0] && attach(candidates[0])}
+          onSubmitEditing={() => candidates[0] && pick(candidates[0])}
           style={[styles.input, { flex: 1, color: p.fg, borderColor: p.border }]}
         />
-        <Pill label="Anuluj" onPress={close} />
+        <Pill label="Anuluj" onPress={onClose} />
       </View>
       {candidates.map((t) => (
-        <Pressable key={t.id} accessibilityRole="button" accessibilityLabel={`Podepnij „${t.title}”`} onPress={() => attach(t)} style={[styles.candidate, { borderColor: p.border }]}>
+        <Pressable key={t.id} accessibilityRole="button" accessibilityLabel={`${verb} „${t.title}”`} onPress={() => pick(t)} style={[styles.candidate, { borderColor: p.border }]}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: p.fg, fontSize: 15 }} numberOfLines={1}>
               {t.title}
@@ -779,9 +830,7 @@ function AttachSubtask({ task, data }: { task: ViewTask; data: AppData }) {
           {t.dueDate ? <Text style={{ color: p.muted, fontSize: 12 }}>{shortDate(t.dueDate)}</Text> : null}
         </Pressable>
       ))}
-      {!candidates.length ? (
-        <Text style={{ color: p.muted, fontSize: 12 }}>{needle ? 'Brak otwartych zadań o takim tytule na tej liście.' : 'Brak zadań na tej liście, które można podpiąć.'}</Text>
-      ) : null}
+      {!candidates.length ? <Text style={{ color: p.muted, fontSize: 12 }}>{needle ? 'Brak otwartych zadań o takim tytule na tej liście.' : empty}</Text> : null}
     </View>
   );
 }
