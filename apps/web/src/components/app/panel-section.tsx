@@ -6,6 +6,7 @@
  * zostaje dla użytkownika między zadaniami, kartami i urządzeniami. Zwinięta sekcja nie renderuje
  * treści (np. historia nie pobiera się, dopóki jej nie rozwiniesz).
  */
+import { TASK_SECTION_ICON } from "@taskplanner/core";
 import type { HTMLAttributes, ReactNode } from "react";
 
 import { useAppEnv } from "./app-env";
@@ -61,6 +62,11 @@ export function PanelSection({
           <span aria-hidden className={`inline-block w-3 text-[var(--muted)] transition-transform ${collapsed ? "" : "rotate-90"}`}>
             ▸
           </span>
+          {TASK_SECTION_ICON[id] ? (
+            <span aria-hidden className="text-sm leading-none normal-case">
+              {TASK_SECTION_ICON[id]}
+            </span>
+          ) : null}
           <span className="truncate">{title}</span>
           {count !== undefined && count !== null && count !== "" ? <span className="font-normal text-[var(--muted)] normal-case">· {count}</span> : null}
         </button>

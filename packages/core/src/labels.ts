@@ -266,3 +266,24 @@ export const ERROR_KIND: Record<'error' | 'unhandled' | 'render' | 'sync' | 'rej
   sync: 'Synchronizacja',
   rejected: 'Odrzucona zmiana',
 };
+
+/**
+ * Ikony sekcji panelu zadania (web) i ekranu zadania (telefon) — klucz = id sekcji (`PanelSection`),
+ * ten sam co w `settings.taskPanel.collapsed`.
+ */
+export const TASK_SECTION_ICON: Record<string, string> = {
+  details: '📋',
+  'Zadanie nadrzędne': '🗂️',
+  Osoby: '👥',
+  Nawyk: '🌱',
+  Powtarzanie: '🔁',
+  Tagi: '🏷️',
+  Przypomnienia: '🔔',
+  Opis: '📝',
+  Podzadania: '☑️',
+  attachments: '📎',
+  time: '⏱️',
+  Zależności: '🔗',
+  Komentarze: '💬',
+  history: '🕘',
+};

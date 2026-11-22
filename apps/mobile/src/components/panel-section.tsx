@@ -4,6 +4,7 @@
  * kluczami co na webie, więc zostaje między zadaniami i synchronizuje się z innymi urządzeniami.
  * Zwinięta sekcja nie renderuje treści.
  */
+import { TASK_SECTION_ICON } from '@taskplanner/core';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 
@@ -62,6 +63,11 @@ export function PanelSection({
           style={({ pressed }) => [styles.toggle, { opacity: pressed ? 0.6 : 1 }]}
         >
           <Text style={[styles.chevron, { color: p.muted, transform: [{ rotate: collapsed ? '0deg' : '90deg' }] }]}>▸</Text>
+          {TASK_SECTION_ICON[id] ? (
+            <Text accessibilityElementsHidden importantForAccessibility="no" style={styles.icon}>
+              {TASK_SECTION_ICON[id]}
+            </Text>
+          ) : null}
           <Text style={[styles.title, { color: p.fg }]} numberOfLines={1}>
             {title.toUpperCase()}
           </Text>
@@ -79,6 +85,7 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', minHeight: 44, paddingRight: 8 },
   toggle: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingLeft: 12, alignSelf: 'stretch' },
   chevron: { width: 12, fontSize: 12 },
+  icon: { fontSize: 15 },
   title: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5, opacity: 0.8, flexShrink: 1 },
   right: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   body: { padding: 12, gap: 8 },
