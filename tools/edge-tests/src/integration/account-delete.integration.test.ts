@@ -1,6 +1,7 @@
 /**
  * v1.x — `account-delete`: potwierdzenie adresem, potem kalendarz (z sekretem w Vault), pliki w
- * Storage i konto z całą kaskadą danych znikają; cudze konto zostaje nietknięte.
+ * Storage i konto z całą kaskadą danych znikają; cudze konto zostaje nietknięte. Tag i osoba usuwanego
+ * konta użyte w cudzej przestrzeni nie blokują usunięcia — właściciel dostaje je jako usunięte.
  */
 import { uuidv7 } from '@taskplanner/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -13,17 +14,24 @@ const db = adminClient();
 let user: TestUser;
 let other: TestUser;
 let taskId: string;
+let otherTaskId: string;
 let secretId: string;
+const tagId = uuidv7();
+const collaboratorId = uuidv7();
+const taskTagId = uuidv7();
 
 const ICS = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'X-WR-CALNAME:Usuwany', 'BEGIN:VEVENT', 'UID:jeden@usuwany', 'DTSTART:20261125T090000Z',
   'DTEND:20261125T100000Z', 'SUMMARY:Spotkanie', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
 
+const push = async (u: TestUser, ops: { table: string; id: string; set: Record<string, unknown> }[]) => {
+  const hlc = `${String(Date.now()).padStart(15, '0')}:00001:test`;
+  const { data, error } = await u.client.rpc('push_changes', { p_ops: ops.map((o) => ({ op: uuidv7(), ...o, hlc })) });
+  if (error || data.rejected.length) throw new Error(`push: ${error?.message ?? JSON.stringify(data.rejected)}`);
+};
+
 const pushTask = async (u: TestUser, listId: string) => {
   const id = uuidv7();
-  const { data, error } = await u.client.rpc('push_changes', {
-    p_ops: [{ op: uuidv7(), table: 'tasks', id, set: { list_id: listId, title: 'Do usunięcia' }, hlc: `${String(Date.now()).padStart(15, '0')}:00001:test` }],
-  });
-  if (error || data.rejected.length) throw new Error(`task: ${error?.message ?? JSON.stringify(data.rejected)}`);
+  await push(u, [{ table: 'tasks', id, set: { list_id: listId, title: 'Do usunięcia' } }]);
   return id;
 };
 
@@ -32,7 +40,15 @@ beforeAll(async () => {
   [user, other] = await Promise.all([createUser('usun'), createUser('zostaje')]);
   const [ws, otherWs] = await Promise.all([createWorkspace(user, 'Usuwana'), createWorkspace(other, 'Zostaje')]);
   taskId = await pushTask(user, ws.inbox);
-  await pushTask(other, otherWs.inbox);
+  otherTaskId = await pushTask(other, otherWs.inbox);
+  // Usuwany jest gościem w przestrzeni drugiego konta: przypina tam swój tag i wskazuje swoją osobę.
+  sql(`insert into public.scope_members (scope_id, user_id, role) values ('${otherWs.id}', '${user.id}', 'editor')`);
+  await push(user, [
+    { table: 'tags', id: tagId, set: { name: 'gościa' } },
+    { table: 'collaborators', id: collaboratorId, set: { name: 'Gustaw' } },
+    { table: 'tasks', id: otherTaskId, set: { assignee_id: collaboratorId } },
+    { table: 'task_tags', id: taskTagId, set: { task_id: otherTaskId, tag_id: tagId } },
+  ]);
   const upload = await user.client.storage.from('attachments').upload(`${user.id}/${taskId}/notatka.txt`, new Blob(['treść']), { contentType: 'text/plain' });
   expect(upload.error).toBeNull();
   fake.setIcs('usuwany', ICS);
@@ -69,5 +85,11 @@ describe('account-delete', () => {
 
     expect(count(`select count(*) from auth.users where id = '${other.id}'`)).toBe(1);
     expect(count(`select count(*) from public.tasks where created_by = '${other.id}'`)).toBe(1);
+    // Tag i osoba usuniętego w cudzej przestrzeni: nagrobki z nową wersją zamiast błędu klucza obcego.
+    expect(count(`select count(*) from public.task_tags where id = '${taskTagId}' and deleted_at is not null`)).toBe(1);
+    expect(count(`select count(*) from public.tasks where id = '${otherTaskId}' and assignee_id is null`)).toBe(1);
+    expect(count(`select count(*) from public.scope_tags where tag_id = '${tagId}' and deleted_at is null`)).toBe(0);
+    expect(count(`select count(*) from public.scope_collaborators where collaborator_id = '${collaboratorId}' and deleted_at is null`)).toBe(0);
+    expect(count(`select count(*) from public.scope_tags where tag_id = '${tagId}'`)).toBe(1);
   });
 });
