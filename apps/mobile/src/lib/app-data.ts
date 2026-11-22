@@ -37,6 +37,9 @@ export interface List {
   projectStatus: ProjectStatus | null;
   /** Własne kolumny tablicy listy (tryb „Własne”, core `boardColumnDefs`). */
   boardColumns: BoardColumnDef[];
+  /** Daty projektu (`kind = 'project'`, oś czasu). */
+  startDate: LocalDate | null;
+  endDate: LocalDate | null;
   /** Dostęp gości współdzielonej przestrzeni (`lists.guest_access`). */
   guestAccess: GuestAccess;
 }
@@ -151,7 +154,7 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
   const queried = Date.now();
   const [workspaces, lists, tags, filters, collaborators, entries, habits] = await Promise.all([
     db.all<SqlRow>('select w.id, w.name, w.color, w.sort_key, s.role from workspaces w left join _scopes s on s.id = w.id where w.deleted_at is null and w.archived_at is null'),
-    db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs, project_status, board_columns, guest_access from lists where deleted_at is null and archived_at is null'),
+    db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs, project_status, board_columns, guest_access, start_date, end_date from lists where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, name, color, sort_key, workspace_ids from tags where deleted_at is null'),
     db.all<SqlRow>('select id, name, icon, query, sort_key from saved_filters where deleted_at is null'),
     db.all<SqlRow>('select id, name, email, acronym, archived_at, workspace_ids from collaborators where deleted_at is null'),
@@ -175,6 +178,8 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
         prefs: prefs.success ? prefs.data : {},
         projectStatus: (r.project_status as ProjectStatus | null) ?? null,
         boardColumns: boardColumnDefs(r.board_columns),
+        startDate: (r.start_date as LocalDate | null) ?? null,
+        endDate: (r.end_date as LocalDate | null) ?? null,
         guestAccess: (r.guest_access as GuestAccess | null) ?? 'edit',
       };
     })

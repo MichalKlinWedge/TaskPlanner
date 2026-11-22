@@ -30,6 +30,7 @@ import {
   timelineFileName,
   timelineGridSheet,
   timelineModel,
+  timelineRowSpans,
   timelineSheet,
   visibleProjects,
   type Dependency,
@@ -308,16 +309,7 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
     // Darmowy SVAR nie ma wierszy bez dat: zadanie bez terminu (z podzadaniami z terminem) i pusty
     // projekt dostają zakres potomków albo dzisiejszy dzień — bez przeciągania (`update-task` blokuje).
     // Wiersz bez żadnej daty (ani własnej, ani potomków) ma pasek ukryty (`barless`).
-    const shown = new Map<string, Span>();
-    for (const r of [...model.rows].reverse()) {
-      const span = r.span ?? shown.get(r.id) ?? null;
-      if (span) shown.set(r.id, span);
-      if (span && r.parentId) {
-        const up = shown.get(r.parentId);
-        const parentRow = r.parentId;
-        if (!model.rows.find((x) => x.id === parentRow)?.span) shown.set(parentRow, up ? { start: up.start < span.start ? up.start : span.start, end: up.end > span.end ? up.end : span.end } : span);
-      }
-    }
+    const shown = timelineRowSpans(model.rows);
     const barless: string[] = [];
     const ganttTasks = model.rows.map((r): ITask => {
       const id = r.kind === "project" ? `${PROJECT}${r.id}` : r.id;

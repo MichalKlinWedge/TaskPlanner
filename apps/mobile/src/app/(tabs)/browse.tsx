@@ -87,6 +87,7 @@ export default function BrowseScreen() {
         <Item title="Nawyki" hint="Passa, regularność, historia" href="/habits" />
         {data.settings.focus.enabled ? <Item title="Skupienie" hint="Pomodoro i stoper, czas pracy" href="/focus" /> : null}
         <Item title="Tablica" hint="Kanban bieżącej przestrzeni" href="/board" />
+        <Item title="Oś czasu" hint="Projekty i zadania na osi dni, tygodni, miesięcy" href="/timeline" />
         <Item title="Przegląd dnia" hint="Zaległe i dzisiejsze — gesty na karcie" href="/review/daily" />
         <Item title="Przegląd tygodnia" hint="Inbox, projekty, oczekujące, tydzień, nawyki" href="/review/weekly" />
       </Group>

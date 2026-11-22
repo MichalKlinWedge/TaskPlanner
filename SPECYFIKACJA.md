@@ -641,7 +641,7 @@ Stan po bramce decyzyjnej (19.11.2026): wszystkie zatwierdzone.
 | D4 | Format opisu | **Markdown** (TipTap 3 + `@tiptap/markdown` na webie, potwierdzone w PoC-5; decyzja 2026-11-19) |
 | D5 | Składnia szybkiego dodawania | **`#` = lista/projekt/przestrzeń, w razie braku — tag; `@` = zawsze tag**; `!1–!4` priorytet; `~` czas trwania; `^` przypomnienie (decyzja 2026-11-19) |
 | D6 | Statusy kanbanu | **Stałe 5 statusów** w v1.0; własne kolumny statusów w v1.x (decyzja 2026-11-19) |
-| D7 | Zakres telefonu | **Pełna edycja + kalendarz dnia/tygodnia**; oś czasu (Gantt) tylko na webie; kanban na telefonie uproszczony (decyzja 2026-11-19) |
+| D7 | Zakres telefonu | **Pełna edycja + kalendarz dnia/tygodnia**; oś czasu (Gantt) do edycji tylko na webie, na telefonie podgląd osi bez przeciągania (zmiana 2026-11-22); kanban na telefonie uproszczony (decyzja 2026-11-19) |
 | D8 | Kalendarz firmowy (spotkania) | **Google** (decyzja 2026-11-18): dwukierunkowa synchronizacja z Google Calendar; ICS i kalendarz telefonu jako odczyt dla pozostałych; Microsoft 365 dopiero w v1.x |
 | D9 | Domena dla adresu e-mail | **E-mail → Inbox przesunięte do v1.x** (decyzja 2026-11-18) — wymaga domeny z DNS w Cloudflare; do tego czasu przechwytywanie przez udostępnianie z telefonu i Web Share Target (M19) |
 | D10 | Projekt Supabase | **Osobny projekt na osobnym koncie** Supabase (Free, decyzja 2026-11-18) — limit 2 aktywnych projektów konta ExpeditionPlan nie dotyczy Task Plannera |

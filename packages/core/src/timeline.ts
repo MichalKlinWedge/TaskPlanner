@@ -148,6 +148,24 @@ export function timelineModel(projects: readonly TimelineProject[], tasks: reado
 }
 
 /**
+ * Zakres rysowany dla wiersza: własny pasek, a wiersz bez niego (zadanie bez terminu, projekt bez dat
+ * i zadań z terminem) — zakres widocznych potomków. Brak wpisu = wiersz bez paska.
+ */
+export function timelineRowSpans(rows: readonly TimelineRow[]): Map<string, Span> {
+  const own = new Map(rows.map((r) => [r.id, r.span]));
+  const shown = new Map<string, Span>();
+  for (const r of [...rows].reverse()) {
+    const span = r.span ?? shown.get(r.id) ?? null;
+    if (!span) continue;
+    shown.set(r.id, span);
+    if (!r.parentId || own.get(r.parentId)) continue;
+    const up = shown.get(r.parentId);
+    shown.set(r.parentId, up ? { start: up.start < span.start ? up.start : span.start, end: up.end > span.end ? up.end : span.end } : span);
+  }
+  return shown;
+}
+
+/**
  * Projekty widoczne na osi: wszystkie poza ukrytymi w filtrze (nowy projekt jest więc od razu widoczny).
  * Ukryte id, których już nie ma, nie przeszkadzają.
  */

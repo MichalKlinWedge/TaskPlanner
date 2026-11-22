@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { addDays } from '../dates.ts';
 import { violations, type Dependency } from '../dependencies.ts';
 import type { TaskOp } from '../tasks.ts';
-import { addDependencyOps, dependencyErrorText, projectFilterLabel, removeDependencyOps, shiftProjectOps, taskLinks, timelineChangeOps, timelineFileName, timelineGridSheet, timelineModel, timelinePeriods, timelineSheet, visibleProjects, lighten, type TimelineProject, type TimelineTask } from '../timeline.ts';
+import { addDependencyOps, dependencyErrorText, projectFilterLabel, removeDependencyOps, shiftProjectOps, taskLinks, timelineChangeOps, timelineFileName, timelineGridSheet, timelineModel, timelinePeriods, timelineRowSpans, timelineSheet, visibleProjects, lighten, type TimelineProject, type TimelineTask } from '../timeline.ts';
 
 const W = 'ws-1';
 const task = (id: string, startDate: string | null, dueDate: string | null, over: Partial<TimelineTask> = {}): TimelineTask => ({
@@ -73,6 +73,11 @@ describe('wiersze osi', () => {
     ]);
     expect(all.undated).toBe(2);
     expect(all.links).toEqual(model.links);
+    const spans = timelineRowSpans(all.rows);
+    expect(spans.get('parent')).toEqual({ start: '2026-11-24', end: '2026-11-24' });
+    expect(spans.has('kid2')).toBe(false);
+    expect(spans.has('nodate')).toBe(false);
+    expect(spans.get('a')).toEqual({ start: '2026-11-20', end: '2026-11-23' });
   });
 
   it('kolejność po dacie początku (bez paska — najwcześniejszy potomek), przy równej dacie ręczna', () => {
