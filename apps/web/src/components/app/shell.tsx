@@ -4,7 +4,7 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, listShareBadge, plural, selectInbox, selectToday, tagsForWorkspace, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
+import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, plural, selectInbox, selectToday, tagsForWorkspace, type BoardBy, type BulkAction, type FilterQuery, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -520,7 +520,7 @@ export function Shell({
               ))}
             </nav>
             {workspaces.map((w) => (
-              <WorkspaceLists key={w.id} name={w.name} color={w.color} role={w.role} members={w.members} lists={sectionLists(w.id)} counts={counts.perList} route={route} navigate={navigate} />
+              <WorkspaceLists key={w.id} name={w.name} color={w.color} role={w.role} lists={sectionLists(w.id)} counts={counts.perList} route={route} navigate={navigate} />
             ))}
             {data.savedFilters.length ? (
               <SidebarSection title="Filtry">
@@ -645,7 +645,6 @@ function NavItem({
   alert,
   project,
   compact,
-  badge,
 }: {
   route: Route;
   current: Route;
@@ -659,8 +658,6 @@ function NavItem({
   project?: boolean;
   /** Zwinięty pasek boczny: sama ikona, nazwa w podpowiedzi, licznik jako plakietka. */
   compact?: boolean;
-  /** Ikona udostępnienia listy (core `listShareBadge`). */
-  badge?: ListShareBadge | null;
 }) {
   const active = sameRoute(route, current);
   if (compact)
@@ -706,11 +703,6 @@ function NavItem({
         </span>
       )}
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {badge ? (
-        <span className="shrink-0 text-xs opacity-70" title={badge.label} aria-label={badge.label} data-testid="list-share-badge">
-          {badge.icon}
-        </span>
-      ) : null}
       {count ? <span className={`text-xs ${alert ? "font-semibold text-[var(--danger)]" : "text-[var(--muted)]"}`}>{count}</span> : null}
     </a>
   );
@@ -720,7 +712,6 @@ function WorkspaceLists({
   name,
   color,
   role,
-  members,
   lists,
   counts,
   route,
@@ -729,7 +720,6 @@ function WorkspaceLists({
   name: string;
   color: string | null;
   role: Workspace["role"];
-  members: number;
   lists: List[];
   counts: Map<string, number>;
   route: Route;
@@ -749,7 +739,7 @@ function WorkspaceLists({
       {lists.length ? (
         <nav className="flex flex-col gap-0.5">
           {lists.map((l) => (
-            <NavItem key={l.id} route={{ view: "list", id: l.id }} current={route} navigate={navigate} color={l.color} label={l.name} project={l.kind === "project"} count={counts.get(l.id)} badge={listShareBadge(role, l.guestAccess, members)} />
+            <NavItem key={l.id} route={{ view: "list", id: l.id }} current={route} navigate={navigate} color={l.color} label={l.name} project={l.kind === "project"} count={counts.get(l.id)} />
           ))}
         </nav>
       ) : (

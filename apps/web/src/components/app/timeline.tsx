@@ -35,6 +35,7 @@ import {
   visibleProjects,
   type Dependency,
   type LocalDate,
+  type ProfileSettings,
   type Span,
   type TimelineModel,
   type ViewContext,
@@ -245,10 +246,11 @@ interface Latest {
   deps: Dependency[];
   model: TimelineModel;
   cascade: boolean;
+  settings: ProfileSettings;
 }
 
 export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: ViewContext; active: boolean }) {
-  const { store: tabStore, openTask, select } = useAppEnv();
+  const { store: tabStore, openTask, select, settings, userId } = useAppEnv();
   const { run, notify } = useTaskActions();
   const deps = useDependencies(tabStore);
   const dark = useDark();
@@ -256,7 +258,11 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   const [cascade, setCascadeState] = useState(() => readStored(CASCADE_KEY, ["1", "0"], "1") === "1");
   // Zadania bez terminu jako wiersze bez paska — widać całe drzewo projektu.
   const [withUndated, setWithUndatedState] = useState(() => readStored(UNDATED_KEY, ["1", "0"], "1") === "1");
-  const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set());
+  // Zwinięte zadania — do odświeżenia; zwinięte projekty — w profilu (`settings.timeline.collapsed`,
+  // synchronizowane), więc zostają dla użytkownika na każdym urządzeniu.
+  const [closedTasks, setClosedTasks] = useState<ReadonlySet<string>>(() => new Set());
+  const collapsedProjects = settings.timeline.collapsed;
+  const closed = useMemo(() => new Set([...closedTasks, ...collapsedProjects.map((id) => `${PROJECT}${id}`)]), [closedTasks, collapsedProjects]);
   const [hidden, setHiddenState] = useState<ReadonlySet<string>>(readHidden);
   const api = useRef<IApi | null>(null);
   const { today, workspaceId } = ctx;
@@ -274,9 +280,9 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   }
   const { model } = cache;
 
-  const latest = useRef<Latest>({ data, deps, model, cascade });
+  const latest = useRef<Latest>({ data, deps, model, cascade, settings });
   useEffect(() => {
-    latest.current = { data, deps, model, cascade };
+    latest.current = { data, deps, model, cascade, settings };
   });
 
   const setScale = (s: Scale) => {
@@ -385,14 +391,26 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
         select(id);
         openTask(id);
       });
-      gantt.on("open-task", (ev: { id: string | number; mode: boolean }) =>
-        setClosed((all) => {
+      gantt.on("open-task", (ev: { id: string | number; mode: boolean }) => {
+        const id = String(ev.id);
+        if (id.startsWith(PROJECT)) {
+          // Projekt: zapis do profilu (bez id projektów, których już nie ma).
+          const { settings: current, data: now } = latest.current;
+          const listId = id.slice(PROJECT.length);
+          const projects = new Set(now.lists.filter((l) => l.kind === "project").map((l) => l.id));
+          const next = current.timeline.collapsed.filter((x) => x !== listId && projects.has(x));
+          if (!ev.mode) next.push(listId);
+          if (next.join() === current.timeline.collapsed.join()) return;
+          void tabStore.mutate("profiles", userId, { settings: { ...current, timeline: { ...current.timeline, collapsed: next } } }).catch((e: unknown) => notify(String(e)));
+          return;
+        }
+        setClosedTasks((all) => {
           const next = new Set(all);
-          if (ev.mode) next.delete(String(ev.id));
-          else next.add(String(ev.id));
+          if (ev.mode) next.delete(id);
+          else next.add(id);
           return next;
-        }),
-      );
+        });
+      });
 
       gantt.intercept("update-task", (ev: { id: string | number; task: Partial<ITask>; diff?: number; inProgress?: boolean; eventSource?: string }) => {
         // Przesunięcia wyliczone przez SVAR (podzadania projektu, zakres projektu) i podgląd w trakcie przeciągania.

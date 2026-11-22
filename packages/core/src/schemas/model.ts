@@ -107,6 +107,8 @@ export const ProfileSettings = z.object({
   theme: z.enum(['system', 'light', 'dark']).default('system'),
   /** Panel zadania (web): zwinięte / rozwinięte sekcje — id sekcji → `true` = zwinięta (brak = domyślny stan sekcji). */
   taskPanel: z.object({ collapsed: z.record(z.string().max(40), z.boolean()).default({}) }).prefault({}),
+  /** Oś czasu (web): zwinięte projekty (id list; tylko pierwszy poziom — zadania zwijają się do odświeżenia). */
+  timeline: z.object({ collapsed: z.array(z.string().max(64)).max(500).default([]) }).prefault({}),
   /** Onboarding zakończony (M1) — bez niego aplikacja po zalogowaniu pokazuje kreator. */
   onboarded: z.boolean().default(false),
 });
