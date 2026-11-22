@@ -149,6 +149,8 @@ export interface TaskItemProps {
   columns?: readonly ListColumn[];
   /** „+” przy tytule: dodanie podzadania (widok listy ustawia górne pole na to zadanie). */
   onAddSubtask?: () => void;
+  /** Tagi pokazywane w kolumnie „Tagi” (`view_prefs.columnTags`); `null` / brak = wszystkie. */
+  columnTags?: ReadonlySet<string> | null;
 }
 
 /** Szerokości kolumn — wspólne dla wiersza i nagłówka `TaskColumnsHeader`. */
@@ -169,7 +171,7 @@ export function TaskColumnsHeader({ columns }: { columns: readonly ListColumn[] 
   );
 }
 
-export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask }: TaskItemProps) {
+export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, columnTags }: TaskItemProps) {
   const { toggle } = useTaskActions();
   const { openTask, selectedIds, select, data } = useAppEnv();
   const selected = selectedIds.has(task.id);
@@ -190,7 +192,7 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
     openTask(task.id);
   };
   const dueColumn = columns.includes("due");
-  const tags = columns.includes("tags") ? task.tagIds.flatMap((id) => data.tags.filter((t) => t.id === id)) : [];
+  const tags = columns.includes("tags") ? task.tagIds.filter((id) => !columnTags || columnTags.has(id)).flatMap((id) => data.tags.filter((t) => t.id === id)) : [];
   // Osoby przy tytule: odpowiedzialny (pełny znaczek), potem uczestnicy (obrys); nieznani pominięci.
   const people = [
     ...(assignee ? [{ person: assignee, role: "Odpowiedzialny" }] : []),

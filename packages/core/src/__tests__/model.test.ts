@@ -89,6 +89,9 @@ describe('lista', () => {
     expect(ViewPrefs.parse({ columns: ['assignee', 'due'] })).toEqual({ columns: ['assignee', 'due'] });
     expect(ViewPrefs.parse({ sortBy: 'due', columns: ['kolor'] })).toEqual({ sortBy: 'due' });
     expect(ViewPrefs.parse({ columns: ['assignee', 'start', 'due', 'tags'] }).columns).toHaveLength(4);
+    const tag = '01900000-0000-7000-8000-000000000001';
+    expect(ViewPrefs.parse({ columns: ['tags'], columnTags: [tag] })).toEqual({ columns: ['tags'], columnTags: [tag] });
+    expect(ViewPrefs.parse({ sortBy: 'due', columnTags: ['x'] })).toEqual({ sortBy: 'due' });
   });
 });
 

@@ -19,6 +19,7 @@ import {
   progress,
   SORT_BY,
   sortTasks,
+  tagsForWorkspace,
   withCompleted,
   type CompletedMode,
   type FilterQuery,
@@ -77,13 +78,22 @@ export default function ListScreen() {
   const filter = list?.prefs.filter;
   const prefColumns = list?.prefs.columns;
   const columns = useMemo(() => orderedColumns(prefColumns), [prefColumns]);
+  const columnTagIds = list?.prefs.columnTags;
+  // Tagi w kolumnie „Tagi”: wybrane (tylko istniejące) albo `null` = wszystkie tagi zadania.
+  const columnTags = useMemo(() => {
+    const known = (columnTagIds ?? []).filter((tagId) => data.tags.some((t) => t.id === tagId));
+    return known.length ? new Set(known) : null;
+  }, [columnTagIds, data.tags]);
 
   const tasks = useMemo(() => {
     const own = data.tasks.filter((t) => t.listId === id);
     return withCompleted(filter && !isEmptyFilter(filter) ? applyFilter(own, filter, today) : own, completed, ctx);
   }, [data.tasks, id, filter, today, completed, ctx]);
   const tree = sortBy === 'manual' && groupBy === 'none';
-  const row = rowMaker(data, today);
+  const baseRow = rowMaker(data, today);
+  const tagNameOf = (tagId: string) => data.tags.find((t) => t.id === tagId)?.name ?? '';
+  const row: typeof baseRow = (task, props) =>
+    baseRow(task, columnTags && columns.includes('tags') ? { tagNames: task.tagIds.filter((tagId) => columnTags.has(tagId)).map(tagNameOf).filter(Boolean), ...props } : props);
 
   const sections: TaskSection[] = useMemo(() => {
     if (tree) {
@@ -117,7 +127,7 @@ export default function ListScreen() {
     }));
     // `row` zależy od danych — przeliczane razem z nimi.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tree, tasks, collapsed, sortBy, groupBy, data.lists, data.tags, today, columns]);
+  }, [tree, tasks, collapsed, sortBy, groupBy, data.lists, data.tags, today, columns, columnTags]);
 
   if (!list) {
     return (
@@ -140,6 +150,12 @@ export default function ListScreen() {
     delete prefs.columns;
     const ordered = orderedColumns(next);
     if (ordered.length) prefs.columns = ordered;
+    void mutate('lists', list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
+  };
+  const setColumnTags = (next: readonly string[]) => {
+    const prefs = { ...list.prefs };
+    delete prefs.columnTags;
+    if (next.length) prefs.columnTags = [...next];
     void mutate('lists', list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
   };
   const workspace = data.workspaces.find((w) => w.id === list.workspaceId)?.name;
@@ -169,6 +185,21 @@ export default function ListScreen() {
               >
                 <Text style={{ color: p.fg, fontSize: 13 }}>Kolumny{columns.length ? ` (${columns.length})` : ''}</Text>
               </Pressable>
+              {columns.includes('tags') ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Tagi w kolumnie: ${columnTags ? columnTags.size : 'wszystkie'}`}
+                  onPress={() =>
+                    void pickMany<string>(
+                      'Tagi w kolumnie (żaden = wszystkie)',
+                      tagsForWorkspace(data.tags, list.workspaceId, columnTagIds).map((t) => ({ label: `@${t.name}`, value: t.id, selected: !!columnTags?.has(t.id) })),
+                    ).then((v) => v && setColumnTags(v))
+                  }
+                  style={[styles.pref, { borderColor: p.border }]}
+                >
+                  <Text style={{ color: p.fg, fontSize: 13 }}>Tagi w kolumnie: {columnTags ? columnTags.size : 'wszystkie'}</Text>
+                </Pressable>
+              ) : null}
               <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/board', params: { list: list.id } })} style={[styles.pref, { borderColor: p.border }]}>
                 <Text style={{ color: p.accent, fontSize: 13 }}>▦ Tablica</Text>
               </Pressable>

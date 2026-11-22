@@ -31,6 +31,7 @@ import {
   selectUpcoming,
   SORT_BY,
   sortTasks,
+  tagsForWorkspace,
   TRASH_DAYS,
   VIEW_SECTION,
   withCompleted,
@@ -291,20 +292,50 @@ function AddInline({ date, listId }: { date: LocalDate; listId: string }) {
 
 // ── Lista / projekt ──────────────────────────────────────────────────────────────────────────
 
-/** „Kolumny”: dodatkowe kolumny listy (odpowiedzialny, początek, koniec, tagi) zapisywane w `view_prefs.columns`. */
-function ColumnsPicker({ value, onChange }: { value: readonly ListColumn[]; onChange: (next: ListColumn[]) => void }) {
+/**
+ * „Kolumny”: dodatkowe kolumny listy (odpowiedzialny, początek, koniec, tagi — `view_prefs.columns`);
+ * przy „Tagi” wybór tagów pokazywanych w kolumnie (`view_prefs.columnTags`, żaden = wszystkie).
+ */
+function ColumnsPicker({
+  value,
+  onChange,
+  tags,
+  tagValue,
+  onTagsChange,
+}: {
+  value: readonly ListColumn[];
+  onChange: (next: ListColumn[]) => void;
+  tags: readonly { id: string; name: string }[];
+  tagValue: readonly string[];
+  onTagsChange: (next: string[]) => void;
+}) {
   return (
     <details className="relative" data-testid="list-columns">
       <summary className="cursor-pointer list-none rounded-md border border-[var(--line)] px-2 py-1 text-xs hover:bg-[var(--hover)]">
         Kolumny{value.length ? ` (${value.length})` : ""} ▾
       </summary>
-      <div className="absolute z-20 mt-1 w-44 rounded-md border border-[var(--line)] bg-[var(--background)] p-2 shadow-lg">
+      <div className="absolute z-20 mt-1 max-h-96 w-52 overflow-y-auto rounded-md border border-[var(--line)] bg-[var(--background)] p-2 shadow-lg">
         {(Object.keys(LIST_COLUMN) as ListColumn[]).map((c) => (
           <label key={c} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-[var(--hover)]">
             <input type="checkbox" checked={value.includes(c)} onChange={(e) => onChange(orderedColumns(e.target.checked ? [...value, c] : value.filter((v) => v !== c)))} />
             {LIST_COLUMN[c]}
           </label>
         ))}
+        {value.includes("tags") ? (
+          <div className="mt-1 border-t border-[var(--line)] pt-1 pl-5" data-testid="column-tags">
+            <p className="px-1 py-1 text-xs text-[var(--muted)]">{tagValue.length ? `Tylko wybrane tagi (${tagValue.length})` : "Wszystkie tagi — zaznacz, żeby zawęzić"}</p>
+            {tags.length ? (
+              tags.map((t) => (
+                <label key={t.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-[var(--hover)]">
+                  <input type="checkbox" checked={tagValue.includes(t.id)} onChange={(e) => onTagsChange(e.target.checked ? [...tagValue, t.id] : tagValue.filter((v) => v !== t.id))} />
+                  <span className="truncate">@{t.name}</span>
+                </label>
+              ))
+            ) : (
+              <p className="px-1 py-1 text-xs text-[var(--muted)]">Brak tagów w tej przestrzeni.</p>
+            )}
+          </div>
+        ) : null}
       </div>
     </details>
   );
@@ -319,6 +350,12 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
   const groupBy: GroupBy = list.prefs.groupBy ?? "none";
   const completed: CompletedMode = list.prefs.completed ?? "today";
   const columns = orderedColumns(list.prefs.columns);
+  const columnTagIds = list.prefs.columnTags;
+  // Tagi w kolumnie „Tagi”: wybrane (tylko istniejące) albo `null` = wszystkie.
+  const columnTags = useMemo(() => {
+    const known = (columnTagIds ?? []).filter((id) => data.tags.some((t) => t.id === id));
+    return known.length ? new Set(known) : null;
+  }, [columnTagIds, data.tags]);
 
   const kanban = list.prefs.view === "kanban";
   const tasks = useMemo(() => withCompleted(data.tasks.filter((t) => t.listId === list.id), completed, ctx), [data.tasks, list.id, completed, ctx]);
@@ -393,6 +430,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
               collapsed={node.children.length ? collapsed.has(node.task.id) : undefined}
               onCollapse={() => toggle(node.task.id)}
               columns={columns}
+              columnTags={columnTags}
               onAddSubtask={subtaskAction(node.task)}
             />
           ))}
@@ -402,13 +440,13 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
           group.label ? (
             <Section key={group.key} title={group.label} count={group.tasks.length}>
               {group.tasks.map((t) => (
-                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} onAddSubtask={subtaskAction(t)} />
+                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} columnTags={columnTags} onAddSubtask={subtaskAction(t)} />
               ))}
             </Section>
           ) : (
             <ul key={group.key} className="divide-y divide-[var(--line)]">
               {group.tasks.map((t) => (
-                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} onAddSubtask={subtaskAction(t)} />
+                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} columnTags={columnTags} onAddSubtask={subtaskAction(t)} />
               ))}
             </ul>
           ),
@@ -476,6 +514,14 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
               const prefs = { ...list.prefs };
               delete prefs.columns;
               if (next.length) prefs.columns = next;
+              void store.mutate("lists", list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
+            }}
+            tags={tagsForWorkspace(data.tags, list.workspaceId, columnTagIds)}
+            tagValue={columnTags ? [...columnTags] : []}
+            onTagsChange={(next) => {
+              const prefs = { ...list.prefs };
+              delete prefs.columnTags;
+              if (next.length) prefs.columnTags = next;
               void store.mutate("lists", list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
             }}
           />
