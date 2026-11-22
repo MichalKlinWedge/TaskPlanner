@@ -16,6 +16,7 @@ import { addFile, discardFile, localFile, localUri, retryFile, usePendingFiles }
 import { useLocalQuery, useSyncStatus } from '@/lib/local-query';
 
 import { useTaskActions } from './actions';
+import { PanelSection } from './panel-section';
 import { usePalette } from './ui';
 
 interface Attachment {
@@ -144,8 +145,7 @@ export function AttachmentsField({ taskId, readOnly = false }: { taskId: string;
   const count = items.length + waiting.length;
 
   return (
-    <View style={[styles.block, { borderColor: p.border, backgroundColor: p.card }]}>
-      <Text style={[styles.title, { color: p.muted }]}>{`ZAŁĄCZNIKI${count ? ` · ${count}` : ''}`}</Text>
+    <PanelSection id="attachments" title="Załączniki" count={count || undefined}>
       <View style={styles.actions}>
         <Action label="📷 Aparat" disabled={readOnly} onPress={() => void camera()} />
         <Action label="🖼 Galeria" disabled={readOnly} onPress={() => void gallery()} />
@@ -206,7 +206,7 @@ export function AttachmentsField({ taskId, readOnly = false }: { taskId: string;
           {image ? <Image source={{ uri: image }} style={styles.full} resizeMode="contain" /> : null}
         </Pressable>
       </Modal>
-    </View>
+    </PanelSection>
   );
 }
 
@@ -283,8 +283,6 @@ function PendingTile({ file, offline, onOpen }: { file: PendingFile; offline: bo
 }
 
 const styles = StyleSheet.create({
-  block: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12, gap: 8 },
-  title: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   action: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6 },
   linkRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },

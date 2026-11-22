@@ -72,6 +72,7 @@ import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInpu
 import { confirm, useTaskActions } from '@/components/actions';
 import { AttachmentsField } from '@/components/attachments-field';
 import { MarkdownView } from '@/components/markdown-view';
+import { PanelSection } from '@/components/panel-section';
 import { pickDate, pickOption, pickTime } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
 import { RecurrenceEditor } from '@/components/recurrence-editor';
@@ -105,16 +106,13 @@ function Editable({ readOnly, children }: { readOnly: boolean; children: ReactNo
   );
 }
 
-function Block({ title, children, right }: { title: string; children: ReactNode; right?: ReactNode }) {
-  const p = usePalette();
+/** Zwijana karta sekcji; klucz = tytuł bez licznika („Podzadania · 2/3” → „Podzadania”), ten sam co na webie. */
+function Block({ id, title, children, right }: { id?: string; title: string; children: ReactNode; right?: ReactNode }) {
+  const [base, ...count] = title.split(' · ');
   return (
-    <View style={[styles.block, { borderColor: p.border }]}>
-      <View style={styles.blockHead}>
-        <Text style={[styles.blockTitle, { color: p.muted }]}>{title}</Text>
-        {right}
-      </View>
+    <PanelSection id={id ?? base} title={base} count={count.join(' · ') || undefined} right={right}>
       {children}
-    </View>
+    </PanelSection>
   );
 }
 
@@ -216,6 +214,7 @@ export default function TaskScreen() {
             <TitleField key={`${task.id}:${task.title}`} value={task.title} onSave={(title) => void update({ title })} />
           </View>
 
+          <Block id="details" title="Szczegóły">
           <View style={styles.grid}>
             <Cell
               label="Status"
@@ -287,6 +286,7 @@ export default function TaskScreen() {
               />
             ) : null}
           </View>
+          </Block>
 
           {task.kind === 'task' ? <ParentField key={`parent:${task.id}`} task={task} data={data} parent={parent} /> : null}
           <PeopleField key={`people:${task.id}`} task={task} data={data} />
@@ -419,7 +419,7 @@ function TimeField({ task }: { task: ViewTask }) {
     });
   const current = focus.state.phase !== 'idle' && focus.state.taskId === task.id;
   return (
-    <Block title="Czas pracy" right={<Pill label="+ Dodaj czas" onPress={add} />}>
+    <Block id="time" title={`Czas pracy${spent ? ` · ${formatMinutes(spent)}` : ''}`} right={<Pill label="+ Dodaj czas" onPress={add} />}>
       <Text style={{ color: p.fg, fontSize: 15 }}>
         Spędzono {formatMinutes(spent)}
         {estimate ? ` / szac. ${formatMinutes(estimate)}` : ''}
@@ -1054,9 +1054,6 @@ const styles = StyleSheet.create({
   title: { flex: 1, fontSize: 20, fontWeight: '600', paddingVertical: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   cell: { width: '48.5%', borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, gap: 2 },
-  block: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 8 },
-  blockHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  blockTitle: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   pills: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   pill: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 11, paddingVertical: 5 },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 15 },
