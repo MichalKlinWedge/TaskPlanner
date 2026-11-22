@@ -433,6 +433,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"scope_collaborators": {
+                  Row: {
+                    "acronym": string | null,"archived_at": string | null,"collaborator_id": string,"created_at": string,"deleted_at": string | null,"id": string,"name": string,"row_version": number,"scope_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "acronym"?: string | null,"archived_at"?: string | null,"collaborator_id": string,"created_at"?: string,"deleted_at"?: string | null,"id": string,"name": string,"row_version"?: number,"scope_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "acronym"?: string | null,"archived_at"?: string | null,"collaborator_id"?: string,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"name"?: string,"row_version"?: number,"scope_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "scope_collaborators_collaborator_id_fkey"
+      columns: ["collaborator_id"]
+isOneToOne: false
+      referencedRelation: "collaborators"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "scope_collaborators_scope_id_fkey"
+      columns: ["scope_id"]
+isOneToOne: false
+      referencedRelation: "sync_scopes"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"scope_invites": {
                   Row: {
                     "created_at": string,"email": string,"expires_at": string,"id": string,"invited_by": string,"role": string,"scope_id": string,"token": string
@@ -793,6 +819,9 @@ isOneToOne: false
 "can_upload_attachment":
 { Args: { "p_name": string }; Returns: boolean
                            },
+"can_use_collaborator":
+{ Args: { "p_collaborator": string,"p_scope": string }; Returns: boolean
+                           },
 "can_write_scope":
 { Args: { "p_scope": string }; Returns: boolean
                            },
@@ -850,6 +879,9 @@ isOneToOne: false
                            },
 "list_visible":
 { Args: { "p_list": string }; Returns: boolean
+                           },
+"mirror_collaborator":
+{ Args: { "p_collaborator": string,"p_scope": string }; Returns: undefined
                            },
 "my_scope_invites":
 { Args: Record<PropertyKey, never>; Returns: Json

@@ -50,10 +50,10 @@ type Operation =
  * `task_comments`, `tasks.assignee_id`, 4 = `collaborators.acronym`, `collaborators.archived_at`,
  * 5 = `tags.workspace_ids`, 6 = `collaborators.workspace_ids`, 7 = `workspaces.board_columns`,
  * `tasks.board_column_id`, 8 = `lists.board_columns`, 9 = `_scopes` (role w zakresach),
- * 10 = `lists.guest_access`, `_scopes.hidden`, 11 = `_scopes.members`. Pole `ids` w `changed` nie podbija wersji:
+ * 10 = `lists.guest_access`, `_scopes.hidden`, 11 = `_scopes.members`, 12 = `scope_collaborators`. Pole `ids` w `changed` nie podbija wersji:
  * jest opcjonalne w obie strony (bez niego widoki czytają całe tabele).
  */
-export const TAB_PROTOCOL = 11;
+export const TAB_PROTOCOL = 12;
 
 /** Błąd zapisu przez lidera ze starszą wersją aplikacji. */
 export const STALE_LEADER_MESSAGE = 'Aplikacja jest otwarta w innej karcie w starszej wersji — odśwież albo zamknij tamtą kartę i spróbuj ponownie.';

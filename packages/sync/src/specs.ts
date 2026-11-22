@@ -135,7 +135,7 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
  * Tabele, które przychodzą w `pull_changes`, ale klient ich nie pisze (zapis: Edge Functions).
  * Lokalnie bez `field_clock` i outboxu; usunięcie (nagrobek / `deleted_at`) kasuje wiersz.
  */
-export const READONLY_TABLES = ['calendar_accounts', 'calendars', 'calendar_events'] as const;
+export const READONLY_TABLES = ['calendar_accounts', 'calendars', 'calendar_events', 'scope_collaborators'] as const;
 export type ReadonlyTable = (typeof READONLY_TABLES)[number];
 
 const readonlyColumns = <T extends ReadonlyTable>() => <const C extends readonly (keyof Tables<T> & string)[]>(cols: C) => cols;
@@ -155,6 +155,11 @@ export const READONLY: { [T in ReadonlyTable]: { columns: readonly string[]; boo
       'calendar_id', 'external_id', 'title', 'all_day', 'start_at', 'end_at', 'start_date', 'end_date', 'location', 'task_id', 'created_at', 'updated_at', 'row_version',
     ]),
     bool: ['all_day'],
+  },
+  /** Kopie współpracowników użytych w przestrzeni (v1.x) — osoba widoczna dla wszystkich członków. */
+  scope_collaborators: {
+    columns: readonlyColumns<'scope_collaborators'>()(['collaborator_id', 'name', 'acronym', 'archived_at', 'created_at', 'updated_at', 'row_version']),
+    bool: [],
   },
 };
 
@@ -196,6 +201,7 @@ export function localSchema(): string[] {
   statements.push('create index if not exists calendars_account on calendars (account_id)');
   statements.push('create index if not exists calendar_events_calendar on calendar_events (calendar_id)');
   statements.push('create index if not exists calendar_events_start on calendar_events (start_at)');
+  statements.push('create index if not exists scope_collaborators_collaborator on scope_collaborators (collaborator_id)');
   statements.push(
     "create table if not exists _outbox (seq integer primary key autoincrement, op_id text not null unique, tbl text not null, row_id text not null, data text not null, hlc text not null, status text not null default 'pending', error text)",
   );

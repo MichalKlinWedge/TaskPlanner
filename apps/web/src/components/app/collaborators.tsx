@@ -8,7 +8,7 @@
  * przy tagach; żadna = wszystkie). Usunięcie zabiera osobę z uczestników, a zadania, za które
  * odpowiadała, wracają do twórcy (z cofnięciem).
  */
-import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, deleteCollaboratorOps, initials, isActiveCollaborator, plural, type Collaborator } from "@taskplanner/core";
+import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, plural, type Collaborator } from "@taskplanner/core";
 import { useState, type FormEvent } from "react";
 
 import type { AppData } from "@/lib/app-data";
@@ -49,7 +49,7 @@ export function CollaboratorsView() {
   const [editing, setEditing] = useState<{ id: string; draft: Draft } | null>(null);
   const [adding, setAdding] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const people = collaboratorsByStatus(data.collaborators);
+  const people = collaboratorsByStatus(ownCollaborators(data.collaborators));
   const inactive = people.filter((c) => !isActiveCollaborator(c)).length;
 
   const add = (event: FormEvent) => {

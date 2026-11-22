@@ -21,7 +21,58 @@ export interface Collaborator {
   archivedAt?: string | null;
   /** Przestrzenie, w których osoba się podpowiada; brak / `null` = wszystkie (jak przy tagach). */
   workspaceIds?: readonly string[] | null;
+  /**
+   * Cudzy współpracownik znany z udostępnionej przestrzeni (`scope_collaborators`): tylko do
+   * wskazania w zadaniach tych przestrzeni (`workspaceIds`), bez edycji i bez e-maila.
+   */
+  shared?: boolean;
 }
+
+/** Wiersz `scope_collaborators` (kopia współpracownika w przestrzeni). */
+export interface ScopeCollaborator {
+  scopeId: string;
+  collaboratorId: string;
+  name: string;
+  acronym?: string | null;
+  archivedAt?: string | null;
+}
+
+/** Lokalny wiersz `scope_collaborators` → `ScopeCollaborator`. */
+export const scopeCollaborator = (row: Record<string, unknown>): ScopeCollaborator => ({
+  scopeId: String(row.scope_id),
+  collaboratorId: String(row.collaborator_id),
+  name: String(row.name),
+  acronym: (row.acronym as string | null) ?? null,
+  archivedAt: (row.archived_at as string | null) ?? null,
+});
+
+/**
+ * Własni współpracownicy i osoby z kopii w przestrzeniach (`shared`, jedna na osobę, z listą
+ * przestrzeni, w których jej użyto). Własny wpis wygrywa z kopią tej samej osoby.
+ */
+export function withSharedCollaborators(own: readonly Collaborator[], copies: readonly ScopeCollaborator[]): Collaborator[] {
+  const known = new Set(own.map((c) => c.id));
+  const shared = new Map<string, Collaborator & { workspaceIds: string[] }>();
+  for (const copy of copies) {
+    if (known.has(copy.collaboratorId)) continue;
+    const entry = shared.get(copy.collaboratorId);
+    if (entry) entry.workspaceIds.push(copy.scopeId);
+    else
+      shared.set(copy.collaboratorId, {
+        id: copy.collaboratorId,
+        name: copy.name,
+        email: null,
+        acronym: copy.acronym ?? null,
+        archivedAt: copy.archivedAt ?? null,
+        workspaceIds: [copy.scopeId],
+        shared: true,
+      });
+  }
+  return sortCollaborators([...own, ...shared.values()]);
+}
+
+/** Tylko własni (książka adresowa w ustawieniach). */
+export const ownCollaborators = <T extends Collaborator>(collaborators: readonly T[]): T[] => collaborators.filter((c) => !c.shared);
 
 export interface CollaboratorInput {
   name: string;
@@ -95,7 +146,7 @@ export function collaboratorSaveOps(
 ): Result<{ id: string; ops: TaskOp[] }> {
   const fields = collaboratorFields(input);
   if (!fields.ok) return fields;
-  const twin = findCollaborator(collaborators, fields.name);
+  const twin = findCollaborator(ownCollaborators(collaborators), fields.name);
   if (twin && twin.id !== existing?.id) return { ok: false, error: `„${twin.name}” już jest na liście współpracowników.` };
   if (!existing) {
     // Ten sam id co osoba usunięta albo dodana równolegle na innym urządzeniu: bez podanego e-maila
@@ -176,7 +227,8 @@ export function addParticipantByNameOps(
   name: string,
   workspaceId?: string | null,
 ): Result<{ collaboratorId: string; created: boolean; ops: TaskOp[] }> {
-  const known = findCollaborator(collaborators, name);
+  // Osoba z innej udostępnionej przestrzeni nie da się tu wskazać (serwer: TP003) — wtedy własny wpis.
+  const known = findCollaborator(collaborators.filter((c) => !c.shared || collaboratorVisibleIn(c, workspaceId)), name);
   if (known) return { ok: true, collaboratorId: known.id, created: false, ops: addParticipantOps(taskId, known.id) };
   const saved = collaboratorSaveOps(userId, collaborators, { name, ...(workspaceId && { workspaceIds: [workspaceId] }) });
   if (!saved.ok) return saved;

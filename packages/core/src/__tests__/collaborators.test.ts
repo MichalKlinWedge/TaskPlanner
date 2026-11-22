@@ -16,8 +16,10 @@ import {
   deleteCollaboratorOps,
   findCollaborator,
   initials,
+  ownCollaborators,
   removeParticipantOps,
   sortCollaborators,
+  withSharedCollaborators,
   type Collaborator,
 } from '../collaborators.ts';
 import { collaboratorId, participantId } from '../ids.ts';
@@ -179,5 +181,32 @@ describe('uczestnicy i odpowiedzialny', () => {
     expect(initials('Anna Nowak')).toBe('AN');
     expect(initials('łukasz')).toBe('Ł');
     expect(initials('Jan Maria Rokita')).toBe('JM');
+  });
+});
+
+describe('osoby z udostępnionych przestrzeni', () => {
+  const W1 = 'b0000000-0000-4000-8000-000000000001';
+  const W2 = 'b0000000-0000-4000-8000-000000000002';
+  const ewa = 'e0000000-0000-4000-8000-000000000001';
+  const copies = [
+    { scopeId: W1, collaboratorId: ewa, name: 'Ewa Kot', acronym: 'EK' },
+    { scopeId: W2, collaboratorId: ewa, name: 'Ewa Kot', acronym: 'EK' },
+    { scopeId: W1, collaboratorId: anna.id, name: 'Anna (kopia)' },
+  ];
+
+  it('kopie łączą się z własnymi: jedna osoba, przestrzenie użycia, własny wpis wygrywa', () => {
+    const all = withSharedCollaborators(people, copies);
+    expect(all.map((c) => c.name)).toEqual(['Anna Nowak', 'Ewa Kot', 'Łukasz']);
+    expect(all[1]).toEqual({ id: ewa, name: 'Ewa Kot', email: null, acronym: 'EK', archivedAt: null, workspaceIds: [W1, W2], shared: true });
+    expect(ownCollaborators(all).map((c) => c.name)).toEqual(['Anna Nowak', 'Łukasz']);
+    expect(assigneeOf(ewa, all)?.name).toBe('Ewa Kot');
+  });
+
+  it('osoba z kopii: wskazanie w jej przestrzeni, gdzie indziej i przy dodawaniu — własny wpis', () => {
+    const all = withSharedCollaborators(people, copies);
+    expect(addParticipantByNameOps(USER, all, TASK, 'ewa kot', W1)).toMatchObject({ created: false, collaboratorId: ewa });
+    const other = addParticipantByNameOps(USER, all, TASK, 'Ewa Kot', 'b0000000-0000-4000-8000-000000000009');
+    expect(other.ok && other.created).toBe(true);
+    expect(collaboratorSaveOps(USER, all, { name: 'Ewa Kot' }).ok).toBe(true);
   });
 });

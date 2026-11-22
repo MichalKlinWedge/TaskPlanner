@@ -6,7 +6,7 @@
  * (także z innej karty i z synchronizacji) — zadania przyrostowo (`createTaskCache`: tylko zmienione
  * wiersze, gotowe `ViewTask` reszty zostają); reguły widoków liczy `@taskplanner/core`.
  */
-import { AttachmentPreview, boardColumnDefs, canEditList, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type BoardColumnDef, type Collaborator, type GuestAccess, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ScopeRole, type ViewTask } from "@taskplanner/core";
+import { AttachmentPreview, boardColumnDefs, canEditList, FilterQuery, localDateAt, ProfileSettings, scopeCollaborator, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, withSharedCollaborators, type BoardColumnDef, type Collaborator, type GuestAccess, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ScopeRole, type ViewTask } from "@taskplanner/core";
 import { createTaskCache, type TabStore, type TaskEntry } from "@taskplanner/sync";
 import { useEffect, useMemo, useState } from "react";
 
@@ -182,6 +182,8 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
   const tags = useLocalQuery<Row>(store, "select id, name, color, sort_key, workspace_ids from tags where deleted_at is null", [], ["tags"]);
   const filters = useLocalQuery<Row>(store, "select id, name, icon, query, sort_key from saved_filters where deleted_at is null", [], ["saved_filters"]);
   const collaborators = useLocalQuery<Row>(store, "select id, name, email, acronym, archived_at, workspace_ids from collaborators where deleted_at is null", [], ["collaborators"]);
+  // Cudze osoby z udostępnionych przestrzeni (odpowiedzialni / uczestnicy wskazani przez innych).
+  const sharedPeople = useLocalQuery<Row>(store, "select scope_id, collaborator_id, name, acronym, archived_at from scope_collaborators", [], ["scope_collaborators"]);
   const tasks = useTaskEntries(store);
   const habits = useLocalQuery<Row>(
     store,
@@ -242,7 +244,10 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
           return query.success ? [{ id: String(r.id), name: String(r.name), icon: r.icon as string | null, query: query.data, sortKey: String(r.sort_key) }] : [];
         })
         .sort(byKey),
-      collaborators: sortCollaborators(collaborators.rows.map((r) => ({ id: String(r.id), name: String(r.name), email: (r.email as string | null) ?? null, acronym: (r.acronym as string | null) ?? null, archivedAt: (r.archived_at as string | null) ?? null, workspaceIds: tagWorkspaceIds(r.workspace_ids) }))),
+      collaborators: withSharedCollaborators(
+        collaborators.rows.map((r) => ({ id: String(r.id), name: String(r.name), email: (r.email as string | null) ?? null, acronym: (r.acronym as string | null) ?? null, archivedAt: (r.archived_at as string | null) ?? null, workspaceIds: tagWorkspaceIds(r.workspace_ids) })),
+        sharedPeople.rows.map(scopeCollaborator),
+      ),
       tasks: viewTaskList,
       habitsDoneToday: new Set(habits.rows.filter((r) => r.occurrence_date === today && r.kind === "done").map((r) => String(r.task_id))),
       habitCompletions: habits.rows.reduce((map, r) => {
@@ -269,6 +274,6 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
       }, new Map<string, Attachment[]>()),
       loaded: workspaces.ms !== null && lists.ms !== null && tasks.loaded,
     }),
-    [workspaces, lists.ms, allLists, tags, filters, collaborators, tasks.loaded, viewTaskList, habits, attachments, today],
+    [workspaces, lists.ms, allLists, tags, filters, collaborators, sharedPeople, tasks.loaded, viewTaskList, habits, attachments, today],
   );
 }

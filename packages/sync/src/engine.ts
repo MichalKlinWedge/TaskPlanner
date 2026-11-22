@@ -61,8 +61,8 @@ const chunks = <T>(items: readonly T[], size: number): T[][] => {
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
 };
-/** Wersja zestawu tabel tylko do odczytu — zmiana wymusza ponowne pobranie zakresu osobistego. */
-const READONLY_VERSION = '1';
+/** Wersja zestawu tabel tylko do odczytu (`2` = `scope_collaborators`) — zmiana wymusza ponowne pobranie zakresów. */
+const READONLY_VERSION = '2';
 /**
  * Zestaw tabel i kolumn synchronizowanych. Starsza wersja aplikacji pomijała w `pull_changes` tabele
  * i kolumny, których nie znała, a kursory zakresów i tak szły dalej — po aktualizacji te wiersze
@@ -140,10 +140,10 @@ export class SyncEngine {
     if (meta.device_id !== deviceId) await this.setMeta(this.db, 'device_id', deviceId);
     this.clock = new HlcClock(deviceId, this.now, meta.clock);
     this.since = meta.since ? JSON.parse(meta.since) : {};
-    // Tabele tylko do odczytu doszły po pierwszej synchronizacji: zakres osobisty raz od zera (jego
-    // wiersze przychodzą ponownie i scalają się bez zmian; przestrzenie — bez ponownego pobierania).
+    // Tabele tylko do odczytu doszły po pierwszej synchronizacji: zakresy raz od zera (wiersze przychodzą
+    // ponownie i scalają się bez zmian; kopie współpracowników są w przestrzeniach, nie tylko w osobistym).
     if (meta.readonly_tables !== READONLY_VERSION) {
-      if (this.since[this.userId] !== undefined) this.since[this.userId] = 0;
+      this.since = Object.fromEntries(Object.keys(this.since).map((scope) => [scope, 0]));
       await this.db.transaction(async (tx) => {
         await this.setMeta(tx, 'since', JSON.stringify(this.since));
         await this.setMeta(tx, 'readonly_tables', READONLY_VERSION);

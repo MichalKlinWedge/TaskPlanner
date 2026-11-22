@@ -5,7 +5,7 @@
  * osoba się podpowiada — jak przy tagach, żadna = wszystkie), usunięcie z „Cofnij”
  * (osoba znika z uczestników, zadania wracają do twórcy).
  */
-import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, deleteCollaboratorOps, initials, isActiveCollaborator, plural, type Collaborator } from '@taskplanner/core';
+import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, plural, type Collaborator } from '@taskplanner/core';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -50,7 +50,7 @@ export default function Collaborators() {
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [editing, setEditing] = useState<{ id: string; draft: Draft } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const people = collaboratorsByStatus(data.collaborators);
+  const people = collaboratorsByStatus(ownCollaborators(data.collaborators));
 
   const add = () => {
     const result = collaboratorSaveOps(data.userId, data.collaborators, draft);
