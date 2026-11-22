@@ -10,6 +10,7 @@ import { completionId, tagId, taskTagId, uuidv7 } from './ids.ts';
 import { normalizeWord, type QuickAddResult } from './quick-add.ts';
 import { nextDue, Recurrence } from './recurrence.ts';
 import { reschedulePatch } from './review.ts';
+import { compareText } from './format.ts';
 import { keyBetween } from './sort-key.ts';
 import type { LocalDate, LocalTime, Priority, TaskStatus } from './schemas/primitives.ts';
 import type { ViewTask } from './views.ts';
@@ -204,7 +205,8 @@ export interface QuickAddScope {
   userId: string;
   workspaces: readonly { id: string; name: string }[];
   lists: readonly { id: string; workspaceId: string; kind: string; name: string }[];
-  tags: readonly { id: string; name: string; sortKey: string }[];
+  /** Tagi do dopasowania po nazwie; `shared` (kopie z przestrzeni) — tylko w przestrzeni z `workspaceIds`. */
+  tags: readonly { id: string; name: string; sortKey: string; shared?: boolean; workspaceIds?: readonly string[] | null }[];
   /** Lista, gdy wpis nie wskazuje innej (Inbox bieżącej przestrzeni albo lista, z której wywołano). */
   defaultListId: string;
   /** Termin, gdy wpis go nie podaje (np. „Dziś”, dzień w „Nadchodzących”). */
@@ -289,13 +291,17 @@ export function quickAddTaskOps(result: QuickAddResult, text: string, scope: Qui
  * Tagi zadania po nazwach: istniejący tag (bez wielkości liter i polskich znaków) albo nowy
  * z id deterministycznym z nazwy (dwa urządzenia tworzą ten sam tag jednym wierszem).
  * `workspaceId` — przestrzeń zadania: nowy tag jest widoczny tylko w niej (`tags.workspace_ids`);
- * istniejącego tagu nie zmienia.
+ * istniejącego tagu nie zmienia. Bez własnego tagu o tej nazwie — tag innego członka z kopii
+ * w tej przestrzeni (`shared`, `withSharedTags`), żeby przestrzeń miała jeden tag na nazwę.
  */
 export function taskTagOps(scope: Pick<QuickAddScope, 'userId' | 'tags'>, taskId: string, names: readonly string[], workspaceId?: string | null): TaskOp[] {
   const ops: TaskOp[] = [];
-  let lastTagKey = scope.tags.reduce<string | undefined>((max, t) => (!max || t.sortKey > max ? t.sortKey : max), undefined);
+  const own = scope.tags.filter((t) => !t.shared);
+  let lastTagKey = own.reduce<string | undefined>((max, t) => (!max || t.sortKey > max ? t.sortKey : max), undefined);
   for (const name of new Set(names.map((n) => n.trim()).filter(Boolean))) {
-    let id = scope.tags.find((t) => same(t.name, name))?.id;
+    let id =
+      own.find((t) => same(t.name, name))?.id ??
+      (workspaceId ? scope.tags.find((t) => t.shared && t.workspaceIds?.includes(workspaceId) && same(t.name, name))?.id : undefined);
     if (!id) {
       id = tagId(scope.userId, name);
       lastTagKey = keyBetween(lastTagKey);
@@ -341,6 +347,51 @@ export function tagWorkspaceIds(raw: unknown): string[] | null {
 
 /** Patch przypisania tagu do przestrzeni; pusta lista = wszystkie (`null`). */
 export const tagWorkspacesPatch = (ids: readonly string[]): { workspace_ids: string[] | null } => ({ workspace_ids: ids.length ? [...new Set(ids)] : null });
+
+// ── Tagi innych członków przestrzeni (`scope_tags`) ──────────────────────────────────────────
+
+/** Wiersz `scope_tags` (kopia tagu w przestrzeni). */
+export interface ScopeTag {
+  scopeId: string;
+  tagId: string;
+  name: string;
+  color: string | null;
+}
+
+/** Lokalny wiersz `scope_tags` → `ScopeTag`. */
+export const scopeTag = (row: Record<string, unknown>): ScopeTag => ({
+  scopeId: String(row.scope_id),
+  tagId: String(row.tag_id),
+  name: String(row.name),
+  color: (row.color as string | null) ?? null,
+});
+
+/** Tag do widoków: własny albo cudzy z kopii (`shared` — tylko do przypinania, bez edycji). */
+export interface SharedTagFields {
+  id: string;
+  name: string;
+  color: string | null;
+  sortKey: string;
+  workspaceIds: string[] | null;
+  shared?: boolean;
+}
+
+/**
+ * Własne tagi i tagi innych członków z kopii w przestrzeniach (`shared`, jeden na tag, `workspaceIds`
+ * = przestrzenie z kopią, więc pokazują się tylko tam). Własny wygrywa z kopią; cudze na końcu,
+ * alfabetycznie (`sortKey` spoza kluczy kolejności — nigdy nie trafia do zapisu).
+ */
+export function withSharedTags<T extends SharedTagFields>(own: readonly T[], copies: readonly ScopeTag[]): (T | SharedTagFields)[] {
+  const known = new Set(own.map((t) => t.id));
+  const shared = new Map<string, SharedTagFields & { workspaceIds: string[] }>();
+  for (const copy of copies) {
+    if (known.has(copy.tagId)) continue;
+    const entry = shared.get(copy.tagId);
+    if (entry) entry.workspaceIds.push(copy.scopeId);
+    else shared.set(copy.tagId, { id: copy.tagId, name: copy.name, color: copy.color, sortKey: `~${copy.name.toLocaleLowerCase('pl')}`, workspaceIds: [copy.scopeId], shared: true });
+  }
+  return [...own, ...[...shared.values()].sort((a, b) => compareText(a.name, b.name))];
+}
 
 // ── Podzadania, przenoszenie, kosz ───────────────────────────────────────────────────────────
 

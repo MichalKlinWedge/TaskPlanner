@@ -29,6 +29,9 @@ import {
   tagWorkspaceIds,
   tagWorkspacesPatch,
   taskDepth,
+  taskTagOps,
+  withSharedTags,
+  scopeTag,
   toViewTask,
   type LocalTaskRow,
   type QuickAddScope,
@@ -454,5 +457,37 @@ describe('widoczność tagów w przestrzeniach', () => {
     expect(tagWorkspaceIds('zły json')).toBeNull();
     expect(tagWorkspacesPatch([])).toEqual({ workspace_ids: null });
     expect(tagWorkspacesPatch(['a', 'a', 'b'])).toEqual({ workspace_ids: ['a', 'b'] });
+  });
+});
+
+describe('tagi innych członków przestrzeni (scope_tags)', () => {
+  const own = [
+    { id: 'own-pilne', name: 'pilne', color: null, sortKey: 'a1', workspaceIds: null },
+    { id: 'own-dom', name: 'dom', color: '#16A34A', sortKey: 'a0', workspaceIds: ['w-home'] },
+  ];
+  const copies = [
+    scopeTag({ scope_id: 'w-team', tag_id: 'own-pilne', name: 'pilne', color: null }),
+    scopeTag({ scope_id: 'w-team', tag_id: 'anna-klient', name: 'Klient', color: '#DC2626' }),
+    scopeTag({ scope_id: 'w-other', tag_id: 'anna-klient', name: 'Klient', color: '#DC2626' }),
+    scopeTag({ scope_id: 'w-team', tag_id: 'anna-biuro', name: 'biuro', color: null }),
+  ];
+  const all = withSharedTags(own, copies);
+
+  it('własne bez zmian, cudze raz na tag z przestrzeniami, na końcu alfabetycznie', () => {
+    expect(all.map((t) => t.id)).toEqual(['own-pilne', 'own-dom', 'anna-biuro', 'anna-klient']);
+    expect(all.find((t) => t.id === 'anna-klient')).toMatchObject({ shared: true, color: '#DC2626', workspaceIds: ['w-team', 'w-other'] });
+    expect(all.find((t) => t.id === 'own-pilne')?.shared).toBeUndefined();
+    expect(tagsForWorkspace(all, 'w-home').map((t) => t.id)).toEqual(['own-pilne', 'own-dom']);
+  });
+
+  it('przypięcie po nazwie: własny, potem cudzy z tej przestrzeni, inaczej nowy własny', () => {
+    const scope = { userId: 'u1', tags: all };
+    expect(taskTagOps(scope, 't1', ['Pilne'], 'w-team')).toEqual([{ table: 'task_tags', id: taskTagId('t1', 'own-pilne'), patch: { task_id: 't1', tag_id: 'own-pilne', deleted_at: null } }]);
+    expect(taskTagOps(scope, 't1', ['klient'], 'w-team')).toEqual([{ table: 'task_tags', id: taskTagId('t1', 'anna-klient'), patch: { task_id: 't1', tag_id: 'anna-klient', deleted_at: null } }]);
+    const elsewhere = taskTagOps(scope, 't1', ['biuro'], 'w-home');
+    expect(elsewhere[0]).toMatchObject({ table: 'tags', id: tagId('u1', 'biuro'), patch: { name: 'biuro', workspace_ids: ['w-home'] } });
+    // Klucz kolejności nowego tagu tylko z własnych (cudze mają `~nazwa`).
+    expect(String((elsewhere[0]!.patch as { sort_key: string }).sort_key) > 'a1').toBe(true);
+    expect(String((elsewhere[0]!.patch as { sort_key: string }).sort_key).startsWith('~')).toBe(false);
   });
 });

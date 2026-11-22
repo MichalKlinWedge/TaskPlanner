@@ -971,6 +971,7 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
   const [coloring, setColoring] = useState<string | null>(null);
   const byId = new Map(data.tags.map((t) => [t.id, t]));
   const colored = coloring && task.tagIds.includes(coloring) ? byId.get(coloring) : undefined;
+  // Cudzy tag (kopia z przestrzeni) — bez zmiany koloru, zmienia go autor.
   const add = (event: FormEvent) => {
     event.preventDefault();
     const value = name.trim().replace(/^[@#]/, "");
@@ -983,6 +984,7 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
       <div className="flex flex-wrap items-center gap-1.5">
         {task.tagIds.map((id) => (
           <span key={id} className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs ${TAG_CHIP}`} style={tagChipStyle(byId.get(id)?.color)}>
+            {byId.get(id)?.shared ? null : (
             <button
               type="button"
               aria-label={`Kolor tagu ${byId.get(id)?.name ?? ""}`}
@@ -992,6 +994,7 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
               style={{ background: byId.get(id)?.color ?? "transparent" }}
               onClick={() => setColoring((c) => (c === id ? null : id))}
             />
+            )}
             {byId.get(id)?.name ?? "…"}
             <button
               type="button"

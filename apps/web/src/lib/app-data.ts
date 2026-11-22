@@ -6,7 +6,7 @@
  * (także z innej karty i z synchronizacji) — zadania przyrostowo (`createTaskCache`: tylko zmienione
  * wiersze, gotowe `ViewTask` reszty zostają); reguły widoków liczy `@taskplanner/core`.
  */
-import { AttachmentPreview, boardColumnDefs, canEditList, FilterQuery, localDateAt, ProfileSettings, scopeCollaborator, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, withSharedCollaborators, type BoardColumnDef, type Collaborator, type GuestAccess, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ScopeRole, type ViewTask } from "@taskplanner/core";
+import { AttachmentPreview, boardColumnDefs, canEditList, FilterQuery, localDateAt, ProfileSettings, scopeCollaborator, scopeTag, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, withSharedCollaborators, withSharedTags, type BoardColumnDef, type Collaborator, type GuestAccess, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ScopeRole, type ViewTask } from "@taskplanner/core";
 import { createTaskCache, type TabStore, type TaskEntry } from "@taskplanner/sync";
 import { useEffect, useMemo, useState } from "react";
 
@@ -57,6 +57,8 @@ export interface Tag {
   sortKey: string;
   /** Przestrzenie, w których tag się pokazuje; `null` = wszystkie (core `tagsForWorkspace`). */
   workspaceIds: string[] | null;
+  /** Tag innego członka z kopii w udostępnionej przestrzeni (`scope_tags`): tylko do przypinania, bez edycji. */
+  shared?: boolean;
 }
 
 export interface SavedFilter {
@@ -182,6 +184,8 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
     ["lists"],
   );
   const tags = useLocalQuery<Row>(store, "select id, name, color, sort_key, workspace_ids from tags where deleted_at is null", [], ["tags"]);
+  // Tagi innych członków z udostępnionych przestrzeni (użyte w zadaniach albo przypisane do przestrzeni).
+  const sharedTags = useLocalQuery<Row>(store, "select scope_id, tag_id, name, color from scope_tags", [], ["scope_tags"]);
   const filters = useLocalQuery<Row>(store, "select id, name, icon, query, sort_key from saved_filters where deleted_at is null", [], ["saved_filters"]);
   const collaborators = useLocalQuery<Row>(store, "select id, name, email, acronym, archived_at, workspace_ids from collaborators where deleted_at is null", [], ["collaborators"]);
   // Cudze osoby z udostępnionych przestrzeni (odpowiedzialni / uczestnicy wskazani przez innych).
@@ -239,7 +243,10 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
         .map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), role: (r.role as ScopeRole | null) ?? null, members: Number(r.members) || 1 }))
         .sort(byKey),
       lists: allLists,
-      tags: tags.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), workspaceIds: tagWorkspaceIds(r.workspace_ids) })).sort(byKey),
+      tags: withSharedTags(
+        tags.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), workspaceIds: tagWorkspaceIds(r.workspace_ids) })).sort(byKey),
+        sharedTags.rows.map(scopeTag),
+      ),
       // Filtr z nieznanym warunkiem (nowsza wersja aplikacji) — pomijany, a nie psujący widoku.
       savedFilters: filters.rows
         .flatMap((r): SavedFilter[] => {
@@ -282,6 +289,6 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
       }, new Map<string, string[]>()),
       loaded: workspaces.ms !== null && lists.ms !== null && tasks.loaded,
     }),
-    [workspaces, lists.ms, allLists, tags, filters, collaborators, sharedPeople, tasks.loaded, viewTaskList, habits, attachments, participants, today],
+    [workspaces, lists.ms, allLists, tags, sharedTags, filters, collaborators, sharedPeople, tasks.loaded, viewTaskList, habits, attachments, participants, today],
   );
 }

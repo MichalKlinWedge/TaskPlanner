@@ -92,6 +92,8 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
           >
             <Input name="name" autoFocus defaultValue={tag.name} aria-label="Nazwa tagu" maxLength={60} onBlur={(e) => e.currentTarget.form?.requestSubmit()} />
           </form>
+        ) : tag.shared ? (
+          <h1 className="text-xl font-semibold">@{tag.name}</h1>
         ) : (
           <h1 className="text-xl font-semibold">
             <button type="button" title="Zmień nazwę" className="rounded px-1 hover:bg-[var(--hover)]" onClick={() => setRenaming(true)}>
@@ -101,20 +103,28 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
         )}
         <span className="text-sm text-[var(--muted)]">{plural(count, ["zadanie", "zadania", "zadań"])}</span>
         <span className="flex-1" />
-        <TagColorPicker value={tag.color} onChange={(color) => void update({ color })} />
-        <Button
-          kind="ghost"
-          onClick={() => {
-            if (!window.confirm(`Usunąć tag „${tag.name}”? Zadania zostaną, stracą tylko ten tag.`)) return;
-            void update({ deleted_at: new Date().toISOString() });
-            navigate({ view: "today" });
-          }}
-        >
-          Usuń tag
-        </Button>
+        {tag.shared ? (
+          <span className="text-xs text-[var(--muted)]" data-testid="tag-shared">
+            Tag innego członka przestrzeni — nazwę i kolor zmienia jego autor
+          </span>
+        ) : (
+          <>
+            <TagColorPicker value={tag.color} onChange={(color) => void update({ color })} />
+            <Button
+              kind="ghost"
+              onClick={() => {
+                if (!window.confirm(`Usunąć tag „${tag.name}”? Zadania zostaną, stracą tylko ten tag.`)) return;
+                void update({ deleted_at: new Date().toISOString() });
+                navigate({ view: "today" });
+              }}
+            >
+              Usuń tag
+            </Button>
+          </>
+        )}
         <TaskExportButton title={`@${tag.name}`} data={data} ctx={ctx} count={count} rows={() => sortTasks(filtered(data.tasks, query, ctx), "due").map((task) => ({ task }))} />
       </header>
-      <div className="mb-3">
+      <div className="mb-3" hidden={tag.shared}>
         <WorkspaceChips ids={tag.workspaceIds} workspaces={data.workspaces} label="Przestrzenie tagu" onChange={(ids) => void update(tagWorkspacesPatch(ids))} />
       </div>
       <FilterBar query={query} onChange={(q) => setQuery(q.tags ? q : { ...q, tags: { ids: [tag.id], match: "any" } })}>

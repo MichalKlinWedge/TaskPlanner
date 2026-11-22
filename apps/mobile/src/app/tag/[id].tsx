@@ -7,9 +7,11 @@
 import { tagWorkspacesPatch, type FilterQuery } from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
+import { View } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
 import { EditNameBar, FilterResults } from '@/components/filter-screen';
+import { P } from '@/components/ui';
 import { WorkspaceChips } from '@/components/workspace-chips';
 import { useAppData } from '@/lib/app-data';
 import { mutate } from '@/lib/sync';
@@ -32,7 +34,11 @@ export default function TagScreen() {
         query={query}
         onChange={setQuery}
         header={
-          tag ? (
+          tag?.shared ? (
+            <View style={{ paddingHorizontal: 12, paddingTop: 8 }}>
+              <P muted>Tag innego członka przestrzeni — nazwę i kolor zmienia jego autor.</P>
+            </View>
+          ) : tag ? (
             <>
               <EditNameBar
                 name={tag.name}

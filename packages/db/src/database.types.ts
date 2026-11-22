@@ -499,6 +499,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"scope_tags": {
+                  Row: {
+                    "color": string | null,"created_at": string,"deleted_at": string | null,"id": string,"name": string,"row_version": number,"scope_id": string,"tag_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "color"?: string | null,"created_at"?: string,"deleted_at"?: string | null,"id": string,"name": string,"row_version"?: number,"scope_id": string,"tag_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "color"?: string | null,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"name"?: string,"row_version"?: number,"scope_id"?: string,"tag_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "scope_tags_scope_id_fkey"
+      columns: ["scope_id"]
+isOneToOne: false
+      referencedRelation: "sync_scopes"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "scope_tags_tag_id_fkey"
+      columns: ["tag_id"]
+isOneToOne: false
+      referencedRelation: "tags"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"sync_scopes": {
                   Row: {
                     "created_at": string,"id": string,"kind": string,"owner_id": string,"sync_version": number
@@ -822,6 +848,9 @@ isOneToOne: false
 "can_use_collaborator":
 { Args: { "p_collaborator": string,"p_scope": string }; Returns: boolean
                            },
+"can_use_tag":
+{ Args: { "p_scope": string,"p_tag": string }; Returns: boolean
+                           },
 "can_write_scope":
 { Args: { "p_scope": string }; Returns: boolean
                            },
@@ -847,6 +876,9 @@ isOneToOne: false
       } },
 "clear_push_subscription":
 { Args: { "p_device": string,"p_endpoint": string }; Returns: undefined
+                           },
+"collaborator_used_in":
+{ Args: { "p_collaborator": string,"p_scope": string }; Returns: boolean
                            },
 "create_integration_task":
 { Args: { "p_tags"?: Json,"p_task": Json,"p_user": string }; Returns: string
@@ -882,6 +914,9 @@ isOneToOne: false
                            },
 "mirror_collaborator":
 { Args: { "p_collaborator": string,"p_scope": string }; Returns: undefined
+                           },
+"mirror_tag":
+{ Args: { "p_scope": string,"p_tag": string }; Returns: undefined
                            },
 "my_scope_invites":
 { Args: Record<PropertyKey, never>; Returns: Json
@@ -940,8 +975,17 @@ isOneToOne: false
 "share_workspace":
 { Args: { "p_email": string,"p_role": string,"p_scope": string }; Returns: Json
                            },
+"sync_collaborator_spaces":
+{ Args: { "p_collaborator": string }; Returns: undefined
+                           },
+"sync_tag_spaces":
+{ Args: { "p_tag": string }; Returns: undefined
+                           },
 "synced_tables":
 { Args: Record<PropertyKey, never>; Returns: (string)[]
+                           },
+"tag_used_in":
+{ Args: { "p_scope": string,"p_tag": string }; Returns: boolean
                            },
 "task_visible":
 { Args: { "p_task": string }; Returns: boolean
