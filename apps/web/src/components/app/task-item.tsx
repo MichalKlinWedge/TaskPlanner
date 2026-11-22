@@ -9,6 +9,7 @@ import type { TabStore } from "@taskplanner/sync";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
 import { listEditable } from "@/lib/app-data";
+import { clampWidth, type ColumnWidths, type WidthColumn } from "@/lib/list-widths";
 
 import { useAppEnv } from "./app-env";
 
@@ -151,27 +152,73 @@ export interface TaskItemProps {
   onAddSubtask?: () => void;
   /** Tagi pokazywane w kolumnie „Tagi” (`view_prefs.columnTags`); `null` / brak = wszystkie. */
   columnTags?: ReadonlySet<string> | null;
+  /** Szerokości kolumn ustawione w nagłówku (`useListWidths`); brak = domyślne. */
+  widths?: ColumnWidths;
 }
 
 /** Szerokości kolumn — wspólne dla wiersza i nagłówka `TaskColumnsHeader`. */
 const COLUMN_WIDTH: Record<ListColumn, string> = { assignee: "w-24 sm:w-36", start: "w-16 sm:w-24", due: "w-16 sm:w-24", tags: "w-28 sm:w-44" };
 
-/** Nagłówek kolumn nad wierszami listy. */
-export function TaskColumnsHeader({ columns }: { columns: readonly ListColumn[] }) {
+/** Obszar zadania przed tytułem: zwijanie (16) + odstęp + odhaczenie (18) + odstęp. */
+const TITLE_INSET = 50;
+
+/** Styl szerokości kolumny ustawionej przeciąganiem (zastępuje klasę z `COLUMN_WIDTH`). */
+const widthStyle = (px: number | undefined): CSSProperties | undefined => (px ? { width: px } : undefined);
+
+/** Uchwyt na prawej krawędzi nagłówka kolumny: przeciąganie zmienia szerokość, podwójny klik przywraca domyślną. */
+function ResizeHandle({ column, label, onResize }: { column: WidthColumn; label: string; onResize: (column: WidthColumn, px: number | null) => void }) {
+  const onPointerDown = (e: React.PointerEvent<HTMLSpanElement>) => {
+    const cell = e.currentTarget.parentElement;
+    if (!cell || e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const startWidth = cell.getBoundingClientRect().width;
+    const move = (ev: PointerEvent) => onResize(column, clampWidth(column, startWidth + ev.clientX - startX));
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  };
+  return (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Szerokość kolumny „${label}”`}
+      title="Przeciągnij, żeby zmienić szerokość (podwójny klik — domyślna)"
+      onPointerDown={onPointerDown}
+      onDoubleClick={() => onResize(column, null)}
+      className="absolute top-0 right-0 bottom-0 z-10 w-2 cursor-col-resize touch-none after:absolute after:inset-y-0 after:right-0 after:w-0.5 after:rounded after:bg-[var(--accent)] after:opacity-0 hover:after:opacity-100"
+      data-resize={column}
+    />
+  );
+}
+
+/** Nagłówek kolumn nad wierszami listy; z `onResize` kolumny (także „Zadanie”) da się poszerzać przeciąganiem. */
+export function TaskColumnsHeader({ columns, widths = {}, onResize }: { columns: readonly ListColumn[]; widths?: ColumnWidths; onResize?: (column: WidthColumn, px: number | null) => void }) {
   if (!columns.length) return null;
   return (
     <div className="flex gap-2 border-b border-[var(--line)] pb-1 text-xs font-medium text-[var(--muted)]" data-testid="list-columns-header">
-      <span className="flex-1" />
+      <span className={`relative min-w-0 ${widths.title ? "shrink-0" : "flex-1"}`} style={{ ...widthStyle(widths.title), paddingLeft: TITLE_INSET }} data-header="title">
+        <span className="block truncate">Zadanie</span>
+        {onResize ? <ResizeHandle column="title" label="Zadanie" onResize={onResize} /> : null}
+      </span>
       {columns.map((c) => (
-        <span key={c} className={`${COLUMN_WIDTH[c]} shrink-0 truncate`}>
-          {LIST_COLUMN[c]}
+        <span key={c} className={`relative ${COLUMN_WIDTH[c]} shrink-0`} style={widthStyle(widths[c])} data-header={c}>
+          <span className="block truncate">{LIST_COLUMN[c]}</span>
+          {onResize ? <ResizeHandle column={c} label={LIST_COLUMN[c]} onResize={onResize} /> : null}
         </span>
       ))}
     </div>
   );
 }
 
-export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, columnTags }: TaskItemProps) {
+export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, columnTags, widths = {} }: TaskItemProps) {
   const { toggle } = useTaskActions();
   const { openTask, selectedIds, select, data } = useAppEnv();
   const selected = selectedIds.has(task.id);
@@ -248,7 +295,9 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
         </button>
       )}
       <div
-        className="flex min-w-0 flex-1 cursor-pointer items-start gap-1"
+        className={`flex min-w-0 cursor-pointer items-start gap-1 ${widths.title ? "shrink-0" : "flex-1"}`}
+        // Szerokość „Zadanie” liczona od krawędzi wiersza — wcięcie podzadań jej nie przesuwa.
+        style={widths.title ? { width: Math.max(40, widths.title - TITLE_INSET - depth * 20) } : undefined}
         onClick={(e) => {
           // Puste miejsce obok tytułu działa jak tytuł.
           if (e.target === e.currentTarget) onOpen(e);
@@ -314,7 +363,7 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
       ) : null}
       </div>
       {columns.map((c) => (
-        <span key={c} className={`${COLUMN_WIDTH[c]} mt-0.5 shrink-0 text-xs ${c === "tags" ? "" : "truncate"} ${closed ? "opacity-50" : ""}`} data-column={c}>
+        <span key={c} className={`${COLUMN_WIDTH[c]} mt-0.5 shrink-0 text-xs ${c === "tags" ? "" : "truncate"} ${closed ? "opacity-50" : ""}`} style={widthStyle(widths[c])} data-column={c}>
           {c === "assignee" ? (
             assignee ? (
               <span title={`Odpowiedzialny: ${assignee.name}`}>{assignee.name}</span>

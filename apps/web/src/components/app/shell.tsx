@@ -544,7 +544,7 @@ export function Shell({
             </div>
           </aside>
           <main ref={mainRef} className="@container min-w-0 flex-1 overflow-y-auto lg:[&:has(~[data-task-panel=full])]:hidden">
-            <div className={`mx-auto w-full p-4 pb-20 [--tp-pad:1rem] sm:p-6 sm:[--tp-pad:1.5rem] ${wide ? "" : route.view === "today" ? "max-w-5xl" : "max-w-3xl"}`}>{content}</div>
+            <div className={`mx-auto w-full p-4 pb-20 [--tp-pad:1rem] sm:p-6 sm:[--tp-pad:1.5rem] ${wide ? "" : route.view === "today" ? "max-w-5xl" : list?.prefs.columns?.length ? "max-w-6xl" : "max-w-3xl"}`}>{content}</div>
           </main>
           {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>

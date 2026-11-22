@@ -50,6 +50,7 @@ import type { TabStore } from "@taskplanner/sync";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { listEditable, type AppData, type List } from "@/lib/app-data";
+import { useListWidths } from "@/lib/list-widths";
 import { useLocalQuery } from "@/lib/local-store";
 
 import { Board } from "./board";
@@ -351,6 +352,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
   const completed: CompletedMode = list.prefs.completed ?? "today";
   const columns = orderedColumns(list.prefs.columns);
   const columnTagIds = list.prefs.columnTags;
+  const [widths, setWidth] = useListWidths(list.id);
   // Tagi w kolumnie „Tagi”: wybrane (tylko istniejące) albo `null` = wszystkie.
   const columnTags = useMemo(() => {
     const known = (columnTagIds ?? []).filter((id) => data.tags.some((t) => t.id === id));
@@ -417,7 +419,10 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
       ) : (
         <p className="text-xs text-[var(--muted)]" data-testid="list-read-only">{READONLY_LIST_NOTE}</p>
       )}
-      {!tasks.length ? <Empty>Brak zadań.</Empty> : <TaskColumnsHeader columns={columns} />}
+      {/* Z kolumnami wiersze mogą być szersze od ekranu (szerokości z nagłówka) — przewijanie w poziomie; pl-5 zostawia miejsce na uchwyt ⋮⋮. */}
+      <div className={columns.length ? "-ml-5 overflow-x-auto pl-5" : "contents"} data-testid="list-scroll">
+      <div className={columns.length && widths.title ? "w-max min-w-full" : "contents"}>
+      {!tasks.length ? <Empty>Brak zadań.</Empty> : <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} />}
       {rows ? (
         <SortableTaskList ids={rows.map((n) => n.task.id)}>
           {rows.map((node) => (
@@ -431,6 +436,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
               onCollapse={() => toggle(node.task.id)}
               columns={columns}
               columnTags={columnTags}
+              widths={widths}
               onAddSubtask={subtaskAction(node.task)}
             />
           ))}
@@ -440,18 +446,20 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
           group.label ? (
             <Section key={group.key} title={group.label} count={group.tasks.length}>
               {group.tasks.map((t) => (
-                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} columnTags={columnTags} onAddSubtask={subtaskAction(t)} />
+                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} columnTags={columnTags} widths={widths} onAddSubtask={subtaskAction(t)} />
               ))}
             </Section>
           ) : (
             <ul key={group.key} className="divide-y divide-[var(--line)]">
               {group.tasks.map((t) => (
-                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} columnTags={columnTags} onAddSubtask={subtaskAction(t)} />
+                <TaskItem key={t.id} task={t} today={ctx.today} columns={columns} columnTags={columnTags} widths={widths} onAddSubtask={subtaskAction(t)} />
               ))}
             </ul>
           ),
         )
       )}
+      </div>
+      </div>
     </>
   );
 
