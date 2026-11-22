@@ -125,6 +125,8 @@ export class SyncEngine {
     // `_scopes` sprzed dostępu gości do list (v1.x): bez kolumny `hidden`.
     const scopeColumns = new Set((await this.db.all<{ name: string }>('select name from pragma_table_info(?)', ['_scopes'])).map((c) => c.name));
     if (!scopeColumns.has('hidden')) await this.db.run("alter table _scopes add column hidden text not null default '[]'");
+    // … i sprzed liczby członków (ikona udostępnienia przy listach).
+    if (!scopeColumns.has('members')) await this.db.run('alter table _scopes add column members integer not null default 1');
     // Baza z wcześniejszej wersji: brakujące kolumny dochodzą jako puste (wartości przyjdą z serwera
     // przy następnej zmianie wiersza; puste = domyślne, jak w bazie).
     for (const table of SYNCED_TABLES) {
@@ -568,7 +570,7 @@ export class SyncEngine {
       }
       // Ukryte listy (`lists.guest_access = 'hidden'`, nie właściciel): nowo ukryte znikają z urządzenia,
       // odsłonięte — zakres od zera (ich wiersze nie przyszły w przyrostach).
-      const storedScopes = await tx.all<{ id: string; kind: string; role: string; hidden: string }>('select id, kind, role, hidden from _scopes');
+      const storedScopes = await tx.all<{ id: string; kind: string; role: string; hidden: string; members: number }>('select id, kind, role, hidden, members from _scopes');
       const storedHidden = new Map(storedScopes.map((s) => [s.id, new Set<string>(JSON.parse(s.hidden || '[]') as string[])]));
       const repull: string[] = [];
       for (const [id, info] of Object.entries(result.scopes)) {
@@ -580,13 +582,13 @@ export class SyncEngine {
       }
       // Role w zakresach (współdzielone przestrzenie, `viewer` = tylko odczyt) — widoki czytają `_scopes`
       // razem z `workspaces`, więc zmiana roli odświeża je jak zmiana przestrzeni.
-      const scopeKey = (id: string, kind: string, role: string, hidden: Iterable<string>) => `${id}:${kind}:${role}:${[...hidden].sort().join('|')}`;
-      const roles = Object.entries(result.scopes).map(([id, info]) => scopeKey(id, info.kind, info.role, info.hidden ?? [])).sort();
-      const stored = storedScopes.map((s) => scopeKey(s.id, s.kind, s.role, storedHidden.get(s.id) ?? [])).sort();
+      const scopeKey = (id: string, kind: string, role: string, hidden: Iterable<string>, members: number) => `${id}:${kind}:${role}:${[...hidden].sort().join('|')}:${members}`;
+      const roles = Object.entries(result.scopes).map(([id, info]) => scopeKey(id, info.kind, info.role, info.hidden ?? [], info.members ?? 1)).sort();
+      const stored = storedScopes.map((s) => scopeKey(s.id, s.kind, s.role, storedHidden.get(s.id) ?? [], Number(s.members) || 1)).sort();
       if (roles.join() !== stored.join()) {
         await tx.run('delete from _scopes');
         for (const [id, info] of Object.entries(result.scopes)) {
-          await tx.run('insert into _scopes (id, kind, role, hidden) values (?, ?, ?, ?)', [id, info.kind, info.role, JSON.stringify(info.hidden ?? [])]);
+          await tx.run('insert into _scopes (id, kind, role, hidden, members) values (?, ?, ?, ?, ?)', [id, info.kind, info.role, JSON.stringify(info.hidden ?? []), info.members ?? 1]);
         }
         addChange(touched, 'workspaces', null);
         addChange(touched, 'lists', null);

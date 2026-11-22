@@ -84,3 +84,26 @@ export function listAccess(role: ScopeRole | null | undefined, guestAccess: Gues
 /** Czy użytkownik może zmieniać listę i jej zadania. */
 export const canEditList = (role: ScopeRole | null | undefined, guestAccess: GuestAccess | null | undefined): boolean =>
   listAccess(role, guestAccess) === 'edit';
+
+export interface ListShareBadge {
+  icon: string;
+  /** Podpowiedź / tekst dla czytnika ekranu. */
+  label: string;
+}
+
+/**
+ * Ikona udostępnienia przy nazwie listy. Właściciel (i brak roli — dane własne) udostępnionej
+ * przestrzeni (`members` > 1) widzi ustawienie listy dla gości; gość — swój dostęp do listy. Lista
+ * w przestrzeni nikomu nieudostępnionej — bez ikony.
+ */
+export function listShareBadge(role: ScopeRole | null | undefined, guestAccess: GuestAccess | null | undefined, members: number | null | undefined): ListShareBadge | null {
+  if (!role || role === 'owner') {
+    if ((members ?? 1) <= 1) return null;
+    if (guestAccess === 'hidden') return { icon: '🔒', label: 'Ukryta przed osobami, którym udostępniono przestrzeń' };
+    if (guestAccess === 'view') return { icon: '👁', label: 'Udostępniona do podglądu' };
+    return { icon: '👥', label: 'Udostępniona do edycji (rola Podgląd tylko czyta)' };
+  }
+  const access = listAccess(role, guestAccess);
+  if (access === 'hidden') return null;
+  return access === 'view' ? { icon: '👁', label: 'Udostępniona Ci do podglądu' } : { icon: '✎', label: 'Udostępniona Ci do edycji' };
+}

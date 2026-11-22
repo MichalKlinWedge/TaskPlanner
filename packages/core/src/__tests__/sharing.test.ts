@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { canEditList, canEditScope, inviteLink, inviteTokenFrom, listAccess, shareEmail } from '../sharing.ts';
+import { canEditList, canEditScope, inviteLink, inviteTokenFrom, listAccess, listShareBadge, shareEmail } from '../sharing.ts';
 
 describe('współdzielenie przestrzeni', () => {
   it('adres zapraszanej osoby: normalizacja, bez domen', () => {
@@ -34,5 +34,17 @@ describe('współdzielenie przestrzeni', () => {
     expect(listAccess('viewer', 'hidden')).toBe('hidden');
     expect(canEditList('editor', undefined)).toBe(true);
     expect(canEditList('viewer', 'edit')).toBe(false);
+  });
+
+  it('ikona przy liście: właściciel udostępnionej przestrzeni — ustawienie listy, gość — jego dostęp', () => {
+    expect(listShareBadge('owner', 'edit', 1)).toBeNull();
+    expect(listShareBadge(null, 'hidden', undefined)).toBeNull();
+    expect(listShareBadge('owner', 'edit', 2)?.icon).toBe('👥');
+    expect(listShareBadge('owner', 'view', 3)?.icon).toBe('👁');
+    expect(listShareBadge(null, 'hidden', 2)?.icon).toBe('🔒');
+    expect(listShareBadge('editor', 'edit', 2)).toEqual({ icon: '✎', label: 'Udostępniona Ci do edycji' });
+    expect(listShareBadge('editor', 'view', 2)?.label).toBe('Udostępniona Ci do podglądu');
+    expect(listShareBadge('viewer', 'edit', 2)?.icon).toBe('👁');
+    expect(listShareBadge('editor', 'hidden', 2)).toBeNull();
   });
 });

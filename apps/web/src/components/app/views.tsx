@@ -38,6 +38,8 @@ import {
   type ViewContext,
   type ViewPrefs,
   READONLY_LIST_NOTE,
+  listShareBadge,
+  type ListShareBadge,
 } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useMemo, useState, type ReactNode } from "react";
@@ -63,12 +65,19 @@ export interface ViewProps {
 }
 
 /** Nagłówek widoku: tytuł po lewej, przyciski widoku (`children`) w prawym górnym rogu obszaru treści (`tp-view-header`). */
-function Header({ title, subtitle, children }: { title: string; subtitle?: string; children?: ReactNode }) {
+function Header({ title, subtitle, badge, children }: { title: string; subtitle?: string; badge?: ListShareBadge | null; children?: ReactNode }) {
   return (
     <header className="tp-view-header mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
       {/* `min-w-48`: przy wąskim ekranie przyciski schodzą do nowego wiersza, zamiast ścisnąć tytuł do zera. */}
       <div className="min-w-48 flex-1">
-        <h1 className="text-xl font-semibold">{title}</h1>
+        <h1 className="text-xl font-semibold">
+          {title}
+          {badge ? (
+            <span className="ml-2 align-middle text-base font-normal opacity-70" title={badge.label} aria-label={badge.label} data-testid="list-share-badge">
+              {badge.icon}
+            </span>
+          ) : null}
+        </h1>
         {subtitle ? <p className="text-sm text-[var(--muted)]">{subtitle}</p> : null}
       </div>
       {children ? <div className="ml-auto flex flex-wrap items-center gap-2">{children}</div> : null}
@@ -344,7 +353,14 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
 
   return (
     <>
-      <Header title={list.name} subtitle={`${LIST_KIND[list.kind]} · ${plural(openCount, ["otwarte", "otwarte", "otwartych"])}`}>
+      <Header
+        title={list.name}
+        subtitle={`${LIST_KIND[list.kind]} · ${plural(openCount, ["otwarte", "otwarte", "otwartych"])}`}
+        badge={(() => {
+          const ws = data.workspaces.find((w) => w.id === list.workspaceId);
+          return listShareBadge(ws?.role, list.guestAccess, ws?.members);
+        })()}
+      >
         <TaskExportButton
           title={list.name}
           data={data}

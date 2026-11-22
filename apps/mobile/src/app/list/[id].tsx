@@ -34,7 +34,7 @@ import { pickOption } from '@/components/pickers';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
 import { usePalette } from '@/components/ui';
-import { useView } from '@/lib/app-data';
+import { useListShareBadge, useView } from '@/lib/app-data';
 import { usePerfReady } from '@/lib/perf';
 import { rowMaker } from '@/lib/rows';
 import { mutate } from '@/lib/sync';
@@ -65,6 +65,8 @@ export default function ListScreen() {
   const { notify } = useTaskActions();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const list = data.lists.find((l) => l.id === id);
+  // Ikona udostępnienia przy tytule: właściciel — ustawienie listy dla gości, gość — jego dostęp.
+  const share = useListShareBadge(id);
   const sortBy: SortBy = list?.prefs.sortBy ?? 'manual';
   const groupBy: GroupBy = list?.prefs.groupBy ?? 'none';
   const completed: CompletedMode = list?.prefs.completed ?? 'today';
@@ -127,7 +129,7 @@ export default function ListScreen() {
     void mutate('lists', list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
   };
   const workspace = data.workspaces.find((w) => w.id === list.workspaceId)?.name;
-  const title = list.kind === 'inbox' ? `Inbox · ${workspace ?? ''}` : list.name;
+  const title = `${list.kind === 'inbox' ? `Inbox · ${workspace ?? ''}` : list.name}${share ? ` ${share.icon}` : ''}`;
 
   return (
     <>

@@ -7,7 +7,7 @@
  * Reguły widoków liczy `@taskplanner/core` — tu jest tylko mapowanie wierszy, jak na webie
  * (`apps/web/src/lib/app-data.ts`).
  */
-import { boardColumnDefs, canEditList, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type BoardColumnDef, type Collaborator, type GuestAccess, type HabitCompletion, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask, type ScopeRole } from '@taskplanner/core';
+import { boardColumnDefs, canEditList, listShareBadge, FilterQuery, localDateAt, ProfileSettings, sortCollaborators, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, type BoardColumnDef, type Collaborator, type GuestAccess, type HabitCompletion, type ListShareBadge, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask, type ScopeRole } from '@taskplanner/core';
 import { createTaskCache, TASK_COLUMNS, type SqlRow, type SyncEngine, type TaskCache, type TaskEntry } from '@taskplanner/sync';
 import Storage from 'expo-sqlite/kv-store';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -23,6 +23,8 @@ export interface Workspace {
   sortKey: string;
   /** Rola z ostatniej synchronizacji (`_scopes`); `null` = jeszcze nieznana (jak właściciel). */
   role: ScopeRole | null;
+  /** Liczba członków przestrzeni (`_scopes.members`); > 1 = przestrzeń udostępniona. */
+  members: number;
 }
 
 export interface List {
@@ -153,7 +155,7 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
   const today = localDateAt(new Date(), settings.timeZone);
   const queried = Date.now();
   const [workspaces, lists, tags, filters, collaborators, entries, habits] = await Promise.all([
-    db.all<SqlRow>('select w.id, w.name, w.color, w.sort_key, s.role from workspaces w left join _scopes s on s.id = w.id where w.deleted_at is null and w.archived_at is null'),
+    db.all<SqlRow>('select w.id, w.name, w.color, w.sort_key, s.role, s.members from workspaces w left join _scopes s on s.id = w.id where w.deleted_at is null and w.archived_at is null'),
     db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs, project_status, board_columns, guest_access, start_date, end_date from lists where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, name, color, sort_key, workspace_ids from tags where deleted_at is null'),
     db.all<SqlRow>('select id, name, icon, query, sort_key from saved_filters where deleted_at is null'),
@@ -193,7 +195,7 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
   return {
     userId: engine.userId,
     workspaces: workspaces
-      .map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), role: (r.role as ScopeRole | null) ?? null }))
+      .map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), role: (r.role as ScopeRole | null) ?? null, members: Number(r.members) || 1 }))
       .sort(byKey),
     lists: allLists,
     tags: tags.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), workspaceIds: tagWorkspaceIds(r.workspace_ids) })).sort(byKey),
@@ -364,6 +366,16 @@ export function useToday(timeZone?: string): LocalDate {
 }
 
 /** Dane, dziś i kontekst widoków (`ViewContext`) — wspólne dla ekranów. */
+/** Ikona udostępnienia listy (core `listShareBadge`) — `null` w przestrzeni nikomu nieudostępnionej. */
+export function useListShareBadge(listId: string | undefined): ListShareBadge | null {
+  const data = useAppData();
+  return useMemo(() => {
+    const list = data.lists.find((l) => l.id === listId);
+    const space = data.workspaces.find((w) => w.id === list?.workspaceId);
+    return list ? listShareBadge(space?.role, list.guestAccess, space?.members) : null;
+  }, [data.lists, data.workspaces, listId]);
+}
+
 export function useView() {
   const data = useAppData();
   const today = useToday(data.settings.timeZone);

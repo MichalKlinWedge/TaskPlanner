@@ -36,6 +36,8 @@ export interface ScopeInfo {
   role: 'owner' | 'editor' | 'viewer';
   /** Listy przestrzeni ukryte przed tym użytkownikiem (`lists.guest_access = 'hidden'`, nie właściciel). */
   hidden?: string[];
+  /** Liczba członków przestrzeni (z właścicielem) — > 1 = przestrzeń udostępniona. */
+  members?: number;
 }
 
 /** Wiersz, który przestał być widoczny (ukryta lista) — klient usuwa swoją kopię. */

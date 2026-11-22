@@ -3,7 +3,7 @@
  * otwartych zadań liczonymi jak na webie (`isOpen`, `selectFiltered` z core: wszystkie poziomy drzewa,
  * bez nawyków, tagi w bieżącej przestrzeni), kosz, ustawienia, narzędzia PoC (tylko po włączeniu, `devToolsEnabled`).
  */
-import { isOpen, LIST_KIND, selectFiltered, tagsForWorkspace } from '@taskplanner/core';
+import { isOpen, LIST_KIND, listShareBadge, selectFiltered, tagsForWorkspace, type ListShareBadge } from '@taskplanner/core';
 import { router, type Href } from 'expo-router';
 import { useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -14,7 +14,7 @@ import { useView } from '@/lib/app-data';
 import { devToolsEnabled, onDevToolsChange } from '@/lib/config';
 import { perfStart, usePerfReady } from '@/lib/perf';
 
-function Item({ title, hint, count, color, href, indent }: { title: string; hint?: string; count?: number; color?: string | null; href: Href; indent?: boolean }) {
+function Item({ title, hint, count, color, href, indent, badge }: { title: string; hint?: string; count?: number; color?: string | null; href: Href; indent?: boolean; badge?: ListShareBadge | null }) {
   const p = usePalette();
   return (
     <Pressable
@@ -32,6 +32,11 @@ function Item({ title, hint, count, color, href, indent }: { title: string; hint
         </Text>
         {hint ? <Text style={{ color: p.muted, fontSize: 12 }}>{hint}</Text> : null}
       </View>
+      {badge ? (
+        <Text accessibilityLabel={badge.label} style={{ fontSize: 13, opacity: 0.75 }}>
+          {badge.icon}
+        </Text>
+      ) : null}
       {count ? <Text style={{ color: p.muted, fontSize: 14 }}>{count}</Text> : null}
       <Text style={{ color: p.muted, fontSize: 18 }}>›</Text>
     </Pressable>
@@ -101,6 +106,7 @@ export default function BrowseScreen() {
                 hint={l.kind === 'inbox' ? undefined : LIST_KIND[l.kind]}
                 color={l.color ?? w.color}
                 count={counts.byList.get(l.id)}
+                badge={listShareBadge(w.role, l.guestAccess, w.members)}
                 href={{ pathname: '/list/[id]', params: { id: l.id } }}
               />
           ))}

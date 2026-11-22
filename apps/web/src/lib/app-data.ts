@@ -21,6 +21,8 @@ export interface Workspace {
   sortKey: string;
   /** Rola w przestrzeni z ostatniej synchronizacji (`_scopes`); `null` = jeszcze nieznana (jak właściciel). */
   role: ScopeRole | null;
+  /** Liczba członków przestrzeni (`_scopes.members`); > 1 = przestrzeń udostępniona. */
+  members: number;
 }
 
 export interface List {
@@ -167,7 +169,7 @@ function useTaskEntries(store: TabStore): { entries: readonly TaskEntry[]; loade
 export function useAppData(store: TabStore, today: LocalDate): AppData {
   const workspaces = useLocalQuery<Row>(
     store,
-    "select w.id, w.name, w.color, w.sort_key, s.role from workspaces w left join _scopes s on s.id = w.id where w.deleted_at is null and w.archived_at is null",
+    "select w.id, w.name, w.color, w.sort_key, s.role, s.members from workspaces w left join _scopes s on s.id = w.id where w.deleted_at is null and w.archived_at is null",
     [],
     ["workspaces"],
   );
@@ -229,7 +231,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
   return useMemo(
     () => ({
       workspaces: workspaces.rows
-        .map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), role: (r.role as ScopeRole | null) ?? null }))
+        .map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), role: (r.role as ScopeRole | null) ?? null, members: Number(r.members) || 1 }))
         .sort(byKey),
       lists: allLists,
       tags: tags.rows.map((r) => ({ id: String(r.id), name: String(r.name), color: r.color as string | null, sortKey: String(r.sort_key), workspaceIds: tagWorkspaceIds(r.workspace_ids) })).sort(byKey),
