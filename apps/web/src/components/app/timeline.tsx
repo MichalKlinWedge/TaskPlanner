@@ -250,7 +250,7 @@ interface Latest {
 }
 
 export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: ViewContext; active: boolean }) {
-  const { store: tabStore, openTask, select, settings, userId } = useAppEnv();
+  const { store: tabStore, openTask, openTaskId, select, settings, userId } = useAppEnv();
   const { run, notify } = useTaskActions();
   const deps = useDependencies(tabStore);
   const dark = useDark();
@@ -367,6 +367,17 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   );
 
   const scrollToday = useCallback(() => void api.current?.exec("scroll-chart", { date: toDate(addDays(today, -3)) }), [today]);
+
+  // Zadanie otwarte w panelu (np. „↑ rodzic” w panelu, palety, innego widoku) = zaznaczony wiersz osi.
+  // `select-task` bez `toggle` nie otwiera panelu ponownie (słuchacz niżej reaguje tylko na kliknięcia).
+  useEffect(() => {
+    const gantt = api.current;
+    if (!active || !openTaskId || !gantt) return;
+    const { selected } = gantt.getState();
+    if (selected?.length === 1 && String(selected[0]) === openTaskId) return;
+    if (!gantt.getTask(openTaskId)) return; // brak wiersza: zadanie spoza osi albo ukryty projekt
+    void gantt.exec("select-task", { id: openTaskId, show: "y" });
+  }, [openTaskId, active, ganttTasks]);
 
   const init = useCallback(
     (gantt: IApi) => {
