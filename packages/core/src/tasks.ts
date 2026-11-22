@@ -380,6 +380,54 @@ export function taskDepth(tasks: readonly TreeTask[], id: string): number {
 /** Czy pod `parentId` można dodać nowe podzadanie (bez przekroczenia 4 poziomów). */
 export const canAddSubtask = (tasks: readonly TreeTask[], parentId: string): boolean => taskDepth(tasks, parentId) < MAX_TASK_DEPTH;
 
+type SubtaskTask = TreeTask & Pick<ViewTask, 'listId' | 'sortKey' | 'kind' | 'status'>;
+
+/**
+ * Otwarte zadania z listy rodzica, które można podpiąć pod `parentId` jako podzadania (z ich
+ * poddrzewem): bez samego rodzica i jego przodków (cykl), bez obecnych bezpośrednich podzadań,
+ * bez przekroczenia 4 poziomów.
+ */
+export function subtaskCandidates<T extends SubtaskTask>(tasks: readonly T[], parentId: string): T[] {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const parent = byId.get(parentId);
+  if (!parent) return [];
+  const room = MAX_TASK_DEPTH - taskDepth(tasks, parentId);
+  if (room < 1) return [];
+  const banned = new Set<string>();
+  for (let t: T | undefined = parent; t && !banned.has(t.id); t = t.parentId ? byId.get(t.parentId) : undefined) banned.add(t.id);
+  const children = new Map<string, string[]>();
+  for (const t of tasks) if (t.parentId) children.set(t.parentId, [...(children.get(t.parentId) ?? []), t.id]);
+  const heights = new Map<string, number>();
+  const height = (id: string, seen = new Set<string>()): number => {
+    const known = heights.get(id);
+    if (known !== undefined) return known;
+    if (seen.has(id)) return Infinity;
+    seen.add(id);
+    const h = 1 + Math.max(0, ...(children.get(id) ?? []).map((c) => height(c, seen)));
+    heights.set(id, h);
+    return h;
+  };
+  return tasks.filter((t) => t.listId === parent.listId && t.kind === 'task' && t.status !== 'done' && t.status !== 'cancelled' && t.parentId !== parentId && !banned.has(t.id) && height(t.id) <= room);
+}
+
+/**
+ * Podpięcie istniejącego zadania (z jego podzadaniami) pod `parentId` — na koniec podzadań, z
+ * cofnięciem. `null`, gdy się nie da (`subtaskCandidates`).
+ */
+export function attachSubtaskOps(tasks: readonly SubtaskTask[], parentId: string, childId: string): { ops: TaskOp[]; undo: TaskOp[] } | null {
+  const child = subtaskCandidates(tasks, parentId).find((t) => t.id === childId);
+  if (!child) return null;
+  const last = tasks
+    .filter((t) => t.parentId === parentId)
+    .map((t) => t.sortKey)
+    .sort()
+    .at(-1);
+  return {
+    ops: [{ table: 'tasks', id: childId, patch: { parent_id: parentId, sort_key: keyBetween(last) } }],
+    undo: [{ table: 'tasks', id: childId, patch: { parent_id: child.parentId, sort_key: child.sortKey } }],
+  };
+}
+
 /**
  * Zmiana dat zadania z zachowaniem reguł wiersza (`TaskRow`): bez terminu nie ma godziny ani
  * początku; początek po terminie przesuwa się na termin.

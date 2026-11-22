@@ -7,7 +7,9 @@ import { completionId, tagId, taskTagId } from '../ids.ts';
 import { parseQuickAdd } from '../quick-add.ts';
 import {
   bulkTaskOps,
+  attachSubtaskOps,
   canAddSubtask,
+  subtaskCandidates,
   completeTaskOps,
   datesPatch,
   deleteTaskOps,
@@ -259,6 +261,31 @@ describe('podzadania, przenoszenie, kosz', () => {
     expect(canAddSubtask(tree, 'c')).toBe(true);
     expect(canAddSubtask(tree, 'd')).toBe(false);
     expect(openDescendants(tree, 'a').map((t) => t.id)).toEqual(['e', 'c']);
+  });
+
+  it('podpięcie istniejącego zadania: ta sama lista, otwarte, bez cyklu i ponad 4 poziomy, na koniec podzadań', () => {
+    const rows = [
+      ...tree.map((t, i) => ({ ...t, kind: 'task' as const, sortKey: `k${i}` })),
+      { id: 'g', parentId: null, listId: 'L1', status: 'todo', kind: 'task', sortKey: 'k6' },
+      { id: 'h', parentId: 'g', listId: 'L1', status: 'todo', kind: 'task', sortKey: 'k7' },
+      { id: 'x', parentId: null, listId: 'L2', status: 'todo', kind: 'task', sortKey: 'k8' },
+      { id: 'n', parentId: null, listId: 'L1', status: 'todo', kind: 'habit', sortKey: 'k9' },
+      { id: 'z', parentId: null, listId: 'L1', status: 'done', kind: 'task', sortKey: 'ka' },
+    ] as const;
+    // Pod „e” (poziom 2): „c” (z „d”) — 2 poziomy, mieści się; „a” to przodek; „b” — 3 poziomy, za głęboko.
+    expect(subtaskCandidates(rows, 'e').map((t) => t.id)).toEqual(['c', 'f', 'g', 'h']);
+    // Pod „a”: bez obecnych podzadań b, e.
+    expect(subtaskCandidates(rows, 'a').map((t) => t.id)).toEqual(['c', 'f', 'g', 'h']);
+    expect(subtaskCandidates(rows, 'c').map((t) => t.id)).toEqual(['e', 'f', 'h']);
+    expect(subtaskCandidates(rows, 'd')).toEqual([]);
+
+    const attached = attachSubtaskOps(rows, 'a', 'f')!;
+    expect(attached.ops).toHaveLength(1);
+    expect(attached.ops[0]!.patch.parent_id).toBe('a');
+    expect((attached.ops[0]!.patch.sort_key as string) > 'k4').toBe(true);
+    expect(attached.undo).toEqual([{ table: 'tasks', id: 'f', patch: { parent_id: null, sort_key: 'k5' } }]);
+    expect(attachSubtaskOps(rows, 'c', 'a')).toBeNull();
+    expect(attachSubtaskOps(rows, 'a', 'x')).toBeNull();
   });
 
   it('daty: bez terminu nie ma godziny ani początku, początek nie po terminie', () => {

@@ -15,7 +15,9 @@ import {
   addParticipantOps,
   assigneeChoices,
   assignTaskOps,
+  attachSubtaskOps,
   canAddSubtask,
+  subtaskCandidates,
   taskBoardColumn,
   clampLag,
   collaboratorMatches,
@@ -285,7 +287,10 @@ export function TaskPanel({ taskId }: { taskId: string }) {
           </ul>
         ) : null}
         {readOnly ? null : canAddSubtask(data.tasks, task.id) ? (
-          <QuickAdd parent={{ id: task.id, listId: task.listId }} placeholder="Dodaj podzadanie" />
+          <>
+            <QuickAdd parent={{ id: task.id, listId: task.listId }} placeholder="Dodaj podzadanie" />
+            <AttachSubtask key={`sub:${task.id}`} task={task} />
+          </>
         ) : (
           <p className="text-xs text-[var(--muted)]">Najwyżej 4 poziomy zadań — tu nie można dodać kolejnego.</p>
         )}
@@ -323,6 +328,70 @@ export function TaskPanel({ taskId }: { taskId: string }) {
  * w dniach i naruszeniem; dodanie wyszukaniem zadania z tej samej przestrzeni — przez `addDependencyOps`
  * (cykl, duplikat i inna przestrzeń są blokowane). Na osi czasu zależności tworzy się przeciągnięciem.
  */
+/** Podpięcie istniejącego zadania z tej samej listy jako podzadania (core `subtaskCandidates`). */
+function AttachSubtask({ task }: { task: ViewTask }) {
+  const { data } = useAppEnv();
+  const { run, notify } = useTaskActions();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const all = useMemo(() => (open ? subtaskCandidates(data.tasks, task.id) : []), [open, data.tasks, task.id]);
+  const needle = normalizeText(query.trim());
+  const candidates = (needle ? all.filter((t) => normalizeText(t.title).includes(needle)) : all).slice(0, 8);
+
+  const attach = (child: ViewTask) => {
+    const result = attachSubtaskOps(data.tasks, task.id, child.id);
+    if (!result) return notify("Tego zadania nie można podpiąć (cykl albo więcej niż 4 poziomy).");
+    void run(result.ops, { text: `„${child.title}” jest podzadaniem „${task.title}”`, undo: result.undo });
+    setQuery("");
+  };
+
+  if (!open) {
+    return (
+      <Button kind="ghost" onClick={() => setOpen(true)}>
+        + Z istniejących…
+      </Button>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex gap-2">
+        <Input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Szukaj zadania na tej liście"
+          aria-label="Szukaj zadania do podpięcia"
+          className="min-w-0 flex-1"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              setOpen(false);
+            } else if (e.key === "Enter" && candidates[0]) attach(candidates[0]);
+          }}
+        />
+        <Button kind="ghost" onClick={() => setOpen(false)}>
+          Anuluj
+        </Button>
+      </div>
+      {candidates.length ? (
+        <ul className="rounded-md border border-[var(--line)] text-sm" aria-label="Zadania do podpięcia">
+          {candidates.map((t) => (
+            <li key={t.id}>
+              <button type="button" className="block w-full truncate px-2 py-1 text-left hover:bg-black/5 dark:hover:bg-white/10" onClick={() => attach(t)}>
+                {t.title}
+                {t.parentId ? <span className="ml-2 text-xs text-[var(--muted)]">↳ {data.tasks.find((p) => p.id === t.parentId)?.title ?? ""}</span> : null}
+                {t.dueDate ? <span className="ml-2 text-xs text-[var(--muted)]">{shortDate(t.dueDate)}</span> : null}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-[var(--muted)]">{needle ? "Brak otwartych zadań o takim tytule na tej liście." : "Brak zadań na tej liście, które można podpiąć."}</p>
+      )}
+    </div>
+  );
+}
+
 function DependenciesField({ task }: { task: ViewTask }) {
   const { store, data, openTask } = useAppEnv();
   const { run, notify } = useTaskActions();
