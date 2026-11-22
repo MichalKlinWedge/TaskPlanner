@@ -43,8 +43,8 @@ export type BoardColumnDef = z.infer<typeof BoardColumnDef>;
 /** Własne kolumny tablicy w kolejności wyświetlania; `null` = brak. */
 export const BoardColumns = z.array(BoardColumnDef).max(50);
 
-/** Dodatkowa kolumna widoku listy (v1.x): odpowiedzialny, początek, koniec (termin). */
-export const ListColumn = z.enum(['assignee', 'start', 'due']);
+/** Dodatkowa kolumna widoku listy (v1.x): odpowiedzialny, początek, koniec (termin), tagi. */
+export const ListColumn = z.enum(['assignee', 'start', 'due', 'tags']);
 export type ListColumn = z.infer<typeof ListColumn>;
 
 /** `lists.view_prefs`: ustawienia widoku listy (M2). */
@@ -58,9 +58,7 @@ export const ViewPrefs = z.object({
   /** Filtr z chipów „+ Filtr” zapamiętany dla listy; uszkodzony nie psuje reszty ustawień. */
   filter: FilterQuery.optional().catch(undefined),
   /** Kolumny pokazane w widoku listy (kolejność stała: `LIST_COLUMN`); uszkodzone pomijane. */
-  columns: z.array(ListColumn).max(3).optional().catch(undefined),
-  /** Tagi jako kolumny listy (✓ = zadanie ma tag; klik przełącza); id tagów, nieznane pomijane. */
-  tagColumns: z.array(Id).max(10).optional().catch(undefined),
+  columns: z.array(ListColumn).max(4).optional().catch(undefined),
 });
 export type ViewPrefs = z.infer<typeof ViewPrefs>;
 

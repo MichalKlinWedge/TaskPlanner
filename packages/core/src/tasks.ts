@@ -306,14 +306,6 @@ export function taskTagOps(scope: Pick<QuickAddScope, 'userId' | 'tags'>, taskId
   return ops;
 }
 
-/** Tag na zadaniu włączony albo zdjęty (kolumna tagu w liście); `undo` przywraca poprzedni stan. */
-export function toggleTaskTagOps(taskId: string, tag: string, on: boolean, now: Date | string = new Date()): { ops: TaskOp[]; undo: TaskOp[] } {
-  const id = taskTagId(taskId, tag);
-  const at = new Date(now).toISOString();
-  const set = (enabled: boolean): TaskOp => ({ table: 'task_tags', id, patch: { task_id: taskId, tag_id: tag, deleted_at: enabled ? null : at } });
-  return { ops: [set(on)], undo: [set(!on)] };
-}
-
 // ── Widoczność tagów w przestrzeniach (`tags.workspace_ids`) ─────────────────────────────────
 
 /**

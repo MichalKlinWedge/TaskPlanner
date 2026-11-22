@@ -56,10 +56,11 @@ export const COMPLETED_MODE: Record<'hidden' | 'today' | 'all', string> = {
 };
 
 /** Dodatkowe kolumny widoku listy, w kolejności wyświetlania. */
-export const LIST_COLUMN: Record<'assignee' | 'start' | 'due', string> = {
+export const LIST_COLUMN: Record<'assignee' | 'start' | 'due' | 'tags', string> = {
   assignee: 'Odpowiedzialny',
   start: 'Początek',
   due: 'Koniec',
+  tags: 'Tagi',
 };
 
 /** Wybrane kolumny listy w stałej kolejności `LIST_COLUMN`, bez powtórzeń i nieznanych. */

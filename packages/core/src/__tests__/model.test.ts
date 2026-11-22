@@ -88,9 +88,7 @@ describe('lista', () => {
   it('kolumny listy; nieznana kolumna nie kasuje reszty ustawień', () => {
     expect(ViewPrefs.parse({ columns: ['assignee', 'due'] })).toEqual({ columns: ['assignee', 'due'] });
     expect(ViewPrefs.parse({ sortBy: 'due', columns: ['kolor'] })).toEqual({ sortBy: 'due' });
-    const tag = '01900000-0000-7000-8000-000000000001';
-    expect(ViewPrefs.parse({ tagColumns: [tag] })).toEqual({ tagColumns: [tag] });
-    expect(ViewPrefs.parse({ sortBy: 'due', tagColumns: ['x'] })).toEqual({ sortBy: 'due' });
+    expect(ViewPrefs.parse({ columns: ['assignee', 'start', 'due', 'tags'] }).columns).toHaveLength(4);
   });
 });
 

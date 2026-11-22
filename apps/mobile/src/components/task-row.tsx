@@ -42,7 +42,7 @@ export interface TaskRowProps {
 }
 
 /** Szerokości kolumn — wspólne dla wiersza i nagłówka `TaskColumnsHeader`. */
-const COLUMN_WIDTH: Record<ListColumn, number> = { assignee: 72, start: 50, due: 56 };
+const COLUMN_WIDTH: Record<ListColumn, number> = { assignee: 72, start: 50, due: 56, tags: 80 };
 
 /** Nagłówek kolumn nad wierszami listy. */
 export function TaskColumnsHeader({ columns }: { columns: readonly ListColumn[] }) {
@@ -93,7 +93,7 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
     task.status === 'in_progress' ? { text: 'w trakcie' } : task.status === 'waiting' ? { text: 'oczekuje' } : null,
     listName ? { text: listName } : null,
     assignee && !assigneeColumn ? { text: `👤 ${collaboratorBadge(assignee)}` } : null,
-    ...(tagNames ?? []).map((t) => ({ text: `@${t}` })),
+    ...(columns?.includes('tags') ? [] : (tagNames ?? [])).map((t) => ({ text: `@${t}` })),
   ].filter(Boolean) as { text: string; bad?: boolean }[];
   // Wyróżniony (zaległy termin) jest zawsze pierwszy: jeden zagnieżdżony `Text` zamiast jednego na pozycję.
   const lead = meta[0]?.bad ? meta[0] : null;
@@ -150,6 +150,20 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
         ) : null}
       </View>
       {columns?.map((c) => {
+        if (c === 'tags')
+          return (
+            <View key={c} style={[styles.tags, { width: COLUMN_WIDTH[c], opacity: closed ? 0.5 : 1 }]}>
+              {tagNames?.length ? (
+                tagNames.map((name) => (
+                  <Text key={name} style={[styles.tag, { color: p.fg, backgroundColor: p.border }]} numberOfLines={1}>
+                    {name}
+                  </Text>
+                ))
+              ) : (
+                <Text style={[styles.column, { color: p.muted }]}>—</Text>
+              )}
+            </View>
+          );
         const value = c === 'assignee' ? (assignee?.name ?? null) : c === 'start' ? (task.startDate ? columnDate(task.startDate, today) : null) : date ? columnDate(date, today) : null;
         return (
           <View key={c} style={{ width: COLUMN_WIDTH[c], paddingTop: 2, opacity: closed ? 0.5 : 1 }}>
@@ -204,6 +218,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 16, lineHeight: 21 },
   meta: { fontSize: 12.5 },
   column: { fontSize: 12 },
+  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 3, paddingTop: 2 },
+  tag: { fontSize: 11, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1, overflow: 'hidden', maxWidth: 80 },
   columnsHeader: { flexDirection: 'row', gap: 10, paddingRight: 12, paddingTop: 6, paddingBottom: 4, borderBottomWidth: StyleSheet.hairlineWidth },
   bad: { fontWeight: '600' },
   action: { flex: 1, justifyContent: 'center' },
