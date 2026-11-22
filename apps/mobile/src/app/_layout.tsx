@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics';
+import { NavigationBar } from 'expo-navigation-bar';
 import * as Notifications from 'expo-notifications';
 import { router, Stack, usePathname, useSegments, type ErrorBoundaryProps } from 'expo-router';
 import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
@@ -218,6 +219,8 @@ export default function RootLayout() {
           <OnboardingGate />
           <BackgroundWork />
           <NotificationTap />
+          {/* Systemowy pasek nawigacji schowany; przesunięcie od dolnej krawędzi pokazuje go na chwilę. */}
+          <NavigationBar hidden />
           <Stack screenOptions={{ headerStyle: { backgroundColor: p.card }, headerTintColor: p.fg, contentStyle: { backgroundColor: p.bg } }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'Task Planner' }} />
             <Stack.Screen name="task/[id]" options={{ title: 'Zadanie' }} />
