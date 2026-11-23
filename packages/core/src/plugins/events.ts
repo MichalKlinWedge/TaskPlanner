@@ -6,7 +6,7 @@
  */
 import { z } from 'zod';
 
-import type { TaskStatus } from '../schemas/primitives.ts';
+import { Priority, TaskStatus } from '../schemas/primitives.ts';
 
 export const PLUGIN_EVENTS = [
   'task.created',
@@ -30,18 +30,23 @@ export const RULE_EVENTS = PLUGIN_EVENTS.filter((e): e is Exclude<PluginEvent, '
 export const RuleEvent = z.enum(RULE_EVENTS as [Exclude<PluginEvent, 'task.sent'>, ...Exclude<PluginEvent, 'task.sent'>[]]);
 export type RuleEvent = z.infer<typeof RuleEvent>;
 
-/** Rzut zadania, na którym liczą się zdarzenia (z wiersza `tasks` i jego `task_tags`). */
-export interface PluginTaskState {
-  status: TaskStatus;
+/**
+ * Rzut zadania, na którym liczą się zdarzenia i filtr reguły (z wiersza `tasks` i jego `task_tags`) — ten sam
+ * kształt buduje w bazie `plugin_task_state` (wyzwalacze → `plugin_outbox.before` / `after`).
+ */
+export const PluginTaskState = z.object({
+  status: TaskStatus,
   /** `timestamptz` albo `null`. */
-  deletedAt: string | null;
-  listId: string;
-  workspaceId: string;
-  tagIds: readonly string[];
-  dueDate: string | null;
-  dueTime: string | null;
-  assigneeId: string | null;
-}
+  deletedAt: z.string().nullable(),
+  listId: z.string(),
+  workspaceId: z.string(),
+  tagIds: z.array(z.string()).readonly(),
+  dueDate: z.string().nullable(),
+  dueTime: z.string().nullable(),
+  assigneeId: z.string().nullable(),
+  priority: Priority,
+});
+export type PluginTaskState = z.infer<typeof PluginTaskState>;
 
 const closed = (status: TaskStatus) => status === 'done' || status === 'cancelled';
 
@@ -49,10 +54,19 @@ const closed = (status: TaskStatus) => status === 'done' || status === 'cancelle
  * Zdarzenia przejścia `before` → `after` (`null` = brak wiersza), w kolejności `PLUGIN_EVENTS`.
  * Przeniesienie do kosza daje tylko `task.deleted` (inne zmiany w tej chwili nie mają znaczenia),
  * zmiany zadania w koszu — nic; przywrócenie z kosza — `task.restored` i zmiany, które przyszły razem z nim.
+ * Nowe zadanie: `task.created` i to, co ma od początku (tagi, odpowiedzialny, ukończone) — zadanie dodane
+ * offline razem z tagiem `#zgłoś` łapie reguła „dodany tag”.
  */
 export function pluginEvents(before: PluginTaskState | null, after: PluginTaskState | null): PluginEvent[] {
   if (!after) return [];
-  if (!before) return after.deletedAt ? [] : ['task.created'];
+  if (!before) {
+    if (after.deletedAt) return [];
+    const created: PluginEvent[] = ['task.created'];
+    if (after.status === 'done') created.push('task.completed');
+    if (after.tagIds.length) created.push('task.tagged');
+    if (after.assigneeId) created.push('task.assigned');
+    return created;
+  }
   if (after.deletedAt) return before.deletedAt ? [] : ['task.deleted'];
   const out = new Set<PluginEvent>();
   if (before.status !== 'done' && after.status === 'done') out.add('task.completed');

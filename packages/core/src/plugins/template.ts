@@ -62,3 +62,7 @@ export function templateValues(task: PluginTaskData, opts: { event: PluginEvent;
     event: PLUGIN_EVENT[opts.event],
   };
 }
+
+/** Treść akcji z szablonu reguły dla zadania — to samo liczy serwer przy wysyłce i podgląd w aplikacji. */
+export const pluginMessage = (template: string, task: PluginTaskData, opts: { event: PluginEvent; url: string; escape: TemplateEscape }): string | undefined =>
+  template ? renderTemplate(template, templateValues(task, opts), opts.escape) : undefined;

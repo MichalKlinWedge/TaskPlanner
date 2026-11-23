@@ -67,6 +67,10 @@ export interface PluginPayload {
   };
   /** Treść z szablonu reguły (jeśli jest). */
   message?: string;
+  /** Ukończone wystąpienie serii (`task.completed` z `task_completions`). */
+  occurrence?: string;
+  /** Nowy komentarz (`task.commented`). */
+  comment?: { id: string; body: string };
 }
 
 /** Link do zadania w aplikacji webowej (`/?task=<id>` otwiera panel zadania). */
@@ -82,6 +86,8 @@ export function pluginPayload(input: {
   task: PluginTaskData;
   appUrl: string;
   message?: string;
+  occurrence?: string;
+  comment?: { id: string; body: string };
 }): PluginPayload {
   const { task } = input;
   return {
@@ -108,6 +114,8 @@ export function pluginPayload(input: {
       url: taskUrl(input.appUrl, task.id),
     },
     ...(input.message !== undefined && input.message !== '' && { message: input.message }),
+    ...(input.occurrence && { occurrence: input.occurrence }),
+    ...(input.comment && { comment: { id: input.comment.id, body: clip(input.comment.body, MAX_PAYLOAD_DESCRIPTION)! } }),
   };
 }
 

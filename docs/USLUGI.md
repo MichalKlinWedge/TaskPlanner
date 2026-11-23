@@ -28,7 +28,7 @@ Stan na **18.11.2026** (oficjalna dokumentacja i cenniki). Przed wprowadzeniem n
 
 **Wniosek:** przypomnienia co minutę tylko przez `pg_cron` (D12) — Vercel się nie nadaje.
 
-**Budżet wywołań (M21, 23.11.2026):** `reminders-push` co minutę ≈ 43 200 / mies.; `plugins` — `cron/tick` co minutę tylko przy zaległej pracy (`plugins_tick()` sprawdza w bazie, więc ≤ 43 200) plus `flush` raz na transakcję z prośbą o wysyłkę; razem z `calendar-sync` (co 10 min) daleko poniżej 500 000. Przebieg wysyłek kończy się po 100 s (limit 150 s wall clock), resztę bierze następny.
+**Budżet wywołań (M21, 23.11.2026):** `reminders-push` co minutę ≈ 43 200 / mies.; `plugins` — `cron/tick` co minutę tylko przy zaległej pracy (`plugins_tick()` sprawdza w bazie, więc ≤ 43 200) plus `flush` raz na transakcję z prośbą o wysyłkę albo zmianą zadania przy włączonej regule zdarzeniowej (I2: przebieg w tle `EdgeRuntime.waitUntil`, czeka na okno opóźnienia ≤ 45 s — czas oczekiwania nie zużywa CPU, mieści się w 150 s wall clock); razem z `calendar-sync` (co 10 min) daleko poniżej 500 000. Przebieg wysyłek kończy się po 100 s (limit 150 s wall clock), resztę bierze następny.
 
 ## Expo EAS (Free)
 | Warunek | Wartość | Pewność | Źródło |

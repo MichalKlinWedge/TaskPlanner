@@ -1,8 +1,8 @@
 /**
  * `plugins` — integracje wychodzące (SPECYFIKACJA M21, D21; etap I1: fundament + Webhook).
  *
- *   POST flush                (pg_net, sekret crona) → przebieg wysyłek (wyzwalacz na `plugin_requests` po zatwierdzeniu,
- *                                                       „Ponów” — `retry_plugin_delivery`)
+ *   POST flush                (pg_net, sekret crona) → przebieg wysyłek w tle (wyzwalacze na `plugin_requests`, `tasks`,
+ *                                                       `task_tags`, `task_completions`, `task_comments`; „Ponów”)
  *   POST cron/tick            (pg_cron co minutę, tylko gdy jest co robić — `plugins_tick()`) → to samo: ponowienia,
  *                                                       zgubione sygnały, przerwane wysyłki
  *   POST connections/create   (użytkownik) → {plugin, label, config, secrets} → połączenie, sekrety do Vault → {connectionId}
@@ -151,10 +151,24 @@ async function testConnection(req: Request): Promise<Response> {
   return json(result.ok ? { ok: true, httpStatus: result.httpStatus ?? null } : { ok: false, error: result.error, httpStatus: result.httpStatus ?? null });
 }
 
+/**
+ * Przebieg wysyłek w tle (`EdgeRuntime.waitUntil`): odpowiedź idzie od razu, a przebieg może poczekać na koniec
+ * okna opóźnienia reguły zdarzeniowej (≤ 45 s) — `pg_net` nie trzyma połączenia. Bez `waitUntil` (inne środowisko)
+ * odpowiedź czeka na koniec przebiegu.
+ */
 async function deliveries(req: Request): Promise<Response> {
   requireCron(req);
-  const summary = await runDeliveries({ db: admin(), net, appUrl: appUrl(), log: (m, e) => console.error(m, e) });
-  return json(summary);
+  const run = runDeliveries({ db: admin(), net, appUrl: appUrl(), log: (m, e) => console.error(m, e) }).catch((e) => {
+    console.error('przebieg wysyłek', e);
+    return null;
+  });
+  // deno-lint-ignore no-explicit-any
+  const rt = (globalThis as any).EdgeRuntime;
+  if (rt?.waitUntil) {
+    rt.waitUntil(run);
+    return json({ started: true });
+  }
+  return json((await run) ?? { error: 'przebieg nieudany' });
 }
 
 serve(async (req, url) => {

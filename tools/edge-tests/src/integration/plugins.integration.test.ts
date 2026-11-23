@@ -11,7 +11,7 @@ import { requestDeliveryId, uuidv7 } from '@taskplanner/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { FakeServices, type HookRequest } from './fake-services.ts';
-import { adminClient, createUser, createWorkspace, fn, measure, sql, waitFor, type TestUser } from './helpers.ts';
+import { adminClient, createTag, createUser, createWorkspace, fn, measure, sql, waitFor, type TestUser } from './helpers.ts';
 
 const fake = new FakeServices();
 const db = adminClient();
@@ -242,5 +242,107 @@ describe('„Wyślij do…”', () => {
     expect((await delivery(id))?.error).toBe('Połączenie usunięte');
     const { data: own } = await user.client.from('plugin_deliveries').select('id').eq('id', id);
     expect(own).toHaveLength(1);
+  });
+});
+
+describe('reguły zdarzeniowe (I2)', () => {
+  /** Reguła zdarzeniowa przez `push_changes`. */
+  const eventRule = (connectionId: string, events: string[], options: Record<string, unknown> = {}, filter?: unknown) =>
+    rule(connectionId, { name: `Gdy ${events.join(', ')}`, trigger: { kind: 'event', events, ...(filter ? { filter } : {}) }, options, action: { message: '{{event}}: {{title}}' } });
+  const deliveriesFor = async (ruleId: string) =>
+    ((await db.from('plugin_deliveries').select('*').eq('rule_id', ruleId).order('created_at')).data ?? []) as Record<string, unknown>[];
+  const newTask = async (title: string, extra: Record<string, unknown> = {}) => {
+    const id = uuidv7();
+    expect((await push(user, [{ table: 'tasks', id, set: { list_id: ws.inbox, title, ...extra } }])).rejected).toEqual([]);
+    return id;
+  };
+
+  it('kryterium: zadanie z tagiem #zgłoś dodane offline (jedna paczka) → dokładnie jedna wysyłka < 1 min; powtórka paczki nic nie dubluje', async () => {
+    const conn = await connect('zglos');
+    const tag = uuidv7();
+    await createTag(user, tag, `zgłoś-${tag.slice(-6)}`);
+    const ruleId = await eventRule(conn, ['task.tagged'], {}, { tags: { ids: [tag], match: 'any' } });
+    const id = uuidv7();
+    // Paczka z outboxu telefonu po powrocie sieci: zadanie i jego tag w jednym push_changes.
+    const ops = [
+      { op: uuidv7(), hlc: hlc(), table: 'tasks', id, set: { list_id: ws.inbox, title: 'Ekspres przecieka' } },
+      { op: uuidv7(), hlc: hlc(), table: 'task_tags', id: uuidv7(), set: { task_id: id, tag_id: tag } },
+    ];
+    const started = Date.now();
+    expect((await pushRaw(user, ops)).rejected).toEqual([]);
+    const [hook] = await waitFor(async () => (fake.hooksFor('zglos').length ? fake.hooksFor('zglos') : null), 60_000, 'wysyłka reguły zdarzeniowej', 250);
+    const elapsed = Date.now() - started;
+    measure('plugins: tag offline → odbiorca (opóźnienie 20 s)', elapsed);
+    expect(elapsed).toBeLessThan(60_000);
+    expect(elapsed).toBeGreaterThan(15_000);
+    expect(JSON.parse(hook!.body)).toMatchObject({ event: 'task.tagged', events: ['task.tagged'], message: 'Dodany tag: Ekspres przecieka', task: { id, title: 'Ekspres przecieka' } });
+    expect(header(hook!, 'x-taskplanner-event')).toBe('task.tagged');
+    expect((await pushRaw(user, ops)).rejected).toEqual([]);
+    await flush();
+    await new Promise((r) => setTimeout(r, 3000));
+    expect(fake.hooksFor('zglos')).toHaveLength(1);
+    expect((await deliveriesFor(ruleId)).map((d) => d.status)).toEqual(['sent']);
+  });
+
+  it('ukończenie cofnięte w oknie opóźnienia → nic nie wychodzi (pominięte)', async () => {
+    const conn = await connect('cofniete');
+    const ruleId = await eventRule(conn, ['task.completed'], { delaySec: 3 });
+    const id = await newTask('Do cofnięcia');
+    await push(user, [{ table: 'tasks', id, set: { status: 'done', completed_at: new Date().toISOString() } }]);
+    await new Promise((r) => setTimeout(r, 500));
+    await push(user, [{ table: 'tasks', id, set: { status: 'todo', completed_at: null } }]);
+    const [d] = await waitFor(async () => {
+      const all = await deliveriesFor(ruleId);
+      return all.length && all.every((x) => x.status !== 'pending' && x.status !== 'sending') ? all : null;
+    }, 20_000, 'rozstrzygnięta wysyłka');
+    expect(d).toMatchObject({ status: 'skipped', error: 'Zmiana cofnięta przed wysyłką', source: 'event' });
+    expect(fake.hooksFor('cofniete')).toHaveLength(0);
+  });
+
+  it('zdarzenia z okna łączą się w jedną wysyłkę; potem nowe okno', async () => {
+    const conn = await connect('okno');
+    const tag = uuidv7();
+    await createTag(user, tag, `okno-${tag.slice(-6)}`);
+    const ruleId = await eventRule(conn, ['task.tagged', 'task.due_changed'], { delaySec: 3 });
+    const id = await newTask('Łączenie');
+    await push(user, [{ table: 'task_tags', id: uuidv7(), set: { task_id: id, tag_id: tag } }]);
+    await push(user, [{ table: 'tasks', id, set: { due_date: '2026-12-01' } }]);
+    const [hook] = await waitFor(async () => (fake.hooksFor('okno').length ? fake.hooksFor('okno') : null), 20_000, 'wysyłka okna');
+    expect(JSON.parse(hook!.body)).toMatchObject({ events: ['task.tagged', 'task.due_changed'], task: { dueDate: '2026-12-01' } });
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(fake.hooksFor('okno')).toHaveLength(1);
+    await push(user, [{ table: 'tasks', id, set: { due_date: '2026-12-02' } }]);
+    await waitFor(async () => fake.hooksFor('okno').length === 2, 20_000, 'druga wysyłka');
+    expect(JSON.parse(fake.hooksFor('okno')[1]!.body).events).toEqual(['task.due_changed']);
+    expect((await deliveriesFor(ruleId)).map((d) => d.status)).toEqual(['sent', 'sent']);
+  });
+
+  it('ukończenie wystąpienia serii i komentarz: dzień wystąpienia i treść w ładunku', async () => {
+    const conn = await connect('seria');
+    await eventRule(conn, ['task.completed', 'task.commented'], { delaySec: 2 });
+    const id = await newTask('Podlać kwiaty', { due_date: '2026-11-23' });
+    await push(user, [
+      { table: 'task_completions', id: uuidv7(), set: { task_id: id, occurrence_date: '2026-11-23', kind: 'done', completed_at: new Date().toISOString() } },
+      { table: 'tasks', id, set: { due_date: '2026-11-24' } },
+      { table: 'task_comments', id: uuidv7(), set: { task_id: id, body: 'Podlane, ale liście żółkną', posted_at: new Date().toISOString() } },
+    ]);
+    const [hook] = await waitFor(async () => (fake.hooksFor('seria').length ? fake.hooksFor('seria') : null), 20_000, 'wysyłka serii');
+    expect(JSON.parse(hook!.body)).toMatchObject({
+      events: ['task.completed', 'task.commented'],
+      occurrence: '2026-11-23',
+      comment: { body: 'Podlane, ale liście żółkną' },
+      task: { status: 'todo', dueDate: '2026-11-24' },
+    });
+  });
+
+  it('zadanie z integracji (e-mail) pominięte; z opcją „także z integracji” — wysłane', async () => {
+    const conn = await connect('integracja');
+    const off = await eventRule(conn, ['task.created'], { delaySec: 1 });
+    const on = await eventRule(conn, ['task.created'], { delaySec: 1, includeIntegrations: true });
+    await newTask('Z maila', { source: { kind: 'email', from: 'ktos@example.com', subject: 'Z maila' } });
+    await waitFor(async () => fake.hooksFor('integracja').length === 1, 20_000, 'wysyłka reguły z opcją');
+    expect(JSON.parse(fake.hooksFor('integracja')[0]!.body).rule.id).toBe(on);
+    await waitFor(async () => (await deliveriesFor(off))[0]?.status === 'skipped', 10_000, 'pominięta bez opcji');
+    expect((await deliveriesFor(off))[0]!.error).toMatch(/^Zadanie z integracji/);
   });
 });

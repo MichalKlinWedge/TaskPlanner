@@ -3,6 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { PLUGIN_EVENT } from '../labels.ts';
 import {
   deliveryId,
+  eventContext,
+  eventDeliveryId,
+  mergeEventContext,
+  outboxEvents,
+  parseOutboxRow,
+  recheckEvents,
+  ruleDelaySec,
+  ruleEvents,
+  rulePreview,
+  viewTaskData,
   generateSecret,
   MAX_DELIVERY_ATTEMPTS,
   parsePluginConnection,
@@ -46,12 +56,14 @@ const state = (patch: Partial<PluginTaskState> = {}): PluginTaskState => ({
   dueDate: null,
   dueTime: null,
   assigneeId: null,
+  priority: 4,
   ...patch,
 });
 
 describe('pluginEvents — zdarzenia z przejścia stanu', () => {
   it('nowe zadanie; nowe w koszu — nic', () => {
     expect(pluginEvents(null, state())).toEqual(['task.created']);
+    expect(pluginEvents(null, state({ tagIds: [TAG], assigneeId: 'osoba', status: 'done' }))).toEqual(['task.created', 'task.completed', 'task.tagged', 'task.assigned']);
     expect(pluginEvents(null, state({ deletedAt: '2026-11-23T10:00:00Z' }))).toEqual([]);
     expect(pluginEvents(state(), null)).toEqual([]);
   });
@@ -253,5 +265,106 @@ describe('reguły', () => {
     expect(ops).toHaveLength(2);
     expect(ops[0]).toEqual({ table: 'plugin_requests', id: '01900000-0000-7000-8000-000000000001', patch: { scope_id: USER, rule_id: CONN, task_id: TASK, requested_at: '2026-11-23T10:00:00.000Z' } });
     expect(MODEL.plugin_requests.safeParse({ id: ops[0]!.id, ...ops[0]!.patch }).success).toBe(true);
+  });
+});
+
+describe('reguły zdarzeniowe — kolejka, okno, ponowne sprawdzenie', () => {
+  const rule = (patch: Partial<PluginRule> = {}): PluginRule => ({
+    id: '01900000-0000-7000-8000-0000000000e1',
+    name: 'Zgłoszenia',
+    connectionId: CONN,
+    enabled: true,
+    trigger: { kind: 'event', events: ['task.tagged'], filter: { tags: { ids: [TAG], match: 'any' } } },
+    action: {},
+    options: {},
+    sortKey: 'n',
+    ...patch,
+  });
+  const row = (patch: Partial<Parameters<typeof parseOutboxRow>[0]> = {}) =>
+    parseOutboxRow({ id: 7, table_name: 'task_tags', before: state(), after: state({ tagIds: [TAG] }), extra: null, origin: 'client', ...patch })!;
+  const today = '2026-11-23' as const;
+  const none = { completions: new Set<string>(), comments: new Set<string>() };
+
+  it('wiersz kolejki: stan przed/po, dodatki; inne tabele i zepsute stany pomijane', () => {
+    expect(outboxEvents(row())).toEqual(['task.tagged']);
+    expect(parseOutboxRow({ id: 1, table_name: 'plugin_requests', before: null, after: {} })).toBeNull();
+    expect(parseOutboxRow({ id: 1, table_name: 'tasks', before: { zly: 1 }, after: state() })!.before).toBeNull();
+    const done = row({ table_name: 'task_completions', before: state(), after: state(), extra: { completion: { id: 'c1', occurrence: '2026-11-23' } } });
+    expect(outboxEvents(done)).toEqual(['task.completed']);
+    expect(outboxEvents(row({ table_name: 'task_comments', before: state(), after: state(), extra: { comment: { id: 'k1' } } }))).toEqual(['task.commented']);
+  });
+
+  it('reguła: zdarzenie, filtr na stanie, integracje tylko z opcją, wyłączona / ręczna — nic', () => {
+    expect(ruleEvents(rule(), ['task.tagged', 'task.due_changed'], TASK, state({ tagIds: [TAG] }), { today })).toEqual(['task.tagged']);
+    expect(ruleEvents(rule(), ['task.tagged'], TASK, state({ tagIds: ['inny'] }), { today })).toEqual([]);
+    expect(ruleEvents(rule(), ['task.completed'], TASK, state({ tagIds: [TAG] }), { today })).toEqual([]);
+    expect(ruleEvents(rule({ enabled: false }), ['task.tagged'], TASK, state({ tagIds: [TAG] }), { today })).toEqual([]);
+    expect(ruleEvents(rule({ trigger: { kind: 'manual' } }), ['task.tagged'], TASK, state({ tagIds: [TAG] }), { today })).toEqual([]);
+    expect(ruleEvents(rule(), ['task.tagged'], TASK, state({ tagIds: [TAG] }), { today, fromIntegration: true })).toEqual([]);
+    expect(ruleEvents(rule({ options: { includeIntegrations: true } }), ['task.tagged'], TASK, state({ tagIds: [TAG] }), { today, fromIntegration: true })).toEqual(['task.tagged']);
+    const urgent = rule({ trigger: { kind: 'event', events: ['task.completed'], filter: { priorities: [1], due: { kind: 'range', to: { offsetDays: 0 } } } } });
+    expect(ruleEvents(urgent, ['task.completed'], TASK, state({ priority: 1, dueDate: '2026-11-23' }), { today })).toEqual(['task.completed']);
+    expect(ruleEvents(urgent, ['task.completed'], TASK, state({ priority: 1, dueDate: '2026-11-24' }), { today })).toEqual([]);
+    expect(ruleEvents(rule({ trigger: { kind: 'event', events: ['task.deleted'] } }), ['task.deleted'], TASK, state({ deletedAt: 'x' }), { today })).toEqual(['task.deleted']);
+    expect(ruleDelaySec(rule())).toBe(20);
+    expect(ruleDelaySec(rule({ options: { delaySec: 0 } }))).toBe(0);
+  });
+
+  it('okno: id z pierwszego wiersza, łączenie bez duplikatów, baseline zostaje', () => {
+    expect(eventDeliveryId('r', TASK, 7)).toBe(eventDeliveryId('r', TASK, 7));
+    expect(eventDeliveryId('r', TASK, 7)).not.toBe(eventDeliveryId('r', TASK, 8));
+    const first = eventContext(row());
+    expect(first).toEqual({ baseline: state(), completions: [], comments: [] });
+    const comment = row({ table_name: 'task_comments', before: state({ tagIds: [TAG] }), after: state({ tagIds: [TAG] }), extra: { comment: { id: 'k1' } } });
+    const merged = mergeEventContext(mergeEventContext(first, comment), comment);
+    expect(merged).toEqual({ baseline: state(), completions: [], comments: ['k1'] });
+  });
+
+  it('ponowne sprawdzenie: cofnięte w oknie = nic; nowe zadanie z tagiem = dodane + tag; cofnięte ukończenie serii', () => {
+    // Ukończenie i „Cofnij” w ciągu kilku sekund: stan wrócił do baseline.
+    expect(recheckEvents({ baseline: state(), completions: [], comments: [] }, state(), none)).toEqual([]);
+    expect(recheckEvents({ baseline: state(), completions: [], comments: [] }, state({ status: 'done' }), none)).toEqual(['task.completed']);
+    // Zadanie dodane offline razem z tagiem (jedna paczka push_changes).
+    expect(recheckEvents({ baseline: null, completions: [], comments: [] }, state({ tagIds: [TAG] }), none)).toEqual(['task.created', 'task.tagged']);
+    // Tag dodany i zdjęty w oknie.
+    expect(recheckEvents({ baseline: state(), completions: [], comments: [] }, state(), none)).toEqual([]);
+    // Wystąpienie serii: wpis `task_completions` żyje / cofnięty; termin przesunięty dalej.
+    const series = { baseline: state({ dueDate: '2026-11-23' }), completions: [{ id: 'c1', occurrence: '2026-11-23' }], comments: [] };
+    expect(recheckEvents(series, state({ dueDate: '2026-11-24' }), { completions: new Set(['c1']), comments: new Set() })).toEqual(['task.completed', 'task.due_changed']);
+    expect(recheckEvents(series, state({ dueDate: '2026-11-23' }), none)).toEqual([]);
+    // Komentarz usunięty w oknie; zadanie w koszu — tylko „usunięte”.
+    expect(recheckEvents({ baseline: state(), completions: [], comments: ['k1'] }, state(), none)).toEqual([]);
+    expect(recheckEvents({ baseline: state(), completions: [], comments: ['k1'] }, state({ deletedAt: 'x' }), { completions: new Set(), comments: new Set(['k1']) })).toEqual(['task.deleted']);
+    expect(recheckEvents({ baseline: state(), completions: [], comments: [] }, null, none)).toEqual([]);
+  });
+});
+
+describe('podgląd reguły', () => {
+  const task = viewTaskData(
+    { id: TASK, workspaceId: WS, listId: LIST, parentId: null, kind: 'task', title: 'Ekspres "przecieka"', status: 'todo', priority: 2, startDate: null, dueDate: '2026-11-24', dueTime: null, durationMin: null, recurrence: null, habit: null, completedAt: null, createdAt: '2026-11-23T08:00:00Z', sortKey: 'n', tagIds: [TAG], postponeCount: 0 },
+    { list: 'Biuro', listKind: 'list', workspace: 'Praca', tags: ['zgłoś'], assignee: null },
+  );
+
+  it('reguła zdarzeniowa: zdarzenia w kolejności katalogu, treść z szablonu z ucieczką pluginu', () => {
+    const payload = rulePreview({
+      rule: { id: CONN, name: 'Zgłoś', trigger: { kind: 'event', events: ['task.tagged', 'task.created'] } },
+      template: '{"t": "{{title}}", "e": "{{event}}"}',
+      escape: 'json',
+      task,
+      appUrl: 'https://app.example.com/',
+      now: new Date('2026-11-23T10:00:00Z'),
+    });
+    expect(payload).toMatchObject({
+      event: 'task.created',
+      events: ['task.created', 'task.tagged'],
+      message: '{"t": "Ekspres \\"przecieka\\"", "e": "Dodane zadanie"}',
+      task: { list: { id: LIST, name: 'Biuro' }, tags: ['zgłoś'], url: `https://app.example.com/?task=${TASK}` },
+    });
+  });
+
+  it('reguła ręczna = task.sent; pusty szablon — bez treści', () => {
+    const payload = rulePreview({ rule: { id: CONN, name: 'Ręczna', trigger: { kind: 'manual' } }, template: '', escape: 'plain', task, appUrl: 'https://x.test' });
+    expect(payload.events).toEqual(['task.sent']);
+    expect(payload).not.toHaveProperty('message');
   });
 });

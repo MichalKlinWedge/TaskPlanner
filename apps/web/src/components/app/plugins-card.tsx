@@ -1,31 +1,48 @@
 "use client";
 
 /**
- * Ustawienia → „Integracje” (M21, etap I1): połączenia z usługami zewnętrznymi (na razie Webhook), reguły
- * „Wyślij do…” z szablonem treści i historia wysyłek z „Ponów”. Połączenia zmienia Edge Function `plugins`
+ * Ustawienia → „Integracje” (M21, etapy I1–I2): połączenia z usługami zewnętrznymi (na razie Webhook), reguły
+ * ręczne („Wyślij do…”) i zdarzeniowe (zdarzenia + filtr + opóźnienie) z szablonem treści i podglądem ładunku,
+ * historia wysyłek z „Ponów”. Połączenia zmienia Edge Function `plugins`
  * (online; sekret idzie od razu do Vault i nie da się go potem odczytać), reguły zapisują się lokalnie
  * (offline też), historia jest na serwerze (`plugin_deliveries`, tylko odczyt — wymaga sieci).
  */
 import {
+  DEFAULT_DELAY_SEC,
   DELIVERY_STATUS,
   generateSecret,
+  isEmptyFilter,
+  matchesFilter,
+  normalizeText,
+  PLUGIN_EVENT,
   PLUGIN_CONNECTION_STATUS,
   PLUGINS,
   pluginDef,
   pluginRuleDeleteOps,
   pluginRuleEnableOps,
   pluginRuleSaveOps,
+  RULE_EVENTS,
+  rulePreview,
+  SAMPLE_TASK,
   TEMPLATE_FIELDS,
+  viewTaskData,
+  type FilterQuery,
   type PluginConnection,
   type PluginDef,
   type PluginRule,
+  type PluginTaskData,
+  type PluginTrigger,
+  type RuleEvent,
 } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useLocalQuery } from "@/lib/local-store";
 import { createPluginConnection, deletePluginConnection, retryPluginDelivery, testPluginConnection, updatePluginConnection, usePlugins } from "@/lib/plugins";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
+import { useAppEnv } from "./app-env";
+import { FilterBar } from "./filter-bar";
 import { Button, Card, Field, Input, Notice, Select } from "./ui";
 
 type Message = { tone: "error" | "ok"; text: string } | null;
@@ -55,8 +72,8 @@ export function PluginsCard({ store, userId }: { store: TabStore; userId: string
     <Card className="mt-4">
       <h2 className="mb-1 text-sm font-semibold">Integracje</h2>
       <p className="mb-3 text-xs text-[var(--muted)]">
-        Wysyłaj zadania do innych usług: połączenie mówi dokąd, reguła — co wysłać. Zadanie wysyłasz z panelu zadania („Wyślij do…”) albo paletą poleceń; bez sieci prośba czeka i
-        wychodzi z serwera po synchronizacji. Nieudane wysyłki serwer ponawia przez kilkanaście godzin.
+        Wysyłaj zadania do innych usług: połączenie mówi dokąd, reguła — kiedy i co wysłać. Regułę ręczną wybierasz przy zadaniu („Wyślij do…” w panelu albo paletą), zdarzeniowa
+        wysyła sama, gdy np. zadanie dostanie tag. Bez sieci zmiany czekają i wychodzą z serwera po synchronizacji. Nieudane wysyłki serwer ponawia przez kilkanaście godzin.
       </p>
       {message ? <Notice tone={message.tone}>{message.text}</Notice> : null}
 
@@ -72,7 +89,7 @@ export function PluginsCard({ store, userId }: { store: TabStore; userId: string
       )}
       <NewConnection busy={busy} act={act} />
 
-      <h3 className="mb-2 mt-5 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Reguły „Wyślij do…”</h3>
+      <h3 className="mb-2 mt-5 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Reguły</h3>
       <Rules store={store} userId={userId} rules={rules} connections={connections} setMessage={setMessage} />
 
       <h3 className="mb-2 mt-5 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Historia wysyłek</h3>
@@ -252,6 +269,47 @@ interface RuleDraftState {
   name: string;
   connectionId: string;
   action: Record<string, string>;
+  enabled: boolean;
+  kind: "manual" | "event";
+  events: RuleEvent[];
+  filter: FilterQuery;
+  delaySec: number;
+  includeIntegrations: boolean;
+}
+
+/** Opóźnienie wysyłki reguły zdarzeniowej (s) do wyboru. */
+const DELAYS: { value: number; label: string }[] = [
+  { value: 0, label: "od razu" },
+  { value: DEFAULT_DELAY_SEC, label: `${DEFAULT_DELAY_SEC} s (domyślnie)` },
+  { value: 60, label: "1 min" },
+  { value: 300, label: "5 min" },
+  { value: 900, label: "15 min" },
+  { value: 3600, label: "1 godz." },
+];
+
+const delayLabel = (sec: number) => DELAYS.find((d) => d.value === sec)?.label.replace(" (domyślnie)", "") ?? `${sec} s`;
+
+const draftOf = (r: PluginRule): RuleDraftState => ({
+  id: r.id,
+  name: r.name,
+  connectionId: r.connectionId,
+  action: Object.fromEntries(Object.entries(r.action).map(([k, v]) => [k, String(v ?? "")])),
+  enabled: r.enabled,
+  kind: r.trigger.kind,
+  events: r.trigger.kind === "event" ? [...r.trigger.events] : [],
+  filter: r.trigger.kind === "event" ? (r.trigger.filter ?? {}) : {},
+  delaySec: r.options.delaySec ?? DEFAULT_DELAY_SEC,
+  includeIntegrations: !!r.options.includeIntegrations,
+});
+
+const triggerOf = (d: RuleDraftState): PluginTrigger =>
+  d.kind === "manual" ? { kind: "manual" } : { kind: "event", events: RULE_EVENTS.filter((e) => d.events.includes(e)), ...(isEmptyFilter(d.filter) ? {} : { filter: d.filter }) };
+
+/** Opis wyzwalacza na liście reguł. */
+function triggerSummary(r: PluginRule): string {
+  if (r.trigger.kind !== "event") return "„Wyślij do…”";
+  const events = r.trigger.events.map((e) => PLUGIN_EVENT[e]).join(", ");
+  return `gdy: ${events}${r.trigger.filter && !isEmptyFilter(r.trigger.filter) ? " (z filtrem)" : ""} · po ${delayLabel(r.options.delaySec ?? DEFAULT_DELAY_SEC)}`;
 }
 
 function Rules({
@@ -277,18 +335,19 @@ function Rules({
 
   const save = () => {
     if (!draft) return;
-    const existing = draft.id ? rules.find((r) => r.id === draft.id) : undefined;
+    if (draft.kind === "event" && !draft.events.length) return setMessage({ tone: "error", text: "Zaznacz co najmniej jedno zdarzenie." });
     const result = pluginRuleSaveOps(userId, rules, connections, {
       id: draft.id,
       name: draft.name,
       connectionId: draft.connectionId,
-      enabled: existing?.enabled ?? true,
-      trigger: existing?.trigger ?? { kind: "manual" },
+      enabled: draft.enabled,
+      trigger: triggerOf(draft),
       action: draft.action,
-      options: existing?.options,
+      options: draft.kind === "event" ? { delaySec: draft.delaySec, ...(draft.includeIntegrations && { includeIntegrations: true }) } : {},
     });
     if (!result.ok) return setMessage({ tone: "error", text: result.error });
-    void write(result.ops, draft.id ? "Reguła zapisana." : "Reguła dodana — jest w „Wyślij do…”.");
+    const ok = draft.id ? "Reguła zapisana." : draft.kind === "event" ? "Reguła dodana — wysyła sama, gdy zajdzie zdarzenie." : "Reguła dodana — jest w „Wyślij do…”.";
+    void write(result.ops, ok);
     setDraft(null);
   };
 
@@ -307,14 +366,10 @@ function Rules({
                 </label>
                 <span className="text-xs text-[var(--muted)]">
                   → {c ? c.label : "połączenie usunięte"}
-                  {c && c.status !== "active" ? ` (${PLUGIN_CONNECTION_STATUS[c.status]})` : ""}
-                  {r.trigger.kind !== "manual" ? " · zdarzeniowa (wkrótce)" : ""}
+                  {c && c.status !== "active" ? ` (${PLUGIN_CONNECTION_STATUS[c.status]})` : ""} · {triggerSummary(r)}
                 </span>
                 <span className="ml-auto flex gap-1">
-                  <Button
-                    kind="ghost"
-                    onClick={() => setDraft({ id: r.id, name: r.name, connectionId: r.connectionId, action: Object.fromEntries(Object.entries(r.action).map(([k, v]) => [k, String(v ?? "")])) })}
-                  >
+                  <Button kind="ghost" onClick={() => setDraft(draftOf(r))}>
                     Edytuj
                   </Button>
                   <Button
@@ -336,13 +391,14 @@ function Rules({
       {draft ? (
         <form
           className="space-y-2 rounded-md border border-[var(--line)] p-3"
+          aria-label="Reguła"
           onSubmit={(e) => {
             e.preventDefault();
             save();
           }}
         >
-          <Field label="Nazwa (widoczna w „Wyślij do…”)">
-            <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} maxLength={100} placeholder="np. Zgłoszenie do n8n" />
+          <Field label={draft.kind === "manual" ? "Nazwa (widoczna w „Wyślij do…”)" : "Nazwa"}>
+            <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} maxLength={100} placeholder={draft.kind === "manual" ? "np. Zgłoszenie do n8n" : "np. Tag #zgłoś → n8n"} />
           </Field>
           <Field label="Połączenie">
             <Select value={draft.connectionId} onChange={(e) => setDraft({ ...draft, connectionId: e.target.value })}>
@@ -353,6 +409,13 @@ function Rules({
               ))}
             </Select>
           </Field>
+          <Field label="Kiedy wysłać">
+            <Select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as RuleDraftState["kind"] })}>
+              <option value="manual">Ręcznie — „Wyślij do…” przy zadaniu</option>
+              <option value="event">Samo, gdy zajdzie zdarzenie</option>
+            </Select>
+          </Field>
+          {draft.kind === "event" ? <EventFields draft={draft} setDraft={setDraft} /> : null}
           {def?.actionFields.map((f) => (
             <Field key={f.key} label={f.label} hint={f.kind === "template" ? `Pola: ${TEMPLATE_FIELDS.map((t) => `{{${t.key}}}`).join(" ")}` : f.help}>
               <textarea
@@ -363,6 +426,7 @@ function Rules({
               />
             </Field>
           ))}
+          {def ? <RulePreview draft={draft} def={def} /> : null}
           <div className="flex gap-2">
             <Button type="submit" kind="primary">
               {draft.id ? "Zapisz regułę" : "Dodaj regułę"}
@@ -373,11 +437,135 @@ function Rules({
           </div>
         </form>
       ) : (
-        <Button disabled={!connections.length} onClick={() => setDraft({ name: "", connectionId: connections.find((c) => c.status === "active")?.id ?? connections[0]?.id ?? "", action: {} })}>
+        <Button
+          disabled={!connections.length}
+          onClick={() =>
+            setDraft({
+              name: "",
+              connectionId: connections.find((c) => c.status === "active")?.id ?? connections[0]?.id ?? "",
+              action: {},
+              enabled: true,
+              kind: "manual",
+              events: [],
+              filter: {},
+              delaySec: DEFAULT_DELAY_SEC,
+              includeIntegrations: false,
+            })
+          }
+        >
           + Reguła
         </Button>
       )}
     </>
+  );
+}
+
+/** Zdarzenia, filtr i opcje reguły zdarzeniowej. */
+function EventFields({ draft, setDraft }: { draft: RuleDraftState; setDraft: (d: RuleDraftState) => void }) {
+  const toggle = (e: RuleEvent) => setDraft({ ...draft, events: draft.events.includes(e) ? draft.events.filter((x) => x !== e) : [...draft.events, e] });
+  return (
+    <>
+      <fieldset className="space-y-1">
+        <legend className="mb-1 text-xs font-medium">Zdarzenia</legend>
+        <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+          {RULE_EVENTS.map((e) => (
+            <label key={e} className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={draft.events.includes(e)} onChange={() => toggle(e)} />
+              {PLUGIN_EVENT[e]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <div>
+        <p className="mb-1 text-xs font-medium">Tylko zadania pasujące do filtra (bez filtra — wszystkie)</p>
+        <FilterBar query={draft.filter} onChange={(filter) => setDraft({ ...draft, filter })} />
+      </div>
+      <Field label="Opóźnienie wysyłki" hint="Zmiany w tym czasie łączą się w jedną wysyłkę; cofnięte („Cofnij”) nie wychodzą wcale.">
+        <Select value={String(draft.delaySec)} onChange={(e) => setDraft({ ...draft, delaySec: Number(e.target.value) })}>
+          {(DELAYS.some((d) => d.value === draft.delaySec) ? DELAYS : [...DELAYS, { value: draft.delaySec, label: `${draft.delaySec} s` }]).map((d) => (
+            <option key={d.value} value={d.value}>
+              {d.label}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={draft.includeIntegrations} onChange={(e) => setDraft({ ...draft, includeIntegrations: e.target.checked })} />
+        Także zadania z integracji (e-mail, kalendarz)
+      </label>
+    </>
+  );
+}
+
+const PREVIEW_SAMPLE = "";
+
+/** Podgląd ładunku: dokładnie to, co serwer wyśle dla wybranego zadania (albo przykładowego). */
+function RulePreview({ draft, def }: { draft: RuleDraftState; def: PluginDef }) {
+  const { store, data, today } = useAppEnv();
+  const [search, setSearch] = useState("");
+  const [taskId, setTaskId] = useState(PREVIEW_SAMPLE);
+  const found = useMemo(() => {
+    const q = normalizeText(search.trim());
+    if (!q) return [];
+    return data.tasks.filter((t) => t.kind === "task" && normalizeText(t.title).includes(q)).slice(0, 20);
+  }, [data.tasks, search]);
+  const task = taskId ? data.tasks.find((t) => t.id === taskId) : undefined;
+  const description = useLocalQuery<{ description_md: string | null }>(store, "select description_md from tasks where id = ?", [taskId], ["tasks"]).rows[0]?.description_md ?? null;
+  const trigger = triggerOf(draft);
+
+  const preview = useMemo(() => {
+    let taskData: PluginTaskData = SAMPLE_TASK;
+    if (task) {
+      const list = data.lists.find((l) => l.id === task.listId);
+      const tagNames = new Map(data.tags.map((t) => [t.id, t.name]));
+      taskData = viewTaskData(task, {
+        list: list?.name ?? "",
+        listKind: list?.kind ?? "list",
+        workspace: data.workspaces.find((w) => w.id === task.workspaceId)?.name ?? null,
+        tags: task.tagIds.map((id) => tagNames.get(id)).filter((n): n is string => !!n),
+        assignee: task.assigneeId ? (data.collaborators.find((c) => c.id === task.assigneeId)?.name ?? null) : null,
+        description,
+      });
+    }
+    return rulePreview({
+      rule: { id: draft.id ?? SAMPLE_TASK.id, name: draft.name.trim() || "(bez nazwy)", trigger },
+      template: typeof draft.action.message === "string" ? draft.action.message : "",
+      escape: def.escape,
+      task: taskData,
+      appUrl: window.location.origin,
+    });
+    // `trigger` liczony z `draft` — wystarczą zależności od szkicu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, def, task, description, data.lists, data.tags, data.workspaces, data.collaborators]);
+
+  const fits = task && trigger.kind === "event" && trigger.filter ? matchesFilter(trigger.filter, today)(task) : null;
+  return (
+    <details className="rounded-md border border-[var(--line)] p-2">
+      <summary className="cursor-pointer text-xs font-medium">Podgląd ładunku</summary>
+      <div className="mt-2 space-y-2">
+        <div className="flex flex-wrap gap-2">
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Szukaj zadania do podglądu…" aria-label="Szukaj zadania do podglądu" className="min-w-0 flex-1" />
+          <Select value={taskId} onChange={(e) => setTaskId(e.target.value)} aria-label="Zadanie do podglądu" className="min-w-0 flex-1">
+            <option value={PREVIEW_SAMPLE}>Przykładowe zadanie</option>
+            {task && !found.includes(task) ? <option value={task.id}>{task.title}</option> : null}
+            {found.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title}
+              </option>
+            ))}
+          </Select>
+        </div>
+        {fits !== null ? (
+          <p className={`text-xs ${fits ? TONE.ok : TONE.error}`}>{fits ? "To zadanie pasuje do filtra reguły." : "To zadanie nie pasuje do filtra — reguła by go nie wysłała."}</p>
+        ) : null}
+        <p className="text-xs text-[var(--muted)]">
+          {trigger.kind === "event"
+            ? "Wszystkie zaznaczone zdarzenia w jednej wysyłce; naprawdę idą te, które zaszły w oknie opóźnienia. Id i czas wysyłki są przykładowe."
+            : "Id i czas wysyłki są przykładowe."}
+        </p>
+        <pre className="max-h-80 overflow-auto rounded bg-[var(--hover)] p-2 text-xs">{JSON.stringify(preview, null, 2)}</pre>
+      </div>
+    </details>
   );
 }
 
