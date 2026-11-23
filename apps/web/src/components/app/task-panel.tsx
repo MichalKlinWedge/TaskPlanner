@@ -57,12 +57,17 @@ import {
   TASK_STATUS,
   taskLinks,
   tagsForWorkspace,
+  MARKDOWN_SHORTCUTS,
+  markdownContinueList,
+  markdownEdit,
   reorderTaskTagOps,
   taskTagId,
   taskTagOps,
   uuidv7,
   type LocalDate,
   type LocalTime,
+  type MarkdownAction,
+  type MarkdownTextEdit,
   type Priority,
   type Recurrence,
   type TaskLink,
@@ -1165,7 +1170,7 @@ function RemindersField({ task }: { task: ViewTask }) {
 const DESCRIPTION_MODE_KEY = "tp-description-mode";
 
 const PREVIEW_CLASS =
-  "text-sm [&_.tiptap]:outline-none [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-4 [&_blockquote]:pl-3 [&_pre]:bg-black/10 [&_pre]:p-2 [&_code]:rounded [&_code]:bg-black/10 [&_code]:px-1 [&_h1]:mt-2 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-2 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-1 [&_h3]:font-semibold [&_a]:text-[var(--accent)] [&_a]:underline [&_hr]:my-2 [&_hr]:border-[var(--line)] [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_ul[data-type=taskList]_li]:flex [&_ul[data-type=taskList]_li]:items-start [&_ul[data-type=taskList]_li]:gap-2 [&_ul[data-type=taskList]_label]:mt-1.5 [&_ul[data-type=taskList]_p]:my-0.5 [&_li[data-checked=true]>div]:text-[var(--muted)] [&_li[data-checked=true]>div]:line-through";
+  "text-sm [&_.tiptap]:outline-none [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-4 [&_blockquote]:pl-3 [&_pre]:bg-black/10 [&_pre]:p-2 [&_code]:rounded [&_code]:bg-black/10 [&_code]:px-1 [&_h1]:mt-2 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-2 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-1 [&_h3]:font-semibold [&_a]:text-[var(--accent)] [&_a]:underline [&_hr]:my-2 [&_hr]:border-[var(--line)] [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_ul[data-type=taskList]_li]:flex [&_ul[data-type=taskList]_li]:items-start [&_ul[data-type=taskList]_li]:gap-2 [&_ul[data-type=taskList]_label]:mt-1.5 [&_ul[data-type=taskList]_p]:my-0.5 [&_li[data-checked=true]>div]:text-[var(--muted)] [&_li[data-checked=true]>div]:line-through [&_table]:my-2 [&_table]:border-collapse [&_td]:border [&_td]:border-[var(--line)] [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-[var(--line)] [&_th]:bg-[var(--hover)] [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_td_p]:my-0 [&_th_p]:my-0";
 
 /** Markdown opisu wyrenderowany przez TipTap tylko do odczytu (ten sam GFM co wcześniej w edytorze). */
 function MarkdownPreview({ markdown, onEdit }: { markdown: string; onEdit?: () => void }) {
@@ -1186,9 +1191,38 @@ function MarkdownPreview({ markdown, onEdit }: { markdown: string; onEdit?: () =
   );
 }
 
+/** Przyciski formatowania nad polem Markdown (grupy rozdziela `sep`). */
+const FORMAT_BUTTONS: { action: MarkdownAction; label: string; icon: ReactNode; sep?: true }[] = [
+  { action: "bold", label: "Pogrubienie (Ctrl+B)", icon: <b>B</b> },
+  { action: "italic", label: "Kursywa (Ctrl+I)", icon: <i className="font-serif">I</i> },
+  { action: "strike", label: "Przekreślenie", icon: <s>S</s> },
+  { action: "heading", label: "Nagłówek", icon: <b>H</b> },
+  { action: "quote", label: "Cytat", icon: "❝", sep: true },
+  { action: "code", label: "Kod (kilka linii = blok kodu)", icon: <span className="font-mono text-[11px]">{"</>"}</span> },
+  { action: "link", label: "Link (Ctrl+K)", icon: "🔗" },
+  { action: "bullet", label: "Lista punktowana", icon: "•", sep: true },
+  { action: "numbered", label: "Lista numerowana", icon: <span className="text-[11px]">1.</span> },
+  { action: "task", label: "Lista zadań", icon: "☑" },
+  { action: "table", label: "Tabela", icon: "▦", sep: true },
+  { action: "rule", label: "Linia pozioma", icon: "―" },
+];
+
+/** Podmiana w polu tekstowym przez `insertText` — zostaje w historii „Cofnij” (Ctrl+Z) przeglądarki. */
+function applyTextEdit(area: HTMLTextAreaElement, edit: MarkdownTextEdit, setText: (text: string) => void) {
+  area.focus();
+  area.setSelectionRange(edit.from, edit.to);
+  const done = edit.insert ? document.execCommand("insertText", false, edit.insert) : edit.from === edit.to || document.execCommand("delete");
+  if (!done) {
+    area.setRangeText(edit.insert, edit.from, edit.to);
+    setText(area.value);
+  }
+  area.setSelectionRange(edit.selStart, edit.selEnd);
+}
+
 /**
- * Opis zadania w Markdown — w panelu i w trybie skupienia. Edycja = tekst źródłowy (GFM), przełącznik
- * „Podgląd” pokazuje wynik, „⛶” otwiera opis na pełnym ekranie (Esc wraca). Zapis przy opuszczeniu pola.
+ * Opis zadania w Markdown — w panelu i w trybie skupienia. Edycja = tekst źródłowy (GFM) z przyciskami
+ * formatowania (core `markdownEdit`, skróty Ctrl+B/I/K, Enter kontynuuje listę), przełącznik „Podgląd”
+ * pokazuje wynik, „⛶” otwiera opis na pełnym ekranie (Esc wraca). Zapis przy opuszczeniu pola.
  */
 export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string; readOnly?: boolean }) {
   const { store } = useAppEnv();
@@ -1252,8 +1286,27 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
     return () => window.removeEventListener("keydown", onKey, true);
   }, [full, closeFull]);
 
+  const area = useRef<HTMLTextAreaElement>(null);
+  const format = (action: MarkdownAction) => {
+    const el = area.current;
+    if (el) applyTextEdit(el, markdownEdit(el.value, el.selectionStart, el.selectionEnd, action), setDraft);
+  };
+  const onAreaKey = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && MARKDOWN_SHORTCUTS[e.key.toLowerCase()]) {
+      e.preventDefault();
+      format(MARKDOWN_SHORTCUTS[e.key.toLowerCase()]!);
+    } else if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.nativeEvent.isComposing && el.selectionStart === el.selectionEnd) {
+      const edit = markdownContinueList(el.value, el.selectionStart);
+      if (edit) {
+        e.preventDefault();
+        applyTextEdit(el, edit, setDraft);
+      }
+    }
+  };
+
   const toolbar = (
-    <div className="flex items-center gap-1">
+    <div className="flex flex-wrap items-center gap-1">
       {readOnly ? null : (
         <div className="inline-flex rounded-md border border-[var(--line)] p-0.5 text-xs" role="group" aria-label="Tryb opisu">
           {([false, true] as const).map((p) => (
@@ -1266,6 +1319,19 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
             >
               {p ? "Podgląd" : "Markdown"}
             </button>
+          ))}
+        </div>
+      )}
+      {preview ? null : (
+        <div className="flex flex-wrap items-center" role="toolbar" aria-label="Formatowanie opisu">
+          {FORMAT_BUTTONS.map((b) => (
+            <span key={b.action} className="contents">
+              {b.sep ? <span aria-hidden className="mx-1 h-4 w-px bg-[var(--line)]" /> : null}
+              {/* `mousedown` bez domyślnej akcji: pole nie traci fokusu (ani zaznaczenia) przy kliknięciu. */}
+              <IconButton label={b.label} onMouseDown={(e) => e.preventDefault()} onClick={() => format(b.action)}>
+                {b.icon}
+              </IconButton>
+            </span>
           ))}
         </div>
       )}
@@ -1289,9 +1355,11 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
       </div>
     ) : (
       <textarea
+        ref={area}
         value={draft}
         autoFocus={fullScreen}
         onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={onAreaKey}
         onFocus={() => setEditing(true)}
         onBlur={() => {
           save();
@@ -1307,8 +1375,12 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
 
   return (
     <div className="flex flex-col gap-2">
-      {toolbar}
-      {full ? <p className="text-xs text-[var(--muted)]">Opis jest otwarty na pełnym ekranie.</p> : body(false)}
+      {full ? <p className="text-xs text-[var(--muted)]">Opis jest otwarty na pełnym ekranie.</p> : (
+        <>
+          {toolbar}
+          {body(false)}
+        </>
+      )}
       {full
         ? createPortal(
             <div className="fixed inset-0 z-50 flex flex-col bg-[var(--background)] p-4" role="dialog" aria-modal="true" aria-label="Opis zadania — pełny ekran" data-testid="description-full">

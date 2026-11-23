@@ -17,6 +17,7 @@ export * from './invites.ts';
 export * from './kanban.ts';
 export * from './labels.ts';
 export * from './markdown.ts';
+export * from './markdown-edit.ts';
 export * from './onboarding.ts';
 export * from './plugins/index.ts';
 export * from './quick-add.ts';
