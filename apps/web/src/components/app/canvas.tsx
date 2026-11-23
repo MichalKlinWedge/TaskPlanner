@@ -985,8 +985,8 @@ const Card = memo(function Card({
         ) : (
           <div className="flex-1" />
         )}
-          {/* Odstęp pod paskiem: znaczek odpowiedzialnego przy prawej krawędzi stoi nad zagiętym rogiem. */}
-        <div className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--muted)]" style={{ height: CARD_FOOT, paddingBottom: CARD_FOOT - 20 }}>
+          {/* Odstęp pod paskiem + z prawej: znaczki osób kończą się przed zagiętym rogiem (nie nachodzi na nie). */}
+        <div className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--muted)]" style={{ height: CARD_FOOT, paddingBottom: CARD_FOOT - 20, paddingRight: CARD_FOLD - CARD_PAD + 4 }}>
           {parentTitle !== null && showText ? (
             <span className="min-w-0 truncate" title={`Podzadanie: „${parentTitle}”`} data-testid="canvas-parent">
               ↑ {parentTitle}
