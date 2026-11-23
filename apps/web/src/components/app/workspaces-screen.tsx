@@ -7,6 +7,7 @@ import { useState, type FormEvent } from "react";
 import { useLocalQuery } from "@/lib/local-store";
 
 import { SharingPanel } from "./sharing";
+import { TemplatePicker, TemplatesCard, useCreateFromTemplate, useProjectTemplates, type TemplateChoice } from "./templates";
 import { Button, Card, IconButton, Input, Notice, Select } from "./ui";
 
 interface WorkspaceRow extends Record<string, string | number | null> {
@@ -103,6 +104,7 @@ export function WorkspacesScreen({ store }: { store: TabStore }) {
         />
       ))}
       <AddForm placeholder="Nowa przestrzeń, np. „Remont”" button="Dodaj przestrzeń" onAdd={(name) => void addWorkspace(name)} />
+      <TemplatesCard store={store} />
     </div>
   );
 }
@@ -144,15 +146,18 @@ function WorkspaceCard({
       for (const patch of reorderPatches(activeOthers, from, from + delta)) await store.mutate("lists", patch.id, { sort_key: patch.sort_key });
     });
 
-  const addList = (name: string, kind: ListKind) =>
+  const createFromTemplate = useCreateFromTemplate();
+  const addList = (name: string, kind: ListKind, template: TemplateChoice | null) =>
     run(() =>
-      store.mutate("lists", uuidv7(), {
-        scope_id: workspace.id,
-        kind,
-        name,
-        project_status: kind === "project" ? "active" : null,
-        sort_key: keyBetween(activeOthers.at(-1)?.sort_key ?? "a"),
-      }),
+      kind === "project" && template
+        ? store.mutateMany(createFromTemplate(template, workspace.id, name, activeOthers.at(-1)?.sort_key).ops)
+        : store.mutate("lists", uuidv7(), {
+            scope_id: workspace.id,
+            kind,
+            name,
+            project_status: kind === "project" ? "active" : null,
+            sort_key: keyBetween(activeOthers.at(-1)?.sort_key ?? "a"),
+          }),
     );
 
   return (
@@ -219,7 +224,7 @@ function WorkspaceCard({
           />
         ))}
       </ul>
-      {!archived && editable ? <AddListForm onAdd={(name, kind) => void addList(name, kind)} /> : null}
+      {!archived && editable ? <AddListForm store={store} onAdd={(name, kind, template) => void addList(name, kind, template)} /> : null}
     </Card>
   );
 }
@@ -374,14 +379,19 @@ function AddForm({ placeholder, button, onAdd }: { placeholder: string; button: 
   );
 }
 
-function AddListForm({ onAdd }: { onAdd: (name: string, kind: ListKind) => void }) {
+function AddListForm({ store, onAdd }: { store: TabStore; onAdd: (name: string, kind: ListKind, template: TemplateChoice | null) => void }) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<ListKind>("list");
+  const templates = useProjectTemplates(store);
+  const [template, setTemplate] = useState<TemplateChoice | null>(null);
+  // Szablon usunięty w międzyczasie (inne urządzenie) — pusty projekt.
+  const chosen = template && templates.some((t) => t.id === template.template.id) ? template : null;
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!name.trim()) return;
-    onAdd(name.trim(), kind);
+    onAdd(name.trim(), kind, kind === "project" ? chosen : null);
     setName("");
+    setTemplate(null);
   };
   return (
     <form onSubmit={submit} className="mt-3 flex flex-wrap gap-2">
@@ -393,6 +403,7 @@ function AddListForm({ onAdd }: { onAdd: (name: string, kind: ListKind) => void 
       <Button type="submit" disabled={!name.trim()}>
         Dodaj
       </Button>
+      {kind === "project" ? <TemplatePicker templates={templates} value={chosen} onChange={setTemplate} /> : null}
     </form>
   );
 }

@@ -13,6 +13,7 @@ import { FocusSettings, FocusState } from '../focus.ts';
 import { HabitSettings } from '../habits.ts';
 import { PluginRuleOptions, PluginTrigger } from '../plugins/rules.ts';
 import { Recurrence } from '../recurrence.ts';
+import { ProjectTemplateContent } from '../templates.ts';
 import { ReviewStats } from '../review.ts';
 import { CompletedMode, FilterQuery, GroupBy, SortBy } from '../views.ts';
 import { GuestAccess, IsoWeekday, ListKind, LocalDate, LocalTime, Priority, ProjectStatus, ReminderKind, SortKey, TaskStatus } from './primitives.ts';
@@ -410,6 +411,18 @@ export const PluginRequestRow = z.object({
   requested_at: Instant,
 });
 
+// ── Wiersze: szablony projektów (v1.x, zakres osobisty) ─────────────────────────────────────
+
+/** Szablon projektu: migawka zadań, tagów, przypomnień i zależności z datami względnymi (`core/templates.ts`). */
+export const ProjectTemplateRow = z.object({
+  id: Id,
+  /** Zakres osobisty. */
+  scope_id: Id,
+  name: name(100),
+  content: ProjectTemplateContent,
+  sort_key: SortKey,
+});
+
 /** Schemat wiersza po nazwie tabeli (formularze, walidacja operacji przed `mutate`). */
 export const MODEL = {
   workspaces: WorkspaceRow,
@@ -431,6 +444,7 @@ export const MODEL = {
   task_comments: TaskCommentRow,
   plugin_rules: PluginRuleRow,
   plugin_requests: PluginRequestRow,
+  project_templates: ProjectTemplateRow,
 } as const;
 export type ModelTable = keyof typeof MODEL;
 export type ModelRow<T extends ModelTable> = z.infer<(typeof MODEL)[T]>;

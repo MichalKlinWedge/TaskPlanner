@@ -21,7 +21,7 @@ export const BACKUP_VERSION = 1;
 export const BACKUP_TABLES = [
   'profiles', 'workspaces', 'lists', 'collaborators', 'tasks', 'tags', 'task_tags', 'task_completions',
   'reminders', 'task_dependencies', 'time_entries', 'attachments', 'saved_filters', 'review_sessions',
-  'task_participants', 'task_comments',
+  'task_participants', 'task_comments', 'project_templates',
 ] as const satisfies readonly ModelTable[];
 export type BackupTable = (typeof BACKUP_TABLES)[number];
 

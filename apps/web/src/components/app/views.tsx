@@ -60,6 +60,7 @@ import { TaskExportButton } from "./export";
 import { HabitTodayItem } from "./habits";
 import { QuickAdd } from "./quick-add";
 import { TaskColumnsHeader, TaskItem, useTaskActions } from "./task-item";
+import { SaveTemplateButton } from "./templates";
 import { Button, Select } from "./ui";
 
 export interface ViewProps {
@@ -479,6 +480,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
           return listShareBadge(ws?.role, list.guestAccess, ws?.members);
         })()}
       >
+        {list.kind === "project" ? <SaveTemplateButton listId={list.id} listName={list.name} /> : null}
         <TaskExportButton
           title={list.name}
           data={data}

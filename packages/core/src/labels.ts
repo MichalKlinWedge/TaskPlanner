@@ -264,6 +264,7 @@ export const BACKUP_TABLE: Record<BackupTable, string> = {
   review_sessions: 'Przeglądy',
   task_participants: 'Uczestnicy zadań',
   task_comments: 'Komentarze',
+  project_templates: 'Szablony projektów',
 };
 
 /** Rodzaje wpisów dziennika błędów (Ustawienia → „Błędy aplikacji”, `core/errors.ts`). */

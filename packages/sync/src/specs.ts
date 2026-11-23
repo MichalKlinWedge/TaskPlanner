@@ -9,7 +9,7 @@ import type { Tables } from '@taskplanner/db';
 export const SYNCED_TABLES = [
   'workspaces', 'lists', 'tasks', 'tags', 'task_tags', 'task_completions', 'profiles', 'devices',
   'reminders', 'task_dependencies', 'time_entries', 'attachments', 'saved_filters', 'review_sessions',
-  'collaborators', 'task_participants', 'task_comments', 'plugin_rules', 'plugin_requests',
+  'collaborators', 'task_participants', 'task_comments', 'plugin_rules', 'plugin_requests', 'project_templates',
 ] as const;
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
 
@@ -137,6 +137,12 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
   plugin_requests: {
     columns: columns<'plugin_requests'>()(['scope_id', 'rule_id', 'task_id', 'requested_at']),
     json: [],
+    scope: 'personal',
+  },
+  /** Szablony projektów (v1.x): migawka projektu w jednym polu `content` (`core/templates.ts`). */
+  project_templates: {
+    columns: columns<'project_templates'>()(['scope_id', 'name', 'content', 'sort_key']),
+    json: ['content'],
     scope: 'personal',
   },
 };

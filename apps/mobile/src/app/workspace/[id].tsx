@@ -11,9 +11,12 @@ import { Alert } from 'react-native';
 import { EditableItem } from '@/components/editable-item';
 import { SharingSection } from '@/components/sharing';
 import { SyncIndicator } from '@/components/sync-indicator';
+import { TemplateFields, TemplatesSection, type TemplateChoice } from '@/components/templates';
 import { Button, Chip, ColorPicker, Field, P, Row, Screen, Section } from '@/components/ui';
+import { useView } from '@/lib/app-data';
 import { useLocalQuery } from '@/lib/local-query';
 import { createTask } from '@/lib/tasks';
+import { createProjectFromTemplate, useProjectTemplates } from '@/lib/templates';
 import { archiveList, createList, listItems, moveItem, removeList, updateList, type ListItem } from '@/lib/workspaces';
 
 const TASKS = ['zadanie', 'zadania', 'zadań'] as const;
@@ -37,6 +40,11 @@ export default function Workspace() {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<Exclude<ListKind, 'inbox'>>('list');
   const [color, setColor] = useState<string | null>(null);
+  const { data, today } = useView();
+  const templates = useProjectTemplates();
+  const [template, setTemplate] = useState<TemplateChoice | null>(null);
+  // Szablon usunięty w międzyczasie (inne urządzenie) — pusty projekt.
+  const chosen = kind === 'project' && template && templates.some((t) => t.id === template.template.id) ? template : null;
   const [task, setTask] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -155,19 +163,27 @@ export default function Workspace() {
               <Chip key={k} label={LIST_KIND[k]} selected={kind === k} onPress={() => setKind(k)} />
             ))}
           </Row>
+          {kind === 'project' ? <TemplateFields templates={templates} value={chosen} onChange={setTemplate} today={today} /> : null}
           <ColorPicker value={color} onChange={setColor} />
           <Button
-            title={`Dodaj: ${LIST_KIND[kind].toLowerCase()}`}
+            title={chosen ? 'Dodaj projekt z szablonu' : `Dodaj: ${LIST_KIND[kind].toLowerCase()}`}
             disabled={!name.trim()}
             onPress={() => {
               setError(null);
-              createList(id, { name, kind, color })
-                .then(() => setName(''))
+              (chosen
+                ? createProjectFromTemplate({ template: chosen.template, anchor: chosen.anchor, workspaceId: id, name, color, userId: data.userId, tags: data.tags })
+                : createList(id, { name, kind, color })
+              )
+                .then(() => {
+                  setName('');
+                  setTemplate(null);
+                })
                 .catch(onError);
             }}
           />
         </Section>
       ) : null}
+      <TemplatesSection />
 
       {archived.length ? (
         <>

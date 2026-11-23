@@ -32,6 +32,7 @@ export * from './sharing.ts';
 export * from './sort-key.ts';
 export * from './task-export.ts';
 export * from './tasks.ts';
+export * from './templates.ts';
 export * from './time-blocking.ts';
 export * from './timeline.ts';
 export * from './views.ts';

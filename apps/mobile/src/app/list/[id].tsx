@@ -34,6 +34,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
 import { FilterBar } from '@/components/filter-bar';
+import { SaveTemplateBar } from '@/components/templates';
 import { pickMany, pickOption } from '@/components/pickers';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
@@ -69,6 +70,7 @@ export default function ListScreen() {
   usePerfReady('/list/[id]', data.loaded);
   const { notify } = useTaskActions();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const list = data.lists.find((l) => l.id === id);
   // Ikona udostępnienia przy tytule: właściciel — ustawienie listy dla gości, gość — jego dostęp.
   const share = useListShareBadge(id);
@@ -202,7 +204,13 @@ export default function ListScreen() {
               <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/board', params: { list: list.id } })} style={[styles.pref, { borderColor: p.border }]}>
                 <Text style={{ color: p.accent, fontSize: 13 }}>▦ Tablica</Text>
               </Pressable>
+              {list.kind === 'project' ? (
+                <Pressable accessibilityRole="button" onPress={() => setSavingTemplate((v) => !v)} style={[styles.pref, { borderColor: p.border }]}>
+                  <Text style={{ color: p.accent, fontSize: 13 }}>⧉ Zapisz jako szablon</Text>
+                </Pressable>
+              ) : null}
             </View>
+            {savingTemplate && list.kind === 'project' ? <SaveTemplateBar listId={list.id} listName={list.name} onClose={() => setSavingTemplate(false)} /> : null}
             <FilterBar query={filter ?? {}} onChange={setFilter} hide={['lists']} />
             {tasks.length ? <TaskColumnsHeader columns={columns} /> : null}
           </ScreenHeader>
