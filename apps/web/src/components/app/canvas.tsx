@@ -52,6 +52,7 @@ import {
   type CanvasArrow,
   type CanvasArrowKind,
   type CanvasCell,
+  type CanvasLinkKind,
   type CanvasSegment,
   type CanvasTasks,
   type CanvasViewport,
@@ -272,7 +273,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   // Strzałki: zaznaczona (klucz `CanvasArrow.key`), menu rodzaju po upuszczeniu, ostatnio wybrany rodzaj.
   const [selectedArrow, setSelectedArrow] = useState<string | null>(null);
   const [linkMenu, setLinkMenu] = useState<{ fromId: string; toId: string; x: number; y: number } | null>(null);
-  const [lastKind, setLastKind] = useState<CanvasArrowKind>("blocks");
+  const [lastKind, setLastKind] = useState<CanvasLinkKind>("blocks");
   // Najnowsze dane dla obsługi wskaźnika (zmiany z synchronizacji w trakcie przeciągania).
   const latest = useRef({ layout, groups, view });
   useEffect(() => {
@@ -538,7 +539,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     );
   };
 
-  const createLink = (kind: CanvasArrowKind) => {
+  const createLink = (kind: CanvasLinkKind) => {
     const menu = linkMenu;
     setLinkMenu(null);
     box.current?.focus({ preventScroll: true });
@@ -557,7 +558,8 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
 
   const removeArrow = (arrow: CanvasArrow) => {
     setSelectedArrow(null);
-    if (!editable) return;
+    // Linia rodzic → podzadanie nie jest połączeniem do usunięcia (podzadania przepina panel zadania).
+    if (!editable || arrow.kind === "parent") return;
     const sentence = CANVAS_ARROW[arrow.kind].sentence(quoted(arrow.fromId), quoted(arrow.toId));
     if (arrow.dependencyId) {
       const { ops, undo } = removeDependencyOps(arrow.dependencyId);
@@ -1076,7 +1078,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
         </div>
       ) : null}
       <p className="text-[11px] text-[var(--muted)]">
-        {plural(layout.placed.length, ["karteczka", "karteczki", "karteczek"])} na tablicy · kolor = pierwszy kolorowy tag zadania (kolejność tagów zmienisz w panelu zadania) · ramka = priorytet · strzałka ciągła = blokuje (zależność, czerwona — naruszona kolejność), przerywana = wynika z
+        {plural(layout.placed.length, ["karteczka", "karteczki", "karteczek"])} na tablicy · kolor = pierwszy kolorowy tag zadania (kolejność tagów zmienisz w panelu zadania) · ramka = priorytet · strzałka ciągła = blokuje (zależność, czerwona — naruszona kolejność), przerywana = wynika z, kropkowana z kropką = rodzic → podzadanie (tryb „Z podzadaniami”)
       </p>
     </div>
   );
@@ -1312,7 +1314,7 @@ function ArrowLayer({
           violated={arrow.violated}
           selected={arrow.key === selected}
           draft={arrow.key === "draft"}
-          interactive={interactive}
+          interactive={interactive && arrow.kind !== "parent"}
           x1={seg.x1}
           y1={seg.y1}
           x2={seg.x2}
@@ -1355,6 +1357,16 @@ const Arrow = memo(function Arrow({
   onDown: (e: ReactPointerEvent, key: string) => void;
 }) {
   const color = selected || draft ? "var(--accent)" : violated ? "var(--danger)" : "var(--muted)";
+  if (kind === "parent") {
+    // Rodzic → podzadanie: cienka kropkowana linia bez grotu, kropka przy rodzicu (tylko do oglądania).
+    return (
+      <g data-canvas-arrow={id} data-kind={kind} data-from={fromId} data-to={toId} opacity={0.7}>
+        <title>{`Podzadanie (rodzic → podzadanie)`}</title>
+        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={1.25} strokeDasharray="1 4" strokeLinecap="round" />
+        <circle cx={x1} cy={y1} r={3} fill={color} />
+      </g>
+    );
+  }
   const width = (kind === "blocks" ? 2 : 1.5) + (selected ? 1 : 0);
   const seg = { x1, y1, x2, y2 };
   const head = canvasArrowHead(seg, kind === "blocks" ? 10 : 9, kind === "blocks" ? 8 : 9)
@@ -1418,13 +1430,13 @@ function LinkMenu({
   y: number;
   from: string;
   to: string;
-  preferred: CanvasArrowKind;
-  onPick: (kind: CanvasArrowKind) => void;
+  preferred: CanvasLinkKind;
+  onPick: (kind: CanvasLinkKind) => void;
   onCancel: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => ref.current?.focus({ preventScroll: true }), []);
-  const items: { kind: CanvasArrowKind; key: string; hint: string }[] = [
+  const items: { kind: CanvasLinkKind; key: string; hint: string }[] = [
     { kind: "blocks", key: "B", hint: "zależność — jak na osi czasu" },
     { kind: "derived", key: "W", hint: "samo powiązanie, bez terminów" },
   ];

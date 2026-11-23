@@ -355,13 +355,19 @@ export function removeCanvasGroupOps(listId: string, current: readonly CanvasGro
 
 // ── Strzałki ────────────────────────────────────────────────────────────────────────────────────
 
-/** `blocks` — „A blokuje B” (zależność koniec→początek), `derived` — „B wynika z A” (samo powiązanie). */
-export type CanvasArrowKind = 'blocks' | 'derived';
+/**
+ * `blocks` — „A blokuje B” (zależność koniec→początek), `derived` — „B wynika z A” (samo powiązanie),
+ * `parent` — rodzic → podzadanie (tylko do oglądania: z `parent_id`, bez zaznaczania i usuwania).
+ */
+export type CanvasArrowKind = 'blocks' | 'derived' | 'parent';
+/** Rodzaje strzałek rysowane przez użytkownika (menu po upuszczeniu). */
+export type CanvasLinkKind = Exclude<CanvasArrowKind, 'parent'>;
 
 /** Etykiety rodzajów strzałek; `sentence(a, b)` — zdanie dla strzałki od `a` do `b`. */
 export const CANVAS_ARROW: Record<CanvasArrowKind, { label: string; sentence: (a: string, b: string) => string }> = {
   blocks: { label: 'blokuje', sentence: (a, b) => `${a} blokuje ${b}` },
   derived: { label: 'wynika z', sentence: (a, b) => `${b} wynika z ${a}` },
+  parent: { label: 'podzadanie', sentence: (a, b) => `${b} jest podzadaniem ${a}` },
 };
 
 /** Odstęp równoległych strzałek tej samej pary kart (px przy 100 %) i odstęp końców od kart. */
@@ -371,7 +377,7 @@ export interface CanvasArrow {
   /** Klucz stały między odświeżeniami: `b:<id zależności>` albo `d:<źródło>:<zadanie>`. */
   key: string;
   kind: CanvasArrowKind;
-  /** Początek strzałki: poprzednik („blokuje”) albo źródło („wynika z”). */
+  /** Początek strzałki: poprzednik („blokuje”), źródło („wynika z”) albo rodzic. */
   fromId: string;
   toId: string;
   /** Id zależności (`blocks`), inaczej `null`. */
@@ -389,7 +395,7 @@ export interface CanvasArrows {
   offBoard: Map<string, string[]>;
 }
 
-type LinkTask = Pick<ViewTask, 'id' | 'derivedFrom'>;
+type LinkTask = Pick<ViewTask, 'id' | 'derivedFrom'> & { parentId?: string | null };
 
 /** Krawędzie „wynika z” jako pary źródło → zadanie (do `detectCycle`). */
 const derivedEdges = (tasks: readonly LinkTask[]) => tasks.flatMap((t) => (t.derivedFrom ?? []).map((from) => ({ predecessorId: from, successorId: t.id })));
@@ -398,10 +404,17 @@ const derivedEdges = (tasks: readonly LinkTask[]) => tasks.flatMap((t) => (t.der
  * Strzałki do narysowania: połączenia, których oba końce leżą na tablicy (`placed`). Połączenie z jednym
  * końcem poza tablicą (karta w pasku „Do ułożenia”, podzadanie ukryte w „Tylko główne”, ukończone ukryte
  * filtrem, zadanie z innej listy) nie jest rysowane — trafia do `offBoard` widocznej karty. Połączenia
- * z zadaniami, których nie ma (kosz, brak dostępu), są pomijane. Kilka strzałek między tą samą parą kart
- * (obie strony, oba rodzaje) dostaje równoległe tory.
+ * z zadaniami, których nie ma (kosz, brak dostępu), są pomijane. Linie rodzic → podzadanie (`parents`, domyślnie
+ * tak) tylko gdy obie karty leżą na tablicy (tryb „Z podzadaniami”) — bez `offBoard` (ukryte podzadania pokazuje
+ * licznik `↳`). Kilka strzałek między tą samą parą kart (obie strony, różne rodzaje) dostaje równoległe tory.
  */
-export function canvasArrows(placed: ReadonlySet<string>, tasks: readonly LinkTask[], deps: readonly Dependency[], violated: ReadonlySet<string> = new Set()): CanvasArrows {
+export function canvasArrows(
+  placed: ReadonlySet<string>,
+  tasks: readonly LinkTask[],
+  deps: readonly Dependency[],
+  violated: ReadonlySet<string> = new Set(),
+  { parents = true }: { parents?: boolean } = {},
+): CanvasArrows {
   const known = new Set(tasks.map((t) => t.id));
   const arrows: CanvasArrow[] = [];
   const offBoard = new Map<string, string[]>();
@@ -420,6 +433,13 @@ export function canvasArrows(placed: ReadonlySet<string>, tasks: readonly LinkTa
   };
   for (const d of deps) add('blocks', d.predecessorId, d.successorId, d.id);
   for (const t of tasks) for (const from of new Set(t.derivedFrom ?? [])) add('derived', from, t.id, null);
+  if (parents) {
+    for (const t of tasks) {
+      if (t.parentId && placed.has(t.id) && placed.has(t.parentId)) {
+        arrows.push({ key: `p:${t.id}`, kind: 'parent', fromId: t.parentId, toId: t.id, dependencyId: null, violated: false, offset: 0 });
+      }
+    }
+  }
   // Tory: para kart (bez kierunku) → strzałki w stałej kolejności, przesunięcia symetrycznie wokół środka.
   const pairs = new Map<string, CanvasArrow[]>();
   for (const arrow of arrows) {
