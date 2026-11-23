@@ -17,6 +17,7 @@ import { CaptureCard } from "./capture-card";
 import { ErrorsCard } from "./errors-card";
 import { ProfileForm, type ProfileValues } from "./profile-form";
 import { InvitesCard } from "./invites-card";
+import { PluginsCard } from "./plugins-card";
 import { InstallCard, OfflineCard } from "./pwa-cards";
 import { RemindersCard } from "./reminders-card";
 import { ScopeInvites } from "./sharing";
@@ -104,6 +105,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
             </Card>
             <RemindersCard store={store} userId={userId} />
             <CalendarsCard store={store} timeZone={parseSettings(settings).timeZone} />
+            <PluginsCard store={store} userId={userId} />
             <BackupCard store={store} userId={userId} timeZone={parseSettings(settings).timeZone} />
             <CaptureCard />
             <InstallCard />

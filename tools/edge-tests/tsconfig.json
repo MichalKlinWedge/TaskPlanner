@@ -15,6 +15,9 @@
     "../../supabase/functions/_shared/task-calendar.ts",
     "../../supabase/functions/_shared/task-events.ts",
     "../../supabase/functions/_shared/link-preview.ts",
+    "../../supabase/functions/_shared/plugins/deliver.ts",
+    "../../supabase/functions/_shared/plugins/types.ts",
+    "../../supabase/functions/_shared/plugins/webhook.ts",
     "../../supabase/functions/_shared/time.ts"
   ]
 }

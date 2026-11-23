@@ -2,7 +2,8 @@
  * Fałszywe usługi zewnętrzne dla testów integracyjnych, osiągalne z kontenera Edge Runtime pod
  * `http://host.docker.internal:54590` (`.env.test`): Google OAuth + Calendar API v3 (calendarList,
  * events.list z `syncToken` i stronicowaniem, watch, channels.stop; Etap 12: calendars.insert, events
- * insert/get/patch/delete z `If-Match` → 412, zajęty id → 409, usunięte → 410), plik ICS z ETag, usługa Web Push.
+ * insert/get/patch/delete z `If-Match` → 412, zajęty id → 409, usunięte → 410), plik ICS z ETag, usługa Web Push,
+ * odbiorca webhooków pluginów (`/hooks/<nazwa>`, M21).
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 
@@ -52,6 +53,15 @@ export interface FakeChannel {
   stopped: boolean;
 }
 
+export interface HookRequest {
+  name: string;
+  method: string;
+  headers: Record<string, string | string[] | undefined>;
+  body: string;
+  status: number;
+  at: number;
+}
+
 export interface PushRequest {
   id: string;
   headers: Record<string, string | string[] | undefined>;
@@ -95,6 +105,9 @@ export class FakeServices {
   push: PushRequest[] = [];
   pushStatus = new Map<string, number>();
   email = 'tester@gmail.com';
+  /** Odbiorca webhooków (pluginy, M21): `/hooks/<nazwa>` — zapisuje każde żądanie; odpowiedź z `hookReplies` (domyślnie 200). */
+  hooks: HookRequest[] = [];
+  hookReplies = new Map<string, { status: number; headers?: Record<string, string>; delayMs?: number; body?: string; location?: string }>();
   /** Strony dla `link-preview` (Etap 10): `/pages/<nazwa>`; `delayMs` — odpowiedź po czasie. */
   pages = new Map<string, { status?: number; headers?: Record<string, string>; body?: string | Buffer; delayMs?: number }>();
 
@@ -116,6 +129,15 @@ export class FakeServices {
   /** Adres usługi push widziany z kontenera funkcji. */
   pushEndpoint(id: string) {
     return `http://host.docker.internal:${FAKE_PORT}/push/${id}`;
+  }
+
+  /** Adres odbiorcy webhooków widziany z kontenera funkcji. */
+  hookUrl(name: string) {
+    return `http://host.docker.internal:${FAKE_PORT}/hooks/${name}`;
+  }
+
+  hooksFor(name: string) {
+    return this.hooks.filter((h) => h.name === name);
   }
 
   /** Adres strony testowej widziany z kontenera funkcji. */
@@ -209,6 +231,14 @@ export class FakeServices {
     const url = new URL(req.url!, `http://localhost:${FAKE_PORT}`);
     const path = url.pathname;
     const body = await readBody(req);
+
+    if (path.startsWith('/hooks/')) {
+      const name = path.slice('/hooks/'.length);
+      const reply = this.hookReplies.get(name) ?? { status: 200 };
+      if (reply.delayMs) await new Promise((r) => setTimeout(r, reply.delayMs));
+      this.hooks.push({ name, method: req.method ?? '', headers: req.headers, body: body.toString('utf8'), status: reply.status, at: Date.now() });
+      return send(res, reply.status, reply.body ?? { ok: reply.status < 300 }, { ...(reply.location && { location: reply.location }), ...reply.headers });
+    }
 
     if (path.startsWith('/push/')) {
       const id = path.slice('/push/'.length);

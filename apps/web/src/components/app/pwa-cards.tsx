@@ -57,6 +57,10 @@ const NEEDS_NETWORK: { what: string; detail: string }[] = [
     detail: "włączenie w tej przeglądarce i dostarczanie (wysyła je serwer); przypomnienie ustawione bez sieci zadziała po synchronizacji. Koniec fazy skupienia i przypomnienie o przeglądzie działają bez sieci.",
   },
   { what: "Karteczki", detail: "układanie, dodawanie i grupowanie karteczek listy (bez sieci widok jest tylko do odczytu); karteczki ułożone na innych urządzeniach widać po synchronizacji." },
+  {
+    what: "Integracje",
+    detail: "dodawanie i zmiana połączeń, „Wyślij próbne” i historia wysyłek; „Wyślij do…” bez sieci czeka i wychodzi z serwera po synchronizacji, reguły zapisują się lokalnie.",
+  },
   { what: "Podgląd linków", detail: "tytuł strony z adresu — bez sieci adres zostaje tytułem zadania." },
   { what: "Nowa wersja aplikacji", detail: "wczytuje się przy pierwszym starcie z siecią." },
 ];

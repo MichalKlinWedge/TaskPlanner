@@ -105,7 +105,7 @@ export function toViewTask(row: LocalTaskRow, tagIds: readonly string[] = []): V
 export interface TaskOp {
   table:
     | 'tasks' | 'task_completions' | 'tags' | 'task_tags' | 'reminders' | 'saved_filters' | 'task_dependencies' | 'lists' | 'time_entries' | 'profiles'
-    | 'review_sessions' | 'attachments' | 'collaborators' | 'task_participants' | 'task_comments' | 'workspaces';
+    | 'review_sessions' | 'attachments' | 'collaborators' | 'task_participants' | 'task_comments' | 'workspaces' | 'plugin_rules' | 'plugin_requests';
   id: string;
   patch: Record<string, unknown>;
 }

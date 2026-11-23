@@ -43,6 +43,8 @@ import {
   normalizeText,
   parentCandidates,
   plural,
+  PLUGIN_SEND_NOTE,
+  pluginRequestOps,
   PRIORITY,
   REMINDER_PRESETS,
   reminderOffset,
@@ -74,6 +76,7 @@ import { listEditable } from "@/lib/app-data";
 import { useDependencies } from "@/lib/dependencies";
 import { descriptionExtensions, descriptionMarkdown } from "@/lib/editor";
 import { useLocalQuery } from "@/lib/local-store";
+import { usePlugins } from "@/lib/plugins";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 import { useAppEnv } from "./app-env";
@@ -329,11 +332,44 @@ export function TaskPanel({ taskId }: { taskId: string }) {
 
       <div className="mt-4 flex items-center justify-between border-t border-[var(--line)] pt-3 text-xs text-[var(--muted)]">
         <span>Dodano {task.createdAt.startsWith("1970") ? "teraz (jeszcze nie wysłane)" : shortDate(task.createdAt.slice(0, 10))}</span>
-        <Button kind="danger" disabled={readOnly} onClick={remove}>
-          Przenieś do kosza
-        </Button>
+        <span className="flex items-center gap-2">
+          <SendToField taskId={task.id} />
+          <Button kind="danger" disabled={readOnly} onClick={remove}>
+            Przenieś do kosza
+          </Button>
+        </span>
       </div>
     </PanelFrame>
+  );
+}
+
+/**
+ * „Wyślij do…” (M21): reguły ręczne z aktywnym połączeniem; wybór zapisuje prośbę `plugin_requests`
+ * (offline też — wysyłka wychodzi z serwera po synchronizacji). Bez reguł nic nie widać.
+ */
+function SendToField({ taskId }: { taskId: string }) {
+  const { store, userId } = useAppEnv();
+  const { run } = useTaskActions();
+  const { sendable } = usePlugins(store);
+  if (!sendable.length) return null;
+  return (
+    <Select
+      aria-label="Wyślij do…"
+      title={PLUGIN_SEND_NOTE}
+      value=""
+      className="w-auto text-xs"
+      onChange={(e) => {
+        const rule = sendable.find((r) => r.id === e.target.value);
+        if (rule) void run(pluginRequestOps(userId, rule.id, [taskId]), { text: `Wysyłka do „${rule.name}” czeka na serwer` });
+      }}
+    >
+      <option value="">Wyślij do…</option>
+      {sendable.map((r) => (
+        <option key={r.id} value={r.id}>
+          {r.name}
+        </option>
+      ))}
+    </Select>
   );
 }
 

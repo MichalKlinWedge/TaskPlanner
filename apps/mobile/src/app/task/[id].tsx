@@ -43,6 +43,8 @@ import {
   normalizeText,
   parentCandidates,
   plural,
+  PLUGIN_SEND_NOTE,
+  pluginRequestOps,
   PRIORITY,
   REMINDER_PRESETS,
   reminderOffset,
@@ -82,6 +84,7 @@ import { Button, usePalette } from '@/components/ui';
 import { listEditable, listLabel, useView, type AppData } from '@/lib/app-data';
 import { spentMinutes, useFocusData } from '@/lib/focus';
 import { useLocalQuery } from '@/lib/local-query';
+import { useSendableRules } from '@/lib/plugins';
 import { rememberRecent } from '@/lib/recent';
 import { permissionState, requestNotificationPermission } from '@/lib/reminders';
 
@@ -327,10 +330,29 @@ export default function TaskScreen() {
           <Text style={{ color: p.muted, fontSize: 12, flex: 1 }}>
             Dodano {task.createdAt.startsWith('1970') ? 'teraz (jeszcze nie wysłane)' : shortDate(task.createdAt.slice(0, 10))}
           </Text>
+          <SendToButton task={task} userId={data.userId} />
           <Button kind="danger" title="Przenieś do kosza" disabled={readOnly} onPress={remove} />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+/** „Wyślij do…” (M21): reguły ręczne z Ustawień webu; prośba zapisuje się lokalnie (offline też) i wychodzi z serwera po synchronizacji. */
+function SendToButton({ task, userId }: { task: ViewTask; userId: string }) {
+  const { run } = useTaskActions();
+  const rules = useSendableRules();
+  if (!rules.length) return null;
+  return (
+    <Button
+      title="Wyślij do…"
+      onPress={() =>
+        then(pickOption<string>(`Wyślij do… — ${PLUGIN_SEND_NOTE}`, rules.map((r) => ({ label: r.name, value: r.id }))), (ruleId) => {
+          const rule = rules.find((r) => r.id === ruleId);
+          if (rule) void run(pluginRequestOps(userId, rule.id, [task.id]), { text: `Wysyłka do „${rule.name}” czeka na serwer` });
+        })
+      }
+    />
   );
 }
 

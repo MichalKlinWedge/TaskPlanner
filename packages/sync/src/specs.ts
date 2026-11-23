@@ -9,7 +9,7 @@ import type { Tables } from '@taskplanner/db';
 export const SYNCED_TABLES = [
   'workspaces', 'lists', 'tasks', 'tags', 'task_tags', 'task_completions', 'profiles', 'devices',
   'reminders', 'task_dependencies', 'time_entries', 'attachments', 'saved_filters', 'review_sessions',
-  'collaborators', 'task_participants', 'task_comments',
+  'collaborators', 'task_participants', 'task_comments', 'plugin_rules', 'plugin_requests',
 ] as const;
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
 
@@ -127,6 +127,18 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     json: [],
     scope: 'derived',
   },
+  /** Reguły pluginów (M21): „Gdy … → akcja przez połączenie”. */
+  plugin_rules: {
+    columns: columns<'plugin_rules'>()(['scope_id', 'name', 'connection_id', 'enabled', 'trigger', 'action', 'options', 'sort_key']),
+    json: ['trigger', 'action', 'options'],
+    scope: 'personal',
+  },
+  /** „Wyślij do…” — prośby o wysyłkę (tylko dopisywane, wysyła serwer po synchronizacji). */
+  plugin_requests: {
+    columns: columns<'plugin_requests'>()(['scope_id', 'rule_id', 'task_id', 'requested_at']),
+    json: [],
+    scope: 'personal',
+  },
 };
 
 // ── Tylko do odczytu (integracje, `pulled_readonly_tables()`) ─────────────────────────────────
@@ -135,7 +147,7 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
  * Tabele, które przychodzą w `pull_changes`, ale klient ich nie pisze (zapis: Edge Functions).
  * Lokalnie bez `field_clock` i outboxu; usunięcie (nagrobek / `deleted_at`) kasuje wiersz.
  */
-export const READONLY_TABLES = ['calendar_accounts', 'calendars', 'calendar_events', 'scope_collaborators', 'scope_tags'] as const;
+export const READONLY_TABLES = ['calendar_accounts', 'calendars', 'calendar_events', 'scope_collaborators', 'scope_tags', 'plugin_connections'] as const;
 export type ReadonlyTable = (typeof READONLY_TABLES)[number];
 
 const readonlyColumns = <T extends ReadonlyTable>() => <const C extends readonly (keyof Tables<T> & string)[]>(cols: C) => cols;
@@ -164,6 +176,11 @@ export const READONLY: { [T in ReadonlyTable]: { columns: readonly string[]; boo
   /** Kopie tagów użytych / przypisanych w przestrzeni (v1.x) — tag widoczny dla wszystkich członków. */
   scope_tags: {
     columns: readonlyColumns<'scope_tags'>()(['tag_id', 'name', 'color', 'created_at', 'updated_at', 'row_version']),
+    bool: [],
+  },
+  /** Połączenia pluginów (M21) bez sekretów — pisze Edge Function `plugins`. */
+  plugin_connections: {
+    columns: readonlyColumns<'plugin_connections'>()(['plugin', 'label', 'config', 'status', 'last_error', 'last_used_at', 'created_at', 'updated_at', 'row_version']),
     bool: [],
   },
 };

@@ -3,6 +3,7 @@
  */
 import type { BackupTable } from './backup.ts';
 import type { FocusPhase } from './focus.ts';
+import type { PluginEvent } from './plugins/events.ts';
 import type { IsoWeekday, ListKind, Priority, ProjectStatus, ReminderKind, TaskStatus } from './schemas/primitives.ts';
 
 export const PRIORITY: Record<Priority, { label: string; short: string; color: string }> = {
@@ -288,3 +289,46 @@ export const TASK_SECTION_ICON: Record<string, string> = {
   Komentarze: '💬',
   history: '🕘',
 };
+
+// ── Integracje wychodzące (pluginy, M21) ─────────────────────────────────────────────────────
+
+export const PLUGIN_EVENT: Record<PluginEvent, string> = {
+  'task.created': 'Dodane zadanie',
+  'task.completed': 'Ukończone',
+  'task.reopened': 'Przywrócone do pracy',
+  'task.deleted': 'Przeniesione do kosza',
+  'task.restored': 'Przywrócone z kosza',
+  'task.moved': 'Przeniesione',
+  'task.tagged': 'Dodany tag',
+  'task.untagged': 'Usunięty tag',
+  'task.due_changed': 'Zmiana terminu',
+  'task.assigned': 'Zmiana odpowiedzialnego',
+  'task.commented': 'Nowy komentarz',
+  'task.sent': 'Wysłane ręcznie',
+};
+
+/** Stan wysyłki (`plugin_deliveries.status`). */
+export const DELIVERY_STATUS: Record<'pending' | 'sending' | 'sent' | 'skipped' | 'failed' | 'dead', { label: string; tone: 'muted' | 'ok' | 'error' }> = {
+  pending: { label: 'Czeka', tone: 'muted' },
+  sending: { label: 'Wysyłanie', tone: 'muted' },
+  sent: { label: 'Wysłane', tone: 'ok' },
+  skipped: { label: 'Pominięte', tone: 'muted' },
+  failed: { label: 'Błąd', tone: 'error' },
+  dead: { label: 'Porzucone po ponowieniach', tone: 'error' },
+};
+
+/** Stan połączenia (`plugin_connections.status`). */
+export const PLUGIN_CONNECTION_STATUS: Record<'active' | 'disabled' | 'error', string> = {
+  active: 'aktywne',
+  disabled: 'wyłączone',
+  error: 'wyłączone po błędzie',
+};
+
+/** Rodzaj wyzwalacza reguły. */
+export const PLUGIN_TRIGGER: Record<'manual' | 'event', string> = {
+  manual: 'Ręcznie — „Wyślij do…”',
+  event: 'Zmiana zadania',
+};
+
+/** Wysyłki wymagają serwera — tekst dla „Wyślij do…” offline. */
+export const PLUGIN_SEND_NOTE = 'Wysyłka wyjdzie z serwera po synchronizacji — także gdy teraz nie ma sieci.';

@@ -321,6 +321,102 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"plugin_connections": {
+                  Row: {
+                    "config": NonNullable<Json>,"created_at": string,"deleted_at": string | null,"id": string,"label": string,"last_error": string | null,"last_used_at": string | null,"plugin": string,"row_version": number,"secret_id": string | null,"status": string,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "config"?: NonNullable<Json>,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"label": string,"last_error"?: string | null,"last_used_at"?: string | null,"plugin": string,"row_version"?: number,"secret_id"?: string | null,"status"?: string,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "config"?: NonNullable<Json>,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"label"?: string,"last_error"?: string | null,"last_used_at"?: string | null,"plugin"?: string,"row_version"?: number,"secret_id"?: string | null,"status"?: string,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"plugin_deliveries": {
+                  Row: {
+                    "attempts": number,"connection_id": string | null,"created_at": string,"error": string | null,"events": (string)[],"external_id": string | null,"external_url": string | null,"http_status": number | null,"id": string,"next_attempt_at": string,"payload": Json | null,"rule_id": string | null,"sent_at": string | null,"source": string,"status": string,"task_id": string | null,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "attempts"?: number,"connection_id"?: string | null,"created_at"?: string,"error"?: string | null,"events"?: (string)[],"external_id"?: string | null,"external_url"?: string | null,"http_status"?: number | null,"id": string,"next_attempt_at"?: string,"payload"?: Json | null,"rule_id"?: string | null,"sent_at"?: string | null,"source": string,"status"?: string,"task_id"?: string | null,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "attempts"?: number,"connection_id"?: string | null,"created_at"?: string,"error"?: string | null,"events"?: (string)[],"external_id"?: string | null,"external_url"?: string | null,"http_status"?: number | null,"id"?: string,"next_attempt_at"?: string,"payload"?: Json | null,"rule_id"?: string | null,"sent_at"?: string | null,"source"?: string,"status"?: string,"task_id"?: string | null,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"plugin_outbox": {
+                  Row: {
+                    "after": Json | null,"before": Json | null,"created_at": string,"id": number,"origin": string,"processed_at": string | null,"row_id": string,"scope_id": string,"table_name": string,"task_id": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "after"?: Json | null,"before"?: Json | null,"created_at"?: string,"id"?: never,"origin"?: string,"processed_at"?: string | null,"row_id": string,"scope_id": string,"table_name": string,"task_id"?: string | null
+                  }
+                  Update: {
+                    "after"?: Json | null,"before"?: Json | null,"created_at"?: string,"id"?: never,"origin"?: string,"processed_at"?: string | null,"row_id"?: string,"scope_id"?: string,"table_name"?: string,"task_id"?: string | null
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"plugin_requests": {
+                  Row: {
+                    "created_at": string,"created_by": string | null,"deleted_at": string | null,"field_clock": NonNullable<Json>,"id": string,"requested_at": string,"row_version": number,"rule_id": string,"scope_id": string,"task_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"field_clock"?: NonNullable<Json>,"id": string,"requested_at": string,"row_version"?: number,"rule_id": string,"scope_id": string,"task_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"field_clock"?: NonNullable<Json>,"id"?: string,"requested_at"?: string,"row_version"?: number,"rule_id"?: string,"scope_id"?: string,"task_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "plugin_requests_scope_id_fkey"
+      columns: ["scope_id"]
+isOneToOne: false
+      referencedRelation: "sync_scopes"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"plugin_rules": {
+                  Row: {
+                    "action": NonNullable<Json>,"connection_id": string,"created_at": string,"created_by": string | null,"deleted_at": string | null,"enabled": boolean,"field_clock": NonNullable<Json>,"id": string,"name": string,"options": NonNullable<Json>,"row_version": number,"scope_id": string,"sort_key": string,"trigger": NonNullable<Json>,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "action": NonNullable<Json>,"connection_id": string,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"enabled": boolean,"field_clock"?: NonNullable<Json>,"id": string,"name": string,"options": NonNullable<Json>,"row_version"?: number,"scope_id": string,"sort_key": string,"trigger": NonNullable<Json>,"updated_at"?: string
+                  }
+                  Update: {
+                    "action"?: NonNullable<Json>,"connection_id"?: string,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"enabled"?: boolean,"field_clock"?: NonNullable<Json>,"id"?: string,"name"?: string,"options"?: NonNullable<Json>,"row_version"?: number,"scope_id"?: string,"sort_key"?: string,"trigger"?: NonNullable<Json>,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "plugin_rules_scope_id_fkey"
+      columns: ["scope_id"]
+isOneToOne: false
+      referencedRelation: "sync_scopes"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"plugin_runs": {
+                  Row: {
+                    "expires_at": string | null,"holder": string | null,"name": string,"rerun": boolean
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "expires_at"?: string | null,"holder"?: string | null,"name": string,"rerun"?: boolean
+                  }
+                  Update: {
+                    "expires_at"?: string | null,"holder"?: string | null,"name"?: string,"rerun"?: boolean
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"profiles": {
                   Row: {
                     "calendar_sync": Json | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"display_name": string | null,"field_clock": NonNullable<Json>,"focus": Json | null,"id": string,"row_version": number,"scope_id": string,"settings": NonNullable<Json>,"updated_at": string
@@ -824,6 +920,33 @@ isOneToOne: false
 "can_write_scope":
 { Args: { "p_scope": string }; Returns: boolean
                            },
+"claim_plugin_deliveries":
+{ Args: { "p_limit"?: number,"p_per_minute"?: number }; Returns: {
+              "attempts": number,
+"connection_id": string | null,
+"created_at": string,
+"error": string | null,
+"events": (string)[],
+"external_id": string | null,
+"external_url": string | null,
+"http_status": number | null,
+"id": string,
+"next_attempt_at": string,
+"payload": Json | null,
+"rule_id": string | null,
+"sent_at": string | null,
+"source": string,
+"status": string,
+"task_id": string | null,
+"updated_at": string,
+"user_id": string
+            }[]
+                          SetofOptions: {
+        from: "*"
+        to: "plugin_deliveries"
+        isOneToOne: false
+        isSetofReturn: true
+      } },
 "claim_reminder_deliveries":
 { Args: { "p_items": Json }; Returns: {
               "attempts": number,
@@ -891,6 +1014,30 @@ isOneToOne: false
 "my_scope_invites":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"plugin_connection_remove":
+{ Args: { "p_connection": string }; Returns: undefined
+                           },
+"plugin_kick":
+{ Args: Record<PropertyKey, never>; Returns: undefined
+                           },
+"plugin_lock":
+{ Args: { "p_holder": string,"p_name": string,"p_ttl_seconds"?: number }; Returns: boolean
+                           },
+"plugin_secret_get":
+{ Args: { "p_connection": string }; Returns: string
+                           },
+"plugin_secret_set":
+{ Args: { "p_connection": string,"p_secret": string }; Returns: undefined
+                           },
+"plugin_task_context":
+{ Args: { "p_task": string,"p_user": string }; Returns: Json
+                           },
+"plugin_unlock":
+{ Args: { "p_holder": string,"p_name": string,"p_ttl_seconds"?: number }; Returns: boolean
+                           },
+"plugins_tick":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
 "pull_changes":
 { Args: { "p_limit"?: number,"p_since"?: Json }; Returns: Json
                            },
@@ -917,6 +1064,9 @@ isOneToOne: false
                            },
 "require_workspace_owner":
 { Args: { "p_scope": string }; Returns: undefined
+                           },
+"retry_plugin_delivery":
+{ Args: { "p_delivery": string }; Returns: undefined
                            },
 "revoke_scope_invite":
 { Args: { "p_id": string }; Returns: boolean

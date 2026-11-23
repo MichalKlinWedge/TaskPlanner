@@ -34,6 +34,7 @@ export const COMMANDS: readonly Command[] = [
   { id: 'task.date', kind: 'action', label: 'Wybierz datę…', keys: ['D'], keywords: ['termin'], needsSelection: true },
   { id: 'task.move', kind: 'action', label: 'Przenieś do…', keywords: ['lista', 'projekt'], needsSelection: true },
   { id: 'task.delete', kind: 'action', label: 'Przenieś do kosza', keys: ['Del'], keywords: ['usuń'], needsSelection: true },
+  { id: 'plugin.send', kind: 'action', label: 'Wyślij do…', keywords: ['integracja', 'webhook', 'wyślij'], needsSelection: true },
   { id: 'focus.start', kind: 'action', label: 'Tryb skupienia', keys: ['F'], keywords: ['pomodoro', 'timer'] },
   { id: 'list.new_project', kind: 'action', label: 'Nowy projekt' },
   { id: 'workspace.switch', kind: 'action', label: 'Przełącz przestrzeń', keywords: ['kontekst'] },

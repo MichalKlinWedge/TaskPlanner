@@ -61,8 +61,8 @@ const chunks = <T>(items: readonly T[], size: number): T[][] => {
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
 };
-/** Wersja zestawu tabel tylko do odczytu (`2` = `scope_collaborators`, `3` = `scope_tags`) — zmiana wymusza ponowne pobranie zakresów. */
-const READONLY_VERSION = '3';
+/** Wersja zestawu tabel tylko do odczytu (`2` = `scope_collaborators`, `3` = `scope_tags`, `4` = `plugin_connections`) — zmiana wymusza ponowne pobranie zakresów. */
+const READONLY_VERSION = '4';
 /**
  * Zestaw tabel i kolumn synchronizowanych. Starsza wersja aplikacji pomijała w `pull_changes` tabele
  * i kolumny, których nie znała, a kursory zakresów i tak szły dalej — po aktualizacji te wiersze

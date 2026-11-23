@@ -11,6 +11,7 @@ import { z } from 'zod';
 
 import { FocusSettings, FocusState } from '../focus.ts';
 import { HabitSettings } from '../habits.ts';
+import { PluginRuleOptions, PluginTrigger } from '../plugins/rules.ts';
 import { Recurrence } from '../recurrence.ts';
 import { ReviewStats } from '../review.ts';
 import { CompletedMode, FilterQuery, GroupBy, SortBy } from '../views.ts';
@@ -377,6 +378,32 @@ export const TaskCommentRow = z.object({
   edited_at: Instant.nullable(),
 });
 
+// ── Wiersze: pluginy (M21, zakres osobisty) ─────────────────────────────────────────────────
+
+/** Reguła pluginu; akcję sprawdza schemat pluginu połączenia (`core/plugins/catalog.ts`). */
+export const PluginRuleRow = z.object({
+  id: Id,
+  /** Zakres osobisty. */
+  scope_id: Id,
+  name: name(100),
+  connection_id: Id,
+  enabled: z.boolean(),
+  trigger: PluginTrigger,
+  action: z.record(z.string(), z.unknown()),
+  options: PluginRuleOptions,
+  sort_key: SortKey,
+});
+
+/** „Wyślij do…” — prośba o wysyłkę zadania regułą ręczną (tylko dopisywana). */
+export const PluginRequestRow = z.object({
+  id: Id,
+  /** Zakres osobisty. */
+  scope_id: Id,
+  rule_id: Id,
+  task_id: Id,
+  requested_at: Instant,
+});
+
 /** Schemat wiersza po nazwie tabeli (formularze, walidacja operacji przed `mutate`). */
 export const MODEL = {
   workspaces: WorkspaceRow,
@@ -396,6 +423,8 @@ export const MODEL = {
   collaborators: CollaboratorRow,
   task_participants: TaskParticipantRow,
   task_comments: TaskCommentRow,
+  plugin_rules: PluginRuleRow,
+  plugin_requests: PluginRequestRow,
 } as const;
 export type ModelTable = keyof typeof MODEL;
 export type ModelRow<T extends ModelTable> = z.infer<(typeof MODEL)[T]>;

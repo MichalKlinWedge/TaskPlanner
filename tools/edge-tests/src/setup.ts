@@ -105,6 +105,8 @@ async function main() {
     GOOGLE_ALLOW_HTTP_WEBHOOK: '1',
     PUSH_ALLOW_HTTP: '1',
     LINK_PREVIEW_TEST_HOSTS: `host.docker.internal:${FAKE_PORT}`,
+    PLUGIN_TEST_HOSTS: `host.docker.internal:${FAKE_PORT}`,
+    APP_URL: 'https://app.taskplanner.test',
   }, 'Edge Functions w testach integracyjnych (fałszywe Google i usługa push)');
 
   vaultPut('functions_url', FUNCTIONS_URL_FROM_DB);

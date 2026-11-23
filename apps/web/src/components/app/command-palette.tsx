@@ -11,6 +11,7 @@ import {
   commandSearchItems,
   LIST_KIND,
   LIST_SHORTCUTS,
+  PLUGIN_SEND_NOTE,
   PRIORITY,
   search,
   taskSearchItem,
@@ -19,6 +20,8 @@ import {
   type SearchKind,
 } from "@taskplanner/core";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+
+import { usePlugins } from "@/lib/plugins";
 
 import { useAppEnv } from "./app-env";
 import { useFocus } from "./focus";
@@ -44,6 +47,7 @@ export const AVAILABLE_COMMANDS = new Set([
   "task.date",
   "task.move",
   "task.delete",
+  "plugin.send",
   "list.new_project",
   "workspace.switch",
   "app.theme",
@@ -76,7 +80,7 @@ const remember = (id: string) => {
   }
 };
 
-export type PaletteMode = "all" | "search" | "priority" | "move" | "date" | "workspace";
+export type PaletteMode = "all" | "search" | "priority" | "move" | "date" | "workspace" | "send";
 
 /** Wybór z palety: pozycja wyszukiwarki albo wartość podtrybu. */
 export type PalettePick =
@@ -84,7 +88,8 @@ export type PalettePick =
   | { kind: "priority"; priority: Priority }
   | { kind: "move"; listId: string }
   | { kind: "date"; date: string }
-  | { kind: "workspace"; workspaceId: string | null };
+  | { kind: "workspace"; workspaceId: string | null }
+  | { kind: "send"; ruleId: string };
 
 interface Option {
   key: string;
@@ -117,8 +122,19 @@ function highlighted(title: string, ranges: [number, number][]): ReactNode {
   return out;
 }
 
+const PLACEHOLDER: Record<PaletteMode, string> = {
+  priority: "Priorytet zaznaczonych — 1–4 albo strzałki",
+  move: "Przenieś zaznaczone do… (nazwa listy)",
+  send: "Wyślij zaznaczone do… (reguła z Ustawień → Integracje)",
+  date: "Termin zaznaczonych",
+  workspace: "Przestrzeń",
+  search: "Szukaj zadań, list, przestrzeni, tagów, filtrów",
+  all: "Szukaj albo wpisz polecenie (> — tylko polecenia)",
+};
+
 export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; onClose: () => void; onPick: (pick: PalettePick) => void }) {
-  const { data, selectedIds, today } = useAppEnv();
+  const { data, selectedIds, today, store } = useAppEnv();
+  const { sendable } = usePlugins(store);
   const available = useAvailable();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -158,6 +174,11 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
         return { key: l.id, label: item.title, hint: `${names.get(l.workspaceId)} · ${LIST_KIND[l.kind]}`, pick: { kind: "move", listId: l.id } };
       });
     }
+    if (mode === "send") {
+      return sendable
+        .filter((r) => (query ? r.name.toLowerCase().includes(query.toLowerCase()) : true))
+        .map((r): Option => ({ key: r.id, label: r.name, hint: PLUGIN_SEND_NOTE, pick: { kind: "send", ruleId: r.id } }));
+    }
     if (mode === "date") return [];
     if (!index) return [];
     const kinds: SearchKind[] | undefined = mode === "search" ? ["task", "list", "workspace", "tag", "filter"] : query.startsWith(">") ? ["action", "view"] : undefined;
@@ -173,7 +194,7 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
             : KIND_HINT[r.item.kind],
       pick: { kind: "item", item: r.item },
     }));
-  }, [mode, index, query, data.lists, data.workspaces, listName, names]);
+  }, [mode, index, query, data.lists, data.workspaces, listName, names, sendable]);
 
   const current = Math.min(active, Math.max(0, options.length - 1));
   useEffect(() => {
@@ -186,18 +207,7 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
     onPick(option.pick);
   };
 
-  const placeholder =
-    mode === "priority"
-      ? "Priorytet zaznaczonych — 1–4 albo strzałki"
-      : mode === "move"
-        ? "Przenieś zaznaczone do… (nazwa listy)"
-        : mode === "date"
-          ? "Termin zaznaczonych"
-          : mode === "workspace"
-            ? "Przestrzeń"
-            : mode === "search"
-              ? "Szukaj zadań, list, przestrzeni, tagów, filtrów"
-              : "Szukaj albo wpisz polecenie (> — tylko polecenia)";
+  const placeholder = PLACEHOLDER[mode];
 
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-[12vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -266,7 +276,7 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
                 </li>
               ))}
               {!options.length ? (
-                <li className="px-3 py-6 text-center text-sm text-[var(--muted)]">{query ? "Nic nie znaleziono." : mode === "all" || mode === "search" ? "Zacznij pisać — ostatnio używane pojawią się tutaj." : "Brak pozycji."}</li>
+                <li className="px-3 py-6 text-center text-sm text-[var(--muted)]">{query ? "Nic nie znaleziono." : mode === "all" || mode === "search" ? "Zacznij pisać — ostatnio używane pojawią się tutaj." : mode === "send" ? "Brak reguł — dodaj je w Ustawieniach → „Integracje”." : "Brak pozycji."}</li>
               ) : null}
             </ul>
             {mode === "all" ? (

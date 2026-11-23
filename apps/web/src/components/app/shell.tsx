@@ -4,7 +4,7 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, listShareBadge, plural, selectInbox, selectToday, tagsForWorkspace, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
+import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, tagsForWorkspace, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -923,7 +923,7 @@ function PaletteHost({
   settings: ProfileSettings;
 }) {
   const { data, store, userId, openTask, select } = useAppEnv();
-  const { notify } = useTaskActions();
+  const { notify, run } = useTaskActions();
   const bulk = useBulk(selected);
   const close = () => setMode(null);
   const then = (work: () => void) => {
@@ -936,6 +936,12 @@ function PaletteHost({
     if (pick.kind === "move") return then(() => bulk({ kind: "move", listId: pick.listId }, `Przeniesiono do „${data.lists.find((l) => l.id === pick.listId)?.name}”`));
     if (pick.kind === "date") return then(() => bulk({ kind: "date", date: pick.date as LocalDate }, "Nowy termin"));
     if (pick.kind === "workspace") return then(() => writeWorkspace(pick.workspaceId ?? ALL));
+    if (pick.kind === "send") {
+      return then(() => {
+        if (!selected.length) return notify("Zaznacz zadania do wysłania.");
+        void run(pluginRequestOps(userId, pick.ruleId, selected), { text: `Wysyłka czeka na serwer: ${plural(selected.length, ["zadanie", "zadania", "zadań"])}` });
+      });
+    }
 
     const { item } = pick;
     if (item.kind === "task") {
@@ -974,6 +980,7 @@ function PaletteHost({
       "task.delete": () => then(() => bulk({ kind: "delete" }, "W koszu")),
       "task.priority": () => setMode("priority"),
       "task.move": () => setMode("move"),
+      "plugin.send": () => setMode("send"),
       "task.date": () => setMode("date"),
       "workspace.switch": () => setMode("workspace"),
       "list.new_project": () => then(() => navigate({ view: "manage" })),
