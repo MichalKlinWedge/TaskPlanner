@@ -96,11 +96,15 @@ const useOnline = () => useSyncExternalStore(subscribeOnline, () => navigator.on
 // ── Tytuł: czcionka dobrana do stałego kształtu karty ─────────────────────────────────────────
 
 const CARD_PAD = 10;
-/** Pasek na dole karty (podzadania, odpowiedzialny). */
-const CARD_FOOT = 24;
+/** Pasek na dole karty (podzadania, odpowiedzialny): 20 px treści + 8 px nad zagiętym rogiem. */
+const CARD_FOOT = 28;
 const TITLE_BOX = { width: CANVAS_CARD.width - 2 * CARD_PAD, height: CANVAS_CARD.height - CARD_PAD - CARD_FOOT };
-/** Ramka grupy wokół komórek i jej nagłówek (mieści się w odstępie między kartami). */
-const GROUP_PAD = 4;
+/**
+ * Ramka grupy: odstęp od karteczek (mniej niż pół odstępu między kartami, więc ramki sąsiednich grup
+ * się nie stykają) i wysokość nagłówka, który leży na górnej krawędzi ramki (mieści się w odstępie).
+ */
+const GROUP_PAD = 10;
+const GROUP_TAB = 18;
 /** Zagięty róg karteczki (prawy dolny, px przy 100 %). */
 const CARD_FOLD = 18;
 /** Cień karty (filtr, więc idzie za kształtem z zagiętym rogiem): leży / zaznaczona / w ręku. */
@@ -117,7 +121,6 @@ const CARD_FACE = [
 ].join(", ");
 /** Przód karteczki bez prawego dolnego rogu (miejsce na zagięcie). */
 const CARD_CLIP = `polygon(0 0, 100% 0, 100% calc(100% - ${CARD_FOLD}px), calc(100% - ${CARD_FOLD}px) 100%, 0 100%)`;
-const GROUP_TAB = 18;
 
 let measureContext: CanvasRenderingContext2D | null = null;
 const fitCache = new Map<string, TitleFit>();
@@ -982,8 +985,8 @@ const Card = memo(function Card({
         ) : (
           <div className="flex-1" />
         )}
-        {/* Odstęp z prawej: znaczek odpowiedzialnego nie wchodzi pod zagięty róg. */}
-        <div className="flex h-6 shrink-0 items-center gap-1 pr-2 text-[11px] text-[var(--muted)]">
+          {/* Odstęp pod paskiem: znaczek odpowiedzialnego przy prawej krawędzi stoi nad zagiętym rogiem. */}
+        <div className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--muted)]" style={{ height: CARD_FOOT, paddingBottom: CARD_FOOT - 20 }}>
           {parentTitle !== null && showText ? (
             <span className="min-w-0 truncate" title={`Podzadanie: „${parentTitle}”`} data-testid="canvas-parent">
               ↑ {parentTitle}
@@ -1091,8 +1094,9 @@ function GroupFrame({
     >
       <div
         data-canvas-group-tab
-        className={`absolute left-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-t-md px-1.5 text-[11px] font-medium ${editable ? "cursor-move" : ""}`}
-        style={{ top: -GROUP_TAB - 2, height: GROUP_TAB, background: `color-mix(in srgb, ${color} 25%, var(--surface))` }}
+        className={`absolute left-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-md border px-1.5 text-[11px] font-medium ${editable ? "cursor-move" : ""}`}
+        // Środek nagłówka na środku 2-px krawędzi ramki (dzieci liczą się od wnętrza ramki).
+        style={{ top: -GROUP_TAB / 2 - 1, height: GROUP_TAB, borderColor: `color-mix(in srgb, ${color} 75%, transparent)`, background: `color-mix(in srgb, ${color} 25%, var(--surface))` }}
         onPointerDown={(e) => (editing ? e.stopPropagation() : onStartDrag(e, "group"))}
         onDoubleClick={() => editable && onEdit(true)}
       >
