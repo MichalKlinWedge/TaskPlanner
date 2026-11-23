@@ -101,6 +101,22 @@ const CARD_FOOT = 24;
 const TITLE_BOX = { width: CANVAS_CARD.width - 2 * CARD_PAD, height: CANVAS_CARD.height - CARD_PAD - CARD_FOOT };
 /** Ramka grupy wokół komórek i jej nagłówek (mieści się w odstępie między kartami). */
 const GROUP_PAD = 4;
+/** Zagięty róg karteczki (prawy dolny, px przy 100 %). */
+const CARD_FOLD = 18;
+/** Cień karty (filtr, więc idzie za kształtem z zagiętym rogiem): leży / zaznaczona / w ręku. */
+const CARD_SHADOW = {
+  rest: "drop-shadow(0 1px 1px rgb(0 0 0 / 0.22)) drop-shadow(0 3px 5px rgb(0 0 0 / 0.12))",
+  selected: "drop-shadow(0 2px 2px rgb(0 0 0 / 0.25)) drop-shadow(0 6px 10px rgb(0 0 0 / 0.16))",
+  lifted: "drop-shadow(0 6px 6px rgb(0 0 0 / 0.22)) drop-shadow(0 16px 24px rgb(0 0 0 / 0.22))",
+} as const;
+/** Przód karteczki: kolor + światło z lewego górnego rogu i lekkie wygięcie u dołu (3D). */
+const CARD_FACE = [
+  "linear-gradient(135deg, rgb(255 255 255 / 0.35) 0%, rgb(255 255 255 / 0) 45%)",
+  "linear-gradient(to bottom, rgb(0 0 0 / 0) 65%, rgb(0 0 0 / 0.09) 100%)",
+  "color-mix(in srgb, var(--card-color) 38%, var(--surface))",
+].join(", ");
+/** Przód karteczki bez prawego dolnego rogu (miejsce na zagięcie). */
+const CARD_CLIP = `polygon(0 0, 100% 0, 100% calc(100% - ${CARD_FOLD}px), calc(100% - ${CARD_FOLD}px) 100%, 0 100%)`;
 const GROUP_TAB = 18;
 
 let measureContext: CanvasRenderingContext2D | null = null;
@@ -920,6 +936,8 @@ const Card = memo(function Card({
 }) {
   const fit = showText ? titleFit(task.title) : null;
   const closed = task.status === "done" || task.status === "cancelled";
+  // Dwie warstwy: zewnętrzna (położenie, zaznaczenie, cień-filtr idący za kształtem) i przód przycięty
+  // o róg, na który nachodzi zagięcie — `clip-path` na zewnętrznej ucięłoby obrys zaznaczenia i cień.
   return (
     <div
       data-canvas-card
@@ -929,70 +947,90 @@ const Card = memo(function Card({
       aria-label={`${task.title}${parentTitle !== null ? ` (podzadanie „${parentTitle}”)` : ""} — ${PRIORITY[task.priority].label.toLowerCase()} priorytet${people.assignee ? `, ${people.assignee.name}` : ""}`}
       aria-pressed={selected}
       title={`${task.title}${parentTitle !== null ? `\nPodzadanie: „${parentTitle}”` : ""}${displaced ? "\n(pokazana obok — ktoś położył kartę w tym samym miejscu)" : ""}`}
-      className={`absolute flex select-none flex-col overflow-hidden rounded-[3px] shadow-sm transition-shadow ${editable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${selected ? "z-10 shadow-md outline outline-2 outline-offset-2 outline-[var(--accent)]" : ""} ${offset ? "z-20 opacity-80 shadow-xl" : ""} ${closed ? "opacity-50" : ""}`}
+      className={`absolute select-none ${editable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${selected ? "z-10 outline outline-2 outline-offset-2 outline-[var(--accent)]" : ""} ${offset ? "z-20 opacity-80" : ""} ${closed ? "opacity-50" : ""}`}
       style={{
+        ["--card-color" as string]: color,
         left: cell.col * CANVAS_STEP.x,
         top: cell.row * CANVAS_STEP.y,
         width: CANVAS_CARD.width,
         height: CANVAS_CARD.height,
-        padding: `${CARD_PAD}px ${CARD_PAD}px 0`,
-        background: `color-mix(in srgb, ${color} 38%, var(--surface))`,
         transform: offset ? `translate(${offset.x}px, ${offset.y}px) rotate(1.5deg)` : undefined,
-        ...frameStyle(task),
-        // Ramka wewnątrz stałego kształtu karty (grubsza ramka nie powiększa karty).
-        boxSizing: "border-box",
+        filter: offset ? CARD_SHADOW.lifted : selected ? CARD_SHADOW.selected : CARD_SHADOW.rest,
       }}
       onPointerDown={(e) => onPointerDown(e, task.id)}
       onDoubleClick={() => onOpen(task.id)}
     >
-      {fit ? (
-        <div className={`min-h-0 flex-1 font-medium ${closed ? "line-through" : ""}`} style={{ fontSize: fit.size, lineHeight: 1.2 }}>
-          {fit.lines.map((line, i) => (
-            <div key={i} className="whitespace-nowrap">
-              {line}
-            </div>
-          ))}
+      <div
+        className="flex h-full w-full flex-col overflow-hidden rounded-[3px]"
+        style={{
+          padding: `${CARD_PAD}px ${CARD_PAD}px 0`,
+          background: CARD_FACE,
+          ...frameStyle(task),
+          // Ramka wewnątrz stałego kształtu karty (grubsza ramka nie powiększa karty).
+          boxSizing: "border-box",
+          clipPath: CARD_CLIP,
+        }}
+      >
+        {fit ? (
+          <div className={`min-h-0 flex-1 font-medium ${closed ? "line-through" : ""}`} style={{ fontSize: fit.size, lineHeight: 1.2 }}>
+            {fit.lines.map((line, i) => (
+              <div key={i} className="whitespace-nowrap">
+                {line}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex-1" />
+        )}
+        {/* Odstęp z prawej: znaczek odpowiedzialnego nie wchodzi pod zagięty róg. */}
+        <div className="flex h-6 shrink-0 items-center gap-1 pr-2 text-[11px] text-[var(--muted)]">
+          {parentTitle !== null && showText ? (
+            <span className="min-w-0 truncate" title={`Podzadanie: „${parentTitle}”`} data-testid="canvas-parent">
+              ↑ {parentTitle}
+            </span>
+          ) : null}
+          {subtasksTotal && showText ? (
+            <span className="shrink-0 tabular-nums" title={`Podzadania: ukończone ${subtasksDone} z ${subtasksTotal}`} data-testid="canvas-subtasks">
+              ↳ {subtasksDone}/{subtasksTotal}
+            </span>
+          ) : null}
+          <span className="flex-1" />
+          {showText
+            ? people.participants.slice(0, MAX_PARTICIPANTS).map((person) => (
+                <span
+                  key={person.id}
+                  title={`Uczestnik: ${person.name}`}
+                  className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-sky-600 bg-[var(--surface)]/70 px-1 text-[10px] font-semibold text-sky-700 dark:border-sky-400 dark:text-sky-300"
+                  data-testid="canvas-participant"
+                >
+                  {collaboratorBadge(person)}
+                </span>
+              ))
+            : null}
+          {showText && people.participants.length > MAX_PARTICIPANTS ? (
+            <span title={people.participants.slice(MAX_PARTICIPANTS).map((p) => p.name).join(", ")}>+{people.participants.length - MAX_PARTICIPANTS}</span>
+          ) : null}
+          {people.assignee ? (
+            <span
+              title={`Odpowiedzialny: ${people.assignee.name}`}
+              className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-600 px-1 text-[10px] font-semibold text-white dark:bg-sky-500"
+              data-testid="canvas-assignee"
+            >
+              {collaboratorBadge(people.assignee)}
+            </span>
+          ) : null}
         </div>
-      ) : (
-        <div className="flex-1" />
-      )}
-      <div className="flex h-6 shrink-0 items-center gap-1 text-[11px] text-[var(--muted)]">
-        {parentTitle !== null && showText ? (
-          <span className="min-w-0 truncate" title={`Podzadanie: „${parentTitle}”`} data-testid="canvas-parent">
-            ↑ {parentTitle}
-          </span>
-        ) : null}
-        {subtasksTotal && showText ? (
-          <span className="shrink-0 tabular-nums" title={`Podzadania: ukończone ${subtasksDone} z ${subtasksTotal}`} data-testid="canvas-subtasks">
-            ↳ {subtasksDone}/{subtasksTotal}
-          </span>
-        ) : null}
-        <span className="flex-1" />
-        {showText
-          ? people.participants.slice(0, MAX_PARTICIPANTS).map((person) => (
-              <span
-                key={person.id}
-                title={`Uczestnik: ${person.name}`}
-                className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-sky-600 bg-[var(--surface)]/70 px-1 text-[10px] font-semibold text-sky-700 dark:border-sky-400 dark:text-sky-300"
-                data-testid="canvas-participant"
-              >
-                {collaboratorBadge(person)}
-              </span>
-            ))
-          : null}
-        {showText && people.participants.length > MAX_PARTICIPANTS ? (
-          <span title={people.participants.slice(MAX_PARTICIPANTS).map((p) => p.name).join(", ")}>+{people.participants.length - MAX_PARTICIPANTS}</span>
-        ) : null}
-        {people.assignee ? (
-          <span
-            title={`Odpowiedzialny: ${people.assignee.name}`}
-            className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-600 px-1 text-[10px] font-semibold text-white dark:bg-sky-500"
-            data-testid="canvas-assignee"
-          >
-            {collaboratorBadge(people.assignee)}
-          </span>
-        ) : null}
       </div>
+      {/* Zagięty róg: odwrotna strona kartki (ciemniejsza przy zgięciu) rzucająca cień na przód. */}
+      <span className="pointer-events-none absolute bottom-0 right-0" style={{ width: CARD_FOLD, height: CARD_FOLD, filter: "drop-shadow(-1px -1px 2px rgb(0 0 0 / 0.3))" }} aria-hidden>
+        <span
+          className="block h-full w-full rounded-tl-[2px]"
+          style={{
+            clipPath: "polygon(0 0, 100% 0, 0 100%)",
+            background: "linear-gradient(135deg, color-mix(in srgb, var(--card-color) 22%, var(--surface)) 0%, color-mix(in srgb, var(--card-color) 30%, var(--surface)) 30%, color-mix(in srgb, color-mix(in srgb, var(--card-color) 50%, var(--surface)) 78%, black) 50%)",
+          }}
+        />
+      </span>
     </div>
   );
 });
