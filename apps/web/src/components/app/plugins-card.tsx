@@ -527,12 +527,20 @@ function EventFields({ draft, setDraft }: { draft: RuleDraftState; setDraft: (d:
   );
 }
 
-/** Lista tagów jako „chipy” z ✕ i wyborem kolejnego (tylko własne tagi). */
+/**
+ * Lista tagów jako „chipy” z ✕ i wyborem kolejnego: własne i wspólne (kopie tagów innych członków
+ * udostępnionych przestrzeni — serwer przypnie je tylko zadaniom z tych przestrzeni, `plugin_after_send`).
+ */
 function TagIdsField({ label, value, exclude, onChange }: { label: string; value: string[]; exclude: string[]; onChange: (ids: string[]) => void }) {
   const { data } = useAppEnv();
-  const own = useMemo(() => data.tags.filter((t) => !t.shared).sort((a, b) => compareText(a.name, b.name)), [data.tags]);
+  const choices = useMemo(() => {
+    const space = (id: string) => data.workspaces.find((w) => w.id === id)?.name;
+    return data.tags
+      .map((t) => ({ id: t.id, label: t.shared ? `${t.name} (wspólny: ${(t.workspaceIds ?? []).map(space).filter(Boolean).join(", ") || "przestrzeń udostępniona"})` : t.name, name: t.name }))
+      .sort((a, b) => compareText(a.name, b.name) || compareText(a.label, b.label));
+  }, [data.tags, data.workspaces]);
   const name = (id: string) => data.tags.find((t) => t.id === id)?.name ?? "(usunięty tag)";
-  const free = own.filter((t) => !value.includes(t.id) && !exclude.includes(t.id));
+  const free = choices.filter((t) => !value.includes(t.id) && !exclude.includes(t.id));
   return (
     // Nie `Field` (`<label>`): klik w podpis „kliknąłby” pierwszy ✕.
     <div className="flex flex-col gap-1 text-sm">
@@ -550,7 +558,7 @@ function TagIdsField({ label, value, exclude, onChange }: { label: string; value
           <option value="">{free.length ? "+ tag…" : "brak tagów do wyboru"}</option>
           {free.map((t) => (
             <option key={t.id} value={t.id}>
-              {t.name}
+              {t.label}
             </option>
           ))}
         </Select>
@@ -577,7 +585,7 @@ function AfterSendFields({ draft, setDraft }: { draft: RuleDraftState; setDraft:
         </Select>
       </Field>
       <p className="text-xs text-[var(--muted)]">
-        Zmienia serwer zaraz po wysłaniu (także z „Wyślij do…”) — zadanie musi być do edycji. Taka zmiana liczy się jak z integracji: reguły zdarzeniowe bez „Także zadania z integracji” jej nie widzą, więc nie ma pętli. Status „Gotowe” / „Anulowane” nie zmienia zadania cyklicznego.
+        Zmienia serwer zaraz po wysłaniu (także z „Wyślij do…”) — zadanie musi być do edycji. Taka zmiana liczy się jak z integracji: reguły zdarzeniowe bez „Także zadania z integracji” jej nie widzą, więc nie ma pętli. Tag wspólny (innego członka przestrzeni) trafia tylko do zadań z tej przestrzeni. Status „Gotowe” / „Anulowane” nie zmienia zadania cyklicznego.
       </p>
     </fieldset>
   );

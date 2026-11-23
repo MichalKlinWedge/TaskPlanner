@@ -27,7 +27,7 @@ export const DEFAULT_DELAY_SEC = 20;
 
 /**
  * Zmiana zadania po udanej wysyłce (Edge Function `plugins` → SQL `plugin_after_send`, HLC serwera): tagi
- * (własne użytkownika) dodane / zdjęte, status. Zmiana idzie jak z integracji — reguły zdarzeniowe pomijają ją,
+ * (własne albo kopie z przestrzeni zadania — `scope_tags`) dodane / zdjęte, status. Zmiana idzie jak z integracji — reguły zdarzeniowe pomijają ją,
  * jeśli nie mają „także zadania z integracji” (brak pętli); ta sama wartość drugi raz nic nie zmienia.
  */
 export const PluginAfterSend = z.object({
