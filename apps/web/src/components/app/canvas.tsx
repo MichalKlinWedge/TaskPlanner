@@ -40,9 +40,10 @@ import {
   type TaskOp,
   type TitleFit,
   type ViewContext,
+  type Collaborator,
   type ViewTask,
 } from "@taskplanner/core";
-import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { listEditable, type AppData, type List, type Tag } from "@/lib/app-data";
 import { useAppEnv } from "./app-env";
 import { QuickAdd } from "./quick-add";
@@ -180,15 +181,32 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     return counts;
   }, [data.tasks]);
 
+  // Osoby na karcie: odpowiedzialny (pełny znaczek) i uczestnicy (obrys) — te same obiekty między
+  // przerysowaniami, żeby `memo` kart działało.
+  const people = useMemo(() => {
+    const map = new Map<string, { assignee: Collaborator | null; participants: Collaborator[] }>();
+    for (const t of data.tasks) {
+      if (t.parentId) continue;
+      const assignee = assigneeOf(t.assigneeId, data.collaborators);
+      const participants = (data.participants.get(t.id) ?? []).filter((id) => id !== t.assigneeId).flatMap((id) => assigneeOf(id, data.collaborators) ?? []);
+      if (assignee || participants.length) map.set(t.id, { assignee, participants });
+    }
+    return map;
+  }, [data.tasks, data.collaborators, data.participants]);
+
   const box = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<Viewport>(() => loadViewport(list.id));
   const [drag, setDrag] = useState<Drag | null>(null);
   const [adding, setAdding] = useState<CanvasCell | null>(null);
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  // Nazwa wpisana, zanim nowa grupa pojawi się na tablicy (zapis lokalny trwa chwilę) — bez tego
+  // pierwsze litery trafiały do skrótów aplikacji, a Enter otwierał panel zadania.
+  const [groupDraft, setGroupDraft] = useState<{ text: string; commit: boolean } | null>(null);
   const [coloringGroup, setColoringGroup] = useState<string | null>(null);
   // Pełny ekran: obszar karteczek przykrywa aplikację (warstwa `fixed`), a przeglądarka — o ile
   // pozwoli — przechodzi w tryb pełnoekranowy. Dymki „Cofnij” zostają widoczne (są nad warstwą).
   const [full, setFull] = useState(false);
+  const [spacePan, setSpacePan] = useState(false);
   // Najnowsze dane dla obsługi wskaźnika (zmiany z synchronizacji w trakcie przeciągania).
   const latest = useRef({ layout, groups, view });
   useEffect(() => {
@@ -314,6 +332,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     if (e.button !== 0) return;
     e.stopPropagation();
     box.current?.focus({ preventScroll: true });
+    if (spacePan) return startPan(e);
     if (e.ctrlKey || e.metaKey) return select(id, "toggle");
     if (e.shiftKey) {
       if (!selectedIds.has(id)) select(id, "toggle");
@@ -369,7 +388,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   const startBackground = (e: ReactPointerEvent) => {
     if (e.button !== 0 && e.button !== 1) return;
     box.current?.focus({ preventScroll: true });
-    if (e.shiftKey && e.button === 0) {
+    if (e.shiftKey && e.button === 0 && !spacePan) {
       const w0 = toWorld(e.clientX, e.clientY);
       track(
         e,
@@ -392,6 +411,12 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
       );
       return;
     }
+    startPan(e, !spacePan);
+  };
+
+  /** Przesuwanie widoku: tło, środkowy przycisk albo przytrzymana spacja (także nad kartą lub grupą). */
+  const startPan = (e: ReactPointerEvent, clearOnClick = false) => {
+    e.preventDefault();
     const start = latest.current.view;
     track(
       e,
@@ -402,7 +427,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
       },
       (dx, dy) => {
         setDrag(null);
-        if (!far(dx, dy) && !pinching()) selectOnly([]);
+        if (clearOnClick && !far(dx, dy) && !pinching()) selectOnly([]);
       },
     );
   };
@@ -422,10 +447,16 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     const { ops, undo, id } = addCanvasGroupOps(list.id, groups, bounds, { name: "Grupa" });
     void apply(ops, "Dodano grupę", undo);
     setEditingGroup(id);
+    setGroupDraft({ text: "", commit: false });
   };
 
   const startGroupDrag = (e: ReactPointerEvent, group: CanvasGroup, kind: "group" | "resize") => {
-    if (e.button !== 0 || !editable) return;
+    if (e.button !== 0) return;
+    if (spacePan) {
+      e.stopPropagation();
+      return startPan(e);
+    }
+    if (!editable) return;
     e.stopPropagation();
     e.preventDefault();
     track(
@@ -474,14 +505,44 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     if (full) exitFull();
     openTask(id);
   };
+  // Stałe funkcje dla kart (`memo`): wołają najnowsze wersje obsługi.
+  const cardHandlers = useRef({ down: startCardDrag, open });
+  useLayoutEffect(() => {
+    cardHandlers.current = { down: startCardDrag, open };
+  });
+  const onCardDown = useCallback((e: ReactPointerEvent, id: string) => cardHandlers.current.down(e, id), []);
+  const onCardOpen = useCallback((id: string) => cardHandlers.current.open(id), []);
 
+  const onKeyUp = (e: ReactKeyboardEvent) => {
+    if (e.key === " ") setSpacePan(false);
+  };
   const onKeyDown = (e: ReactKeyboardEvent) => {
+    if (editingGroup && groupDraft && !groups.some((g) => g.id === editingGroup)) {
+      const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+      if (plain && e.key.length === 1) setGroupDraft({ ...groupDraft, text: groupDraft.text + e.key });
+      else if (e.key === "Backspace") setGroupDraft({ ...groupDraft, text: groupDraft.text.slice(0, -1) });
+      else if (e.key === "Enter") setGroupDraft({ ...groupDraft, commit: true });
+      else if (e.key === "Escape") {
+        setGroupDraft(null);
+        setEditingGroup(null);
+      } else return;
+      // Klawisz nie dochodzi do skrótów `shell.tsx` (nasłuch na `window`).
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (e.key === "Escape" && full && !adding && !editingGroup) {
       e.preventDefault();
       return exitFull();
     }
     // Pozostałe skróty tylko na samej tablicy (nie w polach nazwy grupy / nowej karteczki).
     if (e.target !== box.current) return;
+    if (e.key === " " && !e.ctrlKey && !e.metaKey) {
+      // Przytrzymana spacja: przeciąganie przesuwa tablicę (jak w programach graficznych).
+      e.preventDefault();
+      if (!e.repeat) setSpacePan(true);
+      return;
+    }
     const arrows: Record<string, CanvasCell> = { ArrowLeft: { col: -1, row: 0 }, ArrowRight: { col: 1, row: 0 }, ArrowUp: { col: 0, row: -1 }, ArrowDown: { col: 0, row: 1 } };
     const ctrl = e.ctrlKey || e.metaKey;
     if (arrows[e.key] && selected.size) {
@@ -553,7 +614,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   const note = !canEdit ? READONLY_LIST_NOTE : !online ? "Karteczki wymagają połączenia — bez sieci tylko podgląd." : null;
 
   return (
-    <div className={full ? "fixed inset-0 z-[25] flex flex-col gap-2 bg-[var(--background)] p-3" : "flex flex-col gap-2"} onKeyDown={onKeyDown} data-testid="canvas-view" data-full={full || undefined}>
+    <div className={full ? "fixed inset-0 z-[25] flex flex-col gap-2 bg-[var(--background)] p-3" : "flex flex-col gap-2"} onKeyDown={onKeyDown} onKeyUp={onKeyUp} data-testid="canvas-view" data-full={full || undefined}>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {full ? <span className="mr-1 text-sm font-semibold">{list.name}</span> : null}
         <Button className="py-1 text-xs" disabled={!editable} onClick={() => startAdding(centerCell())} title="Nowa karteczka (N, dwuklik w puste miejsce)">
@@ -562,8 +623,14 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
         <Button className="py-1 text-xs" disabled={!editable} onClick={groupAround} title={selected.size ? "Ramka wokół zaznaczonych karteczek" : "Nowa ramka na środku widoku"}>
           ▢ Grupuj
         </Button>
-        <span className="flex-1" />
-        <span className="hidden text-[var(--muted)] lg:inline">Dwuklik — nowa · Shift+przeciąganie — zaznaczanie · Ctrl+kółko / dwa palce — powiększenie</span>
+        <span className="flex-1 lg:hidden" />
+        {/* Podstawa 0: podpowiedź wypełnia wolne miejsce i skraca się, zamiast zawijać pasek. */}
+        <span
+          className="hidden min-w-0 flex-[1_1_0] truncate text-right text-[var(--muted)] lg:block"
+          title="Dwuklik — nowa karteczka · Shift+przeciąganie — zaznaczanie ramką · spacja+przeciąganie — przesuwanie tablicy · Ctrl+kółko albo dwa palce — powiększenie"
+        >
+          Dwuklik — nowa · Shift — zaznaczanie · Spacja — przesuwanie · Ctrl+kółko — powiększenie
+        </span>
         <div className="flex items-center overflow-hidden rounded-md border border-[var(--line)]" role="group" aria-label="Powiększenie">
           <button type="button" className="px-2 py-1 hover:bg-[var(--hover)]" onClick={() => zoomAt(1 / CANVAS_ZOOM.step)} aria-label="Pomniejsz" title="Pomniejsz (−)">
             −
@@ -593,11 +660,14 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
           tabIndex={0}
           role="application"
           aria-label={`Karteczki listy „${list.name}”`}
-          className={`relative min-w-0 flex-1 touch-none overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--background)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${drag?.kind === "pan" ? "cursor-grabbing" : ""}`}
+          className={`relative min-w-0 flex-1 touch-none overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--background)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${drag?.kind === "pan" ? "cursor-grabbing" : spacePan ? "cursor-grab [&_*]:!cursor-grab" : ""}`}
           style={{
             backgroundImage: "radial-gradient(circle, var(--line) 1.2px, transparent 1.3px)",
             backgroundSize: `${CANVAS_STEP.x * view.zoom}px ${CANVAS_STEP.y * view.zoom}px`,
             backgroundPosition: `${view.x - (CANVAS_CARD.gap / 2) * view.zoom}px ${view.y - (CANVAS_CARD.gap / 2) * view.zoom}px`,
+          }}
+          onBlur={(e) => {
+            if (e.target === box.current) setSpacePan(false);
           }}
           onPointerDownCapture={touchStart}
           onPointerDown={startBackground}
@@ -615,11 +685,16 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
                 resize={drag?.kind === "resize" && drag.id === group.id ? cellsOf(drag.dx, drag.dy, view.zoom) : null}
                 editable={editable}
                 editing={editingGroup === group.id}
+                draft={editingGroup === group.id ? groupDraft : null}
                 coloring={coloringGroup === group.id}
                 onStartDrag={(e, kind) => startGroupDrag(e, group, kind)}
-                onEdit={(on) => setEditingGroup(on ? group.id : null)}
+                onEdit={(on) => {
+                  setGroupDraft(null);
+                  setEditingGroup(on ? group.id : null);
+                }}
                 onColoring={(on) => setColoringGroup(on ? group.id : null)}
                 onRename={(name) => {
+                  setGroupDraft(null);
                   setEditingGroup(null);
                   if (name.trim() !== group.name) void apply(updateCanvasGroupOps(list.id, groups, group.id, { name }).ops, "Zmieniono nazwę grupy");
                 }}
@@ -651,13 +726,13 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
                   displaced={p.displaced}
                   selected={selected.has(p.task.id)}
                   color={canvasColorTag(p.task, tagsById)?.color ?? CANVAS_DEFAULT_COLOR}
-                  assignee={assigneeOf(p.task.assigneeId, data.collaborators)}
+                  people={people.get(p.task.id) ?? NO_PEOPLE}
                   childCount={childCount.get(p.task.id) ?? 0}
                   showText={showText}
                   offset={offset}
                   editable={editable}
-                  onPointerDown={startCardDrag}
-                  onOpen={open}
+                  onPointerDown={onCardDown}
+                  onOpen={onCardOpen}
                 />
               );
             })}
@@ -777,13 +852,16 @@ function frameStyle(task: Pick<ViewTask, "priority"> | undefined) {
 
 // ── Karta ─────────────────────────────────────────────────────────────────────────────────────
 
+const NO_PEOPLE: { assignee: Collaborator | null; participants: readonly Collaborator[] } = { assignee: null, participants: [] };
+const MAX_PARTICIPANTS = 3;
+
 const Card = memo(function Card({
   task,
   cell,
   displaced,
   selected,
   color,
-  assignee,
+  people,
   childCount,
   showText,
   offset,
@@ -796,7 +874,7 @@ const Card = memo(function Card({
   displaced: boolean;
   selected: boolean;
   color: string;
-  assignee: { id: string; name: string; acronym?: string | null } | null;
+  people: { assignee: Collaborator | null; participants: readonly Collaborator[] };
   childCount: number;
   showText: boolean;
   offset: { x: number; y: number } | null;
@@ -810,8 +888,9 @@ const Card = memo(function Card({
     <div
       data-canvas-card
       data-task-id={task.id}
+      data-clipped={fit?.clipped || undefined}
       role="button"
-      aria-label={`${task.title} — ${PRIORITY[task.priority].label.toLowerCase()} priorytet${assignee ? `, ${assignee.name}` : ""}`}
+      aria-label={`${task.title} — ${PRIORITY[task.priority].label.toLowerCase()} priorytet${people.assignee ? `, ${people.assignee.name}` : ""}`}
       aria-pressed={selected}
       title={`${task.title}${displaced ? "\n(pokazana obok — ktoś położył kartę w tym samym miejscu)" : ""}`}
       className={`absolute flex select-none flex-col overflow-hidden rounded-[3px] shadow-sm transition-shadow ${editable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${selected ? "z-10 shadow-md outline outline-2 outline-offset-2 outline-[var(--accent)]" : ""} ${offset ? "z-20 opacity-80 shadow-xl" : ""} ${closed ? "opacity-50" : ""}`}
@@ -844,13 +923,28 @@ const Card = memo(function Card({
       <div className="flex h-6 shrink-0 items-center gap-1 text-[11px] text-[var(--muted)]">
         {childCount && showText ? <span title={`Podzadania: ${childCount}`}>↳ {childCount}</span> : null}
         <span className="flex-1" />
-        {assignee ? (
+        {showText
+          ? people.participants.slice(0, MAX_PARTICIPANTS).map((person) => (
+              <span
+                key={person.id}
+                title={`Uczestnik: ${person.name}`}
+                className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-sky-600 bg-[var(--surface)]/70 px-1 text-[10px] font-semibold text-sky-700 dark:border-sky-400 dark:text-sky-300"
+                data-testid="canvas-participant"
+              >
+                {collaboratorBadge(person)}
+              </span>
+            ))
+          : null}
+        {showText && people.participants.length > MAX_PARTICIPANTS ? (
+          <span title={people.participants.slice(MAX_PARTICIPANTS).map((p) => p.name).join(", ")}>+{people.participants.length - MAX_PARTICIPANTS}</span>
+        ) : null}
+        {people.assignee ? (
           <span
-            title={`Odpowiedzialny: ${assignee.name}`}
+            title={`Odpowiedzialny: ${people.assignee.name}`}
             className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-600 px-1 text-[10px] font-semibold text-white dark:bg-sky-500"
             data-testid="canvas-assignee"
           >
-            {collaboratorBadge(assignee)}
+            {collaboratorBadge(people.assignee)}
           </span>
         ) : null}
       </div>
@@ -866,6 +960,7 @@ function GroupFrame({
   resize,
   editable,
   editing,
+  draft,
   coloring,
   onStartDrag,
   onEdit,
@@ -879,6 +974,8 @@ function GroupFrame({
   resize: CanvasCell | null;
   editable: boolean;
   editing: boolean;
+  /** Nazwa wpisana przed pojawieniem się grupy; `commit` = Enter już naciśnięty. */
+  draft: { text: string; commit: boolean } | null;
   coloring: boolean;
   onStartDrag: (e: ReactPointerEvent, kind: "group" | "resize") => void;
   onEdit: (on: boolean) => void;
@@ -890,6 +987,11 @@ function GroupFrame({
   const w = Math.max(1, group.w + (resize?.col ?? 0));
   const h = Math.max(1, group.h + (resize?.row ?? 0));
   const color = group.color ?? "var(--muted)";
+  const input = useRef<HTMLInputElement>(null);
+  const commit = editing && Boolean(draft?.commit);
+  useEffect(() => {
+    if (commit) input.current?.blur();
+  }, [commit]);
   return (
     <div
       className="absolute rounded-lg border-2"
@@ -923,12 +1025,13 @@ function GroupFrame({
         ) : null}
         {editing ? (
           <input
+            ref={input}
             autoFocus
-            defaultValue={group.name}
+            defaultValue={draft?.text || group.name}
             maxLength={60}
             aria-label="Nazwa grupy"
             className="w-32 bg-transparent text-[11px] outline-none"
-            onFocus={(e) => e.target.select()}
+            onFocus={(e) => (draft?.text ? e.target.setSelectionRange(draft.text.length, draft.text.length) : e.target.select())}
             onBlur={(e) => onRename(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();

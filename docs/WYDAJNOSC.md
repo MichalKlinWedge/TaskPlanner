@@ -242,15 +242,16 @@ npm run perf:canvas          # wynik: tabela w konsoli i tools/e2e/out/perf-canv
 
 | Pomiar | Mediana | Max | Uwagi |
 |---|---|---|---|
-| Pierwsze otwarcie (pusta baza → 500 kart) | 1 235 ms | — | synchronizacja + pierwsze dopasowanie tytułów |
-| Widok: Inbox → „Karteczki” | 74 ms | 92 ms | dopasowanie tytułów z pamięci podręcznej |
+| Pierwsze otwarcie (pusta baza → 500 kart) | 1 261 ms | — | synchronizacja + pierwsze dopasowanie tytułów |
+| Widok: Inbox → „Karteczki” | 100 ms | 127 ms | dopasowanie tytułów z pamięci podręcznej |
 | Przeciąganie karty | 60 kl./s | — | p95 16,7 ms, najgorsza 17 ms, 0 zgubionych |
-| Przesuwanie tablicy | 53 kl./s | — | p95 16,8 ms; jedna klatka ~200 ms na starcie ruchu |
-| Powiększanie Ctrl+kółko | 59 kl./s | — | p95 16,8 ms, najgorsza 33 ms |
-| „Dopasuj” (100 % → 25 %) | 37 ms | 41 ms | |
-| Upuszczenie na zajętą komórkę → karta w wolnej | 124 ms | 127 ms | od puszczenia do narysowania (zapis lokalny, odczyt, układ) |
+| Przesuwanie tablicy | 51 kl./s | — | p95 16,8 ms; jedna klatka ~200 ms na starcie ruchu |
+| Powiększanie Ctrl+kółko | 60 kl./s | — | p95 16,8 ms, najgorsza 17 ms |
+| „Dopasuj” (100 % → 25 %) | 27 ms | 31 ms | |
+| Upuszczenie na zajętą komórkę → karta w wolnej | 108 ms | 110 ms | od puszczenia do narysowania (zapis lokalny, odczyt, układ) |
 
 Uwagi:
 - Karty nie są wirtualizowane — 500 kart to 500 elementów pod jednym `transform: scale`; przy 25 % tytuły są już tylko kolorami (poniżej 50 % bez tekstu), więc koszt nie rośnie z oddaleniem.
-- Pierwsza klatka przesuwania (~200 ms) to przerysowanie wszystkich kart po zmianie stanu przeciągania; dalsze klatki mieszczą się w 16,7 ms. Do poprawy (`memo` kart), jeśli będzie przeszkadzać.
+- Pierwsza klatka przesuwania tablicy trwa ~200 ms; dalsze mieszczą się w 16,7 ms. Karty są od 23.11.2026 w `memo` ze stałymi propsami (obsługa zdarzeń przez `useRef`, osoby z `useMemo`) i nie przerysowują się przy ruchu widoku — mimo to klatka została, więc jej przyczyna leży poza Reactem (przypuszczalnie pierwsze przemalowanie tła w kropki pod całą warstwą kart). Niezbadane.
+- Kryterium odbioru (dwie osoby, 30 kart naraz) — test E2E `tests/canvas-shared.spec.ts`: ruch jednej osoby widać u drugiej po 0,24–0,50 s (lokalny Supabase, Realtime).
 - Szczypanie dwoma palcami nie jest mierzone (brak urządzenia dotykowego w Playwright bez emulacji) — liczy to samo co Ctrl+kółko (`zoomCanvasViewport`).

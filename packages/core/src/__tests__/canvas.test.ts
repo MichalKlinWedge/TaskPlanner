@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CANVAS_CARD,
   addCanvasGroupOps,
   canvasArrangeOps,
   canvasBounds,
@@ -233,6 +234,19 @@ describe('fitTitle', () => {
     expect(fit.lines.length).toBeLessThanOrEqual(Math.floor(60 / (11 * 1.2)));
     expect(fit.lines.at(-1)!.endsWith('…')).toBe(true);
     for (const line of fit.lines) expect(measure(line, 11)).toBeLessThanOrEqual(box.width);
+  });
+  it('kryterium odbioru: tytuły 1–120 znaków mieszczą się w polu tytułu karty (bez ucięcia)', () => {
+    // Pole tytułu karteczki na webie (180 × 120 bez marginesów i paska osób), średnia szerokość znaku 0,55 em.
+    const card = { width: CANVAS_CARD.width - 20, height: CANVAS_CARD.height - 10 - 24 };
+    const wide = (text: string, size: number) => text.length * size * 0.55;
+    const sentence = 'Przygotować na warsztaty zespołu listę pomysłów na nową stronę główną, zebrać opinie klientów i ustalić budżet kampanii reklamowej';
+    for (const length of [1, 10, 30, 60, 90, 120]) {
+      const title = sentence.slice(0, length).trim();
+      const fit = fitTitle(title, wide, card);
+      expect(fit.clipped, `${length} znaków`).toBe(false);
+      expect(fit.lines.join(' ')).toBe(title.split(/\s+/).join(' '));
+      expect(fit.lines.length * fit.size * 1.2).toBeLessThanOrEqual(card.height);
+    }
   });
   it('jedno bardzo długie słowo — ucięte', () => {
     const fit = fitTitle('A'.repeat(200), measure, box);
