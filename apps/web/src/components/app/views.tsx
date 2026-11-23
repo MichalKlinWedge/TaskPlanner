@@ -421,7 +421,8 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
       )}
       {/* Z kolumnami wiersze mogą być szersze od ekranu (szerokości z nagłówka) — przewijanie w poziomie; pl-5 zostawia miejsce na uchwyt ⋮⋮. */}
       <div className={columns.length ? "-ml-5 overflow-x-auto pl-5" : "contents"} data-testid="list-scroll">
-      <div className={columns.length && widths.title ? "w-max min-w-full" : "contents"}>
+      {/* Szerokość nie mniejsza niż minimum wierszy (stałe „Zadanie”, ściśnięte kolumny) — reszta to suwak poziomy. */}
+      <div className={columns.length ? "min-w-min" : "contents"}>
       {!tasks.length ? <Empty>Brak zadań.</Empty> : <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} />}
       {rows ? (
         <SortableTaskList ids={rows.map((n) => n.task.id)}>
