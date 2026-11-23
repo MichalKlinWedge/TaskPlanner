@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Switch, Text, View } from 'react-native';
 
+import { AiSection } from '@/components/ai-section';
 import { UpdateSection } from '@/components/app-update';
 import { BackgroundStatus } from '@/components/background-status';
 import { ErrorsSection } from '@/components/errors-section';
@@ -222,6 +223,8 @@ export default function Settings() {
       <UpdateSection />
 
       <FocusSection />
+
+      <AiSection />
 
       <BackgroundStatus />
 

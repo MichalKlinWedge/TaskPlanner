@@ -61,6 +61,7 @@ const NEEDS_NETWORK: { what: string; detail: string }[] = [
     what: "Integracje",
     detail: "dodawanie i zmiana połączeń, „Wyślij próbne” i historia wysyłek; „Wyślij do…” bez sieci czeka i wychodzi z serwera po synchronizacji, reguły zapisują się lokalnie.",
   },
+  { what: "Asystent AI", detail: "podpinanie i zmiana konta AI, „Sprawdź” i wybór modelu oraz funkcje ✨ (zapytania idą do dostawcy przez serwer); konto podpięte na innym urządzeniu widać po synchronizacji." },
   { what: "Podgląd linków", detail: "tytuł strony z adresu — bez sieci adres zostaje tytułem zadania." },
   { what: "Nowa wersja aplikacji", detail: "wczytuje się przy pierwszym starcie z siecią." },
 ];

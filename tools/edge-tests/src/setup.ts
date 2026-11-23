@@ -106,6 +106,7 @@ async function main() {
     PUSH_ALLOW_HTTP: '1',
     LINK_PREVIEW_TEST_HOSTS: `host.docker.internal:${FAKE_PORT}`,
     PLUGIN_TEST_HOSTS: `host.docker.internal:${FAKE_PORT}`,
+    AI_TEST_GEMINI_BASE: `${fake}/gemini/v1beta`,
     APP_URL: 'https://app.taskplanner.test',
   }, 'Edge Functions w testach integracyjnych (fałszywe Google i usługa push)');
 

@@ -39,6 +39,8 @@ export const AiAccountCreate = z.object({
   provider: z.enum(AI_PROVIDERS),
   key: AiKey,
   billingConfirmed: z.literal(true, { error: AI_BILLING_REQUIRED }),
+  /** Zwykle pusty — model wybiera się z listy po „Sprawdź”; spoza listy zostanie zastąpiony domyślnym. */
+  model: AiModelId.optional(),
 });
 export type AiAccountCreate = z.infer<typeof AiAccountCreate>;
 
