@@ -55,6 +55,7 @@ import {
   TASK_STATUS,
   taskLinks,
   tagsForWorkspace,
+  reorderTaskTagOps,
   taskTagId,
   taskTagOps,
   uuidv7,
@@ -969,6 +970,8 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
   const [name, setName] = useState("");
   // Tag, któremu wybieramy kolor (klik w kropkę na chipie).
   const [coloring, setColoring] = useState<string | null>(null);
+  // Przeciąganie chipów zmienia kolejność tagów zadania (pierwszy kolorowy = kolor karteczki).
+  const [dragged, setDragged] = useState<number | null>(null);
   const byId = new Map(data.tags.map((t) => [t.id, t]));
   const colored = coloring && task.tagIds.includes(coloring) ? byId.get(coloring) : undefined;
   // Cudzy tag (kopia z przestrzeni) — bez zmiany koloru, zmienia go autor.
@@ -982,8 +985,29 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
   return (
     <Block title="Tagi">
       <div className="flex flex-wrap items-center gap-1.5">
-        {task.tagIds.map((id) => (
-          <span key={id} className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs ${TAG_CHIP}`} style={tagChipStyle(byId.get(id)?.color)}>
+        {task.tagIds.map((id, index) => (
+          <span
+            key={id}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs ${TAG_CHIP} ${task.tagIds.length > 1 ? "cursor-grab" : ""} ${dragged === index ? "opacity-50" : ""}`}
+            style={tagChipStyle(byId.get(id)?.color)}
+            draggable={task.tagIds.length > 1}
+            title={task.tagIds.length > 1 ? "Przeciągnij, aby zmienić kolejność — pierwszy kolorowy tag nadaje kolor karteczce" : undefined}
+            data-testid="task-tag-chip"
+            onDragStart={(e) => {
+              setDragged(index);
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", id);
+            }}
+            onDragEnd={() => setDragged(null)}
+            onDragOver={(e) => {
+              if (dragged !== null) e.preventDefault();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragged !== null && dragged !== index) void run(reorderTaskTagOps(task.id, task.tagIds, dragged, index));
+              setDragged(null);
+            }}
+          >
             {byId.get(id)?.shared ? null : (
             <button
               type="button"

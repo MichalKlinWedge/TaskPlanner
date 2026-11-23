@@ -289,14 +289,14 @@ isOneToOne: false
                   ]
                 },"lists": {
                   Row: {
-                    "archived_at": string | null,"board_columns": Json | null,"color": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"description_md": string | null,"end_date": string | null,"field_clock": NonNullable<Json>,"guest_access": string,"icon": string | null,"id": string,"kind": string,"name": string,"project_status": string | null,"row_version": number,"scope_id": string,"sort_key": string,"start_date": string | null,"updated_at": string,"view_prefs": NonNullable<Json>
+                    "archived_at": string | null,"board_columns": Json | null,"canvas_groups": Json | null,"color": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"description_md": string | null,"end_date": string | null,"field_clock": NonNullable<Json>,"guest_access": string,"icon": string | null,"id": string,"kind": string,"name": string,"project_status": string | null,"row_version": number,"scope_id": string,"sort_key": string,"start_date": string | null,"updated_at": string,"view_prefs": NonNullable<Json>
                   }
                   ComputedFields: never
                   Insert: {
-                    "archived_at"?: string | null,"board_columns"?: Json | null,"color"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"end_date"?: string | null,"field_clock"?: NonNullable<Json>,"guest_access"?: string,"icon"?: string | null,"id": string,"kind"?: string,"name": string,"project_status"?: string | null,"row_version"?: number,"scope_id": string,"sort_key"?: string,"start_date"?: string | null,"updated_at"?: string,"view_prefs"?: NonNullable<Json>
+                    "archived_at"?: string | null,"board_columns"?: Json | null,"canvas_groups"?: Json | null,"color"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"end_date"?: string | null,"field_clock"?: NonNullable<Json>,"guest_access"?: string,"icon"?: string | null,"id": string,"kind"?: string,"name": string,"project_status"?: string | null,"row_version"?: number,"scope_id": string,"sort_key"?: string,"start_date"?: string | null,"updated_at"?: string,"view_prefs"?: NonNullable<Json>
                   }
                   Update: {
-                    "archived_at"?: string | null,"board_columns"?: Json | null,"color"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"end_date"?: string | null,"field_clock"?: NonNullable<Json>,"guest_access"?: string,"icon"?: string | null,"id"?: string,"kind"?: string,"name"?: string,"project_status"?: string | null,"row_version"?: number,"scope_id"?: string,"sort_key"?: string,"start_date"?: string | null,"updated_at"?: string,"view_prefs"?: NonNullable<Json>
+                    "archived_at"?: string | null,"board_columns"?: Json | null,"canvas_groups"?: Json | null,"color"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"end_date"?: string | null,"field_clock"?: NonNullable<Json>,"guest_access"?: string,"icon"?: string | null,"id"?: string,"kind"?: string,"name"?: string,"project_status"?: string | null,"row_version"?: number,"scope_id"?: string,"sort_key"?: string,"start_date"?: string | null,"updated_at"?: string,"view_prefs"?: NonNullable<Json>
                   }
                   Relationships: [
                     {
@@ -659,14 +659,14 @@ isOneToOne: false
                   ]
                 },"task_tags": {
                   Row: {
-                    "created_at": string,"created_by": string | null,"deleted_at": string | null,"field_clock": NonNullable<Json>,"id": string,"row_version": number,"scope_id": string,"tag_id": string,"task_id": string,"updated_at": string
+                    "created_at": string,"created_by": string | null,"deleted_at": string | null,"field_clock": NonNullable<Json>,"id": string,"row_version": number,"scope_id": string,"sort_key": string | null,"tag_id": string,"task_id": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"field_clock"?: NonNullable<Json>,"id": string,"row_version"?: number,"scope_id": string,"tag_id": string,"task_id": string,"updated_at"?: string
+                    "created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"field_clock"?: NonNullable<Json>,"id": string,"row_version"?: number,"scope_id": string,"sort_key"?: string | null,"tag_id": string,"task_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"field_clock"?: NonNullable<Json>,"id"?: string,"row_version"?: number,"scope_id"?: string,"tag_id"?: string,"task_id"?: string,"updated_at"?: string
+                    "created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"field_clock"?: NonNullable<Json>,"id"?: string,"row_version"?: number,"scope_id"?: string,"sort_key"?: string | null,"tag_id"?: string,"task_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -685,14 +685,14 @@ isOneToOne: false
                   ]
                 },"tasks": {
                   Row: {
-                    "assignee_id": string | null,"board_column_id": string | null,"board_sort_key": string | null,"completed_at": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"description_md": string | null,"due_date": string | null,"due_time": string | null,"duration_min": number | null,"field_clock": NonNullable<Json>,"habit": Json | null,"id": string,"kind": string,"list_id": string,"parent_id": string | null,"postpone_count": number,"priority": number,"recurrence": Json | null,"row_version": number,"scope_id": string,"sort_key": string,"source": Json | null,"start_date": string | null,"status": string,"time_zone": string | null,"title": string,"updated_at": string
+                    "assignee_id": string | null,"board_column_id": string | null,"board_sort_key": string | null,"canvas_pos": Json | null,"completed_at": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"description_md": string | null,"due_date": string | null,"due_time": string | null,"duration_min": number | null,"field_clock": NonNullable<Json>,"habit": Json | null,"id": string,"kind": string,"list_id": string,"parent_id": string | null,"postpone_count": number,"priority": number,"recurrence": Json | null,"row_version": number,"scope_id": string,"sort_key": string,"source": Json | null,"start_date": string | null,"status": string,"time_zone": string | null,"title": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "assignee_id"?: string | null,"board_column_id"?: string | null,"board_sort_key"?: string | null,"completed_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"due_date"?: string | null,"due_time"?: string | null,"duration_min"?: number | null,"field_clock"?: NonNullable<Json>,"habit"?: Json | null,"id": string,"kind"?: string,"list_id": string,"parent_id"?: string | null,"postpone_count"?: number,"priority"?: number,"recurrence"?: Json | null,"row_version"?: number,"scope_id": string,"sort_key"?: string,"source"?: Json | null,"start_date"?: string | null,"status"?: string,"time_zone"?: string | null,"title": string,"updated_at"?: string
+                    "assignee_id"?: string | null,"board_column_id"?: string | null,"board_sort_key"?: string | null,"canvas_pos"?: Json | null,"completed_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"due_date"?: string | null,"due_time"?: string | null,"duration_min"?: number | null,"field_clock"?: NonNullable<Json>,"habit"?: Json | null,"id": string,"kind"?: string,"list_id": string,"parent_id"?: string | null,"postpone_count"?: number,"priority"?: number,"recurrence"?: Json | null,"row_version"?: number,"scope_id": string,"sort_key"?: string,"source"?: Json | null,"start_date"?: string | null,"status"?: string,"time_zone"?: string | null,"title": string,"updated_at"?: string
                   }
                   Update: {
-                    "assignee_id"?: string | null,"board_column_id"?: string | null,"board_sort_key"?: string | null,"completed_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"due_date"?: string | null,"due_time"?: string | null,"duration_min"?: number | null,"field_clock"?: NonNullable<Json>,"habit"?: Json | null,"id"?: string,"kind"?: string,"list_id"?: string,"parent_id"?: string | null,"postpone_count"?: number,"priority"?: number,"recurrence"?: Json | null,"row_version"?: number,"scope_id"?: string,"sort_key"?: string,"source"?: Json | null,"start_date"?: string | null,"status"?: string,"time_zone"?: string | null,"title"?: string,"updated_at"?: string
+                    "assignee_id"?: string | null,"board_column_id"?: string | null,"board_sort_key"?: string | null,"canvas_pos"?: Json | null,"completed_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"description_md"?: string | null,"due_date"?: string | null,"due_time"?: string | null,"duration_min"?: number | null,"field_clock"?: NonNullable<Json>,"habit"?: Json | null,"id"?: string,"kind"?: string,"list_id"?: string,"parent_id"?: string | null,"postpone_count"?: number,"priority"?: number,"recurrence"?: Json | null,"row_version"?: number,"scope_id"?: string,"sort_key"?: string,"source"?: Json | null,"start_date"?: string | null,"status"?: string,"time_zone"?: string | null,"title"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {

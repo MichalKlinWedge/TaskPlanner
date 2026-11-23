@@ -349,7 +349,7 @@ describe('Etap 8: zapis nawyku i blok „Dziś”', () => {
     const { taskId, ops } = habitSaveOps({ title: '  Woda ', listId: L, draft, remind: true, now: NOW, newId: () => ids[n++]! });
     expect(taskId).toBe(ids[0]);
     expect(ops.map((o) => o.table)).toEqual(['tasks', 'reminders']);
-    expect(MODEL.tasks.safeParse({ id: taskId, description_md: null, time_zone: null, completed_at: null, board_sort_key: null, postpone_count: 0, assignee_id: null, board_column_id: null, start_date: null, ...ops[0]!.patch }).success).toBe(true);
+    expect(MODEL.tasks.safeParse({ id: taskId, description_md: null, time_zone: null, completed_at: null, board_sort_key: null, postpone_count: 0, assignee_id: null, board_column_id: null, canvas_pos: null, start_date: null, ...ops[0]!.patch }).success).toBe(true);
     expect(ops[0]!.patch).toMatchObject({ kind: 'habit', title: 'Woda', habit: { goal: { period: 'week', times: 3 }, target: 8, unit: 'szklanek', time: '07:30' } });
     expect(MODEL.reminders.safeParse({ id: ids[1], ...ops[1]!.patch }).success).toBe(true);
   });

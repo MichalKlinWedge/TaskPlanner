@@ -43,13 +43,32 @@ export type BoardColumnDef = z.infer<typeof BoardColumnDef>;
 /** Własne kolumny tablicy w kolejności wyświetlania; `null` = brak. */
 export const BoardColumns = z.array(BoardColumnDef).max(50);
 
+/** `tasks.canvas_pos`: komórka karteczki na siatce widoku „Karteczki” (v1.x); `null` = nieułożona. */
+export const CanvasPos = z.object({ col: z.number().int().min(-10_000).max(10_000), row: z.number().int().min(-10_000).max(10_000) });
+export type CanvasPos = z.infer<typeof CanvasPos>;
+
+/** `lists.canvas_groups`: grupa karteczek — prostokąt na siatce (tylko graficzny, v1.x). */
+export const CanvasGroup = z.object({
+  id: Id,
+  name: z.string().trim().max(60),
+  color: Color.nullable(),
+  col: z.number().int().min(-10_000).max(10_000),
+  row: z.number().int().min(-10_000).max(10_000),
+  w: z.number().int().min(1).max(200),
+  h: z.number().int().min(1).max(200),
+});
+export type CanvasGroup = z.infer<typeof CanvasGroup>;
+/** Grupy karteczek listy; `null` = brak. */
+export const CanvasGroups = z.array(CanvasGroup).max(100);
+
 /** Dodatkowa kolumna widoku listy (v1.x): odpowiedzialny, początek, koniec (termin), tagi. */
 export const ListColumn = z.enum(['assignee', 'start', 'due', 'tags']);
 export type ListColumn = z.infer<typeof ListColumn>;
 
 /** `lists.view_prefs`: ustawienia widoku listy (M2). */
 export const ViewPrefs = z.object({
-  view: z.enum(['list', 'kanban', 'calendar', 'timeline']).optional(),
+  /** `canvas` = „Karteczki” (v1.x, tylko web); nieznany tryb nie psuje reszty ustawień. */
+  view: z.enum(['list', 'kanban', 'calendar', 'timeline', 'canvas']).optional().catch(undefined),
   /** Kryterium kolumn tablicy (M10). */
   boardBy: z.enum(['status', 'priority', 'weekday', 'tag', 'list', 'custom']).optional().catch(undefined),
   groupBy: GroupBy.optional(),
@@ -188,6 +207,8 @@ export const ListRow = z
     board_columns: BoardColumns.nullable(),
     /** Dostęp gości współdzielonej przestrzeni (`hidden` / `view` / `edit`); zmienia tylko właściciel. */
     guest_access: GuestAccess.default('edit'),
+    /** Grupy widoku „Karteczki” (`CanvasGroups`); `null` = brak. */
+    canvas_groups: CanvasGroups.nullable(),
   })
   .refine((l) => !l.start_date || !l.end_date || l.start_date <= l.end_date, { message: 'Koniec projektu przed początkiem.', path: ['end_date'] })
   .refine((l) => l.kind === 'project' || (!l.project_status && !l.start_date && !l.end_date), { message: 'Daty i status mają tylko projekty.', path: ['kind'] });
@@ -221,6 +242,8 @@ export const TaskRow = z
     assignee_id: Id.nullable(),
     /** Własna kolumna tablicy (`lists.board_columns` listy zadania); `null` / nieznane id = „Do przypisania”. */
     board_column_id: Id.nullable(),
+    /** Komórka w widoku „Karteczki”; `null` = pasek „Do ułożenia”. */
+    canvas_pos: CanvasPos.nullable(),
   })
   .refine((t) => t.due_date || (!t.due_time && !t.start_date), { message: 'Godzina i początek wymagają terminu.', path: ['due_date'] })
   .refine((t) => !t.start_date || !t.due_date || t.start_date <= t.due_date, { message: 'Początek po terminie.', path: ['start_date'] })
@@ -238,7 +261,8 @@ export const TagRow = z.object({
   workspace_ids: z.array(Id).max(100).nullable(),
 });
 
-export const TaskTagRow = z.object({ id: Id, task_id: Id, tag_id: Id });
+/** `sort_key` — kolejność tagów w zadaniu (pierwszy kolorowy = kolor karteczki); `null` = kolejność dodania. */
+export const TaskTagRow = z.object({ id: Id, task_id: Id, tag_id: Id, sort_key: SortKey.nullable() });
 
 export const TaskCompletionRow = z.object({
   id: Id,

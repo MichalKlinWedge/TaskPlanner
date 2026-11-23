@@ -323,10 +323,10 @@ describe('podzadania, przenoszenie, kosz', () => {
 
   it('przeniesienie: z podzadaniami; podzadanie na inną listę → zadanie główne', () => {
     expect(moveTaskOps(tree, 'a', 'L2')).toEqual([
-      { table: 'tasks', id: 'a', patch: { list_id: 'L2' } },
+      { table: 'tasks', id: 'a', patch: { list_id: 'L2', canvas_pos: null } },
       ...['b', 'e', 'c', 'd'].map((id) => ({ table: 'tasks', id, patch: { list_id: 'L2' } })),
     ]);
-    expect(moveTaskOps(tree, 'c', 'L2')[0]).toEqual({ table: 'tasks', id: 'c', patch: { list_id: 'L2', parent_id: null } });
+    expect(moveTaskOps(tree, 'c', 'L2')[0]).toEqual({ table: 'tasks', id: 'c', patch: { list_id: 'L2', parent_id: null, canvas_pos: null } });
     expect(moveTaskOps(tree, 'a', 'L1')).toEqual([]);
   });
 
@@ -383,7 +383,7 @@ describe('bulkTaskOps', () => {
 
   it('przeniesienie i kosz: podzadanie zaznaczone z rodzicem idzie z nim raz', () => {
     expect(bulkTaskOps([a, b], all, { kind: 'move', listId: 'L9' }, ctx).ops).toEqual([
-      { table: 'tasks', id: 'a', patch: { list_id: 'L9' } },
+      { table: 'tasks', id: 'a', patch: { list_id: 'L9', canvas_pos: null } },
       { table: 'tasks', id: 'b', patch: { list_id: 'L9' } },
     ]);
     const del = bulkTaskOps([b, a], all, { kind: 'delete' }, ctx);

@@ -11,7 +11,7 @@ import { normalizeWord, type QuickAddResult } from './quick-add.ts';
 import { nextDue, Recurrence } from './recurrence.ts';
 import { reschedulePatch } from './review.ts';
 import { compareText } from './format.ts';
-import { keyBetween } from './sort-key.ts';
+import { keyBetween, renumber } from './sort-key.ts';
 import type { LocalDate, LocalTime, Priority, TaskStatus } from './schemas/primitives.ts';
 import type { ViewTask } from './views.ts';
 
@@ -38,6 +38,7 @@ export interface LocalTaskRow {
   postpone_count: number | null;
   assignee_id?: string | null;
   board_column_id?: string | null;
+  canvas_pos?: unknown;
   field_clock?: unknown;
 }
 
@@ -49,6 +50,13 @@ const json = (value: unknown): unknown => {
     return null;
   }
 };
+
+/** `canvas_pos` z lokalnego wiersza (tekst JSON albo obiekt) → komórka; brak / zły zapis → `null` (bez Zod — gorąca ścieżka). */
+export function canvasPosOf(raw: unknown): { col: number; row: number } | null {
+  if (raw === null || raw === undefined) return null;
+  const value = json(raw) as { col?: unknown; row?: unknown } | null;
+  return value && Number.isInteger(value.col) && Number.isInteger(value.row) ? { col: value.col as number, row: value.row as number } : null;
+}
 
 /** Czas z HLC pola (`field_clock`) jako ISO; brak / zły zapis → `null`. */
 function fieldChangedAt(fieldClock: unknown, field: string): string | null {
@@ -90,6 +98,7 @@ export function toViewTask(row: LocalTaskRow, tagIds: readonly string[] = []): V
     statusChangedAt: fieldChangedAt(row.field_clock, 'status'),
     assigneeId: row.assignee_id ?? null,
     boardColumnId: row.board_column_id ?? null,
+    canvasPos: canvasPosOf(row.canvas_pos),
   };
 }
 
@@ -310,6 +319,21 @@ export function taskTagOps(scope: Pick<QuickAddScope, 'userId' | 'tags'>, taskId
     ops.push({ table: 'task_tags', id: taskTagId(taskId, id), patch: { task_id: taskId, tag_id: id, deleted_at: null } });
   }
   return ops;
+}
+
+/**
+ * Zmiana kolejności tagów zadania (`task_tags.sort_key`, przeciąganie w panelu zadania): tag z pozycji
+ * `from` na `to`. Klucze dostają wszystkie tagi zadania (zwykle kilka) — tagi bez klucza (`null` =
+ * kolejność dodania) i tak trzeba by ułożyć względem siebie. Pierwszy kolorowy tag = kolor karteczki.
+ */
+export function reorderTaskTagOps(taskId: string, tagIds: readonly string[], from: number, to: number): TaskOp[] {
+  if (from === to || from < 0 || to < 0 || from >= tagIds.length || to >= tagIds.length) return [];
+  const order = [...tagIds];
+  const [moved] = order.splice(from, 1);
+  order.splice(to, 0, moved!);
+  const keys = renumber(order.length);
+  // `task_id` / `tag_id` z tymi samymi wartościami: łatka sama w sobie jest poprawnym wierszem.
+  return order.map((tag, i) => ({ table: 'task_tags', id: taskTagId(taskId, tag), patch: { task_id: taskId, tag_id: tag, sort_key: keys[i]! } }));
 }
 
 // ── Widoczność tagów w przestrzeniach (`tags.workspace_ids`) ─────────────────────────────────
@@ -549,7 +573,8 @@ export function moveTaskOps(tasks: readonly (TreeTask & Pick<ViewTask, 'listId'>
   const task = tasks.find((t) => t.id === id);
   if (!task || task.listId === listId) return [];
   return [
-    { table: 'tasks', id, patch: task.parentId ? { list_id: listId, parent_id: null } : { list_id: listId } },
+    // Miejsce karteczki dotyczy listy — na nowej liście zadanie trafia do paska „Do ułożenia”.
+    { table: 'tasks', id, patch: task.parentId ? { list_id: listId, parent_id: null, canvas_pos: null } : { list_id: listId, canvas_pos: null } },
     ...descendants(tasks, id).map((d): TaskOp => ({ table: 'tasks', id: d.id, patch: { list_id: listId } })),
   ];
 }
@@ -603,6 +628,7 @@ const BEFORE: Record<string, (t: ViewTask) => unknown> = {
   due_time: (t) => t.dueTime,
   start_date: (t) => t.startDate,
   postpone_count: (t) => t.postponeCount,
+  canvas_pos: (t) => t.canvasPos ?? null,
   deleted_at: () => null,
 };
 

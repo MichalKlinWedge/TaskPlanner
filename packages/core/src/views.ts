@@ -47,6 +47,8 @@ export interface ViewTask {
   assigneeId?: string | null;
   /** Własna kolumna tablicy listy; brak / `null` / nieznane id = „Do przypisania”. */
   boardColumnId?: string | null;
+  /** Komórka w widoku „Karteczki”; brak / `null` = pasek „Do ułożenia”. */
+  canvasPos?: { col: number; row: number } | null;
 }
 
 export interface ViewContext {

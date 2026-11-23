@@ -12,10 +12,16 @@ import type { SqlRow, SqlValue } from './local-db.ts';
  * innych zegarów, a cały JSON przy 10 000 zadań to ~5 MB na odczyt.
  */
 export const TASK_COLUMNS = `t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
-  t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count, t.assignee_id, t.board_column_id,
+  t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count, t.assignee_id, t.board_column_id, t.canvas_pos,
   json_object('status', json_extract(t.field_clock, '$.status')) as field_clock`;
 
-/** Nieusunięte zadanie z id tagów (kolejność dodania). Nowy obiekt tylko po zmianie zadania albo jego tagów. */
+/**
+ * Kolejność tagów zadania: najpierw z `sort_key` (ułożone w panelu zadania), potem reszta w kolejności
+ * dodania (`rowid`).
+ */
+const TAG_ORDER = 'sort_key is null, sort_key, rowid';
+
+/** Nieusunięte zadanie z id tagów (`TAG_ORDER`). Nowy obiekt tylko po zmianie zadania albo jego tagów. */
 export interface TaskEntry {
   readonly row: SqlRow;
   readonly tagIds: readonly string[];
@@ -64,7 +70,7 @@ export function createTaskCache(query: Query, { fullTags = 'separate' }: TaskCac
   const full = async () => {
     if (fullTags === 'inline') {
       const rows = await query(
-        `select ${TASK_COLUMNS}, (select group_concat(tt.tag_id) from task_tags tt where tt.task_id = t.id and tt.deleted_at is null) as tag_ids
+        `select ${TASK_COLUMNS}, (select group_concat(tag_id) from (select tt.tag_id from task_tags tt where tt.task_id = t.id and tt.deleted_at is null order by ${TAG_ORDER})) as tag_ids
            from tasks t where t.deleted_at is null`,
       );
       entries = new Map(
@@ -79,7 +85,7 @@ export function createTaskCache(query: Query, { fullTags = 'separate' }: TaskCac
     const [rows, tags] = await Promise.all([
       query(`select ${TASK_COLUMNS} from tasks t where t.deleted_at is null`),
       // Osobno i pogrupowane w JS: podzapytanie na każde zadanie było najdroższą częścią odczytu na telefonie.
-      query('select task_id, tag_id from task_tags where deleted_at is null order by rowid'),
+      query(`select task_id, tag_id from task_tags where deleted_at is null order by ${TAG_ORDER}`),
     ]);
     const tagsOf = groupTags(tags);
     entries = new Map(rows.map((row) => [String(row.id), { row, tagIds: tagsOf.get(String(row.id)) ?? [] }]));
@@ -104,7 +110,7 @@ export function createTaskCache(query: Query, { fullTags = 'separate' }: TaskCac
       const params = [...ids];
       const [rows, tags] = await Promise.all([
         query(`select ${TASK_COLUMNS} from tasks t where t.deleted_at is null and t.id in (${marks(params.length)})`, params),
-        query(`select task_id, tag_id from task_tags where deleted_at is null and task_id in (${marks(params.length)}) order by rowid`, params),
+        query(`select task_id, tag_id from task_tags where deleted_at is null and task_id in (${marks(params.length)}) order by ${TAG_ORDER}`, params),
       ]);
       const tagsOf = groupTags(tags);
       const found = new Map(rows.map((row) => [String(row.id), row]));

@@ -44,17 +44,17 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     scope: 'self',
   },
   lists: {
-    columns: columns<'lists'>()(['scope_id', 'kind', 'name', 'color', 'icon', 'description_md', 'start_date', 'end_date', 'project_status', 'sort_key', 'view_prefs', 'archived_at', 'board_columns', 'guest_access']),
-    json: ['view_prefs', 'board_columns'],
+    columns: columns<'lists'>()(['scope_id', 'kind', 'name', 'color', 'icon', 'description_md', 'start_date', 'end_date', 'project_status', 'sort_key', 'view_prefs', 'archived_at', 'board_columns', 'guest_access', 'canvas_groups']),
+    json: ['view_prefs', 'board_columns', 'canvas_groups'],
     scope: 'writable',
   },
   tasks: {
     columns: columns<'tasks'>()([
       'list_id', 'parent_id', 'kind', 'title', 'description_md', 'status', 'priority', 'start_date', 'due_date', 'due_time',
       'duration_min', 'time_zone', 'recurrence', 'habit', 'completed_at', 'sort_key', 'board_sort_key', 'source', 'postpone_count',
-      'assignee_id', 'board_column_id',
+      'assignee_id', 'board_column_id', 'canvas_pos',
     ]),
-    json: ['recurrence', 'habit', 'source'],
+    json: ['recurrence', 'habit', 'source', 'canvas_pos'],
     scope: 'derived',
   },
   tags: {
@@ -63,7 +63,7 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     scope: 'personal',
   },
   task_tags: {
-    columns: columns<'task_tags'>()(['task_id', 'tag_id']),
+    columns: columns<'task_tags'>()(['task_id', 'tag_id', 'sort_key']),
     json: [],
     scope: 'derived',
   },

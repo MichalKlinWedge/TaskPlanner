@@ -54,6 +54,7 @@ import { useListWidths } from "@/lib/list-widths";
 import { useLocalQuery } from "@/lib/local-store";
 
 import { Board } from "./board";
+import { CanvasView } from "./canvas";
 import { DayDnd, DayDrop, DraggableTaskItem, SortableTaskItem, SortableTaskList } from "./dnd";
 import { TaskExportButton } from "./export";
 import { HabitTodayItem } from "./habits";
@@ -342,6 +343,9 @@ function ColumnsPicker({
   );
 }
 
+/** Tryby widoku listy (`view_prefs.view`) w przełączniku nagłówka. */
+const VIEW_LABEL = { list: "Lista", kanban: "Tablica", canvas: "Karteczki" } as const;
+
 export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; ctx: ViewContext; list: List; store: TabStore; toolbar?: ReactNode }) {
   const { notify } = useTaskActions();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -360,6 +364,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
   }, [columnTagIds, data.tags]);
 
   const kanban = list.prefs.view === "kanban";
+  const canvas = list.prefs.view === "canvas";
   const tasks = useMemo(() => withCompleted(data.tasks.filter((t) => t.listId === list.id), completed, ctx), [data.tasks, list.id, completed, ctx]);
   const tree = sortBy === "manual" && groupBy === "none";
   const rows = useMemo(() => {
@@ -486,15 +491,25 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
           }
         />
         <div className="flex overflow-hidden rounded-md border border-[var(--line)] text-xs" role="radiogroup" aria-label="Widok">
-          {(["list", "kanban"] as const).map((v) => (
+          {(["list", "kanban", "canvas"] as const).map((v) => (
             <button key={v} type="button" role="radio" aria-checked={(list.prefs.view ?? "list") === v} onClick={() => setPrefs({ view: v })} className={`px-2.5 py-1 ${(list.prefs.view ?? "list") === v ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--hover)]"}`}>
-              {v === "list" ? "Lista" : "Tablica"}
+              {VIEW_LABEL[v]}
             </button>
           ))}
         </div>
       </Header>
       {/* Sortowanie / grupowanie listy — pod nagłówkiem, przyciski widoku zostają w rogu. */}
-      {kanban ? null : (
+      {kanban ? null : canvas ? (
+        <div className="mb-2 flex flex-wrap gap-2">
+          <Select aria-label="Ukończone" value={completed} onChange={(e) => setPrefs({ completed: e.target.value as CompletedMode })} className="py-1 text-xs">
+            {(Object.keys(COMPLETED_MODE) as CompletedMode[]).map((k) => (
+              <option key={k} value={k}>
+                {COMPLETED_MODE[k]}
+              </option>
+            ))}
+          </Select>
+        </div>
+      ) : (
         <div className="mb-2 flex flex-wrap gap-2">
           <Select aria-label="Sortowanie" value={sortBy} onChange={(e) => setPrefs({ sortBy: e.target.value as SortBy })} className="py-1 text-xs">
             {(Object.keys(SORT_BY) as SortBy[]).map((k) => (
@@ -537,7 +552,9 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
         </div>
       )}
       {toolbar}
-      {kanban ? (
+      {canvas ? (
+        <CanvasView key={list.id} data={data} ctx={ctx} list={list} />
+      ) : kanban ? (
         <Board data={data} ctx={ctx} tasks={data.tasks.filter((t) => t.listId === list.id)} by={list.prefs.boardBy ?? "status"} onBy={(boardBy) => setPrefs({ boardBy })} listId={list.id} showList={false} addLabel={`Dodaj do „${list.name}”`} />
       ) : (
         listBody

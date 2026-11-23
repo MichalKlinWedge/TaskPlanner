@@ -31,6 +31,7 @@ const task = {
   postpone_count: 0,
   assignee_id: null,
   board_column_id: null,
+  canvas_pos: null,
 } as const;
 
 const issues = (result: { success: boolean; error?: { issues: { path: PropertyKey[]; message: string }[] } }) =>
@@ -69,7 +70,7 @@ describe('zadanie', () => {
 });
 
 describe('lista', () => {
-  const list = { id: ID, scope_id: ID2, kind: 'project', name: 'Remont', color: '#2563eb', icon: null, description_md: null, start_date: '2026-11-01', end_date: '2026-12-31', project_status: 'active', sort_key: '0010', view_prefs: {}, archived_at: null, board_columns: null } as const;
+  const list = { id: ID, scope_id: ID2, kind: 'project', name: 'Remont', color: '#2563eb', icon: null, description_md: null, start_date: '2026-11-01', end_date: '2026-12-31', project_status: 'active', sort_key: '0010', view_prefs: {}, archived_at: null, board_columns: null, canvas_groups: null } as const;
   it('projekt z datami; zwykła lista bez dat i statusu', () => {
     expect(ListRow.safeParse(list).success).toBe(true);
     expect(issues(ListRow.safeParse({ ...list, end_date: '2026-10-01' }))).toEqual(['end_date: Koniec projektu przed początkiem.']);
