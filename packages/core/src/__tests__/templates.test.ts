@@ -218,7 +218,7 @@ describe('projectFromTemplateOps', () => {
     for (const op of ops) {
       if (op.table === 'tags') continue;
       const schema = MODEL[op.table as keyof typeof MODEL];
-      const row = op.table === 'tasks' ? { canvas_pos: null, board_sort_key: null, habit: null, completed_at: null, assignee_id: null, ...op.patch } : op.table === 'lists' ? { archived_at: null, canvas_groups: null, ...op.patch } : op.patch;
+      const row = op.table === 'tasks' ? { canvas_pos: null, derived_from: null, board_sort_key: null, habit: null, completed_at: null, assignee_id: null, ...op.patch } : op.table === 'lists' ? { archived_at: null, canvas_groups: null, ...op.patch } : op.patch;
       expect(schema.safeParse({ id: op.id, ...row }).error).toBeUndefined();
     }
   });

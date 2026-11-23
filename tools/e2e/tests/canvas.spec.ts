@@ -1,7 +1,8 @@
 /**
  * Widok „Karteczki” (v1.x): karteczka nie wchodzi na zajętą komórkę, karta z paska „Do ułożenia”
  * na tablicę, dwuklik dodaje karteczkę w komórce, kolejność tagów zmienia kolor, pełny ekran,
- * przełącznik „Tylko główne / Z podzadaniami”, eksport PNG / PDF (także offline), blokada edycji bez sieci. Dane listy z `global-setup.ts` (`canvasIds`).
+ * przełącznik „Tylko główne / Z podzadaniami”, eksport PNG / PDF (także offline), blokada edycji bez sieci,
+ * strzałki („blokuje” = zależność, cykl odrzucony, „wynika z”, Delete i „Cofnij”). Dane listy z `global-setup.ts` (`canvasIds`).
  */
 import { readFile } from 'node:fs/promises';
 
@@ -158,5 +159,87 @@ test('karteczki: przesuwanie bez nachodzenia, pasek, dodawanie, kolor z tagu, pe
     await expect(view.getByRole('button', { name: '+ Karteczka' })).toBeDisabled();
     await context.setOffline(false);
     await expect(page.getByTestId('canvas-note')).toBeHidden();
+  });
+});
+
+test('karteczki: strzałka „blokuje” = zależność na serwerze, cykl odrzucony, Delete i „Cofnij”, „wynika z”, pasek', async ({ page, context, server }) => {
+  const ids = canvasIds(server.userId);
+  await openApp(page, `#/list/${ids.list}`);
+  const view = page.getByTestId('canvas-view');
+  const board = page.getByTestId('canvas-board');
+  const tray = page.getByTestId('canvas-tray');
+  const card = (id: string) => board.locator(`[data-canvas-card][data-task-id="${id}"]`);
+  const handle = (id: string) => card(id).locator('[data-canvas-handle]');
+  const arrow = (from: string, to: string, kind: 'blocks' | 'derived') => board.locator(`[data-canvas-arrows="base"] [data-canvas-arrow][data-from="${from}"][data-to="${to}"][data-kind="${kind}"]`);
+  const menu = page.getByTestId('canvas-link-menu');
+  /** Strzałka z uchwytu karty `from` na kartę `to`. */
+  const drawArrow = async (from: string, to: string) => {
+    await card(from).hover();
+    await drag(page, await center(handle(from)), await center(card(to)));
+    await expect(menu).toBeVisible();
+  };
+  await expect(card(ids.first)).toBeVisible();
+  await view.getByRole('button', { name: 'Dopasuj' }).click();
+
+  await test.step('„blokuje” tworzy wiersz task_dependencies na serwerze', async () => {
+    await drawArrow(ids.first, ids.second);
+    await menu.getByRole('menuitem', { name: /blokuje/ }).click();
+    await expect(arrow(ids.first, ids.second, 'blocks')).toHaveCount(1);
+    const rows = await server.waitForDependency(ids.first, ids.second, (r) => r.some((d) => d.deleted_at === null));
+    expect(rows).toHaveLength(1);
+  });
+
+  await test.step('odwrotna „blokuje” zamknęłaby cykl — odrzucona z komunikatem, bez wiersza', async () => {
+    await drawArrow(ids.second, ids.first);
+    await menu.getByRole('menuitem', { name: /blokuje/ }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'zamknęłaby cykl' })).toBeVisible();
+    await expect(arrow(ids.second, ids.first, 'blocks')).toHaveCount(0);
+    await page.waitForTimeout(1000);
+    expect(await server.dependencies(ids.second, ids.first)).toHaveLength(0);
+  });
+
+  await test.step('zaznaczona strzałka: Delete usuwa zależność (nie karty), „Cofnij” ją przywraca', async () => {
+    // Pionowa / pozioma linia ma ramkę o zerowej szerokości — Playwright uważa ją za niewidoczną; klik myszą w środek odcinka.
+    const line = (await arrow(ids.first, ids.second, 'blocks').locator('line').first().boundingBox())!;
+    await page.mouse.click(line.x + line.width / 2, line.y + line.height / 2);
+    await expect(page.getByTestId('canvas-arrow-label')).toContainText('blokuje');
+    await page.keyboard.press('Delete');
+    await expect(arrow(ids.first, ids.second, 'blocks')).toHaveCount(0);
+    await expect(card(ids.first)).toBeVisible();
+    await expect(card(ids.second)).toBeVisible();
+    await server.waitForDependency(ids.first, ids.second, (r) => r.length === 1 && r[0]!.deleted_at !== null);
+    await page.getByRole('status').getByRole('button', { name: 'Cofnij' }).click();
+    await expect(arrow(ids.first, ids.second, 'blocks')).toHaveCount(1);
+    await server.waitForDependency(ids.first, ids.second, (r) => r.length === 1 && r[0]!.deleted_at === null);
+  });
+
+  await test.step('„wynika z” (klawisz W) zapisuje tasks.derived_from', async () => {
+    await drawArrow(ids.second, ids.first);
+    await page.keyboard.press('w');
+    await expect(arrow(ids.second, ids.first, 'derived')).toHaveCount(1);
+    await server.waitForTask(E2E_CANVAS.first, (t) => t.derived_from?.includes(ids.second) ?? false);
+  });
+
+  await test.step('karta odłożona do paska: strzałek nie widać, „⇢ N” na drugiej karcie, zależność zostaje', async () => {
+    await drag(page, await center(card(ids.second)), await center(tray));
+    await expect(card(ids.second)).toHaveCount(0);
+    await expect(board.locator('[data-canvas-arrows="base"] [data-canvas-arrow]')).toHaveCount(0);
+    await expect(card(ids.first).getByTestId('canvas-offboard')).toHaveText('⇢ 1');
+    expect((await server.dependencies(ids.first, ids.second)).filter((d) => d.deleted_at === null)).toHaveLength(1);
+    // Z powrotem na tablicę — strzałki wracają.
+    const target = await center(card(ids.first));
+    await drag(page, await center(tray.getByText(E2E_CANVAS.second)), { x: target.x, y: target.y + 2 * 144 });
+    await expect(arrow(ids.first, ids.second, 'blocks')).toHaveCount(1);
+    await expect(arrow(ids.second, ids.first, 'derived')).toHaveCount(1);
+  });
+
+  await test.step('bez sieci: bez uchwytów i bez zaznaczania strzałek', async () => {
+    await context.setOffline(true);
+    await expect(page.getByTestId('canvas-note')).toBeVisible();
+    await expect(handle(ids.first)).toHaveCount(0);
+    // Bez szerokiego obrysu do klikania — sama linia.
+    await expect(arrow(ids.first, ids.second, 'blocks').locator('line')).toHaveCount(1);
+    await context.setOffline(false);
+    await expect(handle(ids.first)).toHaveCount(1);
   });
 });

@@ -49,6 +49,8 @@ export interface ViewTask {
   boardColumnId?: string | null;
   /** Komórka w widoku „Karteczki”; brak / `null` = pasek „Do ułożenia”. */
   canvasPos?: { col: number; row: number } | null;
+  /** „Wynika z” w widoku „Karteczki”: id zadań-źródeł (`tasks.derived_from`); brak / `null` = brak. */
+  derivedFrom?: readonly string[] | null;
 }
 
 export interface ViewContext {

@@ -21,6 +21,14 @@ export interface ServerTask {
   due_time: string | null;
   duration_min: number | null;
   canvas_pos: { col: number; row: number } | null;
+  derived_from: string[] | null;
+  deleted_at: string | null;
+}
+
+export interface ServerDependency {
+  id: string;
+  predecessor_id: string;
+  successor_id: string;
   deleted_at: string | null;
 }
 
@@ -44,6 +52,25 @@ export class Server {
     const { data, error } = await this.client.from('tasks').select('*').in('scope_id', await this.scopes()).eq('title', title).is('deleted_at', null).maybeSingle();
     if (error) throw new Error(`tasks: ${error.message}`);
     return data as ServerTask | null;
+  }
+
+  /** Wiersze `task_dependencies` poprzednik → następnik (także usunięte miękko). */
+  async dependencies(predecessorId: string, successorId: string): Promise<ServerDependency[]> {
+    const { data, error } = await this.client.from('task_dependencies').select('id, predecessor_id, successor_id, deleted_at').eq('predecessor_id', predecessorId).eq('successor_id', successorId);
+    if (error) throw new Error(`task_dependencies: ${error.message}`);
+    return data as ServerDependency[];
+  }
+
+  /** Czeka, aż zależność poprzednik → następnik na serwerze spełni warunek. */
+  async waitForDependency(predecessorId: string, successorId: string, check: (rows: ServerDependency[]) => boolean, timeout = 15_000): Promise<ServerDependency[]> {
+    const end = Date.now() + timeout;
+    let last: ServerDependency[] = [];
+    while (Date.now() < end) {
+      last = await this.dependencies(predecessorId, successorId);
+      if (check(last)) return last;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    throw new Error(`Zależność ${predecessorId} → ${successorId} na serwerze nie spełnia warunku po ${timeout} ms; ostatnio: ${JSON.stringify(last)}`);
   }
 
   /** Czeka, aż zadanie na serwerze spełni warunek (synchronizacja w tle). */

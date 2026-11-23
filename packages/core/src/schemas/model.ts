@@ -49,6 +49,12 @@ export const BoardColumns = z.array(BoardColumnDef).max(50);
 export const CanvasPos = z.object({ col: z.number().int().min(-10_000).max(10_000), row: z.number().int().min(-10_000).max(10_000) });
 export type CanvasPos = z.infer<typeof CanvasPos>;
 
+/** Najwięcej źródeł „wynika z” na jednym zadaniu (`tasks.derived_from`, jak w migracji). */
+export const DERIVED_FROM_MAX = 50;
+/** `tasks.derived_from`: „wynika z” w widoku „Karteczki” (v1.x) — id zadań-źródeł; `null` = brak. */
+export const DerivedFrom = z.array(Id).min(1).max(DERIVED_FROM_MAX);
+export type DerivedFrom = z.infer<typeof DerivedFrom>;
+
 /** `lists.canvas_groups`: grupa karteczek — prostokąt na siatce (tylko graficzny, v1.x). */
 export const CanvasGroup = z.object({
   id: Id,
@@ -252,6 +258,8 @@ export const TaskRow = z
     board_column_id: Id.nullable(),
     /** Komórka w widoku „Karteczki”; `null` = pasek „Do ułożenia”. */
     canvas_pos: CanvasPos.nullable(),
+    /** „Wynika z” (widok „Karteczki”): zadania-źródła; samo powiązanie, nie zależność. */
+    derived_from: DerivedFrom.nullable(),
   })
   .refine((t) => t.due_date || (!t.due_time && !t.start_date), { message: 'Godzina i początek wymagają terminu.', path: ['due_date'] })
   .refine((t) => !t.start_date || !t.due_date || t.start_date <= t.due_date, { message: 'Początek po terminie.', path: ['start_date'] })

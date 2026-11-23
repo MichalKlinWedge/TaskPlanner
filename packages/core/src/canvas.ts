@@ -6,9 +6,11 @@
  * wolnej komórce (`nearestFreeCell`); dwie osoby, które jednocześnie położą karty w tej samej
  * komórce, widzą po synchronizacji to samo ułożenie (`canvasLayout` rozstrzyga po id, bez zapisu).
  * Grupy (`lists.canvas_groups`) są tylko graficzne: prostokąty na siatce, karta „w grupie” to karta,
- * której komórka leży w prostokącie.
+ * której komórka leży w prostokącie. Strzałki: „blokuje” = zależność (`task_dependencies`), „wynika z”
+ * = samo powiązanie (`tasks.derived_from` na zadaniu, które wynika).
  */
-import { CanvasGroups, type CanvasGroup, type CanvasPos, type CanvasTasks } from './schemas/model.ts';
+import { detectCycle, type Dependency } from './dependencies.ts';
+import { CanvasGroups, DERIVED_FROM_MAX, type CanvasGroup, type CanvasPos, type CanvasTasks } from './schemas/model.ts';
 import { uuidv7 } from './ids.ts';
 import type { Priority } from './schemas/primitives.ts';
 import type { TaskOp } from './tasks.ts';
@@ -349,6 +351,197 @@ export function moveCanvasGroupOps(
 export function removeCanvasGroupOps(listId: string, current: readonly CanvasGroup[], id: string): { ops: TaskOp[]; undo: TaskOp[] } {
   if (!current.some((g) => g.id === id)) return { ops: [], undo: [] };
   return { ops: [groupsOp(listId, current.filter((g) => g.id !== id))], undo: [groupsOp(listId, current)] };
+}
+
+// ── Strzałki ────────────────────────────────────────────────────────────────────────────────────
+
+/** `blocks` — „A blokuje B” (zależność koniec→początek), `derived` — „B wynika z A” (samo powiązanie). */
+export type CanvasArrowKind = 'blocks' | 'derived';
+
+/** Etykiety rodzajów strzałek; `sentence(a, b)` — zdanie dla strzałki od `a` do `b`. */
+export const CANVAS_ARROW: Record<CanvasArrowKind, { label: string; sentence: (a: string, b: string) => string }> = {
+  blocks: { label: 'blokuje', sentence: (a, b) => `${a} blokuje ${b}` },
+  derived: { label: 'wynika z', sentence: (a, b) => `${b} wynika z ${a}` },
+};
+
+/** Odstęp równoległych strzałek tej samej pary kart (px przy 100 %) i odstęp końców od kart. */
+export const CANVAS_ARROW_GAP = { lane: 6, card: 4 } as const;
+
+export interface CanvasArrow {
+  /** Klucz stały między odświeżeniami: `b:<id zależności>` albo `d:<źródło>:<zadanie>`. */
+  key: string;
+  kind: CanvasArrowKind;
+  /** Początek strzałki: poprzednik („blokuje”) albo źródło („wynika z”). */
+  fromId: string;
+  toId: string;
+  /** Id zależności (`blocks`), inaczej `null`. */
+  dependencyId: string | null;
+  /** Naruszona kolejność (`violations` z `dependencies.ts`). */
+  violated: boolean;
+  /** Przesunięcie równoległe w px (prostopadle do kierunku od → do); 0 = środek. */
+  offset: number;
+}
+
+export interface CanvasArrows {
+  /** Strzałki między kartami leżącymi na tablicy. */
+  arrows: CanvasArrow[];
+  /** Karta na tablicy → id zadań po drugiej stronie połączeń, których nie widać (pasek, ukryte, inna lista). */
+  offBoard: Map<string, string[]>;
+}
+
+type LinkTask = Pick<ViewTask, 'id' | 'derivedFrom'>;
+
+/** Krawędzie „wynika z” jako pary źródło → zadanie (do `detectCycle`). */
+const derivedEdges = (tasks: readonly LinkTask[]) => tasks.flatMap((t) => (t.derivedFrom ?? []).map((from) => ({ predecessorId: from, successorId: t.id })));
+
+/**
+ * Strzałki do narysowania: połączenia, których oba końce leżą na tablicy (`placed`). Połączenie z jednym
+ * końcem poza tablicą (karta w pasku „Do ułożenia”, podzadanie ukryte w „Tylko główne”, ukończone ukryte
+ * filtrem, zadanie z innej listy) nie jest rysowane — trafia do `offBoard` widocznej karty. Połączenia
+ * z zadaniami, których nie ma (kosz, brak dostępu), są pomijane. Kilka strzałek między tą samą parą kart
+ * (obie strony, oba rodzaje) dostaje równoległe tory.
+ */
+export function canvasArrows(placed: ReadonlySet<string>, tasks: readonly LinkTask[], deps: readonly Dependency[], violated: ReadonlySet<string> = new Set()): CanvasArrows {
+  const known = new Set(tasks.map((t) => t.id));
+  const arrows: CanvasArrow[] = [];
+  const offBoard = new Map<string, string[]>();
+  const add = (kind: CanvasArrowKind, fromId: string, toId: string, dependencyId: string | null) => {
+    if (fromId === toId || !known.has(fromId) || !known.has(toId)) return;
+    const a = placed.has(fromId);
+    const b = placed.has(toId);
+    if (a && b) {
+      arrows.push({ key: dependencyId ? `b:${dependencyId}` : `d:${fromId}:${toId}`, kind, fromId, toId, dependencyId, violated: Boolean(dependencyId && violated.has(dependencyId)), offset: 0 });
+    } else if (a || b) {
+      const [mine, other] = a ? [fromId, toId] : [toId, fromId];
+      const list = offBoard.get(mine);
+      if (!list) offBoard.set(mine, [other]);
+      else if (!list.includes(other)) list.push(other);
+    }
+  };
+  for (const d of deps) add('blocks', d.predecessorId, d.successorId, d.id);
+  for (const t of tasks) for (const from of new Set(t.derivedFrom ?? [])) add('derived', from, t.id, null);
+  // Tory: para kart (bez kierunku) → strzałki w stałej kolejności, przesunięcia symetrycznie wokół środka.
+  const pairs = new Map<string, CanvasArrow[]>();
+  for (const arrow of arrows) {
+    const pair = arrow.fromId < arrow.toId ? `${arrow.fromId}|${arrow.toId}` : `${arrow.toId}|${arrow.fromId}`;
+    const list = pairs.get(pair);
+    if (list) list.push(arrow);
+    else pairs.set(pair, [arrow]);
+  }
+  for (const list of pairs.values()) {
+    if (list.length < 2) continue;
+    list.sort((x, y) => (x.key < y.key ? -1 : x.key > y.key ? 1 : 0));
+    list.forEach((arrow, i) => {
+      const lane = (i - (list.length - 1) / 2) * CANVAS_ARROW_GAP.lane;
+      // Względem kierunku od mniejszego id do większego — strzałki w przeciwne strony się nie nakładają.
+      arrow.offset = arrow.fromId < arrow.toId ? lane : -lane;
+    });
+  }
+  return { arrows, offBoard };
+}
+
+export interface CanvasRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Prostokąt karty w komórce (px przy 100 %), z opcjonalnym przesunięciem (przeciąganie). */
+export const canvasCardRect = (cell: Cell, offset?: { x: number; y: number } | null): CanvasRect => ({
+  x: cell.col * CANVAS_STEP.x + (offset?.x ?? 0),
+  y: cell.row * CANVAS_STEP.y + (offset?.y ?? 0),
+  w: CANVAS_CARD.width,
+  h: CANVAS_CARD.height,
+});
+
+export interface CanvasSegment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+/**
+ * Odcinek strzałki od krawędzi karty `from` do krawędzi karty `to`: prosta przez środki (przesunięta
+ * równolegle o `offset`), przycięta do obwodów obu prostokątów i odsunięta od nich o `gap`. Karty
+ * nachodzące na siebie albo za blisko (przy przeciąganiu) → `null` (nic do narysowania).
+ */
+export function canvasArrowSegment(from: CanvasRect, to: CanvasRect, offset = 0, gap: number = CANVAS_ARROW_GAP.card): CanvasSegment | null {
+  const dx = to.x + to.w / 2 - (from.x + from.w / 2);
+  const dy = to.y + to.h / 2 - (from.y + from.h / 2);
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return null;
+  const ux = dx / len;
+  const uy = dy / len;
+  // Prostopadła do kierunku (w układzie ekranu, gdzie y rośnie w dół).
+  const px = -uy * offset;
+  const py = ux * offset;
+  const exit = (r: CanvasRect) => Math.min(ux === 0 ? Infinity : r.w / 2 / Math.abs(ux), uy === 0 ? Infinity : r.h / 2 / Math.abs(uy));
+  const start = exit(from) + gap;
+  const end = len - exit(to) - gap;
+  if (end - start < 8) return null;
+  const x0 = from.x + from.w / 2 + px;
+  const y0 = from.y + from.h / 2 + py;
+  return { x1: x0 + ux * start, y1: y0 + uy * start, x2: x0 + ux * end, y2: y0 + uy * end };
+}
+
+/** Grot na końcu odcinka: trzy punkty (ramię, czubek, ramię). */
+export function canvasArrowHead(seg: CanvasSegment, length = 10, width = 8): [number, number][] {
+  const len = Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1) || 1;
+  const ux = (seg.x2 - seg.x1) / len;
+  const uy = (seg.y2 - seg.y1) / len;
+  const bx = seg.x2 - ux * length;
+  const by = seg.y2 - uy * length;
+  return [
+    [bx - uy * (width / 2), by + ux * (width / 2)],
+    [seg.x2, seg.y2],
+    [bx + uy * (width / 2), by - ux * (width / 2)],
+  ];
+}
+
+export type DerivedLinkError = { reason: 'self' } | { reason: 'duplicate' } | { reason: 'cycle'; cycle: string[] } | { reason: 'missing' } | { reason: 'limit' };
+
+const derivedOp = (id: string, list: readonly string[] | null | undefined): TaskOp => ({ table: 'tasks', id, patch: { derived_from: list?.length ? [...list] : null } });
+
+/**
+ * „B wynika z A” (`toId` wynika z `fromId`): A dopisane do `tasks.derived_from` zadania B — jedno pole,
+ * więc LWW zapisuje całą listę naraz. Odrzucone: to samo zadanie, duplikat, koło (B → … → A) i więcej niż
+ * `DERIVED_FROM_MAX` źródeł.
+ */
+export function addDerivedLinkOps(tasks: readonly LinkTask[], next: { fromId: string; toId: string }): { ops: TaskOp[]; undo: TaskOp[] } | { error: DerivedLinkError } {
+  if (next.fromId === next.toId) return { error: { reason: 'self' } };
+  const to = tasks.find((t) => t.id === next.toId);
+  if (!to || !tasks.some((t) => t.id === next.fromId)) return { error: { reason: 'missing' } };
+  const current = to.derivedFrom ?? [];
+  if (current.includes(next.fromId)) return { error: { reason: 'duplicate' } };
+  const cycle = detectCycle(derivedEdges(tasks), { predecessorId: next.fromId, successorId: next.toId });
+  if (cycle) return { error: { reason: 'cycle', cycle } };
+  if (current.length >= DERIVED_FROM_MAX) return { error: { reason: 'limit' } };
+  return { ops: [derivedOp(to.id, [...current, next.fromId])], undo: [derivedOp(to.id, current)] };
+}
+
+/** Usunięcie „B wynika z A” z „Cofnij” (poprzednia lista źródeł). */
+export function removeDerivedLinkOps(task: LinkTask, fromId: string): { ops: TaskOp[]; undo: TaskOp[] } {
+  const current = task.derivedFrom ?? [];
+  if (!current.includes(fromId)) return { ops: [], undo: [] };
+  return { ops: [derivedOp(task.id, current.filter((id) => id !== fromId))], undo: [derivedOp(task.id, current)] };
+}
+
+/** Komunikat błędu „wynika z” do pokazania użytkownikowi. */
+export function derivedLinkErrorText(error: DerivedLinkError, titleOf: (id: string) => string): string {
+  switch (error.reason) {
+    case 'self':
+      return 'Karteczka nie może wynikać z samej siebie.';
+    case 'duplicate':
+      return 'To powiązanie już istnieje.';
+    case 'cycle':
+      return `To powiązanie zamknęłoby koło: ${error.cycle.map(titleOf).join(' → ')}.`;
+    case 'missing':
+      return 'Nie ma takiego zadania.';
+    case 'limit':
+      return `Karteczka może wynikać najwyżej z ${DERIVED_FROM_MAX} innych.`;
+  }
 }
 
 // ── Wygląd karty ────────────────────────────────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 /**
  * Pomiar widoku „Karteczki” na 500 karteczkach jednej listy: otwarcie (pierwsza synchronizacja
  * i przełączenie widoku), płynność przeciągania karteczki, przesuwania tablicy i powiększania
- * (Ctrl+kółko), „Dopasuj”, upuszczenie → karteczka w nowej komórce. Czas liczony w stronie.
+ * (Ctrl+kółko), „Dopasuj”, upuszczenie → karteczka w nowej komórce, rysowanie strzałki z uchwytu
+ * (na tablicy ok. 480 strzałek z `canvas-perf-setup.ts`). Czas liczony w stronie.
  * Wynik: tabela w konsoli i `tools/e2e/out/perf-canvas.json`.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -56,6 +57,13 @@ test(`${CANVAS_PERF_CARDS} karteczek`, async ({ page }) => {
 
   // 3. Przeciąganie karteczki tam i z powrotem (bez zmiany danych) — podgląd komórek docelowych w każdej klatce.
   smooth('Przeciąganie karteczki (kl./s)', await frames(page, () => dragSlowly(page, at(0, 0), at(4, 2))));
+
+  // 3a. Rysowanie strzałki: uchwyt (prawa krawędź karty (0, 0)) → karta (2, 3) (w obszarze tablicy), szkic w każdej klatce; menu zamyka Esc.
+  const arrows = await page.locator('[data-canvas-arrows="base"] [data-canvas-arrow]').count();
+  const handle = { x: box.x + 40 + CANVAS_CARD.width, y: box.y + 48 + CANVAS_CARD.height / 2 };
+  smooth(`Rysowanie strzałki, ${arrows} strzałek na tablicy (kl./s)`, await frames(page, () => dragSlowly(page, handle, at(2, 3), false)));
+  await expect(page.getByTestId('canvas-link-menu')).toBeVisible();
+  await page.keyboard.press('Escape');
 
   // 4. Przesuwanie tablicy: chwyt w odstępie między kolumnami 0 i 1.
   const gap = { x: box.x + 40 + CANVAS_CARD.width + CANVAS_CARD.gap / 2, y: box.y + 48 + CANVAS_CARD.height / 2 };

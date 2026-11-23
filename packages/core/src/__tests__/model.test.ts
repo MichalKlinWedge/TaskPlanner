@@ -32,6 +32,7 @@ const task = {
   assignee_id: null,
   board_column_id: null,
   canvas_pos: null,
+  derived_from: null,
 } as const;
 
 const issues = (result: { success: boolean; error?: { issues: { path: PropertyKey[]; message: string }[] } }) =>
@@ -50,6 +51,9 @@ describe('zadanie', () => {
     expect(TaskRow.safeParse({ ...task, sort_key: 'A1' }).success).toBe(false);
     expect(TaskRow.safeParse({ ...task, time_zone: 'Europe/Warszawa' }).success).toBe(false);
     expect(TaskRow.safeParse({ ...task, time_zone: 'Europe/Warsaw' }).success).toBe(true);
+    expect(TaskRow.safeParse({ ...task, derived_from: [ID] }).success).toBe(true);
+    expect(TaskRow.safeParse({ ...task, derived_from: [] }).success).toBe(false);
+    expect(TaskRow.safeParse({ ...task, derived_from: ['x'] }).success).toBe(false);
   });
 
   it('reguły między polami', () => {
