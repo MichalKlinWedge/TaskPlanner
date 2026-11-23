@@ -20,6 +20,7 @@ export interface ServerTask {
   due_date: string | null;
   due_time: string | null;
   duration_min: number | null;
+  canvas_pos: { col: number; row: number } | null;
   deleted_at: string | null;
 }
 

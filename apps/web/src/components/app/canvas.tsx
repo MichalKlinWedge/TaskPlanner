@@ -21,6 +21,7 @@ import {
   canvasPlaceOps,
   canvasUnplaceOps,
   cellInGroup,
+  clampCanvasZoom,
   cellKey,
   collaboratorBadge,
   fitTitle,
@@ -32,7 +33,9 @@ import {
   removeCanvasGroupOps,
   updateCanvasGroupOps,
   withCompleted,
+  zoomCanvasViewport,
   type CanvasCell,
+  type CanvasViewport,
   type CanvasGroup,
   type TaskOp,
   type TitleFit,
@@ -49,12 +52,7 @@ import { Button } from "./ui";
 
 // ── Stan widoku na urządzeniu ─────────────────────────────────────────────────────────────────
 
-interface Viewport {
-  zoom: number;
-  /** Położenie (0, 0) siatki w px względem lewego górnego rogu obszaru. */
-  x: number;
-  y: number;
-}
+type Viewport = CanvasViewport;
 
 const VIEW_KEY = "tp-canvas-view";
 const DEFAULT_VIEW: Viewport = { zoom: 1, x: 40, y: 48 };
@@ -63,7 +61,7 @@ function loadViewport(listId: string): Viewport {
   try {
     const all = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}") as Record<string, Viewport>;
     const v = all[listId];
-    if (v && Number.isFinite(v.zoom) && Number.isFinite(v.x) && Number.isFinite(v.y)) return { ...v, zoom: clampZoom(v.zoom) };
+    if (v && Number.isFinite(v.zoom) && Number.isFinite(v.x) && Number.isFinite(v.y)) return { ...v, zoom: clampCanvasZoom(v.zoom) };
   } catch {
     // Brak dostępu do localStorage / uszkodzony wpis — widok domyślny.
   }
@@ -79,8 +77,6 @@ function saveViewport(listId: string, view: Viewport) {
     // Bez zapisu — widok i tak działa.
   }
 }
-
-const clampZoom = (zoom: number) => Math.min(CANVAS_ZOOM.max, Math.max(CANVAS_ZOOM.min, zoom));
 
 const subscribeOnline = (notify: () => void) => {
   window.addEventListener("online", notify);
@@ -137,12 +133,19 @@ type Drag =
 const MOVE_THRESHOLD = 4;
 const cellsOf = (dx: number, dy: number, zoom: number): CanvasCell => ({ col: Math.round(dx / zoom / CANVAS_STEP.x), row: Math.round(dy / zoom / CANVAS_STEP.y) });
 
-/** Przeciąganie po `pointerdown`: ruch i puszczenie przez okno (także poza obszarem). */
+/**
+ * Przeciąganie po `pointerdown`: ruch i puszczenie przez okno (także poza obszarem). Tylko ten sam
+ * wskaźnik — drugi palec na ekranie dotykowym to szczypanie, nie drugie przeciąganie.
+ */
 function track(start: ReactPointerEvent, onMove: (dx: number, dy: number, e: PointerEvent) => void, onUp: (dx: number, dy: number, e: PointerEvent) => void) {
   const x0 = start.clientX;
   const y0 = start.clientY;
-  const move = (e: PointerEvent) => onMove(e.clientX - x0, e.clientY - y0, e);
+  const id = start.pointerId;
+  const move = (e: PointerEvent) => {
+    if (e.pointerId === id) onMove(e.clientX - x0, e.clientY - y0, e);
+  };
   const up = (e: PointerEvent) => {
+    if (e.pointerId !== id) return;
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
     window.removeEventListener("pointercancel", up);
@@ -229,13 +232,11 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   };
 
   // ── Powiększenie ──
-  const zoomAt = (factor: number, clientX?: number, clientY?: number) =>
+  // Przyciski i klawisze — względem środka obszaru.
+  const zoomAt = (factor: number) =>
     setView((v) => {
-      const zoom = clampZoom(v.zoom * factor);
       const rect = box.current?.getBoundingClientRect();
-      const px = clientX !== undefined && rect ? clientX - rect.left : (rect?.width ?? 0) / 2;
-      const py = clientY !== undefined && rect ? clientY - rect.top : (rect?.height ?? 0) / 2;
-      return { zoom, x: px - (px - v.x) * (zoom / v.zoom), y: py - (py - v.y) * (zoom / v.zoom) };
+      return zoomCanvasViewport(v, factor, { x: (rect?.width ?? 0) / 2, y: (rect?.height ?? 0) / 2 });
     });
   const fit = () => {
     const rect = box.current?.getBoundingClientRect();
@@ -243,7 +244,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     if (!rect || !bounds) return setView(DEFAULT_VIEW);
     const width = bounds.w * CANVAS_STEP.x;
     const height = bounds.h * CANVAS_STEP.y + GROUP_TAB;
-    const zoom = clampZoom(Math.min((rect.width - 64) / width, (rect.height - 64) / height, 1));
+    const zoom = clampCanvasZoom(Math.min((rect.width - 64) / width, (rect.height - 64) / height, 1));
     setView({ zoom, x: (rect.width - width * zoom) / 2 - bounds.col * CANVAS_STEP.x * zoom, y: (rect.height - height * zoom) / 2 + GROUP_TAB * zoom - bounds.row * CANVAS_STEP.y * zoom });
   };
 
@@ -255,17 +256,57 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
         const factor = Math.exp(-e.deltaY * 0.0025);
-        setView((v) => {
-          const zoom = clampZoom(v.zoom * factor);
-          const rect = el.getBoundingClientRect();
-          const px = e.clientX - rect.left;
-          const py = e.clientY - rect.top;
-          return { zoom, x: px - (px - v.x) * (zoom / v.zoom), y: py - (py - v.y) * (zoom / v.zoom) };
-        });
+        const rect = el.getBoundingClientRect();
+        setView((v) => zoomCanvasViewport(v, factor, { x: e.clientX - rect.left, y: e.clientY - rect.top }));
       } else setView((v) => ({ ...v, x: v.x - (e.shiftKey ? e.deltaY : e.deltaX), y: v.y - (e.shiftKey ? 0 : e.deltaY) }));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // Szczypanie dwoma palcami (ekran dotykowy): powiększenie i przesunięcie za środkiem palców.
+  // Rozpoczęte przeciąganie pierwszego palca jest wtedy ignorowane (`pinching`).
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ distance: number; mid: { x: number; y: number }; view: Viewport } | null>(null);
+  // Jeszcze chwilę po szczypaniu puszczenie ostatniego palca nie kończy przeciągania.
+  const pinchTail = useRef(false);
+  const pinching = () => pinch.current !== null || pinchTail.current;
+  const touchStart = (e: ReactPointerEvent) => {
+    if (e.pointerType !== "touch") return;
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.current.size !== 2) return;
+    const rect = box.current!.getBoundingClientRect();
+    const [a, b] = [...touches.current.values()] as [{ x: number; y: number }, { x: number; y: number }];
+    pinch.current = { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), mid: { x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top }, view: latest.current.view };
+    setDrag(null);
+  };
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      if (!touches.current.has(e.pointerId)) return;
+      touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const start = pinch.current;
+      if (!start || touches.current.size < 2 || !box.current) return;
+      const rect = box.current.getBoundingClientRect();
+      const [a, b] = [...touches.current.values()] as [{ x: number; y: number }, { x: number; y: number }];
+      const mid = { x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top };
+      setView(zoomCanvasViewport(start.view, Math.hypot(a.x - b.x, a.y - b.y) / start.distance, start.mid, mid));
+    };
+    const up = (e: PointerEvent) => {
+      if (!touches.current.delete(e.pointerId)) return;
+      if (pinch.current && touches.current.size < 2) {
+        pinch.current = null;
+        pinchTail.current = true;
+        window.setTimeout(() => (pinchTail.current = false), 400);
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
   }, []);
 
   // ── Karty ──
@@ -283,10 +324,12 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     if (!editable) return;
     track(
       e,
-      (dx, dy) => setDrag({ kind: "cards", ids, dx, dy, moved: far(dx, dy) }),
+      (dx, dy) => {
+        if (!pinching()) setDrag({ kind: "cards", ids, dx, dy, moved: far(dx, dy) });
+      },
       (dx, dy, up) => {
         setDrag(null);
-        if (!far(dx, dy)) return;
+        if (!far(dx, dy) || pinching()) return;
         const { layout: now, view: v } = latest.current;
         const moving = ids.flatMap((cardId) => {
           const placed = now.placed.find((p) => p.task.id === cardId);
@@ -310,10 +353,12 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     e.preventDefault();
     track(
       e,
-      (dx, dy, move) => setDrag({ kind: "tray", id, clientX: move.clientX, clientY: move.clientY, moved: far(dx, dy) }),
+      (dx, dy, move) => {
+        if (!pinching()) setDrag({ kind: "tray", id, clientX: move.clientX, clientY: move.clientY, moved: far(dx, dy) });
+      },
       (dx, dy, up) => {
         setDrag(null);
-        if (!far(dx, dy) || !overBoard(up) || overTray(up)) return;
+        if (!far(dx, dy) || pinching() || !overBoard(up) || overTray(up)) return;
         const { ops, undo } = canvasPlaceOps(latest.current.layout, id, cellAt(up.clientX, up.clientY));
         void apply(ops, "Położono karteczkę", undo);
       },
@@ -351,12 +396,13 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     track(
       e,
       (dx, dy) => {
+        if (pinching()) return;
         setDrag({ kind: "pan" });
         setView((v) => ({ ...v, x: start.x + dx, y: start.y + dy }));
       },
       (dx, dy) => {
         setDrag(null);
-        if (!far(dx, dy)) selectOnly([]);
+        if (!far(dx, dy) && !pinching()) selectOnly([]);
       },
     );
   };
@@ -384,10 +430,12 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     e.preventDefault();
     track(
       e,
-      (dx, dy) => setDrag(kind === "group" ? { kind, id: group.id, dx, dy, moved: far(dx, dy) } : { kind, id: group.id, dx, dy }),
+      (dx, dy) => {
+        if (!pinching()) setDrag(kind === "group" ? { kind, id: group.id, dx, dy, moved: far(dx, dy) } : { kind, id: group.id, dx, dy });
+      },
       (dx, dy) => {
         setDrag(null);
-        if (!far(dx, dy)) return;
+        if (!far(dx, dy) || pinching()) return;
         const { layout: now, groups: current, view: v } = latest.current;
         const delta = cellsOf(dx, dy, v.zoom);
         if (kind === "group") {
@@ -515,7 +563,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
           ▢ Grupuj
         </Button>
         <span className="flex-1" />
-        <span className="hidden text-[var(--muted)] lg:inline">Dwuklik — nowa · Shift+przeciąganie — zaznaczanie · Ctrl+kółko — powiększenie</span>
+        <span className="hidden text-[var(--muted)] lg:inline">Dwuklik — nowa · Shift+przeciąganie — zaznaczanie · Ctrl+kółko / dwa palce — powiększenie</span>
         <div className="flex items-center overflow-hidden rounded-md border border-[var(--line)]" role="group" aria-label="Powiększenie">
           <button type="button" className="px-2 py-1 hover:bg-[var(--hover)]" onClick={() => zoomAt(1 / CANVAS_ZOOM.step)} aria-label="Pomniejsz" title="Pomniejsz (−)">
             −
@@ -551,6 +599,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
             backgroundSize: `${CANVAS_STEP.x * view.zoom}px ${CANVAS_STEP.y * view.zoom}px`,
             backgroundPosition: `${view.x - (CANVAS_CARD.gap / 2) * view.zoom}px ${view.y - (CANVAS_CARD.gap / 2) * view.zoom}px`,
           }}
+          onPointerDownCapture={touchStart}
           onPointerDown={startBackground}
           onDoubleClick={(e) => {
             if (!(e.target as HTMLElement).closest("[data-canvas-card], [data-canvas-group-tab], [data-canvas-add]")) startAdding(cellAt(e.clientX, e.clientY));

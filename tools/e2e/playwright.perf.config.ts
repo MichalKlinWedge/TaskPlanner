@@ -12,6 +12,7 @@ import base from './playwright.config.ts';
 export default defineConfig({
   ...base,
   testDir: 'perf',
+  testIgnore: 'canvas.spec.ts',
   globalSetup: './src/perf-setup.ts',
   timeout: 300_000,
   reporter: [['list']],

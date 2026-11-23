@@ -230,3 +230,27 @@ Galaxy S22 Ultra (Android 16), release APK (`arm64-v8a`, Hermes), lokalny Supaba
 - **Pierwsza synchronizacja (12,6 s)** — pobieranie i zapis po połowie; widoki odświeżają się raz, po ostatniej stronie.
 - **Przeciąganie bloku na osi dnia** rysuje klatkę tylko przy przeskoku o 15 min, więc „kl./s” nic tu nie mówi — liczy się, czy klatka przeskoku zdąży w 8,3 ms (120 Hz). Po poprawce 6 palcem zdąża 33 z 35. Pomiar przez `adb` tego nie pokazuje: wstrzykiwane zdarzenia przychodzą rzadko i bez podbicia zegara procesora, więc każda klatka trwa ~17 ms niezależnie od kodu. Zmiana długości (uchwyt) dalej animuje `height` — rzadsza, niemierzona.
 - **Niezmierzone**: wydajność przy 2 000 zadań poza startem.
+
+
+## Karteczki — 500 kart (23.11.2026)
+
+Widok „Karteczki” (v1.x, tylko web) na jednej liście z 500 ułożonymi kartami (25 kolumn × 20 wierszy, tytuły 1–14 słów, 4 priorytety, 5 kolorowych tagów, co trzecia z osobą odpowiedzialną). Konto `canvas-perf@taskplanner.test` zakładane od zera przez `tools/e2e/src/canvas-perf-setup.ts`; ten sam build produkcyjny co E2E, Chromium 1400×900, ten sam komputer co pomiary wyżej.
+
+```bash
+npm run perf:canvas          # wynik: tabela w konsoli i tools/e2e/out/perf-canvas.json
+```
+
+| Pomiar | Mediana | Max | Uwagi |
+|---|---|---|---|
+| Pierwsze otwarcie (pusta baza → 500 kart) | 1 235 ms | — | synchronizacja + pierwsze dopasowanie tytułów |
+| Widok: Inbox → „Karteczki” | 74 ms | 92 ms | dopasowanie tytułów z pamięci podręcznej |
+| Przeciąganie karty | 60 kl./s | — | p95 16,7 ms, najgorsza 17 ms, 0 zgubionych |
+| Przesuwanie tablicy | 53 kl./s | — | p95 16,8 ms; jedna klatka ~200 ms na starcie ruchu |
+| Powiększanie Ctrl+kółko | 59 kl./s | — | p95 16,8 ms, najgorsza 33 ms |
+| „Dopasuj” (100 % → 25 %) | 37 ms | 41 ms | |
+| Upuszczenie na zajętą komórkę → karta w wolnej | 124 ms | 127 ms | od puszczenia do narysowania (zapis lokalny, odczyt, układ) |
+
+Uwagi:
+- Karty nie są wirtualizowane — 500 kart to 500 elementów pod jednym `transform: scale`; przy 25 % tytuły są już tylko kolorami (poniżej 50 % bez tekstu), więc koszt nie rośnie z oddaleniem.
+- Pierwsza klatka przesuwania (~200 ms) to przerysowanie wszystkich kart po zmianie stanu przeciągania; dalsze klatki mieszczą się w 16,7 ms. Do poprawy (`memo` kart), jeśli będzie przeszkadzać.
+- Szczypanie dwoma palcami nie jest mierzone (brak urządzenia dotykowego w Playwright bez emulacji) — liczy to samo co Ctrl+kółko (`zoomCanvasViewport`).

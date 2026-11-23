@@ -7,7 +7,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+
+import { dragSlowly, frames, max, median, timed } from './measure.ts';
 
 interface Row {
   name: string;
@@ -23,67 +25,7 @@ const record = (name: string, samples: number[], limit: number | null = null, no
   console.log(`${name}: mediana ${Math.round(median(samples))} ms, max ${Math.round(max(samples))} ms${note ? ` (${note})` : ''}`);
 };
 
-const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] ?? NaN;
-const max = (xs: number[]) => Math.max(...xs);
-
-/**
- * W stronie: `action` (kod JS), potem czekanie, aż `ready` (wyrażenie JS) będzie prawdą, i na
- * narysowanie następnej klatki. Zwraca ms od akcji.
- */
-async function timed(page: Page, action: string, ready: string, timeout = 20_000): Promise<number> {
-  return page.evaluate(
-    ({ action, ready, timeout }) =>
-      new Promise<number>((resolve, reject) => {
-        const isReady = new Function(`return (${ready});`) as () => boolean;
-        const start = performance.now();
-        new Function(action)();
-        const painted = () => requestAnimationFrame(() => setTimeout(() => resolve(performance.now() - start), 0));
-        const check = () => {
-          if (isReady()) return painted();
-          if (performance.now() - start > timeout) return reject(new Error(`Nie doczekano: ${ready}`));
-          requestAnimationFrame(check);
-        };
-        check();
-      }),
-    { action, ready, timeout },
-  );
-}
-
 const rowsIn = (h1: string) => `document.querySelector('main h1')?.textContent === ${JSON.stringify(h1)} && document.querySelectorAll('main [data-task-id]').length > 0`;
-
-/** Odstępy między klatkami w trakcie `work` (rAF w stronie). */
-async function frames(page: Page, work: () => Promise<void>) {
-  await page.evaluate(() => {
-    const w = window as unknown as { __frames: number[]; __recording: boolean };
-    w.__frames = [];
-    w.__recording = true;
-    let last = performance.now();
-    const tick = (now: number) => {
-      w.__frames.push(now - last);
-      last = now;
-      if (w.__recording) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  });
-  await work();
-  const deltas = await page.evaluate(() => {
-    const w = window as unknown as { __frames: number[]; __recording: boolean };
-    w.__recording = false;
-    return w.__frames.slice(1);
-  });
-  const avg = deltas.reduce((s, d) => s + d, 0) / deltas.length;
-  return { fps: 1000 / avg, p95: [...deltas].sort((a, b) => a - b)[Math.floor(deltas.length * 0.95)]!, worst: max(deltas), dropped: deltas.filter((d) => d > 25).length, frames: deltas.length };
-}
-
-async function dragSlowly(page: Page, from: { x: number; y: number }, to: { x: number; y: number }, back = true) {
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move(from.x + 8, from.y, { steps: 3 });
-  await page.mouse.move(to.x, to.y, { steps: 60 });
-  // Z powrotem na miejsce — upuszczenie bez zmiany danych.
-  if (back) await page.mouse.move(from.x, from.y, { steps: 60 });
-  await page.mouse.up();
-}
 
 test('10 000 zadań', async ({ page }) => {
   // 1. Pierwsza synchronizacja: pusta lokalna baza (nowy kontekst przeglądarki) → komplet danych.

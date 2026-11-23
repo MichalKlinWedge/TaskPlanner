@@ -16,6 +16,7 @@ import {
   nearestFreeCell,
   removeCanvasGroupOps,
   updateCanvasGroupOps,
+  zoomCanvasViewport,
 } from '../canvas.ts';
 import { canvasPosOf, moveTaskOps, reorderTaskTagOps } from '../tasks.ts';
 import { taskTagId } from '../ids.ts';
@@ -260,5 +261,23 @@ describe('zadania i karteczki', () => {
       { table: 'task_tags', id: taskTagId('T', 'y'), patch: { task_id: 'T', tag_id: 'y', sort_key: '0030' } },
     ]);
     expect(reorderTaskTagOps('T', ['x'], 0, 0)).toEqual([]);
+  });
+});
+
+describe('zoomCanvasViewport', () => {
+  const view = { zoom: 1, x: 100, y: 50 };
+  it('punkt pod kursorem stoi w miejscu', () => {
+    const next = zoomCanvasViewport(view, 2, { x: 300, y: 250 });
+    expect(next.zoom).toBe(2);
+    // Punkt tablicy (200, 200) był pod (300, 250) i nadal jest.
+    expect({ x: next.x + 200 * next.zoom, y: next.y + 200 * next.zoom }).toEqual({ x: 300, y: 250 });
+  });
+  it('szczypanie: powiększenie i przesunięcie razem ze środkiem palców', () => {
+    const next = zoomCanvasViewport(view, 1.5, { x: 300, y: 250 }, { x: 340, y: 230 });
+    expect({ x: next.x + 200 * next.zoom, y: next.y + 200 * next.zoom }).toEqual({ x: 340, y: 230 });
+  });
+  it('granice powiększenia', () => {
+    expect(zoomCanvasViewport(view, 100, { x: 0, y: 0 }).zoom).toBe(2);
+    expect(zoomCanvasViewport(view, 0.001, { x: 0, y: 0 }).zoom).toBe(0.25);
   });
 });

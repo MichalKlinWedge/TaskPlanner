@@ -23,6 +23,28 @@ export const CANVAS_CARD = { width: 180, height: 120, gap: 24 } as const;
 export const CANVAS_STEP = { x: CANVAS_CARD.width + CANVAS_CARD.gap, y: CANVAS_CARD.height + CANVAS_CARD.gap } as const;
 /** Powiększenie: zakres i progi. */
 export const CANVAS_ZOOM = { min: 0.25, max: 2, step: 1.2, /** poniżej — karty bez tekstu */ textMin: 0.5 } as const;
+/** Widok tablicy: powiększenie i położenie (0, 0) siatki w px względem lewego górnego rogu obszaru. */
+export interface CanvasViewport {
+  zoom: number;
+  x: number;
+  y: number;
+}
+
+export const clampCanvasZoom = (zoom: number): number => Math.min(CANVAS_ZOOM.max, Math.max(CANVAS_ZOOM.min, zoom));
+
+/**
+ * Powiększenie `ratio` razy z przesunięciem: punkt tablicy, który był pod `from` (px w obszarze),
+ * ląduje pod `to`. Kółko / przyciski: `from` = `to` (punkt pod kursorem stoi w miejscu); szczypanie
+ * dwoma palcami: `from` = środek palców na starcie, `to` = środek teraz, `ratio` = odległość teraz /
+ * na starcie (względem widoku ze startu gestu).
+ */
+export function zoomCanvasViewport(view: CanvasViewport, ratio: number, from: { x: number; y: number }, to: { x: number; y: number } = from): CanvasViewport {
+  const zoom = clampCanvasZoom(view.zoom * ratio);
+  const worldX = (from.x - view.x) / view.zoom;
+  const worldY = (from.y - view.y) / view.zoom;
+  return { zoom, x: to.x - worldX * zoom, y: to.y - worldY * zoom };
+}
+
 /** Kolor karteczki bez kolorowego tagu (żółta karteczka). */
 export const CANVAS_DEFAULT_COLOR = '#FACC15';
 /** Ile kart w rzędzie układa „Ułóż wszystkie”. */

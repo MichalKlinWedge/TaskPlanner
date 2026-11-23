@@ -8,6 +8,7 @@
     "browsers": "playwright install chromium",
     "test:e2e": "playwright test",
     "perf": "playwright test --config playwright.perf.config.ts",
+    "perf:canvas": "playwright test --config playwright.canvas-perf.config.ts",
     "test:mobile": "node maestro/run.ts"
   },
   "dependencies": {
