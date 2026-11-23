@@ -70,7 +70,8 @@ import {
   type ViewTask,
 } from "@taskplanner/core";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { listEditable } from "@/lib/app-data";
 import { useDependencies } from "@/lib/dependencies";
@@ -87,7 +88,7 @@ import { RecurrenceEditor } from "./recurrence-editor";
 import { TAG_CHIP, TagColorPicker, tagChipStyle } from "./tag-chip";
 import { TaskItem, useTaskActions } from "./task-item";
 import { PanelSection } from "./panel-section";
-import { Button, CommitInput, IconButton, Input, navLinkClass, Select } from "./ui";
+import { Button, CommitInput, IconButton, Input, inputClass, navLinkClass, Select } from "./ui";
 
 type Row = Record<string, string | number | null>;
 
@@ -1160,35 +1161,165 @@ function RemindersField({ task }: { task: ViewTask }) {
   );
 }
 
-/** Opis zadania w Markdown — w panelu i w trybie skupienia. */
-export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string; readOnly?: boolean }) {
-  const { store } = useAppEnv();
-  const { run } = useTaskActions();
-  const { rows, ms } = useLocalQuery<Row>(store, "select description_md from tasks where id = ?", [taskId], ["tasks"]);
-  const saved = (rows[0]?.description_md as string | null) ?? "";
+/** Tryb opisu zapamiętany na urządzeniu: tekst Markdown albo podgląd. */
+const DESCRIPTION_MODE_KEY = "tp-description-mode";
+
+const PREVIEW_CLASS =
+  "text-sm [&_.tiptap]:outline-none [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-4 [&_blockquote]:pl-3 [&_pre]:bg-black/10 [&_pre]:p-2 [&_code]:rounded [&_code]:bg-black/10 [&_code]:px-1 [&_h1]:mt-2 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-2 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-1 [&_h3]:font-semibold [&_a]:text-[var(--accent)] [&_a]:underline [&_hr]:my-2 [&_hr]:border-[var(--line)] [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_ul[data-type=taskList]_li]:flex [&_ul[data-type=taskList]_li]:items-start [&_ul[data-type=taskList]_li]:gap-2 [&_ul[data-type=taskList]_label]:mt-1.5 [&_ul[data-type=taskList]_p]:my-0.5 [&_li[data-checked=true]>div]:text-[var(--muted)] [&_li[data-checked=true]>div]:line-through";
+
+/** Markdown opisu wyrenderowany przez TipTap tylko do odczytu (ten sam GFM co wcześniej w edytorze). */
+function MarkdownPreview({ markdown, onEdit }: { markdown: string; onEdit?: () => void }) {
   const editor = useEditor({
     extensions: descriptionExtensions,
     content: "",
     immediatelyRender: false,
-    editable: !readOnly,
-    editorProps: { attributes: { "aria-label": "Opis zadania" } },
-    onBlur: ({ editor: e }) => {
-      const markdown = descriptionMarkdown(e).trim();
-      if (markdown !== saved.trim()) void run([{ table: "tasks", id: taskId, patch: { description_md: markdown || null } }]);
-    },
+    editable: false,
+    editorProps: { attributes: { "aria-label": "Podgląd opisu" } },
   });
   useEffect(() => {
-    if (editor && editor.isEditable === readOnly) editor.setEditable(!readOnly);
-  }, [editor, readOnly]);
-  // Treść z bazy, gdy edytor nie ma fokusu (zmiana z innego urządzenia nie przerywa pisania).
+    if (editor && descriptionMarkdown(editor).trim() !== markdown.trim()) editor.commands.setContent(markdown, { contentType: "markdown" });
+  }, [editor, markdown]);
+  return (
+    <div className={PREVIEW_CLASS} onDoubleClick={onEdit} title={onEdit ? "Dwuklik — edycja Markdown" : undefined} data-testid="description-preview">
+      {markdown.trim() ? <EditorContent editor={editor} /> : <p className="text-[var(--muted)]">Brak opisu.</p>}
+    </div>
+  );
+}
+
+/**
+ * Opis zadania w Markdown — w panelu i w trybie skupienia. Edycja = tekst źródłowy (GFM), przełącznik
+ * „Podgląd” pokazuje wynik, „⛶” otwiera opis na pełnym ekranie (Esc wraca). Zapis przy opuszczeniu pola.
+ */
+export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string; readOnly?: boolean }) {
+  const { store } = useAppEnv();
+  const { run } = useTaskActions();
+  const { rows } = useLocalQuery<Row>(store, "select description_md from tasks where id = ?", [taskId], ["tasks"]);
+  const saved = (rows[0]?.description_md as string | null) ?? "";
+  const [draft, setDraft] = useState(saved);
+  const [base, setBase] = useState(saved);
+  const [editing, setEditing] = useState(false);
+  const [full, setFull] = useState(false);
+  const [previewPref, setPreviewPref] = useState(() => {
+    try {
+      return localStorage.getItem(DESCRIPTION_MODE_KEY) === "preview";
+    } catch {
+      return false;
+    }
+  });
+  const preview = previewPref || readOnly;
+  // Treść z bazy, gdy nikt nie pisze (zmiana z innego urządzenia nie przerywa pisania).
+  if (!editing && saved !== base) {
+    setBase(saved);
+    setDraft(saved);
+  }
+
+  const latest = useRef({ draft, saved, readOnly, run });
   useEffect(() => {
-    if (!editor || ms === null || editor.isFocused) return;
-    if (descriptionMarkdown(editor).trim() !== saved.trim()) editor.commands.setContent(saved, { contentType: "markdown" });
-  }, [editor, saved, ms]);
+    latest.current = { draft, saved, readOnly, run };
+  });
+  const save = useCallback(() => {
+    const { draft: text, saved: stored, readOnly: locked, run: write } = latest.current;
+    const markdown = text.trim();
+    if (!locked && markdown !== stored.trim()) void write([{ table: "tasks", id: taskId, patch: { description_md: markdown || null } }]);
+  }, [taskId]);
+  // Zamknięcie panelu w trakcie pisania (bez `blur`) też zapisuje.
+  useEffect(() => save, [save]);
+
+  const setPreview = (value: boolean) => {
+    save();
+    setPreviewPref(value);
+    try {
+      localStorage.setItem(DESCRIPTION_MODE_KEY, value ? "preview" : "markdown");
+    } catch {
+      // Bez `localStorage` tryb zostaje tylko do przeładowania.
+    }
+  };
+  const closeFull = useCallback(() => {
+    save();
+    // Pole na pełnym ekranie znika z fokusem, bez `blur`.
+    setEditing(false);
+    setFull(false);
+  }, [save]);
+  useEffect(() => {
+    if (!full) return;
+    // Esc zamyka pełny ekran, a nie panel zadania (nasłuch w fazie przechwytywania).
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      closeFull();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [full, closeFull]);
+
+  const toolbar = (
+    <div className="flex items-center gap-1">
+      {readOnly ? null : (
+        <div className="inline-flex rounded-md border border-[var(--line)] p-0.5 text-xs" role="group" aria-label="Tryb opisu">
+          {([false, true] as const).map((p) => (
+            <button
+              key={String(p)}
+              type="button"
+              aria-pressed={preview === p}
+              onClick={() => setPreview(p)}
+              className={`rounded px-2 py-0.5 ${preview === p ? "bg-[var(--accent)] text-white" : "text-[var(--muted)] hover:bg-[var(--hover)]"}`}
+            >
+              {p ? "Podgląd" : "Markdown"}
+            </button>
+          ))}
+        </div>
+      )}
+      <span className="flex-1" />
+      {full ? (
+        <Button kind="ghost" className="text-xs" onClick={closeFull}>
+          ✕ Zamknij (Esc)
+        </Button>
+      ) : (
+        <IconButton label="Pełny ekran" onClick={() => setFull(true)}>
+          ⛶
+        </IconButton>
+      )}
+    </div>
+  );
+
+  const body = (fullScreen: boolean) =>
+    preview ? (
+      <div className={`rounded-md border border-[var(--line)] px-3 py-2 ${fullScreen ? "min-h-0 flex-1 overflow-auto" : "min-h-16"}`}>
+        <MarkdownPreview markdown={draft} onEdit={readOnly ? undefined : () => setPreview(false)} />
+      </div>
+    ) : (
+      <textarea
+        value={draft}
+        autoFocus={fullScreen}
+        onChange={(e) => setDraft(e.target.value)}
+        onFocus={() => setEditing(true)}
+        onBlur={() => {
+          save();
+          setEditing(false);
+        }}
+        spellCheck
+        aria-label="Opis zadania (Markdown)"
+        placeholder={"Opis w Markdown: **pogrubienie**, *kursywa*, - lista, - [ ] zadanie, [link](https://…), # nagłówek"}
+        className={`${inputClass} w-full font-mono text-[13px] leading-relaxed ${fullScreen ? "min-h-0 flex-1 resize-none" : "min-h-24 resize-y [field-sizing:content]"}`}
+        rows={fullScreen ? undefined : 4}
+      />
+    );
 
   return (
-    <div className="min-h-16 rounded-md border border-[var(--line)] px-3 py-2 text-sm focus-within:border-[var(--accent)] [&_.tiptap]:min-h-12 [&_.tiptap]:outline-none [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-4 [&_blockquote]:pl-3 [&_pre]:bg-black/10 [&_pre]:p-2 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_a]:text-[var(--accent)] [&_a]:underline [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_li[data-type=taskItem]]:flex [&_li[data-type=taskItem]]:gap-2">
-      <EditorContent editor={editor} />
+    <div className="flex flex-col gap-2">
+      {toolbar}
+      {full ? <p className="text-xs text-[var(--muted)]">Opis jest otwarty na pełnym ekranie.</p> : body(false)}
+      {full
+        ? createPortal(
+            <div className="fixed inset-0 z-50 flex flex-col bg-[var(--background)] p-4" role="dialog" aria-modal="true" aria-label="Opis zadania — pełny ekran" data-testid="description-full">
+              <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-3">
+                {toolbar}
+                {body(true)}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
