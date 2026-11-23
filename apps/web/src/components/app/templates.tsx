@@ -44,6 +44,17 @@ export function useProjectTemplates(store: TabStore): ProjectTemplate[] {
   return useMemo(() => rows.map(projectTemplateOf).sort((a, b) => compareText(a.name, b.name)), [rows]);
 }
 
+/** Ikona szablonu: kartka-wzór z liniami zadań na drugiej kartce (kolor akcentu). */
+function TemplateIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={`${className} text-[var(--accent)]`} aria-hidden focusable="false">
+      <rect x="8" y="2" width="13" height="16" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeDasharray="2.5 2" />
+      <rect x="3" y="6" width="13" height="16" rx="1.5" fill="currentColor" />
+      <path d="M6 11h7M6 14.5h7M6 18h4.5" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /** Przycisk w nagłówku projektu: nazwa szablonu (domyślnie nazwa projektu) → migawka projektu w `project_templates`. */
 export function SaveTemplateButton({ listId, listName }: { listId: string; listName: string }) {
   const { store } = useAppEnv();
@@ -72,9 +83,16 @@ export function SaveTemplateButton({ listId, listName }: { listId: string; listN
 
   if (name === null) {
     return (
-      <Button kind="ghost" className="text-xs" onClick={() => setName(listName)} title="Zadania, podzadania, tagi, przypomnienia i zależności z datami względnymi" data-testid="save-template">
+      <button
+        type="button"
+        className="inline-flex items-center gap-1.5 rounded-md border border-[var(--line)] px-2.5 py-1 text-xs hover:bg-black/5 dark:hover:bg-white/10"
+        onClick={() => setName(listName)}
+        title="Zadania, podzadania, tagi, przypomnienia i zależności z datami względnymi"
+        data-testid="save-template"
+      >
+        <TemplateIcon />
         Zapisz jako szablon
-      </Button>
+      </button>
     );
   }
   return (
