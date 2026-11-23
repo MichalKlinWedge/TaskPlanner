@@ -1,7 +1,7 @@
 /**
  * Widok „Karteczki” (v1.x): karteczka nie wchodzi na zajętą komórkę, karta z paska „Do ułożenia”
  * na tablicę, dwuklik dodaje karteczkę w komórce, kolejność tagów zmienia kolor, pełny ekran,
- * blokada edycji bez sieci. Dane listy z `global-setup.ts` (`canvasIds`).
+ * przełącznik „Tylko główne / Z podzadaniami”, blokada edycji bez sieci. Dane listy z `global-setup.ts` (`canvasIds`).
  */
 import type { Locator } from '@playwright/test';
 
@@ -114,6 +114,17 @@ test('karteczki: przesuwanie bez nachodzenia, pasek, dodawanie, kolor z tagu, pe
     await board.click({ position: { x: 10, y: 10 } });
     await page.keyboard.press('Escape');
     await expect(view).not.toHaveAttribute('data-full');
+  });
+
+  await test.step('„Z podzadaniami” pokazuje podzadanie, „Tylko główne” je ukrywa — bez zmiany jego komórki', async () => {
+    await expect(card(ids.second).getByTestId('canvas-subtasks')).toHaveText('↳ 0/1');
+    await expect(card(ids.sub)).toHaveCount(0);
+    await view.getByRole('radio', { name: 'Z podzadaniami' }).click();
+    await expect(card(ids.sub)).toBeVisible();
+    await expect(card(ids.sub).getByTestId('canvas-parent')).toContainText(E2E_CANVAS.second);
+    await view.getByRole('radio', { name: 'Tylko główne' }).click();
+    await expect(card(ids.sub)).toHaveCount(0);
+    expect((await server.task(E2E_CANVAS.sub))?.canvas_pos).toEqual({ col: -2, row: 3 });
   });
 
   await test.step('bez sieci edycja zablokowana', async () => {

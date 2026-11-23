@@ -8,7 +8,7 @@
  * Grupy (`lists.canvas_groups`) są tylko graficzne: prostokąty na siatce, karta „w grupie” to karta,
  * której komórka leży w prostokącie.
  */
-import { CanvasGroups, type CanvasGroup, type CanvasPos } from './schemas/model.ts';
+import { CanvasGroups, type CanvasGroup, type CanvasPos, type CanvasTasks } from './schemas/model.ts';
 import { uuidv7 } from './ids.ts';
 import type { Priority } from './schemas/primitives.ts';
 import type { TaskOp } from './tasks.ts';
@@ -97,6 +97,34 @@ function* ring(r: number): Generator<Cell> {
     yield { col: -r, row };
     yield { col: r, row };
   }
+}
+
+// ── Które zadania ───────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Zadania listy pokazywane jako karteczki: `top` (domyślnie) — tylko główne, `all` — także podzadania
+ * (każde na własnej karcie). Ukryte podzadania zachowują `canvas_pos` (bez zapisu) i nie zajmują
+ * komórek w `canvasLayout` — po przełączeniu na `all` ewentualną kolizję rozstrzyga `canvasLayout`.
+ */
+export function canvasTasks<T extends Pick<ViewTask, 'listId' | 'parentId'>>(tasks: readonly T[], listId: string, show: CanvasTasks = 'top'): T[] {
+  return tasks.filter((t) => t.listId === listId && (show === 'all' || !t.parentId));
+}
+
+/**
+ * Postęp podzadań na karcie rodzica (jak `progress` w widoku listy): rodzic → ukończone / wszystkie
+ * bezpośrednie podzadania, anulowane się nie liczą. `tasks` = wszystkie zadania (także ukończone
+ * ukryte przez „Ukończone”), żeby licznik nie zależał od filtra.
+ */
+export function canvasSubtaskProgress(tasks: readonly Pick<ViewTask, 'parentId' | 'status'>[]): Map<string, { done: number; total: number }> {
+  const out = new Map<string, { done: number; total: number }>();
+  for (const t of tasks) {
+    if (!t.parentId || t.status === 'cancelled') continue;
+    const entry = out.get(t.parentId) ?? { done: 0, total: 0 };
+    entry.total++;
+    if (t.status === 'done') entry.done++;
+    out.set(t.parentId, entry);
+  }
+  return out;
 }
 
 // ── Ułożenie ────────────────────────────────────────────────────────────────────────────────────

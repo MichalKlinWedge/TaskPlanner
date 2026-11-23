@@ -56,6 +56,12 @@ export const COMPLETED_MODE: Record<'hidden' | 'today' | 'all', string> = {
   all: 'Wszystkie ukończone',
 };
 
+/** Które zadania listy pokazują „Karteczki” (`view_prefs.canvasTasks`). */
+export const CANVAS_TASKS: Record<'top' | 'all', string> = {
+  top: 'Tylko główne',
+  all: 'Z podzadaniami',
+};
+
 /** Dodatkowe kolumny widoku listy, w kolejności wyświetlania. */
 export const LIST_COLUMN: Record<'assignee' | 'start' | 'due' | 'tags', string> = {
   assignee: 'Odpowiedzialny',

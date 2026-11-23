@@ -39,6 +39,8 @@ export default async function globalSetup(config: FullConfig) {
     { table: 'tasks', id: canvas.first, patch: { list_id: canvas.list, title: E2E_CANVAS.first, sort_key: 'a', priority: 1, assignee_id: canvas.person, canvas_pos: { col: 0, row: 0 } } },
     { table: 'tasks', id: canvas.second, patch: { list_id: canvas.list, title: E2E_CANVAS.second, sort_key: 'b', canvas_pos: { col: 1, row: 0 } } },
     { table: 'tasks', id: canvas.tray, patch: { list_id: canvas.list, title: E2E_CANVAS.tray, sort_key: 'c' } },
+    // Podzadanie z komórką: ukryte przy „Tylko główne” (domyślnie), widoczne przy „Z podzadaniami”.
+    { table: 'tasks', id: canvas.sub, patch: { list_id: canvas.list, parent_id: canvas.second, title: E2E_CANVAS.sub, sort_key: 'a', canvas_pos: { col: -2, row: 3 } } },
     { table: 'task_participants', id: participantId(canvas.first, canvas.participant), patch: { task_id: canvas.first, collaborator_id: canvas.participant } },
     { table: 'task_tags', id: uuidv5(`e2e:canvas:tt-blue:${account.id}`), patch: { task_id: canvas.first, tag_id: canvas.blue, sort_key: 'a' } },
     { table: 'task_tags', id: uuidv5(`e2e:canvas:tt-red:${account.id}`), patch: { task_id: canvas.first, tag_id: canvas.red, sort_key: 'b' } },
@@ -74,6 +76,7 @@ export const canvasIds = (userId: string) => ({
   first: uuidv5(`e2e:canvas:first:${userId}`),
   second: uuidv5(`e2e:canvas:second:${userId}`),
   tray: uuidv5(`e2e:canvas:tray:${userId}`),
+  sub: uuidv5(`e2e:canvas:sub:${userId}`),
   blue: uuidv5(`e2e:canvas:blue:${userId}`),
   red: uuidv5(`e2e:canvas:red:${userId}`),
   person: collaboratorId(userId, E2E_CANVAS.person),

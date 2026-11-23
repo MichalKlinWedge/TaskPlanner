@@ -66,6 +66,10 @@ export const CanvasGroups = z.array(CanvasGroup).max(100);
 export const ListColumn = z.enum(['assignee', 'start', 'due', 'tags']);
 export type ListColumn = z.infer<typeof ListColumn>;
 
+/** Zadania na „Karteczkach”: `top` = tylko główne (bez podzadań), `all` = wszystkie zadania listy. */
+export const CanvasTasks = z.enum(['top', 'all']);
+export type CanvasTasks = z.infer<typeof CanvasTasks>;
+
 /** `lists.view_prefs`: ustawienia widoku listy (M2). */
 export const ViewPrefs = z.object({
   /** `canvas` = „Karteczki” (v1.x, tylko web); nieznany tryb nie psuje reszty ustawień. */
@@ -81,6 +85,8 @@ export const ViewPrefs = z.object({
   columns: z.array(ListColumn).max(4).optional().catch(undefined),
   /** Tagi pokazywane w kolumnie „Tagi” (id); brak / pusto = wszystkie tagi zadania. */
   columnTags: z.array(Id).max(50).optional().catch(undefined),
+  /** „Karteczki”: tylko główne zadania (brak = `top`) albo wszystkie z podzadaniami; nieznana wartość pomijana. */
+  canvasTasks: CanvasTasks.optional().catch(undefined),
 });
 export type ViewPrefs = z.infer<typeof ViewPrefs>;
 

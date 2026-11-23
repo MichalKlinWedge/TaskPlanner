@@ -93,6 +93,8 @@ describe('lista', () => {
     const tag = '01900000-0000-7000-8000-000000000001';
     expect(ViewPrefs.parse({ columns: ['tags'], columnTags: [tag] })).toEqual({ columns: ['tags'], columnTags: [tag] });
     expect(ViewPrefs.parse({ sortBy: 'due', columnTags: ['x'] })).toEqual({ sortBy: 'due' });
+    expect(ViewPrefs.parse({ view: 'canvas', canvasTasks: 'all' })).toEqual({ view: 'canvas', canvasTasks: 'all' });
+    expect(ViewPrefs.parse({ view: 'canvas', canvasTasks: 'kolor' })).toEqual({ view: 'canvas' });
   });
 });
 

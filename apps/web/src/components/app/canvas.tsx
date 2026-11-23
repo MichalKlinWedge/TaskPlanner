@@ -19,7 +19,10 @@ import {
   canvasLayout,
   canvasMoveOps,
   canvasPlaceOps,
+  canvasSubtaskProgress,
+  canvasTasks,
   canvasUnplaceOps,
+  CANVAS_TASKS,
   cellInGroup,
   clampCanvasZoom,
   cellKey,
@@ -35,6 +38,7 @@ import {
   withCompleted,
   zoomCanvasViewport,
   type CanvasCell,
+  type CanvasTasks,
   type CanvasViewport,
   type CanvasGroup,
   type TaskOp,
@@ -163,36 +167,45 @@ const far = (dx: number, dy: number) => Math.abs(dx) > MOVE_THRESHOLD || Math.ab
 
 export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContext; list: List }) {
   const { store, openTask, selectedIds, select } = useAppEnv();
-  const { run } = useTaskActions();
+  const { run, notify } = useTaskActions();
   const online = useOnline();
   const canEdit = listEditable(data, list.id);
   const editable = canEdit && online;
 
+  // „Tylko główne / Z podzadaniami” — `view_prefs.canvasTasks` listy (jak „Ukończone”); na liście
+  // tylko do odczytu (gość bez edycji nie zapisze preferencji) wybór trzyma sama karta przeglądarki.
+  const [localShow, setLocalShow] = useState<CanvasTasks | null>(null);
+  const show: CanvasTasks = (canEdit ? null : localShow) ?? list.prefs.canvasTasks ?? "top";
+  const setShow = (next: CanvasTasks) => {
+    if (!canEdit) return setLocalShow(next);
+    const prefs = { ...list.prefs };
+    delete prefs.canvasTasks;
+    if (next !== "top") prefs.canvasTasks = next;
+    void store.mutate("lists", list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
+  };
+
   const cards = useMemo(
-    () => withCompleted(data.tasks.filter((t) => t.listId === list.id && !t.parentId), list.prefs.completed ?? "today", ctx),
-    [data.tasks, list.id, list.prefs.completed, ctx],
+    () => withCompleted(canvasTasks(data.tasks, list.id, show), list.prefs.completed ?? "today", ctx),
+    [data.tasks, list.id, show, list.prefs.completed, ctx],
   );
   const layout = useMemo(() => canvasLayout(cards), [cards]);
   const groups = list.canvasGroups;
   const tagsById = useMemo(() => new Map(data.tags.map((t) => [t.id, t])), [data.tags]);
-  const childCount = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const t of data.tasks) if (t.parentId) counts.set(t.parentId, (counts.get(t.parentId) ?? 0) + 1);
-    return counts;
-  }, [data.tasks]);
+  const subtasks = useMemo(() => canvasSubtaskProgress(data.tasks), [data.tasks]);
+  const titles = useMemo(() => new Map(data.tasks.map((t) => [t.id, t.title])), [data.tasks]);
 
   // Osoby na karcie: odpowiedzialny (pełny znaczek) i uczestnicy (obrys) — te same obiekty między
   // przerysowaniami, żeby `memo` kart działało.
   const people = useMemo(() => {
     const map = new Map<string, { assignee: Collaborator | null; participants: Collaborator[] }>();
     for (const t of data.tasks) {
-      if (t.parentId) continue;
+      if (t.listId !== list.id) continue;
       const assignee = assigneeOf(t.assigneeId, data.collaborators);
       const participants = (data.participants.get(t.id) ?? []).filter((id) => id !== t.assigneeId).flatMap((id) => assigneeOf(id, data.collaborators) ?? []);
       if (assignee || participants.length) map.set(t.id, { assignee, participants });
     }
     return map;
-  }, [data.tasks, data.collaborators, data.participants]);
+  }, [data.tasks, list.id, data.collaborators, data.participants]);
 
   const box = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<Viewport>(() => loadViewport(list.id));
@@ -623,6 +636,21 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
         <Button className="py-1 text-xs" disabled={!editable} onClick={groupAround} title={selected.size ? "Ramka wokół zaznaczonych karteczek" : "Nowa ramka na środku widoku"}>
           ▢ Grupuj
         </Button>
+        <div className="flex overflow-hidden rounded-md border border-[var(--line)]" role="radiogroup" aria-label="Zadania na karteczkach" data-testid="canvas-show">
+          {(Object.keys(CANVAS_TASKS) as CanvasTasks[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="radio"
+              aria-checked={show === k}
+              onClick={() => setShow(k)}
+              className={`px-2 py-1 ${show === k ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--hover)]"}`}
+              title={k === "top" ? "Karteczki tylko dla zadań głównych (podzadania jako licznik na karcie)" : "Każde podzadanie na własnej karteczce"}
+            >
+              {CANVAS_TASKS[k]}
+            </button>
+          ))}
+        </div>
         <span className="flex-1 lg:hidden" />
         {/* Podstawa 0: podpowiedź wypełnia wolne miejsce i skraca się, zamiast zawijać pasek. */}
         <span
@@ -727,7 +755,9 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
                   selected={selected.has(p.task.id)}
                   color={canvasColorTag(p.task, tagsById)?.color ?? CANVAS_DEFAULT_COLOR}
                   people={people.get(p.task.id) ?? NO_PEOPLE}
-                  childCount={childCount.get(p.task.id) ?? 0}
+                  subtasksDone={subtasks.get(p.task.id)?.done ?? 0}
+                  subtasksTotal={subtasks.get(p.task.id)?.total ?? 0}
+                  parentTitle={p.task.parentId ? (titles.get(p.task.parentId) ?? "") : null}
                   showText={showText}
                   offset={offset}
                   editable={editable}
@@ -862,7 +892,9 @@ const Card = memo(function Card({
   selected,
   color,
   people,
-  childCount,
+  subtasksDone,
+  subtasksTotal,
+  parentTitle,
   showText,
   offset,
   editable,
@@ -875,7 +907,11 @@ const Card = memo(function Card({
   selected: boolean;
   color: string;
   people: { assignee: Collaborator | null; participants: readonly Collaborator[] };
-  childCount: number;
+  /** Postęp podzadań: ukończone / wszystkie (liczby, nie obiekt — `memo` porównuje płytko). */
+  subtasksDone: number;
+  subtasksTotal: number;
+  /** Tytuł rodzica, gdy karta jest podzadaniem (tryb „Z podzadaniami”). */
+  parentTitle: string | null;
   showText: boolean;
   offset: { x: number; y: number } | null;
   editable: boolean;
@@ -890,9 +926,9 @@ const Card = memo(function Card({
       data-task-id={task.id}
       data-clipped={fit?.clipped || undefined}
       role="button"
-      aria-label={`${task.title} — ${PRIORITY[task.priority].label.toLowerCase()} priorytet${people.assignee ? `, ${people.assignee.name}` : ""}`}
+      aria-label={`${task.title}${parentTitle !== null ? ` (podzadanie „${parentTitle}”)` : ""} — ${PRIORITY[task.priority].label.toLowerCase()} priorytet${people.assignee ? `, ${people.assignee.name}` : ""}`}
       aria-pressed={selected}
-      title={`${task.title}${displaced ? "\n(pokazana obok — ktoś położył kartę w tym samym miejscu)" : ""}`}
+      title={`${task.title}${parentTitle !== null ? `\nPodzadanie: „${parentTitle}”` : ""}${displaced ? "\n(pokazana obok — ktoś położył kartę w tym samym miejscu)" : ""}`}
       className={`absolute flex select-none flex-col overflow-hidden rounded-[3px] shadow-sm transition-shadow ${editable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${selected ? "z-10 shadow-md outline outline-2 outline-offset-2 outline-[var(--accent)]" : ""} ${offset ? "z-20 opacity-80 shadow-xl" : ""} ${closed ? "opacity-50" : ""}`}
       style={{
         left: cell.col * CANVAS_STEP.x,
@@ -921,7 +957,16 @@ const Card = memo(function Card({
         <div className="flex-1" />
       )}
       <div className="flex h-6 shrink-0 items-center gap-1 text-[11px] text-[var(--muted)]">
-        {childCount && showText ? <span title={`Podzadania: ${childCount}`}>↳ {childCount}</span> : null}
+        {parentTitle !== null && showText ? (
+          <span className="min-w-0 truncate" title={`Podzadanie: „${parentTitle}”`} data-testid="canvas-parent">
+            ↑ {parentTitle}
+          </span>
+        ) : null}
+        {subtasksTotal && showText ? (
+          <span className="shrink-0 tabular-nums" title={`Podzadania: ukończone ${subtasksDone} z ${subtasksTotal}`} data-testid="canvas-subtasks">
+            ↳ {subtasksDone}/{subtasksTotal}
+          </span>
+        ) : null}
         <span className="flex-1" />
         {showText
           ? people.participants.slice(0, MAX_PARTICIPANTS).map((person) => (

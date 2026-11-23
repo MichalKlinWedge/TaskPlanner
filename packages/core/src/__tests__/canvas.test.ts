@@ -9,6 +9,8 @@ import {
   canvasLayout,
   canvasMoveOps,
   canvasPlaceOps,
+  canvasSubtaskProgress,
+  canvasTasks,
   canvasUnplaceOps,
   cellInGroup,
   cellKey,
@@ -21,11 +23,49 @@ import {
 } from '../canvas.ts';
 import { canvasPosOf, moveTaskOps, reorderTaskTagOps } from '../tasks.ts';
 import { taskTagId } from '../ids.ts';
+import type { TaskStatus } from '../schemas/primitives.ts';
 
 const card = (id: string, col?: number, row?: number, sortKey = id) => ({ id, sortKey, canvasPos: col === undefined ? null : { col, row: row! } });
 const occupied = (...cells: [number, number][]) => new Set(cells.map(([col, row]) => cellKey({ col, row })));
 const G1 = '00000000-0000-4000-8000-0000000000a1';
 const G2 = '00000000-0000-4000-8000-0000000000a2';
+
+describe('canvasTasks / canvasSubtaskProgress', () => {
+  const task = (id: string, listId: string, parentId: string | null, status: TaskStatus = 'todo', col?: number) => ({ ...card(id, col, 0), listId, parentId, status });
+  const tasks = [
+    task('a', 'L', null, 'todo', 0),
+    task('a1', 'L', 'a', 'done', 0),
+    task('a2', 'L', 'a', 'todo'),
+    task('a3', 'L', 'a', 'cancelled'),
+    task('a1x', 'L', 'a1', 'done'),
+    task('b', 'L', null, 'todo', 1),
+    task('c', 'M', null, 'todo', 0),
+  ];
+
+  it('domyślnie tylko główne zadania listy, „all” — także podzadania', () => {
+    expect(canvasTasks(tasks, 'L').map((t) => t.id)).toEqual(['a', 'b']);
+    expect(canvasTasks(tasks, 'L', 'top').map((t) => t.id)).toEqual(['a', 'b']);
+    expect(canvasTasks(tasks, 'L', 'all').map((t) => t.id)).toEqual(['a', 'a1', 'a2', 'a3', 'a1x', 'b']);
+  });
+
+  it('ukryte podzadanie nie zajmuje komórki; po pokazaniu kolizję rozstrzyga canvasLayout', () => {
+    const top = canvasLayout(canvasTasks(tasks, 'L', 'top'));
+    expect(top.placed.map((p) => p.task.id)).toEqual(['a', 'b']);
+    expect(top.tray).toEqual([]);
+    const all = canvasLayout(canvasTasks(tasks, 'L', 'all'));
+    // „a1” leży w tej samej komórce co „a” (0, 0) — „a” (mniejsze id) ją zatrzymuje, „a1” obok bez zapisu.
+    expect(all.placed.find((p) => p.task.id === 'a')).toMatchObject({ cell: { col: 0, row: 0 }, displaced: false });
+    expect(all.placed.find((p) => p.task.id === 'a1')).toMatchObject({ displaced: true });
+    expect(all.tray.map((t) => t.id)).toEqual(['a1x', 'a2', 'a3']);
+  });
+
+  it('postęp: bezpośrednie podzadania, anulowane się nie liczą', () => {
+    const progress = canvasSubtaskProgress(tasks);
+    expect(progress.get('a')).toEqual({ done: 1, total: 2 });
+    expect(progress.get('a1')).toEqual({ done: 1, total: 1 });
+    expect(progress.has('b')).toBe(false);
+  });
+});
 
 describe('nearestFreeCell', () => {
   it('wolna komórka — ta sama', () => {
