@@ -10,6 +10,7 @@
  *      sprawdzenie na **bieżącym** stanie: reguła, połączenie aktywne, dostęp właściciela reguły do zadania,
  *      zadanie nie w koszu, zdarzenia policzone od nowa (cofnięte w oknie = pominięte) → ładunek → `deliver()`
  *      pluginu → wynik: wysłane / ponowienie / błąd / połączenie wyłączone,
+ *      → po wysłaniu zmiana zadania z reguły (`options.afterSend` → `plugin_after_send`, uwaga w historii),
  *   3. okno kończy się za chwilę (≤ 45 s, w budżecie) — przebieg czeka i wysyła sam (cron co minutę to zabezpieczenie).
  * Gwarancja „co najmniej raz”: id wysyłki jako `Idempotency-Key` u odbiorcy.
  */
@@ -30,7 +31,7 @@ import {
 } from '../../../../packages/core/src/plugins/dispatch.ts';
 import { PLUGIN_EVENTS, PluginTaskState, type PluginEvent } from '../../../../packages/core/src/plugins/events.ts';
 import { PluginTaskData, pluginPayload, requestDeliveryId, retryDelaySec, taskUrl } from '../../../../packages/core/src/plugins/payload.ts';
-import { parsePluginRule, type PluginRule } from '../../../../packages/core/src/plugins/rules.ts';
+import { afterSendArgs, isEmptyAfterSend, parsePluginRule, type PluginRule } from '../../../../packages/core/src/plugins/rules.ts';
 import { renderActionFields } from '../../../../packages/core/src/plugins/template.ts';
 import type { LocalDate } from '../../../../packages/core/src/schemas/primitives.ts';
 import type { DeliveryResult, NetDeps, PluginRuntime } from './types.ts';
@@ -158,7 +159,9 @@ async function queueRequests(deps: EngineDeps, rows: OutboxRow[], now: string): 
   const ruleIds = [...new Set(requests.map((r) => String(r.after?.rule_id ?? '')).filter(Boolean))];
   const rules = new Map<string, RuleRow>();
   for (const r of check(await db.from('plugin_rules').select(RULE_COLUMNS).in('id', ruleIds), 'plugin_rules') as RuleRow[]) rules.set(r.id, r);
-  const deliveries = requests.map((row) => {
+  // Reguły już nie ma w bazie (np. konto usunięte razem z regułami i prośbami, zanim kolejka doszła do
+  // wiersza) — nie ma komu zapisać wysyłki: wstawienie złamałoby `user_id` FK i zablokowało całą porcję.
+  const deliveries = requests.filter((row) => rules.has(String(row.after!.rule_id))).map((row) => {
     const ruleId = String(row.after!.rule_id);
     const rule = rules.get(ruleId);
     const problem = !rule || rule.deleted_at || rule.scope_id !== row.scope_id ? 'Reguła usunięta' : !rule.enabled ? 'Reguła wyłączona' : null;
@@ -175,6 +178,7 @@ async function queueRequests(deps: EngineDeps, rows: OutboxRow[], now: string): 
       next_attempt_at: now,
     };
   });
+  if (!deliveries.length) return 0;
   const inserted = check(await db.from('plugin_deliveries').upsert(deliveries, { onConflict: 'id', ignoreDuplicates: true }).select('id'), 'plugin_deliveries') as { id: string }[] | null;
   return inserted?.length ?? 0;
 }
@@ -352,7 +356,8 @@ async function settle(deps: EngineDeps, d: DeliveryRow, result: DeliveryResult, 
     return 'skipped';
   }
   if (result.ok) {
-    await finish(deps, d.id, { ...extra, status: 'sent', sent_at: now.toISOString(), error: null, http_status: result.httpStatus ?? null, external_id: result.externalId ?? null, external_url: result.externalUrl ?? null });
+    // `extra.error` = uwaga z kroku „po wysyłce” (wysyłka i tak udana).
+    await finish(deps, d.id, { error: null, ...extra, status: 'sent', sent_at: now.toISOString(), http_status: result.httpStatus ?? null, external_id: result.externalId ?? null, external_url: result.externalUrl ?? null });
     if (connectionId) await deps.db.from('plugin_connections').update({ last_used_at: now.toISOString() }).eq('id', connectionId);
     return 'sent';
   }
@@ -384,14 +389,13 @@ export async function deliverOne(deps: EngineDeps, d: DeliveryRow): Promise<Outc
     const rule = check(await db.from('plugin_rules').select(RULE_COLUMNS).eq('id', d.rule_id).maybeSingle(), 'plugin_rules') as RuleRow | null;
     if (!rule || rule.deleted_at) return await skip(deps, d, 'Reguła usunięta');
     let event: EventCheck | null = null;
-    let options: PluginRule['options'] = {};
+    const parsed = parsePluginRule(rule as unknown as Record<string, unknown>);
+    const options: PluginRule['options'] = parsed?.options ?? {};
     if (d.source === 'event') {
-      const parsed = parsePluginRule(rule as unknown as Record<string, unknown>);
       if (!parsed || !parsed.enabled || parsed.trigger.kind !== 'event') return await skip(deps, d, 'Reguła wyłączona albo zmieniona');
       const result = await recheck(deps, d, parsed);
       if (typeof result === 'string') return await skip(deps, d, result);
       event = result;
-      options = parsed.options;
     }
     const connection = check(await db.from('plugin_connections').select('id, user_id, plugin, label, config, status, deleted_at').eq('id', d.connection_id).maybeSingle(), 'plugin_connections') as ConnectionRow | null;
     if (!connection || connection.deleted_at || connection.user_id !== d.user_id) return await skip(deps, d, 'Połączenie usunięte');
@@ -447,11 +451,26 @@ export async function deliverOne(deps: EngineDeps, d: DeliveryRow): Promise<Outc
         'plugin_links upsert',
       );
     }
-    return await settle(deps, d, result, { payload, events }, connection.id);
+    const note = result.ok && !result.skipped ? await afterSend(deps, d, options) : null;
+    return await settle(deps, d, result, { payload, events, ...(note && { error: note }) }, connection.id);
   } catch (error) {
     deps.log?.(`wysyłka ${d.id}`, error);
     return settle(deps, d, { ok: false, retryable: true, error: `Błąd serwera: ${(error as Error).message}` }, {}, null).catch(() => 'failed' as const);
   }
+}
+
+/**
+ * Zmiana zadania z reguły po udanej wysyłce. Błąd nie psuje wysyłki — wraca jako uwaga do historii.
+ * Powtórzenie (przerwany przebieg wysyła drugi raz) nic nie zmienia: te same tagi i status.
+ */
+async function afterSend(deps: EngineDeps, d: DeliveryRow, options: PluginRule['options']): Promise<string | null> {
+  if (isEmptyAfterSend(options.afterSend) || !d.task_id) return null;
+  const { data, error } = await deps.db.rpc('plugin_after_send', { p_user: d.user_id, p_task: d.task_id, ...afterSendArgs(d.task_id, options.afterSend!) });
+  if (error) {
+    deps.log?.(`po wysyłce ${d.id}`, error);
+    return `Po wysyłce: nie udało się zmienić zadania (${error.message})`.slice(0, 1000);
+  }
+  return typeof data === 'string' ? data : null;
 }
 
 // ── Przebieg ─────────────────────────────────────────────────────────────────────────────────

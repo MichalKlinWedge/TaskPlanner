@@ -2,12 +2,15 @@
 
 /**
  * Ustawienia → „Integracje” (M21, etapy I1–I3): połączenia z usługami zewnętrznymi (Webhook, GitLab), reguły
- * ręczne („Wyślij do…”) i zdarzeniowe (zdarzenia + filtr + opóźnienie) z szablonem treści i podglądem ładunku,
- * historia wysyłek z „Ponów”. Połączenia zmienia Edge Function `plugins`
+ * ręczne („Wyślij do…”) i zdarzeniowe (zdarzenia + filtr + opóźnienie) z szablonem treści i podglądem ładunku
+ * oraz zmianą zadania po udanej wysyłce (tagi, status), historia wysyłek z „Ponów” (zwijana, 10 ostatnich; całość
+ * z filtrami na ekranie `#/deliveries` — `DeliveryLogScreen`). Połączenia zmienia Edge Function `plugins`
  * (online; sekret idzie od razu do Vault i nie da się go potem odczytać), reguły zapisują się lokalnie
  * (offline też), historia jest na serwerze (`plugin_deliveries`, tylko odczyt — wymaga sieci).
  */
 import {
+  afterSendSummary,
+  compareText,
   DEFAULT_DELAY_SEC,
   DELIVERY_STATUS,
   generateSecret,
@@ -24,6 +27,7 @@ import {
   RULE_EVENTS,
   rulePreview,
   SAMPLE_TASK,
+  TASK_STATUS,
   TEMPLATE_FIELDS,
   viewTaskData,
   type FilterQuery,
@@ -33,6 +37,7 @@ import {
   type PluginTaskData,
   type PluginTrigger,
   type RuleEvent,
+  type TaskStatus,
 } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -92,8 +97,7 @@ export function PluginsCard({ store, userId }: { store: TabStore; userId: string
       <h3 className="mb-2 mt-5 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Reguły</h3>
       <Rules store={store} userId={userId} rules={rules} connections={connections} setMessage={setMessage} />
 
-      <h3 className="mb-2 mt-5 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Historia wysyłek</h3>
-      <Deliveries rules={rules} connections={connections} />
+      <DeliveriesSection rules={rules} connections={connections} />
     </Card>
   );
 }
@@ -284,6 +288,10 @@ interface RuleDraftState {
   filter: FilterQuery;
   delaySec: number;
   includeIntegrations: boolean;
+  /** Po udanej wysyłce: tagi dodane / zdjęte, status (`""` = bez zmiany). */
+  addTagIds: string[];
+  removeTagIds: string[];
+  status: TaskStatus | "";
 }
 
 /** Opóźnienie wysyłki reguły zdarzeniowej (s) do wyboru. */
@@ -309,6 +317,9 @@ const draftOf = (r: PluginRule): RuleDraftState => ({
   filter: r.trigger.kind === "event" ? (r.trigger.filter ?? {}) : {},
   delaySec: r.options.delaySec ?? DEFAULT_DELAY_SEC,
   includeIntegrations: !!r.options.includeIntegrations,
+  addTagIds: r.options.afterSend?.addTagIds ?? [],
+  removeTagIds: r.options.afterSend?.removeTagIds ?? [],
+  status: r.options.afterSend?.status ?? "",
 });
 
 const triggerOf = (d: RuleDraftState): PluginTrigger =>
@@ -335,6 +346,8 @@ function Rules({
   setMessage: (m: Message) => void;
 }) {
   const [draft, setDraft] = useState<RuleDraftState | null>(null);
+  const { data } = useAppEnv();
+  const tagName = (id: string) => data.tags.find((t) => t.id === id)?.name;
   const connection = (id: string) => connections.find((c) => c.id === id);
   const write = (ops: Parameters<TabStore["mutateMany"]>[0], ok?: string) =>
     store.mutateMany(ops).then(
@@ -352,7 +365,10 @@ function Rules({
       enabled: draft.enabled,
       trigger: triggerOf(draft),
       action: draft.action,
-      options: draft.kind === "event" ? { delaySec: draft.delaySec, ...(draft.includeIntegrations && { includeIntegrations: true }) } : {},
+      options: {
+        ...(draft.kind === "event" && { delaySec: draft.delaySec, ...(draft.includeIntegrations && { includeIntegrations: true }) }),
+        afterSend: { addTagIds: draft.addTagIds, removeTagIds: draft.removeTagIds, ...(draft.status && { status: draft.status }) },
+      },
     });
     if (!result.ok) return setMessage({ tone: "error", text: result.error });
     const ok = draft.id ? "Reguła zapisana." : draft.kind === "event" ? "Reguła dodana — wysyła sama, gdy zajdzie zdarzenie." : "Reguła dodana — jest w „Wyślij do…”.";
@@ -376,6 +392,7 @@ function Rules({
                 <span className="text-xs text-[var(--muted)]">
                   → {c ? c.label : "połączenie usunięte"}
                   {c && c.status !== "active" ? ` (${PLUGIN_CONNECTION_STATUS[c.status]})` : ""} · {triggerSummary(r)}
+                  {afterSendSummary(r.options.afterSend, tagName) ? ` · ${afterSendSummary(r.options.afterSend, tagName)}` : ""}
                 </span>
                 <span className="ml-auto flex gap-1">
                   <Button kind="ghost" onClick={() => setDraft(draftOf(r))}>
@@ -435,6 +452,7 @@ function Rules({
               />
             </Field>
           ))}
+          <AfterSendFields draft={draft} setDraft={setDraft} />
           {def ? <RulePreview draft={draft} def={def} /> : null}
           <div className="flex gap-2">
             <Button type="submit" kind="primary">
@@ -459,6 +477,9 @@ function Rules({
               filter: {},
               delaySec: DEFAULT_DELAY_SEC,
               includeIntegrations: false,
+              addTagIds: [],
+              removeTagIds: [],
+              status: "",
             })
           }
         >
@@ -503,6 +524,62 @@ function EventFields({ draft, setDraft }: { draft: RuleDraftState; setDraft: (d:
         Także zadania z integracji (e-mail, kalendarz)
       </label>
     </>
+  );
+}
+
+/** Lista tagów jako „chipy” z ✕ i wyborem kolejnego (tylko własne tagi). */
+function TagIdsField({ label, value, exclude, onChange }: { label: string; value: string[]; exclude: string[]; onChange: (ids: string[]) => void }) {
+  const { data } = useAppEnv();
+  const own = useMemo(() => data.tags.filter((t) => !t.shared).sort((a, b) => compareText(a.name, b.name)), [data.tags]);
+  const name = (id: string) => data.tags.find((t) => t.id === id)?.name ?? "(usunięty tag)";
+  const free = own.filter((t) => !value.includes(t.id) && !exclude.includes(t.id));
+  return (
+    // Nie `Field` (`<label>`): klik w podpis „kliknąłby” pierwszy ✕.
+    <div className="flex flex-col gap-1 text-sm">
+      <span className="font-medium">{label}</span>
+      <div className="flex flex-wrap items-center gap-1">
+        {value.map((id) => (
+          <span key={id} className="inline-flex items-center gap-1 rounded-full bg-[var(--hover)] px-2 py-0.5 text-xs">
+            #{name(id)}
+            <button type="button" aria-label={`Usuń tag ${name(id)} z listy „${label}”`} onClick={() => onChange(value.filter((x) => x !== id))} className="text-[var(--muted)]">
+              ✕
+            </button>
+          </span>
+        ))}
+        <Select value="" onChange={(e) => e.target.value && onChange([...value, e.target.value])} aria-label={label} className="w-auto">
+          <option value="">{free.length ? "+ tag…" : "brak tagów do wyboru"}</option>
+          {free.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </Select>
+      </div>
+    </div>
+  );
+}
+
+/** Zmiana zadania po udanej wysyłce (serwer, `plugin_after_send`). */
+function AfterSendFields({ draft, setDraft }: { draft: RuleDraftState; setDraft: (d: RuleDraftState) => void }) {
+  return (
+    <fieldset className="space-y-2 rounded-md border border-[var(--line)] p-2">
+      <legend className="px-1 text-xs font-medium">Po udanej wysyłce zmień zadanie</legend>
+      <TagIdsField label="Dodaj tagi" value={draft.addTagIds} exclude={draft.removeTagIds} onChange={(addTagIds) => setDraft({ ...draft, addTagIds })} />
+      <TagIdsField label="Zdejmij tagi" value={draft.removeTagIds} exclude={draft.addTagIds} onChange={(removeTagIds) => setDraft({ ...draft, removeTagIds })} />
+      <Field label="Ustaw status">
+        <Select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as RuleDraftState["status"] })}>
+          <option value="">bez zmiany</option>
+          {(Object.keys(TASK_STATUS) as TaskStatus[]).map((s) => (
+            <option key={s} value={s}>
+              {TASK_STATUS[s]}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <p className="text-xs text-[var(--muted)]">
+        Zmienia serwer zaraz po wysłaniu (także z „Wyślij do…”) — zadanie musi być do edycji. Taka zmiana liczy się jak z integracji: reguły zdarzeniowe bez „Także zadania z integracji” jej nie widzą, więc nie ma pętli. Status „Gotowe” / „Anulowane” nie zmienia zadania cyklicznego.
+      </p>
+    </fieldset>
   );
 }
 
@@ -588,9 +665,13 @@ interface DeliveryRow {
   id: string;
   rule_id: string | null;
   connection_id: string | null;
+  task_id: string | null;
+  source: string;
+  events: string[] | null;
   status: keyof typeof DELIVERY_STATUS;
   attempts: number;
   next_attempt_at: string | null;
+  http_status: number | null;
   error: string | null;
   created_at: string;
   sent_at: string | null;
@@ -598,37 +679,122 @@ interface DeliveryRow {
   external_url: string | null;
 }
 
+const DELIVERY_COLUMNS = "id, rule_id, connection_id, task_id, source, events, status, attempts, next_attempt_at, http_status, error, created_at, sent_at, external_url, title:payload->task->>title";
 const RETRYABLE = new Set(["failed", "dead", "skipped"]);
 const TONE: Record<"muted" | "ok" | "error", string> = {
   muted: "text-[var(--muted)]",
   ok: "text-green-700 dark:text-green-300",
   error: "text-red-700 dark:text-red-300",
 };
+const SOURCE: Record<string, string> = { manual: "„Wyślij do…”", event: "zdarzenie", schedule: "harmonogram" };
 
-function Deliveries({ rules, connections }: { rules: PluginRule[]; connections: PluginConnection[] }) {
+interface DeliveryFilter {
+  connectionId?: string;
+  status?: keyof typeof DELIVERY_STATUS;
+}
+
+/**
+ * Ostatnie wysyłki z serwera: limit w zapytaniu (o jeden wiersz więcej, żeby wiedzieć, czy jest „więcej”),
+ * filtr po połączeniu i stanie. Historia jest tylko na serwerze (RLS: własne wysyłki, retencja 30 dni).
+ */
+function useDeliveries(limit: number, filter: DeliveryFilter = {}) {
   const [rows, setRows] = useState<DeliveryRow[] | null>(null);
+  const [more, setMore] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { connectionId, status } = filter;
 
   const load = useCallback(async () => {
-    const { data, error } = await supabaseBrowser()
-      .from("plugin_deliveries")
-      .select("id, rule_id, connection_id, status, attempts, next_attempt_at, error, created_at, sent_at, external_url, title:payload->task->>title")
-      .order("created_at", { ascending: false })
-      .limit(30);
-    if (error) setProblem(navigator.onLine ? `Nie udało się wczytać historii: ${error.message}` : "Historia jest na serwerze — wczyta się po powrocie sieci.");
-    else {
-      setProblem(null);
-      setRows(data as unknown as DeliveryRow[]);
+    let query = supabaseBrowser().from("plugin_deliveries").select(DELIVERY_COLUMNS);
+    if (connectionId) query = query.eq("connection_id", connectionId);
+    if (status) query = query.eq("status", status);
+    const { data, error } = await query.order("created_at", { ascending: false }).limit(limit + 1);
+    if (error) {
+      setProblem(navigator.onLine ? `Nie udało się wczytać historii: ${error.message}` : "Historia jest na serwerze — wczyta się po powrocie sieci.");
+      return;
     }
-  }, []);
+    const all = (data ?? []) as unknown as DeliveryRow[];
+    setProblem(null);
+    setMore(all.length > limit);
+    setRows(all.slice(0, limit));
+  }, [limit, connectionId, status]);
 
   useEffect(() => {
-    // Wczytanie przy pokazaniu karty (zapytanie do serwera, nie do lokalnej bazy).
+    // Wczytanie przy pokazaniu (zapytanie do serwera, nie do lokalnej bazy) i po zmianie filtra / limitu.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 
+  return { rows, more, problem, setProblem, load };
+}
+
+/** Lista wysyłek; `detailed` = ekran historii (próby, HTTP, zdarzenia, pełny błąd, zadanie). */
+function DeliveryList({
+  rows,
+  rules,
+  connections,
+  busy,
+  onRetry,
+  detailed = false,
+}: {
+  rows: DeliveryRow[];
+  rules: PluginRule[];
+  connections: PluginConnection[];
+  busy: boolean;
+  onRetry: (id: string) => void;
+  detailed?: boolean;
+}) {
+  const { openTask } = useAppEnv();
+  const ruleName = (id: string | null) => rules.find((r) => r.id === id)?.name;
+  const connectionLabel = (id: string | null) => connections.find((c) => c.id === id)?.label;
+  return (
+    <ul className="divide-y divide-[var(--line)] rounded-md border border-[var(--line)]">
+      {rows.map((d) => {
+        const status = DELIVERY_STATUS[d.status] ?? { label: d.status, tone: "muted" as const };
+        return (
+          <li key={d.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 p-2 text-sm">
+            <span className={`text-xs font-medium ${TONE[status.tone]}`}>{status.label}</span>
+            <span className="min-w-0 flex-1 truncate">{d.title ?? "(zadanie)"}</span>
+            <span className="text-xs text-[var(--muted)]">
+              {ruleName(d.rule_id) ?? connectionLabel(d.connection_id) ?? ""} · {dateTime(d.sent_at ?? d.created_at)}
+              {d.status === "pending" && d.attempts > 0 && d.next_attempt_at ? ` · próba ${d.attempts + 1} o ${dateTime(d.next_attempt_at)}` : ""}
+            </span>
+            {d.external_url && /^https?:\/\//.test(d.external_url) ? (
+              <a href={d.external_url} target="_blank" rel="noreferrer noopener" className="text-xs text-[var(--accent)] underline">
+                Otwórz ↗
+              </a>
+            ) : null}
+            {RETRYABLE.has(d.status) ? (
+              <Button kind="ghost" disabled={busy} onClick={() => onRetry(d.id)}>
+                Ponów
+              </Button>
+            ) : null}
+            {detailed ? (
+              <p className="w-full text-xs text-[var(--muted)]">
+                {connectionLabel(d.connection_id) ?? "połączenie usunięte"} · {SOURCE[d.source] ?? d.source}
+                {d.source !== "manual" && d.events?.length ? ` · ${d.events.map((e) => PLUGIN_EVENT[e as RuleEvent] ?? e).join(", ")}` : ""}
+                {` · prób: ${d.attempts}`}
+                {d.http_status ? ` · HTTP ${d.http_status}` : ""}
+                {` · utworzona ${dateTime(d.created_at)}`}
+                {d.task_id ? (
+                  <>
+                    {" · "}
+                    <button type="button" className="text-[var(--accent)] underline" onClick={() => openTask(d.task_id)}>
+                      zadanie
+                    </button>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+            {d.error ? <p className={`w-full text-xs text-[var(--muted)] ${detailed ? "whitespace-pre-wrap break-words" : "truncate"}`}>{d.error}</p> : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function useRetry(load: () => Promise<void>, setProblem: (p: string | null) => void) {
+  const [busy, setBusy] = useState(false);
   const retry = async (id: string) => {
     setBusy(true);
     try {
@@ -640,46 +806,137 @@ function Deliveries({ rules, connections }: { rules: PluginRule[]; connections: 
       setBusy(false);
     }
   };
+  return { busy, retry: (id: string) => void retry(id) };
+}
 
-  const ruleName = (id: string | null) => rules.find((r) => r.id === id)?.name;
-  const connectionLabel = (id: string | null) => connections.find((c) => c.id === id)?.label;
+/** Ile ostatnich wysyłek w Ustawieniach (reszta na ekranie historii `#/deliveries`). */
+const RECENT_DELIVERIES = 10;
+const HISTORY_OPEN_KEY = "tp-plugin-history-open";
+
+const readOpen = (): boolean => {
+  try {
+    return window.localStorage.getItem(HISTORY_OPEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+/** „Historia wysyłek” w Ustawieniach: zwijana (stan w `localStorage`), zwinięta nic nie pobiera. */
+function DeliveriesSection({ rules, connections }: { rules: PluginRule[]; connections: PluginConnection[] }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    // `localStorage` dopiero po zamontowaniu (bez rozjazdu z renderem serwera).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOpen(readOpen());
+  }, []);
+  const toggle = () => {
+    setOpen(!open);
+    try {
+      if (open) window.localStorage.removeItem(HISTORY_OPEN_KEY);
+      else window.localStorage.setItem(HISTORY_OPEN_KEY, "1");
+    } catch {
+      // Bez pamięci przeglądarki — stan tylko do przeładowania.
+    }
+  };
+  return (
+    <section className="mt-5" aria-label="Historia wysyłek">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="plugin-deliveries"
+        onClick={toggle}
+        className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)] hover:text-[var(--foreground)]"
+      >
+        <span aria-hidden className={`inline-block w-3 transition-transform ${open ? "rotate-90" : ""}`}>
+          ▸
+        </span>
+        Historia wysyłek
+      </button>
+      {open ? (
+        <div id="plugin-deliveries">
+          <RecentDeliveries rules={rules} connections={connections} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function RecentDeliveries({ rules, connections }: { rules: PluginRule[]; connections: PluginConnection[] }) {
+  const { rows, more, problem, setProblem, load } = useDeliveries(RECENT_DELIVERIES);
+  const { busy, retry } = useRetry(load, setProblem);
   return (
     <>
-      <div className="mb-2">
+      <div className="mb-2 flex gap-2">
         <Button kind="ghost" disabled={busy} onClick={() => void load()}>
           Odśwież
         </Button>
       </div>
       {problem ? <Notice tone="error">{problem}</Notice> : null}
       {rows && !rows.length ? <p className="text-sm text-[var(--muted)]">Jeszcze nic nie wysłano.</p> : null}
+      {rows?.length ? <DeliveryList rows={rows} rules={rules} connections={connections} busy={busy} onRetry={retry} /> : null}
       {rows?.length ? (
-        <ul className="divide-y divide-[var(--line)] rounded-md border border-[var(--line)]">
-          {rows.map((d) => {
-            const status = DELIVERY_STATUS[d.status] ?? { label: d.status, tone: "muted" as const };
-            return (
-              <li key={d.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 p-2 text-sm">
-                <span className={`text-xs font-medium ${TONE[status.tone]}`}>{status.label}</span>
-                <span className="min-w-0 flex-1 truncate">{d.title ?? "(zadanie)"}</span>
-                <span className="text-xs text-[var(--muted)]">
-                  {ruleName(d.rule_id) ?? connectionLabel(d.connection_id) ?? ""} · {dateTime(d.sent_at ?? d.created_at)}
-                  {d.status === "pending" && d.attempts > 0 && d.next_attempt_at ? ` · próba ${d.attempts + 1} o ${dateTime(d.next_attempt_at)}` : ""}
-                </span>
-                {d.external_url && /^https?:\/\//.test(d.external_url) ? (
-                  <a href={d.external_url} target="_blank" rel="noreferrer noopener" className="text-xs text-[var(--accent)] underline">
-                    Otwórz ↗
-                  </a>
-                ) : null}
-                {RETRYABLE.has(d.status) ? (
-                  <Button kind="ghost" disabled={busy} onClick={() => void retry(d.id)}>
-                    Ponów
-                  </Button>
-                ) : null}
-                {d.error ? <p className="w-full text-xs text-[var(--muted)]">{d.error}</p> : null}
-              </li>
-            );
-          })}
-        </ul>
+        <a href="#/deliveries" className="mt-2 inline-block text-sm text-[var(--accent)] underline">
+          {more ? "Więcej — cała historia z filtrami →" : "Szczegóły i filtry →"}
+        </a>
       ) : null}
     </>
+  );
+}
+
+/** Wysyłek na stronę ekranu historii („Pokaż więcej” dobiera kolejne). */
+const LOG_PAGE = 50;
+
+/** Ekran `#/deliveries`: cała historia wysyłek (30 dni) z filtrami po połączeniu i stanie, szczegóły, „Ponów”. */
+export function DeliveryLogScreen() {
+  const { store } = useAppEnv();
+  const { connections, rules } = usePlugins(store);
+  const [filter, setFilter] = useState<DeliveryFilter>({});
+  const [limit, setLimit] = useState(LOG_PAGE);
+  const { rows, more, problem, setProblem, load } = useDeliveries(limit, filter);
+  const { busy, retry } = useRetry(load, setProblem);
+  const change = (next: DeliveryFilter) => {
+    setFilter(next);
+    setLimit(LOG_PAGE);
+  };
+  return (
+    <div className="mx-auto max-w-3xl">
+      <a href="#/settings" className="text-sm text-[var(--accent)] underline">
+        ← Ustawienia
+      </a>
+      <h1 className="mb-1 mt-2 text-xl font-semibold">Historia wysyłek</h1>
+      <p className="mb-3 text-sm text-[var(--muted)]">Wysyłki pluginów z ostatnich 30 dni (starsze serwer usuwa). Historia jest na serwerze — wymaga sieci.</p>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Select value={filter.connectionId ?? ""} onChange={(e) => change({ ...filter, connectionId: e.target.value || undefined })} aria-label="Połączenie" className="w-auto">
+          <option value="">Wszystkie połączenia</option>
+          {connections.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </Select>
+        <Select value={filter.status ?? ""} onChange={(e) => change({ ...filter, status: (e.target.value || undefined) as DeliveryFilter["status"] })} aria-label="Stan" className="w-auto">
+          <option value="">Każdy stan</option>
+          {(Object.keys(DELIVERY_STATUS) as (keyof typeof DELIVERY_STATUS)[]).map((s) => (
+            <option key={s} value={s}>
+              {DELIVERY_STATUS[s].label}
+            </option>
+          ))}
+        </Select>
+        <Button kind="ghost" disabled={busy} onClick={() => void load()}>
+          Odśwież
+        </Button>
+      </div>
+      {problem ? <Notice tone="error">{problem}</Notice> : null}
+      {rows === null && !problem ? <p className="text-sm text-[var(--muted)]">Wczytywanie…</p> : null}
+      {rows && !rows.length ? <p className="text-sm text-[var(--muted)]">{filter.connectionId || filter.status ? "Brak wysyłek dla tego filtra." : "Jeszcze nic nie wysłano."}</p> : null}
+      {rows?.length ? <DeliveryList rows={rows} rules={rules} connections={connections} busy={busy} onRetry={retry} detailed /> : null}
+      {more ? (
+        <div className="mt-3">
+          <Button kind="ghost" onClick={() => setLimit(limit + LOG_PAGE)}>
+            Pokaż więcej
+          </Button>
+        </div>
+      ) : null}
+    </div>
   );
 }

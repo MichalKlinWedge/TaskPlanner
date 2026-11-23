@@ -4,7 +4,8 @@
  * połączenia (sekret w Vault, tylko https, SSRF), „Wyślij próbne”, „Wyślij do…” zapisane przez `push_changes`
  * → wyzwalacz → `pg_net` → `plugins/flush` → dokładnie jedna podpisana wysyłka, ponowienia bez duplikatów,
  * wyłączenie połączenia po 401, „Ponów”, usunięcie połączenia; I2 — reguły zdarzeniowe; I3 — GitLab (fałszywy
- * GitLab pod `/gitlab/api/v4/…`: issue, powiązanie `plugin_links`, zamknięcie, notatka, ponowienie bez duplikatu).
+ * GitLab pod `/gitlab/api/v4/…`: issue, powiązanie `plugin_links`, zamknięcie, notatka, ponowienie bez duplikatu);
+ * zmiana zadania po udanej wysyłce (`options.afterSend`: tagi, status — bez pętli reguł).
  */
 import { createHmac } from 'node:crypto';
 
@@ -423,5 +424,54 @@ describe('GitLab (I3)', () => {
     await flush();
     await waitFor(async () => (await delivery(second))?.status === 'sent', 20_000, 'ponowienie');
     expect(issueOf(id).map((i) => i.title)).toEqual(['[TP] Faktura VAT']);
+  });
+});
+
+describe('po udanej wysyłce', () => {
+  const taskState = async (id: string) => {
+    const { data: t } = await db.from('tasks').select('status, completed_at').eq('id', id).single();
+    const { data: tags } = await db.from('task_tags').select('tag_id').eq('task_id', id).is('deleted_at', null);
+    return { status: t!.status as string, done: !!t!.completed_at, tags: (tags ?? []).map((r) => r.tag_id as string).sort() };
+  };
+
+  it('reguła „dodany tag”: zdejmuje #zgłoś, dodaje #wysłane i ustawia status — sama się drugi raz nie wywołuje', async () => {
+    const conn = await connect('po-wysylce');
+    const [report, sent] = [uuidv7(), uuidv7()];
+    await createTag(user, report, `zgłoś-${report.slice(-6)}`);
+    await createTag(user, sent, `wysłane-${sent.slice(-6)}`);
+    const ruleId = await rule(conn, {
+      name: 'Zgłoś i oznacz',
+      trigger: { kind: 'event', events: ['task.tagged'] },
+      options: { delaySec: 1, afterSend: { addTagIds: [sent], removeTagIds: [report], status: 'waiting' } },
+    });
+    const id = uuidv7();
+    expect((await pushRaw(user, [
+      { op: uuidv7(), hlc: hlc(), table: 'tasks', id, set: { list_id: ws.inbox, title: 'Pralka cieknie' } },
+      { op: uuidv7(), hlc: hlc(), table: 'task_tags', id: uuidv7(), set: { task_id: id, tag_id: report } },
+    ])).rejected).toEqual([]);
+    await waitFor(async () => (await taskState(id)).status === 'waiting', 30_000, 'zmiana po wysyłce');
+    expect(await taskState(id)).toEqual({ status: 'waiting', done: false, tags: [sent] });
+    expect(fake.hooksFor('po-wysylce')).toHaveLength(1);
+    // Zmiana „z integracji” — ta sama reguła na „dodany tag” jej nie łapie.
+    await flush();
+    await new Promise((r) => setTimeout(r, 4000));
+    const deliveries = ((await db.from('plugin_deliveries').select('status, error').eq('rule_id', ruleId)).data ?? []) as Record<string, unknown>[];
+    expect(deliveries).toEqual([{ status: 'sent', error: null }]);
+    // Klient dostaje zmianę serwera jak z innego urządzenia.
+    const { data: pulled } = await user.client.rpc('pull_changes', { p_since: {} });
+    expect(pulled.tables.tasks.find((t: { id: string }) => t.id === id)).toMatchObject({ status: 'waiting' });
+  });
+
+  it('„Wyślij do…” zadania cyklicznego ze statusem Gotowe: wysłane, seria otwarta, uwaga w historii', async () => {
+    const conn = await connect('po-wysylce-seria');
+    const ruleId = await rule(conn, { name: 'Zamknij', options: { afterSend: { status: 'done' } } });
+    const id = uuidv7();
+    expect((await push(user, [{ table: 'tasks', id, set: { list_id: ws.inbox, title: 'Podlać kwiaty', due_date: '2026-11-24', recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY', anchor: '2026-11-24' } } }])).rejected).toEqual([]);
+    const op = { op: uuidv7(), hlc: hlc(), table: 'plugin_requests', id: uuidv7(), set: { rule_id: ruleId, task_id: id, requested_at: new Date().toISOString() } };
+    expect((await pushRaw(user, [op])).rejected).toEqual([]);
+    const deliveryId = requestDeliveryId(ruleId, op.id);
+    await waitFor(async () => (await delivery(deliveryId))?.status === 'sent', 20_000, 'wysłane');
+    expect((await delivery(deliveryId))?.error).toBe('Po wysyłce: status serii bez zmian (ukończ ją w aplikacji)');
+    expect((await taskState(id)).status).toBe('todo');
   });
 });

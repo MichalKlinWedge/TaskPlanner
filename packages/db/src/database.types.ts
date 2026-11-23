@@ -1041,6 +1041,9 @@ isOneToOne: false
 "my_scope_invites":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"plugin_after_send":
+{ Args: { "p_add": Json,"p_remove": (string)[],"p_status": string,"p_task": string,"p_user": string }; Returns: string
+                           },
 "plugin_connection_remove":
 { Args: { "p_connection": string }; Returns: undefined
                            },

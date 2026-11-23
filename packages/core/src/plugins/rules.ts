@@ -6,11 +6,12 @@
  */
 import { z } from 'zod';
 
-import { uuidv7 } from '../ids.ts';
+import { taskTagId, uuidv7 } from '../ids.ts';
+import { TASK_STATUS } from '../labels.ts';
 import { keyBetween } from '../sort-key.ts';
 import type { TaskOp } from '../tasks.ts';
 import { FilterQuery, matchesFilter, type ViewTask } from '../views.ts';
-import type { LocalDate } from '../schemas/primitives.ts';
+import { TaskStatus, type LocalDate } from '../schemas/primitives.ts';
 import { pluginDef } from './catalog.ts';
 import { RuleEvent, type PluginEvent } from './events.ts';
 import { unknownTemplateFields } from './template.ts';
@@ -24,11 +25,44 @@ export type PluginTrigger = z.infer<typeof PluginTrigger>;
 /** Domyślne opóźnienie reguły zdarzeniowej (s): łączenie zdarzeń i „Cofnij” w ciągu kilku sekund. */
 export const DEFAULT_DELAY_SEC = 20;
 
+/**
+ * Zmiana zadania po udanej wysyłce (Edge Function `plugins` → SQL `plugin_after_send`, HLC serwera): tagi
+ * (własne użytkownika) dodane / zdjęte, status. Zmiana idzie jak z integracji — reguły zdarzeniowe pomijają ją,
+ * jeśli nie mają „także zadania z integracji” (brak pętli); ta sama wartość drugi raz nic nie zmienia.
+ */
+export const PluginAfterSend = z.object({
+  addTagIds: z.array(z.uuid()).max(20).optional(),
+  removeTagIds: z.array(z.uuid()).max(20).optional(),
+  status: TaskStatus.optional(),
+});
+export type PluginAfterSend = z.infer<typeof PluginAfterSend>;
+
+export const isEmptyAfterSend = (a: PluginAfterSend | undefined): boolean => !a || (!a.addTagIds?.length && !a.removeTagIds?.length && !a.status);
+
+/** Opis na liście reguł, np. „potem: +wysłane, −zgłoś, status: Gotowe”. Nieznane tagi pomijane. */
+export function afterSendSummary(a: PluginAfterSend | undefined, tagName: (id: string) => string | undefined): string {
+  if (isEmptyAfterSend(a)) return '';
+  const names = (ids: readonly string[] | undefined, sign: string) => (ids ?? []).map(tagName).filter((n): n is string => !!n).map((n) => `${sign}${n}`);
+  const parts = [...names(a!.addTagIds, '+'), ...names(a!.removeTagIds, '−'), ...(a!.status ? [`status: ${TASK_STATUS[a!.status]}`] : [])];
+  return parts.length ? `potem: ${parts.join(', ')}` : '';
+}
+
+/** Argumenty `plugin_after_send` dla zadania: id wierszy `task_tags` jak w aplikacji (`taskTagId`). */
+export function afterSendArgs(taskId: string, a: PluginAfterSend): { p_status: TaskStatus | null; p_add: { id: string; tagId: string }[]; p_remove: string[] } {
+  return {
+    p_status: a.status ?? null,
+    p_add: (a.addTagIds ?? []).map((tagId) => ({ id: taskTagId(taskId, tagId), tagId })),
+    p_remove: [...(a.removeTagIds ?? [])],
+  };
+}
+
 export const PluginRuleOptions = z.object({
   /** Opóźnienie wysyłki reguły zdarzeniowej (s); brak = `DEFAULT_DELAY_SEC`. */
   delaySec: z.number().int().min(0).max(3600).optional(),
   /** Także zadania z integracji (e-mail, kalendarz) — domyślnie nie (ochrona przed pętlami). */
   includeIntegrations: z.boolean().optional(),
+  /** Po udanej wysyłce (ręcznej i zdarzeniowej). */
+  afterSend: PluginAfterSend.optional(),
 });
 export type PluginRuleOptions = z.infer<typeof PluginRuleOptions>;
 
@@ -170,6 +204,15 @@ export function pluginRuleSaveOps(
   }
   const options = PluginRuleOptions.safeParse(draft.options ?? {});
   if (!options.success) return { ok: false, error: 'Niepoprawne opcje reguły.' };
+  const after = options.data.afterSend;
+  if (after?.addTagIds?.some((id) => after.removeTagIds?.includes(id))) return { ok: false, error: 'Ten sam tag nie może być po wysyłce dodany i zdjęty.' };
+  if (isEmptyAfterSend(after)) delete options.data.afterSend;
+  else
+    options.data.afterSend = {
+      ...(after!.addTagIds?.length && { addTagIds: [...new Set(after!.addTagIds)] }),
+      ...(after!.removeTagIds?.length && { removeTagIds: [...new Set(after!.removeTagIds)] }),
+      ...(after!.status && { status: after!.status }),
+    };
   const existing = draft.id ? rules.find((r) => r.id === draft.id) : undefined;
   const id = existing?.id ?? newId();
   const last = [...rules].sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1)).at(-1)?.sortKey;

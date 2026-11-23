@@ -26,6 +26,7 @@ import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-view
 import { AttachmentsProvider } from "./attachments";
 import { CollaboratorsView } from "./collaborators";
 import { HabitDetail, HabitNotificationActions, HabitsView } from "./habits";
+import { DeliveryLogScreen } from "./plugins-card";
 import { QuickAddDialog } from "./quick-add";
 import { TaskPanel } from "./task-panel";
 import { TaskActionsProvider, useTaskActions } from "./task-item";
@@ -349,6 +350,8 @@ export function Shell({
       manage
     ) : route.view === "settings" ? (
       settingsView
+    ) : route.view === "deliveries" ? (
+      <DeliveryLogScreen />
     ) : route.view === "trash" ? (
       <TrashView data={data} store={store} />
     ) : route.view === "people" ? (

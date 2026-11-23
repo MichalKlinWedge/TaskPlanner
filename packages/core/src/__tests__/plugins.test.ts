@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import { PLUGIN_EVENT } from '../labels.ts';
 import {
+  afterSendArgs,
+  afterSendSummary,
+  isEmptyAfterSend,
   deliveryId,
   eventContext,
   eventDeliveryId,
@@ -46,6 +49,7 @@ import {
   type PluginRule,
   type PluginTaskState,
 } from '../plugins/index.ts';
+import { taskTagId } from '../ids.ts';
 import { MODEL } from '../schemas/model.ts';
 import type { ViewTask } from '../views.ts';
 
@@ -266,6 +270,26 @@ describe('reguły', () => {
     const edited = save({ id: 'a', name: 'Inna' }, [manual('a')]);
     expect(edited.ok && edited.ops[0]!.patch).not.toHaveProperty('sort_key');
     expect(pluginRuleDeleteOps('a', new Date('2026-11-23T10:00:00Z'))).toEqual([{ table: 'plugin_rules', id: 'a', patch: { deleted_at: '2026-11-23T10:00:00.000Z' } }]);
+  });
+
+  it('po udanej wysyłce: zapis, walidacja, opis i argumenty serwera', () => {
+    const G1 = '01900000-0000-7000-8000-0000000000a1';
+    const G2 = '01900000-0000-7000-8000-0000000000a2';
+    const save = (afterSend: Record<string, unknown>) =>
+      pluginRuleSaveOps(USER, [], [connection], { name: 'R', connectionId: CONN, enabled: true, trigger: { kind: 'manual' }, action: {}, options: { afterSend } }, () => 'nowa');
+    const options = (r: ReturnType<typeof save>) => (r.ok ? (r.ops[0]!.patch as { options: unknown }).options : r.error);
+    expect(options(save({ addTagIds: [G1, G1], removeTagIds: [], status: 'done' }))).toEqual({ afterSend: { addTagIds: [G1], status: 'done' } });
+    expect(options(save({ addTagIds: [], removeTagIds: [] }))).toEqual({});
+    expect(options(save({ addTagIds: [G1], removeTagIds: [G1] }))).toBe('Ten sam tag nie może być po wysyłce dodany i zdjęty.');
+    expect(options(save({ status: 'gotowe' }))).toBe('Niepoprawne opcje reguły.');
+    const saved = save({ addTagIds: [G1], removeTagIds: [G2], status: 'waiting' });
+    expect(MODEL.plugin_rules.safeParse({ id: '01900000-0000-7000-8000-0000000000e1', ...(saved.ok ? saved.ops[0]!.patch : {}) }).success).toBe(true);
+
+    const names: Record<string, string> = { [G1]: 'wysłane', [G2]: 'zgłoś' };
+    expect(afterSendSummary({ addTagIds: [G1, 'brak'], removeTagIds: [G2], status: 'done' }, (id) => names[id])).toBe('potem: +wysłane, −zgłoś, status: Gotowe');
+    expect(afterSendSummary(undefined, () => undefined)).toBe('');
+    expect(isEmptyAfterSend({ addTagIds: [] })).toBe(true);
+    expect(afterSendArgs(TASK, { addTagIds: [G1], removeTagIds: [G2] })).toEqual({ p_status: null, p_add: [{ id: taskTagId(TASK, G1), tagId: G1 }], p_remove: [G2] });
   });
 
   it('prośba „Wyślij do…”: jeden wiersz na zadanie, zgodny ze schematem', () => {
