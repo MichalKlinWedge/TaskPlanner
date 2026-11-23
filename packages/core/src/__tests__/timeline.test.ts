@@ -210,6 +210,20 @@ describe('kryterium odbioru: „Remont kuchni”', () => {
     expect(violations(applyOps(tasks, alone.ops), deps).map((v) => v.dependency.id)).toEqual(['t1>t2']);
   });
 
+  it('ścieżka krytyczna: koniec projektu wyznacza „Sprzątanie”, łańcuch mebli ma zapas; bez sprzątania — łańcuch krytyczny', () => {
+    const model = timelineModel([project], tasks, deps);
+    const row = (id: string) => model.rows.find((r) => r.id === id)!;
+    expect(model.criticalChains).toEqual([{ projectId: 'p1', end: '2026-12-23', taskIds: ['t15'] }]);
+    expect([row('t11').float, row('t12').float, row('t1').float]).toEqual([2, 2, 8]);
+    expect(row('p1')).toMatchObject({ critical: false, float: null });
+
+    const done = tasks.map((t) => (t.id === 't15' ? { ...t, status: 'done' as const } : t.id === 't13' || t.id === 't14' ? { ...t, dueDate: '2026-12-20' } : t));
+    const chain = timelineModel([project], done, [...deps.slice(0, 6), dep('t3', 't11', 20), dep('t11', 't12')]);
+    expect(chain.criticalChains[0]!.taskIds).toEqual(['t1', 't2', 't3', 't11', 't12']);
+    expect(chain.criticalLinks).toEqual(['t1>t2', 't2>t3', 't3>t11', 't11>t12']);
+    expect(chain.rows.find((r) => r.id === 't15')).toMatchObject({ critical: false, float: null });
+  });
+
   it('próba cyklu (Montaż AGD → Pomiary → … → Montaż AGD) zablokowana', () => {
     const result = addDependencyOps(tasks, deps, { predecessorId: 't12', successorId: 't1' });
     expect(result).toEqual({ error: { reason: 'cycle', cycle: ['t12', 't1', 't2', 't3', 't11', 't12'] } });
@@ -241,13 +255,13 @@ describe('filtr projektów i eksport', () => {
     ];
     const model = timelineModel(visibleProjects(projects, new Set(['p2'])), tasks, [dep('a', 'b', 2)]);
     const sheet = timelineSheet(model, tasks);
-    expect(sheet.columns.map((c) => c.header)).toEqual(['Projekt', 'Zadanie', 'Typ', 'Początek', 'Koniec', 'Dni', 'Postęp', 'Status', 'Priorytet', 'Poprzednicy', 'Naruszenie']);
+    expect(sheet.columns.map((c) => c.header)).toEqual(['Projekt', 'Zadanie', 'Typ', 'Początek', 'Koniec', 'Dni', 'Postęp', 'Status', 'Priorytet', 'Poprzednicy', 'Naruszenie', 'Zapas (dni)']);
     expect(sheet.rows).toEqual([
-      ['Remont', 'Remont', 'Projekt', { date: '2026-11-20' }, { date: '2026-11-24' }, 5, { percent: 0.33 }, '', '', '', ''],
-      ['Remont', 'Projekt wnętrza', 'Zadanie', { date: '2026-11-20' }, { date: '2026-11-23' }, 4, { percent: 0 }, 'Do zrobienia', '', '', ''],
-      ['Remont', 'Zakupy', 'Zadanie', { date: '2026-11-24' }, { date: '2026-11-24' }, 1, { percent: 1 }, 'Do zrobienia', 'Wysoki', 'Projekt wnętrza (+2 dni)', '1 dzień za wcześnie po „Projekt wnętrza”'],
-      ['Remont', 'Płytki', 'Podzadanie', { date: '2026-11-24' }, { date: '2026-11-24' }, 1, { percent: 1 }, 'Gotowe', '', '', ''],
-      ['Auto', 'Auto', 'Projekt', null, null, null, { percent: 0 }, '', '', '', ''],
+      ['Remont', 'Remont', 'Projekt', { date: '2026-11-20' }, { date: '2026-11-24' }, 5, { percent: 0.33 }, '', '', '', '', ''],
+      ['Remont', 'Projekt wnętrza', 'Zadanie', { date: '2026-11-20' }, { date: '2026-11-23' }, 4, { percent: 0 }, 'Do zrobienia', '', '', '', 'krytyczne'],
+      ['Remont', 'Zakupy', 'Zadanie', { date: '2026-11-24' }, { date: '2026-11-24' }, 1, { percent: 1 }, 'Do zrobienia', 'Wysoki', 'Projekt wnętrza (+2 dni)', '1 dzień za wcześnie po „Projekt wnętrza”', 'krytyczne'],
+      ['Remont', 'Płytki', 'Podzadanie', { date: '2026-11-24' }, { date: '2026-11-24' }, 1, { percent: 1 }, 'Gotowe', '', '', '', ''],
+      ['Auto', 'Auto', 'Projekt', null, null, null, { percent: 0 }, '', '', '', '', ''],
     ]);
     expect(sheet.indents).toEqual([0, 1, 1, 2, 0]);
     expect(timelineFileName('2026-11-20')).toBe('os-czasu-2026-11-20.xlsx');

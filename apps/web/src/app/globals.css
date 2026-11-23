@@ -133,6 +133,14 @@ body {
   background: var(--danger);
   color: #fff;
 }
+/* Ścieżka krytyczna (przełącznik na osi): zadania bez zapasu i ich zależności. */
+.tp-timeline {
+  --critical: #ea580c;
+}
+.tp-timeline .tp-gantt-critical {
+  background: var(--critical);
+  color: #fff;
+}
 /* Dziś: kolumna z czerwoną linią po lewej (dzień) albo lekko podświetlony tydzień / miesiąc. */
 .tp-timeline .tp-gantt-today {
   background: color-mix(in srgb, var(--danger) 10%, transparent);

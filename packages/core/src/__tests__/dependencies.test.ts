@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { addWorkdays, daysBetween } from '../dates.ts';
-import { detectCycle, projectSpan, shiftSuccessors, taskSpan, violations, type Dependency, type ScheduledTask } from '../dependencies.ts';
+import { criticalPath, detectCycle, projectSpan, shiftSuccessors, taskSpan, violations, type Dependency, type ScheduledTask } from '../dependencies.ts';
 
 const t = (id: string, startDate: string | null, dueDate: string | null, extra: Partial<ScheduledTask> = {}): ScheduledTask => ({
   id,
@@ -102,5 +102,53 @@ describe('zakres projektu', () => {
     expect(projectSpan({ startDate: null, endDate: null }, tasks)).toEqual({ start: '2026-11-10', end: '2026-12-01' });
     expect(projectSpan({ startDate: '2026-11-05', endDate: null }, tasks)).toEqual({ start: '2026-11-05', end: '2026-12-01' });
     expect(projectSpan({ startDate: null, endDate: null }, [])).toBeNull();
+  });
+});
+
+describe('ścieżka krytyczna', () => {
+  const g = (task: ScheduledTask, group = 'p1') => ({ ...task, group });
+
+  it('łańcuch dzień po dniu bez zapasu; zadanie obok ma zapas do końca projektu', () => {
+    const cp = criticalPath(
+      [g(t('a', '2026-11-02', '2026-11-04')), g(t('b', '2026-11-05', '2026-11-06')), g(t('c', '2026-11-07', '2026-11-10')), g(t('d', null, '2026-11-03'))],
+      [dep('a', 'b'), dep('b', 'c'), dep('d', 'c')],
+    );
+    expect([...cp.tasks].sort()).toEqual(['a', 'b', 'c']);
+    expect(cp.float.get('d')).toBe(3);
+    expect([...cp.links].sort()).toEqual(['a>b', 'b>c']);
+    expect(cp.ends.get('p1')).toBe('2026-11-10');
+  });
+
+  it('luz między zadaniami i opóźnienie zależności', () => {
+    const tasks = [g(t('a', null, '2026-11-02')), g(t('b', null, '2026-11-06')), g(t('c', null, '2026-11-06'))];
+    const loose = criticalPath(tasks, [dep('a', 'b')]);
+    expect(loose.float.get('a')).toBe(3); // b mogłoby zacząć się 3.11 — a ma 3 dni zapasu
+    expect(loose.tasks).toEqual(new Set(['b', 'c']));
+    const lagged = criticalPath(tasks, [dep('a', 'b', 3)]);
+    expect(lagged.float.get('a')).toBe(0);
+    expect(lagged.links).toEqual(new Set(['a>b']));
+  });
+
+  it('dni robocze: piątek → poniedziałek bez zapasu, w dniach kalendarzowych — 2 dni', () => {
+    const tasks = [g(t('pt', null, '2026-11-20')), g(t('pon', null, '2026-11-23'))];
+    expect(criticalPath(tasks, [dep('pt', 'pon')]).float.get('pt')).toBe(2);
+    const work = criticalPath(tasks, [dep('pt', 'pon')], { workdays: [1, 2, 3, 4, 5] });
+    expect(work.tasks).toEqual(new Set(['pt', 'pon']));
+    expect(work.links).toEqual(new Set(['pt>pon']));
+  });
+
+  it('zależność między projektami ogranicza poprzednika; naruszenie i start w dniu końca — krytyczne, zapas 0', () => {
+    const cross = criticalPath([g(t('x', null, '2026-11-02'), 'p1'), g(t('y', null, '2026-11-09'), 'p1'), g(t('z', null, '2026-11-04'), 'p2')], [dep('x', 'z')]);
+    expect(cross.float.get('x')).toBe(1); // z (koniec p2) zaczyna się 4.11
+    const early = criticalPath([g(t('a', null, '2026-11-05')), g(t('b', null, '2026-11-05')), g(t('c', null, '2026-11-03'))], [dep('a', 'b'), dep('c', 'a', 5)]);
+    expect(early.float.get('a')).toBe(0);
+    expect(early.float.get('c')).toBe(0);
+    expect(early.tasks).toEqual(new Set(['a', 'b', 'c']));
+  });
+
+  it('zadania bez terminu pomijane, cykl nie zawiesza', () => {
+    const cp = criticalPath([g(t('a', null, '2026-11-02')), g(t('b', null, '2026-11-03')), g(t('n', null, null))], [dep('a', 'b'), dep('b', 'a'), dep('n', 'a')]);
+    expect(cp.float.has('n')).toBe(false);
+    expect(cp.tasks.has('b')).toBe(true);
   });
 });

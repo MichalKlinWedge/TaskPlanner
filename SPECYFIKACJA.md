@@ -255,7 +255,7 @@ Widoki stałe w pasku bocznym [W+A]:
 - **Zależności** koniec→początek (`finish_to_start`) z opóźnieniem w dniach (`lag_days`): przeciągnięcie z końca paska A na pasek B. Strzałki między paskami.
 - **Naruszenie** (B zaczyna się przed końcem A + lag) → strzałka i pasek na czerwono, lista naruszeń. Przy przesuwaniu A wybór: „Przesuń zależne” (kaskadowo, zachowując odstępy) albo „Tylko to zadanie”.
 - Cykl w zależnościach jest blokowany przy tworzeniu (`core/dependencies.ts`) i w triggerze.
-- Ścieżka krytyczna — v1.x.
+- Ścieżka krytyczna (v1.x, zrobione 23.11.2026): przełącznik „Ścieżka krytyczna” na osi (web i telefon) wyróżnia zadania bez zapasu i zależności między nimi oraz podaje zapas pozostałych w dniach roboczych; liczona na bieżących datach (bez auto-planowania), koniec projektu = najpóźniejszy koniec jego otwartych zadań.
 
 ### M13. Szybkie dodawanie (gramatyka w §4)
 - Wywołanie: [W] klawisz `Q` albo `Ctrl+Spacja` w dowolnym miejscu, przycisk „+”; [A] przycisk „+”, widżet, skrót aplikacji (long-press ikony), powiadomienie przeglądu.

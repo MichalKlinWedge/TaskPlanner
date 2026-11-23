@@ -153,3 +153,95 @@ export function projectSpan(project: { startDate: LocalDate | null; endDate: Loc
   if (!start && !end) return null;
   return { start: start ?? end!, end: end ?? start! };
 }
+
+export interface CriticalPath {
+  /**
+   * Zapas zadania w dniach (roboczych, gdy podano `workdays`): o ile może skończyć się później, nie
+   * przesuwając końca swojego projektu (ani — przez zależności — końca innych projektów). Zawsze ≥ 0:
+   * zadanie już „za późno” (naruszenie, start w dniu końca poprzednika) ma zapas 0 i jest krytyczne.
+   */
+  float: Map<string, number>;
+  /** Zadania na ścieżce krytycznej (bez zapasu). */
+  tasks: Set<string>;
+  /** Zależności na ścieżce: oba końce krytyczne i bez luzu (następnik zaczyna się najpóźniej dzień po poprzedniku + lag). */
+  links: Set<string>;
+  /** Koniec projektu (grupy) = najpóźniejszy koniec jego zadań. */
+  ends: Map<string, LocalDate>;
+}
+
+/** Poniedziałek — punkt odniesienia numeracji dni roboczych. */
+const EPOCH = '2000-01-03';
+
+/** Numer dnia: liczba dni (roboczych z `work`) przed `date`; dzień wolny ma numer następnego roboczego. */
+function dayPosition(date: LocalDate, work: ReadonlySet<number> | null): number {
+  const n = daysBetween(EPOCH, date);
+  if (!work) return n;
+  const weeks = Math.floor(n / 7);
+  let position = weeks * work.size;
+  for (let i = 0; i < n - weeks * 7; i++) if (work.has(((i % 7) + 1) as number)) position++;
+  return position;
+}
+
+/**
+ * Ścieżka krytyczna na bieżącym planie (M12, v1.x): przejście wstecz od końca każdej grupy (projektu) po
+ * zależnościach koniec→początek z opóźnieniem — najpóźniejszy dopuszczalny koniec zadania = min(koniec grupy,
+ * najpóźniejszy początek każdego następnika − lag). Liczone w dniach (z `workdays` — tylko robocze, więc
+ * piątek → poniedziałek nie daje zapasu); następnik bez luzu zaczyna się dzień po końcu poprzednika. Daty
+ * zadań się nie zmieniają (to nie auto-planowanie): zapas mówi, ile dni zadanie może się spóźnić. Zadania bez
+ * paska są pomijane, a zależność z takim zadaniem nie ogranicza; cykl (zablokowany przy zapisie) jest przerywany.
+ */
+export function criticalPath(
+  tasks: readonly (ScheduledTask & { group: string })[],
+  deps: readonly Dependency[],
+  { workdays }: { workdays?: readonly number[] } = {},
+): CriticalPath {
+  const work = workdays?.length && workdays.length < 7 ? new Set(workdays) : null;
+  // Pozycje: początek (włącznie) i koniec (wyłącznie) paska w numeracji dni.
+  const at = new Map<string, { start: number; end: number; group: string }>();
+  const groupEnd = new Map<string, number>();
+  const ends = new Map<string, LocalDate>();
+  for (const t of tasks) {
+    const span = taskSpan(t);
+    if (!span) continue;
+    const pos = { start: dayPosition(span.start, work), end: dayPosition(addDays(span.end, 1), work), group: t.group };
+    at.set(t.id, pos);
+    groupEnd.set(t.group, Math.max(groupEnd.get(t.group) ?? -Infinity, pos.end));
+    const end = ends.get(t.group);
+    if (!end || span.end > end) ends.set(t.group, span.end);
+  }
+  const out = new Map<string, Dependency[]>();
+  for (const d of deps) if (at.has(d.predecessorId) && at.has(d.successorId)) out.set(d.predecessorId, [...(out.get(d.predecessorId) ?? []), d]);
+
+  const latestFinish = new Map<string, number>();
+  const visiting = new Set<string>();
+  const finishOf = (id: string): number => {
+    const known = latestFinish.get(id);
+    if (known !== undefined) return known;
+    const pos = at.get(id)!;
+    let finish = groupEnd.get(pos.group)!;
+    visiting.add(id);
+    for (const d of out.get(id) ?? []) {
+      if (visiting.has(d.successorId)) continue;
+      const s = at.get(d.successorId)!;
+      finish = Math.min(finish, finishOf(d.successorId) - (s.end - s.start) - d.lagDays);
+    }
+    visiting.delete(id);
+    latestFinish.set(id, finish);
+    return finish;
+  };
+
+  const float = new Map<string, number>();
+  const critical = new Set<string>();
+  for (const [id, pos] of at) {
+    const days = finishOf(id) - pos.end;
+    float.set(id, Math.max(0, days));
+    if (days <= 0) critical.add(id);
+  }
+  const links = new Set<string>();
+  for (const list of out.values()) {
+    for (const d of list) {
+      if (critical.has(d.predecessorId) && critical.has(d.successorId) && at.get(d.successorId)!.start - (at.get(d.predecessorId)!.end + d.lagDays) <= 0) links.add(d.id);
+    }
+  }
+  return { float, tasks: critical, links, ends };
+}

@@ -7,7 +7,8 @@
  * albo „Tylko to zadanie”), pasek projektu przesuwa cały projekt (`shiftProjectOps`). Zależność
  * koniec→początek: przeciągnięcie z końca paska na początek drugiego — zapis dopiero po
  * `addDependencyOps` (blokada cyklu; SVAR cykle przyjmuje). Naruszenia: czerwone paski i strzałki
- * oraz lista z „Popraw”. Filtr „Projekty” ukrywa wybrane projekty (pamiętany w przeglądarce; nowy projekt
+ * oraz lista z „Popraw”. „Ścieżka krytyczna” (core `criticalPath`, zapas w dniach roboczych z ustawień) barwi
+ * zadania bez zapasu i ich zależności na pomarańczowo, dodaje kolumnę „Zapas” i podsumowanie projektów. Filtr „Projekty” ukrywa wybrane projekty (pamiętany w przeglądarce; nowy projekt
  * jest widoczny), „Eksport XLSX” zapisuje widoczne wiersze osi (`timelineSheet` + `xlsxWorkbook`).
  *
  * SVAR dostaje dane tylko z lokalnej bazy: własnych zmian SVAR (dodanie zależności, przeciąganie
@@ -22,6 +23,7 @@ import {
   addDependencyOps,
   daysBetween,
   dependencyErrorText,
+  dayMonth,
   plural,
   projectFilterLabel,
   removeDependencyOps,
@@ -56,6 +58,7 @@ const SCALE_KEY = "tp-timeline-scale";
 const CASCADE_KEY = "tp-timeline-cascade";
 const HIDDEN_KEY = "tp-timeline-hidden";
 const UNDATED_KEY = "tp-timeline-undated";
+const CRITICAL_KEY = "tp-timeline-critical";
 const PROJECT = "p:";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -97,6 +100,8 @@ const COLUMNS: IColumnConfig[] = [
   { id: "start", header: "Początek", width: 78, align: "center", sort: false, template: (v: unknown, row: object) => ("barless" in row ? "—" : shortDay(v)) },
   { id: "duration", header: "Dni", width: 44, align: "center", sort: false, template: (v: unknown, row: object) => ("barless" in row ? "—" : String(v ?? "")) },
 ];
+/** Z „Ścieżką krytyczną”: zapas zadania w dniach (roboczych); projekt, ukończone i bez paska — „—”. */
+const CRITICAL_COLUMNS: IColumnConfig[] = [...COLUMNS, { id: "float", header: "Zapas", width: 52, align: "center", sort: false, template: (v: unknown) => (typeof v === "number" ? String(v) : "—") }];
 
 function readStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -194,10 +199,11 @@ function ProjectFilter({ projects, hidden, onChange }: { projects: readonly Filt
   );
 }
 
-/** Pasek: tytuł, ukończone przekreślone, naruszenie na czerwono. */
+/** Pasek: tytuł, ukończone przekreślone, naruszenie na czerwono, ścieżka krytyczna (gdy włączona) na pomarańczowo. */
 function Bar({ data }: { data: ITask }) {
+  const tone = data.violated ? "tp-gantt-violated" : data.critical ? "tp-gantt-critical" : "";
   return (
-    <div className={`h-full w-full truncate px-1 text-[11px] leading-[inherit] ${data.violated ? "tp-gantt-violated" : ""} ${data.done ? "line-through opacity-70" : ""}`} data-violated={data.violated || undefined}>
+    <div className={`h-full w-full truncate px-1 text-[11px] leading-[inherit] ${tone} ${data.done ? "line-through opacity-70" : ""}`} data-violated={data.violated || undefined} data-critical={data.critical || undefined}>
       {data.violated ? "⚠ " : ""}
       {data.text}
     </div>
@@ -207,6 +213,7 @@ function Bar({ data }: { data: ITask }) {
 interface ChartProps {
   tasks: ITask[];
   links: ILink[];
+  columns: IColumnConfig[];
   scale: Scale;
   start: Date;
   end: Date;
@@ -216,7 +223,7 @@ interface ChartProps {
 }
 
 /** SVAR rysuje się od nowa tylko przy zmianie danych osi (memo). */
-const Chart = memo(function Chart({ tasks, links, scale, start, end, highlight, dark, init }: ChartProps) {
+const Chart = memo(function Chart({ tasks, links, columns, scale, start, end, highlight, dark, init }: ChartProps) {
   const Theme = dark ? WillowDark : Willow;
   return (
     <Locale words={GANTT_PL}>
@@ -225,7 +232,7 @@ const Chart = memo(function Chart({ tasks, links, scale, start, end, highlight, 
           init={init}
           tasks={tasks}
           links={links}
-          columns={COLUMNS}
+          columns={columns}
           scales={SCALES[scale].scales}
           cellWidth={SCALES[scale].cellWidth}
           cellHeight={34}
@@ -258,6 +265,7 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   const [cascade, setCascadeState] = useState(() => readStored(CASCADE_KEY, ["1", "0"], "1") === "1");
   // Zadania bez terminu jako wiersze bez paska — widać całe drzewo projektu.
   const [withUndated, setWithUndatedState] = useState(() => readStored(UNDATED_KEY, ["1", "0"], "1") === "1");
+  const [showCritical, setShowCriticalState] = useState(() => readStored(CRITICAL_KEY, ["1", "0"], "0") === "1");
   // Zwinięte zadania — do odświeżenia; zwinięte projekty — w profilu (`settings.timeline.collapsed`,
   // synchronizowane), więc zostają dla użytkownika na każdym urządzeniu.
   const [closedTasks, setClosedTasks] = useState<ReadonlySet<string>>(() => new Set());
@@ -274,9 +282,11 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   const projects = useMemo(() => visibleProjects(allProjects, hidden), [allProjects, hidden]);
   // Ukryty widok nie przelicza osi; po powrocie przelicza ją tylko, gdy dane się zmieniły (inaczej SVAR
   // nie dostaje nowych tablic i nic nie rysuje — przełączenie < 150 ms).
-  const [cache, setCache] = useState(() => ({ projects, tasks: data.tasks, deps, withUndated, model: timelineModel(projects, data.tasks, deps, { withUndated }) }));
-  if (active && (cache.projects !== projects || cache.tasks !== data.tasks || cache.deps !== deps || cache.withUndated !== withUndated)) {
-    setCache({ projects, tasks: data.tasks, deps, withUndated, model: timelineModel(projects, data.tasks, deps, { withUndated }) });
+  // Zapas ścieżki krytycznej w dniach roboczych z ustawień („Godziny pracy”).
+  const workdays = settings.workHours.days;
+  const [cache, setCache] = useState(() => ({ projects, tasks: data.tasks, deps, withUndated, workdays, model: timelineModel(projects, data.tasks, deps, { withUndated, workdays }) }));
+  if (active && (cache.projects !== projects || cache.tasks !== data.tasks || cache.deps !== deps || cache.withUndated !== withUndated || cache.workdays !== workdays)) {
+    setCache({ projects, tasks: data.tasks, deps, withUndated, workdays, model: timelineModel(projects, data.tasks, deps, { withUndated, workdays }) });
   }
   const { model } = cache;
 
@@ -296,6 +306,10 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   const setWithUndated = (on: boolean) => {
     setWithUndatedState(on);
     remember(UNDATED_KEY, on ? "1" : "0");
+  };
+  const setShowCritical = (on: boolean) => {
+    setShowCriticalState(on);
+    remember(CRITICAL_KEY, on ? "1" : "0");
   };
   const setHidden = (next: ReadonlySet<string>) => {
     setHiddenState(next);
@@ -333,11 +347,12 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
         open: !closed.has(id),
         violated: r.violated,
         done: r.done,
+        ...(showCritical ? { critical: r.critical, float: r.float } : {}),
         ...(none ? { barless: true } : {}),
       };
     });
     return { ganttTasks, barless };
-  }, [model.rows, closed, today]);
+  }, [model.rows, closed, today, showCritical]);
 
   const ganttLinks = useMemo<ILink[]>(() => model.links.map((d) => ({ id: d.id, type: "e2s", source: d.predecessorId, target: d.successorId, lag: d.lagDays })), [model.links]);
 
@@ -507,6 +522,7 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   };
   const titleOf = (id: string) => data.tasks.find((t) => t.id === id)?.title ?? "?";
   const barlessCss = barless.length ? `${barless.map((id) => `.tp-timeline .wx-bar[data-id=":${id}"]`).join(",")}{display:none}` : "";
+  const criticalCss = showCritical ? model.criticalLinks.map((id) => `.tp-timeline [data-link-id=":${id}"] .wx-line-draw{stroke:var(--critical);stroke-width:2px}`).join("") : "";
   const linkCss = model.violations.map((v) => `.tp-timeline [data-link-id=":${v.dependency.id}"] .wx-line-draw{stroke:var(--danger);stroke-width:2px}`).join("");
   // Pasek projektu w kolorze projektu z paska bocznego (postęp pełnym kolorem, reszta jaśniej); bez koloru —
   // szary jak znacznik w pasku bocznym.
@@ -538,6 +554,10 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
         <label className="flex items-center gap-1.5 text-xs" title="Pokaż też zadania bez terminu (wiersze bez paska) — termin ustawisz w panelu zadania">
           <input type="checkbox" checked={withUndated} onChange={(e) => setWithUndated(e.target.checked)} />
           Bez terminu
+        </label>
+        <label className="flex items-center gap-1.5 text-xs" title="Zadania bez zapasu: ich spóźnienie przesuwa koniec projektu. Zapas w dniach roboczych z Ustawień (Godziny pracy).">
+          <input type="checkbox" checked={showCritical} onChange={(e) => setShowCritical(e.target.checked)} />
+          Ścieżka krytyczna
         </label>
         {allProjects.length ? <ProjectFilter projects={allProjects} hidden={hidden} onChange={setHidden} /> : null}
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
@@ -575,10 +595,12 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
         </section>
       ) : null}
 
+      {showCritical && projects.length ? <CriticalSummary model={model} projects={projects} titleOf={titleOf} openTask={openTask} /> : null}
+
       {projects.length ? (
         <div className="h-[calc(100vh-11rem)] min-h-80 overflow-hidden rounded-md border border-[var(--line)]">
-          <style>{linkCss + projectCss + barlessCss}</style>
-          <Chart tasks={ganttTasks} links={ganttLinks} scale={scale} start={range.start} end={range.end} highlight={highlight} dark={dark} init={init} />
+          <style>{criticalCss + linkCss + projectCss + barlessCss}</style>
+          <Chart tasks={ganttTasks} links={ganttLinks} columns={showCritical ? CRITICAL_COLUMNS : COLUMNS} scale={scale} start={range.start} end={range.end} highlight={highlight} dark={dark} init={init} />
         </div>
       ) : allProjects.length ? (
         <p className="py-6 text-sm text-[var(--muted)]">
@@ -591,6 +613,50 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
         <p className="py-6 text-sm text-[var(--muted)]">Brak projektów — oś czasu pokazuje listy typu „projekt” z ich zadaniami. Projekt utworzysz w „Przestrzenie i listy”.</p>
       )}
       <p className="text-xs text-[var(--muted)]">Przeciągnij pasek, żeby zmienić daty, krawędź — żeby zmienić początek albo koniec. Zależność: z prawego końca paska na lewy koniec następnego; kliknij strzałkę, żeby ją usunąć. Kliknięcie paska albo wiersza otwiera zadanie.</p>
+    </section>
+  );
+}
+
+/**
+ * Podsumowanie ścieżki krytycznej: dla każdego projektu koniec i zadania bez zapasu w kolejności początku
+ * („→” między zadaniami połączonymi zależnością na ścieżce, „·” — równoległe).
+ */
+function CriticalSummary({
+  model,
+  projects,
+  titleOf,
+  openTask,
+}: {
+  model: TimelineModel;
+  projects: readonly { id: string; name: string }[];
+  titleOf: (id: string) => string;
+  openTask: (id: string) => void;
+}) {
+  const onPath = new Set(model.criticalLinks);
+  const linked = new Set(model.links.filter((d) => onPath.has(d.id)).map((d) => `${d.predecessorId}>${d.successorId}`));
+  const nameOf = new Map(projects.map((p) => [p.id, p.name]));
+  return (
+    <section className="rounded-md border border-[var(--critical)]/40 bg-orange-50 p-2 text-xs dark:bg-orange-950/30" aria-label="Ścieżka krytyczna">
+      <h2 className="mb-1 font-semibold text-[var(--critical)]">Ścieżka krytyczna</h2>
+      {model.criticalChains.length ? (
+        <ul className="flex max-h-28 flex-col gap-0.5 overflow-y-auto">
+          {model.criticalChains.map((c) => (
+            <li key={c.projectId}>
+              <span className="font-medium">{nameOf.get(c.projectId)}</span> — koniec {dayMonth(c.end)}:{" "}
+              {c.taskIds.map((id, i) => (
+                <span key={id}>
+                  {i ? (linked.has(`${c.taskIds[i - 1]}>${id}`) ? " → " : " · ") : ""}
+                  <button type="button" className="text-[var(--accent)] hover:underline" onClick={() => openTask(id)}>
+                    {titleOf(id)}
+                  </button>
+                </span>
+              ))}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[var(--muted)]">Brak otwartych zadań z terminem w widocznych projektach.</p>
+      )}
     </section>
   );
 }

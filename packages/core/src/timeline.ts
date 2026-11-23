@@ -3,11 +3,12 @@
  * koniec→początek widoczne na osi, naruszenia, a także operacje z osi — przesunięcie i rozciągnięcie
  * paska („Przesuń zależne” / „Tylko to zadanie”), pasek projektu przesuwa cały projekt, dodanie
  * zależności (z blokadą cyklu — SVAR Gantt cykle przyjmuje), usunięcie i opóźnienie zależności.
- * Każda operacja wraca z „Cofnij”. Reguły (`taskSpan`, `detectCycle`, `violations`, `shiftSuccessors`,
- * `projectSpan`) są w `dependencies.ts`.
+ * Każda operacja wraca z „Cofnij”. Ścieżka krytyczna (zapas zadań, łańcuch wyznaczający koniec projektu) liczy się
+ * przy każdym modelu. Reguły (`taskSpan`, `detectCycle`, `violations`, `shiftSuccessors`, `projectSpan`,
+ * `criticalPath`) są w `dependencies.ts`.
  */
 import { addDays, addMonths, daysBetween, isoWeekday, weekStart } from './dates.ts';
-import { detectCycle, projectSpan, shiftSuccessors, taskSpan, violations, type Dependency, type ScheduledTask, type Span, type Violation } from './dependencies.ts';
+import { criticalPath, detectCycle, projectSpan, shiftSuccessors, taskSpan, violations, type Dependency, type ScheduledTask, type Span, type Violation } from './dependencies.ts';
 import { plural } from './format.ts';
 import { uuidv7 } from './ids.ts';
 import { MONTH_NAME, PRIORITY, TASK_STATUS } from './labels.ts';
@@ -49,6 +50,17 @@ export interface TimelineRow {
   /** Zaczyna się za wcześnie względem poprzednika. */
   violated: boolean;
   hasChildren: boolean;
+  /** Na ścieżce krytycznej (otwarte zadanie z paskiem bez zapasu). */
+  critical: boolean;
+  /** Zapas w dniach (roboczych z `workdays`; otwarte zadanie z paskiem); `null` — ukończone, bez paska, projekt. */
+  float: number | null;
+}
+
+/** Ścieżka krytyczna projektu: zadania w kolejności początku i koniec projektu, który wyznaczają. */
+export interface CriticalChain {
+  projectId: string;
+  end: LocalDate;
+  taskIds: string[];
 }
 
 export interface TimelineModel {
@@ -56,6 +68,10 @@ export interface TimelineModel {
   /** Zależności między zadaniami z paskiem na osi. */
   links: Dependency[];
   violations: Violation[];
+  /** Zależności na ścieżce krytycznej (id). */
+  criticalLinks: string[];
+  /** Ścieżki krytyczne projektów (w kolejności projektów; bez otwartych zadań z paskiem — brak). */
+  criticalChains: CriticalChain[];
   /** Zadania projektów bez terminu (bez paska i bez podzadań z terminem): poza osią, a z `withUndated` — wiersze bez paska. */
   undated: number;
 }
@@ -63,6 +79,8 @@ export interface TimelineModel {
 export interface TimelineOptions {
   /** Pokaż też zadania bez terminu (wiersze bez paska, na końcu rodzeństwa), żeby było widać całe drzewo projektu. */
   withUndated?: boolean;
+  /** Dni robocze (ISO, `settings.workHours.days`): zapas ścieżki krytycznej liczony w nich. */
+  workdays?: readonly number[];
 }
 
 const isDone = (t: Pick<TimelineTask, 'status'>) => t.status === 'done';
@@ -118,13 +136,16 @@ export function timelineModel(projects: readonly TimelineProject[], tasks: reado
   const linked = deps.filter((d) => spans.get(d.predecessorId) && spans.get(d.successorId));
   const found = violations(all.filter((t) => visible.has(t.id)), linked);
   const late = new Set(found.map((v) => v.dependency.successorId));
+  // Ścieżka krytyczna: otwarte zadania z paskiem; ukończone nie mogą się już spóźnić.
+  const open = all.filter((t) => visible.has(t.id) && !isDone(t) && spans.get(t.id));
+  const cp = criticalPath(open.map((t) => ({ ...t, group: t.listId })), linked, { workdays: options.workdays });
 
   const rows: TimelineRow[] = [];
   const walk = (t: TimelineTask, parentId: string, projectId: string) => {
     const kids = (children.get(t.id) ?? []).filter((c) => visible.has(c.id));
     const sub = children.get(t.id) ?? [];
     const progress = isDone(t) ? 100 : sub.length ? Math.round((sub.filter(isDone).length / sub.length) * 100) : 0;
-    rows.push({ id: t.id, kind: 'task', parentId, projectId, title: t.title, span: spans.get(t.id) ?? null, progress, done: isDone(t), violated: late.has(t.id), hasChildren: kids.length > 0 });
+    rows.push({ id: t.id, kind: 'task', parentId, projectId, title: t.title, span: spans.get(t.id) ?? null, progress, done: isDone(t), violated: late.has(t.id), hasChildren: kids.length > 0, critical: cp.tasks.has(t.id), float: cp.float.get(t.id) ?? null });
     for (const c of kids) walk(c, t.id, projectId);
   };
   for (const p of projects) {
@@ -141,10 +162,33 @@ export function timelineModel(projects: readonly TimelineProject[], tasks: reado
       done: false,
       violated: false,
       hasChildren: top.length > 0,
+      critical: false,
+      float: null,
     });
     for (const t of top) walk(t, p.id, p.id);
   }
-  return { rows, links: linked.filter((d) => visible.has(d.predecessorId) && visible.has(d.successorId)), violations: found, undated: all.filter((t) => !startOf(t)).length };
+  const criticalChains = projects.flatMap((p): CriticalChain[] => {
+    const end = cp.ends.get(p.id);
+    if (!end) return [];
+    const taskIds = open
+      .filter((t) => t.listId === p.id && cp.tasks.has(t.id))
+      .sort((a, b) => {
+        const x = spans.get(a.id)!;
+        const y = spans.get(b.id)!;
+        return x.start === y.start ? (x.end === y.end ? bySortKey(a, b) : x.end < y.end ? -1 : 1) : x.start < y.start ? -1 : 1;
+      })
+      .map((t) => t.id);
+    return [{ projectId: p.id, end, taskIds }];
+  });
+  const shownLinks = linked.filter((d) => visible.has(d.predecessorId) && visible.has(d.successorId));
+  return {
+    rows,
+    links: shownLinks,
+    violations: found,
+    criticalLinks: shownLinks.filter((d) => cp.links.has(d.id)).map((d) => d.id),
+    criticalChains,
+    undated: all.filter((t) => !startOf(t)).length,
+  };
 }
 
 /**
@@ -184,7 +228,8 @@ export function projectFilterLabel(projects: readonly Pick<TimelineProject, 'id'
 
 /**
  * Arkusz eksportu osi (to, co widać po filtrze): wiersz na projekt, zadanie i podzadanie w kolejności
- * osi, z wcięciem poziomu, datami paska, postępem, statusem, priorytetem, poprzednikami i naruszeniem.
+ * osi, z wcięciem poziomu, datami paska, postępem, statusem, priorytetem, poprzednikami, naruszeniem
+ * i zapasem (ścieżka krytyczna: „krytyczne”).
  */
 export function timelineSheet(
   model: TimelineModel,
@@ -219,6 +264,7 @@ export function timelineSheet(
       task?.priority ? PRIORITY[task.priority].label : '',
       (predecessors.get(r.id) ?? []).map((d) => `${titleOf(d.predecessorId)}${d.lagDays ? ` (${d.lagDays > 0 ? '+' : '−'}${days(Math.abs(d.lagDays))})` : ''}`).join('; '),
       v ? `${days(v.days)} za wcześnie po „${titleOf(v.dependency.predecessorId)}”` : '',
+      r.float === null ? '' : r.critical ? 'krytyczne' : r.float,
     ]);
     indents.push(level);
   }
@@ -236,6 +282,7 @@ export function timelineSheet(
       { header: 'Priorytet', width: 10 },
       { header: 'Poprzednicy', width: 32 },
       { header: 'Naruszenie', width: 32 },
+      { header: 'Zapas (dni)', width: 14 },
     ],
     rows,
     indents,

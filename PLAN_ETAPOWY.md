@@ -307,7 +307,8 @@ Zebrane pozycje „Zostało” z etapów powyżej (szczegóły przy etapach). Po
   - **Kryterium odbioru:** dwie osoby w tej samej udostępnionej przestrzeni układają 30 karteczek jednocześnie — karty nigdy nie nachodzą na siebie (także po upuszczeniu na tę samą komórkę), ruch drugiej osoby widać w < 5 s; kolejność tagów zmieniona w panelu zadania zmienia kolor karteczki; bez sieci widok nie pozwala niczego zmienić; tytuły od 1 do 120 znaków mieszczą się w karcie tego samego kształtu.
 - AI przez `packages/ai` z EP: rozbijanie zadania na podzadania, AI jako uzupełnienie parsera, podsumowanie tygodnia, automatyczne ułożenie dnia w wolnych oknach.
 - Własne statusy i kolumny kanbanu, sekcje w projektach, limity WIP, tory (swimlanes).
-- Szablony projektów, ścieżka krytyczna na osi czasu.
+- Szablony projektów.
+- **Ścieżka krytyczna na osi czasu** (zrobione 23.11.2026, web + telefon, bez migracji): przełącznik „Ścieżka krytyczna” — zadania bez zapasu i zależności między nimi na pomarańczowo, kolumna „Zapas” (dni robocze z „Godzin pracy”), podsumowanie ścieżki każdego projektu (koniec + zadania; „→” = połączone zależnością); w eksporcie XLSX kolumna „Zapas (dni)”. Liczona na bieżących datach (przejście wstecz od końca projektu po zależnościach z opóźnieniem, core `criticalPath`), nie przestawia zadań. Zostało: sprawdzić na telefonie (nowy APK).
 - Tekstowy język filtrów (`@telefon & dziś & !1`).
 - Desktop: Tauri (zasobnik, globalny skrót szybkiego dodawania, widżet pulpitu).
 - iOS, Wear OS (kafelek „Dziś”), przypomnienia według lokalizacji, dyktowanie zadań.

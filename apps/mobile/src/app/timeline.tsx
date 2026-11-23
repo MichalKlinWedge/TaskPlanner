@@ -4,9 +4,12 @@
  * „Bez terminu” pokazuje też zadania bez daty jako wiersze bez paska (`withUndated`); wiersz bez
  * własnej daty rysuje cienki zakres potomków (`timelineRowSpans`). Lewa kolumna stoi, oś przewija się
  * w poziomie (nagłówek okresów idzie za nią), dotknięcie wiersza otwiera zadanie albo projekt.
+ * „Ścieżka krytyczna” (core `criticalPath`, zapas w dniach roboczych z ustawień) barwi zadania bez zapasu
+ * na pomarańczowo, przy pozostałych pokazuje zapas („+3”) i wypisuje ścieżkę każdego projektu.
  */
 import {
   addDays,
+  dayMonth,
   daysBetween,
   plural,
   timelineModel,
@@ -30,6 +33,9 @@ import { useLocalQuery } from '@/lib/local-query';
 
 const SCALE_KEY = 'timeline.scale';
 const UNDATED_KEY = 'timeline.undated';
+const CRITICAL_KEY = 'timeline.critical';
+/** Kolor ścieżki krytycznej (jak na webie `--critical`). */
+const CRITICAL = '#ea580c';
 const SCALES: Record<TimelineScale, { label: string; dayWidth: number }> = {
   day: { label: 'Dzień', dayWidth: 34 },
   week: { label: 'Tydzień', dayWidth: 9 },
@@ -66,6 +72,7 @@ export default function TimelineScreen() {
     return v === 'day' || v === 'week' || v === 'month' ? v : 'week';
   });
   const [withUndated, setWithUndatedState] = useState(() => readStored(UNDATED_KEY) !== '0');
+  const [showCritical, setShowCriticalState] = useState(() => readStored(CRITICAL_KEY) === '1');
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const setScale = (s: TimelineScale) => {
     setScaleState(s);
@@ -74,6 +81,10 @@ export default function TimelineScreen() {
   const setWithUndated = (on: boolean) => {
     setWithUndatedState(on);
     store(UNDATED_KEY, on ? '1' : '0');
+  };
+  const setShowCritical = (on: boolean) => {
+    setShowCriticalState(on);
+    store(CRITICAL_KEY, on ? '1' : '0');
   };
 
   const rows = useLocalQuery(['task_dependencies'], (engine) =>
@@ -85,7 +96,8 @@ export default function TimelineScreen() {
     () => data.lists.filter((l) => l.kind === 'project' && (!ctx.workspaceId || l.workspaceId === ctx.workspaceId)).map((l) => ({ id: l.id, name: l.name, color: l.color, startDate: l.startDate, endDate: l.endDate })),
     [data.lists, ctx.workspaceId],
   );
-  const model = useMemo(() => timelineModel(projects, data.tasks, deps, { withUndated }), [projects, data.tasks, deps, withUndated]);
+  const workdays = data.settings.workHours.days;
+  const model = useMemo(() => timelineModel(projects, data.tasks, deps, { withUndated, workdays }), [projects, data.tasks, deps, withUndated, workdays]);
   const spans = useMemo(() => timelineRowSpans(model.rows), [model.rows]);
   const colors = useMemo(() => new Map(projects.map((pr) => [pr.id, validColor(pr.color)])), [projects]);
 
@@ -173,12 +185,27 @@ export default function TimelineScreen() {
         ))}
         <Chip label="Dziś" onPress={() => scrollToday()} />
         <Chip label="Bez terminu" selected={withUndated} onPress={() => setWithUndated(!withUndated)} />
+        <Chip label="Ścieżka krytyczna" selected={showCritical} onPress={() => setShowCritical(!showCritical)} />
       </View>
       <Text style={[styles.info, { color: p.muted }]}>
         {plural(projects.length, ['projekt', 'projekty', 'projektów'])} · {plural(model.links.length, ['zależność', 'zależności', 'zależności'])}
         {model.undated ? ` · ${plural(model.undated, ['zadanie', 'zadania', 'zadań'])} bez terminu${withUndated ? '' : ' poza osią'}` : ''}
         {model.violations.length ? ` · ⚠ ${plural(model.violations.length, ['naruszona zależność', 'naruszone zależności', 'naruszonych zależności'])}` : ''}
       </Text>
+      {showCritical && projects.length ? (
+        <View style={styles.chains}>
+          {model.criticalChains.length ? (
+            model.criticalChains.map((c) => (
+              <Text key={c.projectId} style={{ fontSize: 12, color: p.fg }} numberOfLines={3}>
+                <Text style={{ fontWeight: '700', color: CRITICAL }}>{projects.find((pr) => pr.id === c.projectId)?.name}</Text> — koniec {dayMonth(c.end)}:{' '}
+                {c.taskIds.map((id) => data.tasks.find((t) => t.id === id)?.title ?? '?').join(', ')}
+              </Text>
+            ))
+          ) : (
+            <Text style={{ fontSize: 12, color: p.muted }}>Ścieżka krytyczna: brak otwartych zadań z terminem.</Text>
+          )}
+        </View>
+      ) : null}
 
       {!projects.length ? (
         <Text style={[styles.empty, { color: p.muted }]}>Brak projektów w tej przestrzeni — oś pokazuje listy typu „projekt”.</Text>
@@ -236,6 +263,9 @@ export default function TimelineScreen() {
                   >
                     {row.title}
                   </Text>
+                  {showCritical && row.float !== null ? (
+                    <Text style={{ fontSize: 11, color: row.critical ? CRITICAL : p.muted, fontWeight: row.critical ? '700' : '400' }}>{row.critical ? '●' : `+${row.float}`}</Text>
+                  ) : null}
                 </Pressable>
               ))}
             </View>
@@ -248,7 +278,8 @@ export default function TimelineScreen() {
                 {visible.map(({ row }, i) => {
                   const span = spans.get(row.id);
                   if (!span) return null;
-                  const color = colors.get(row.projectId) ?? p.accent;
+                  const critical = showCritical && row.critical;
+                  const color = critical ? CRITICAL : (colors.get(row.projectId) ?? p.accent);
                   const left = x(span.start);
                   const w = Math.max(dayWidth, (daysBetween(span.start, span.end) + 1) * dayWidth);
                   // Projekt i wiersz bez własnej daty (zakres potomków) — cienki pasek.
@@ -267,7 +298,7 @@ export default function TimelineScreen() {
                           width: w,
                           backgroundColor: row.done ? p.muted : color,
                           opacity: row.done ? 0.5 : thin ? 0.55 : 0.9,
-                          borderColor: row.violated ? p.bad : 'transparent',
+                          borderColor: row.violated ? p.bad : critical ? CRITICAL : 'transparent',
                         },
                       ]}
                     >
@@ -288,6 +319,7 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingTop: 10 },
   info: { fontSize: 12, paddingHorizontal: 12, paddingVertical: 8 },
   empty: { padding: 24, textAlign: 'center' },
+  chains: { paddingHorizontal: 12, paddingBottom: 8, gap: 2 },
   headerRow: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
   left: { width: LEFT, borderRightWidth: StyleSheet.hairlineWidth, paddingLeft: 8 },
   titleCell: { height: ROW, flexDirection: 'row', alignItems: 'center', gap: 2, borderBottomWidth: StyleSheet.hairlineWidth, paddingRight: 6 },
