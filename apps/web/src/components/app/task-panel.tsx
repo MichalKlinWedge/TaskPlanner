@@ -107,9 +107,9 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
  * Część panelu, którą da się zmieniać. W przestrzeni udostępnionej do podglądu `fieldset disabled`
  * wyszarza i blokuje wszystkie pola i przyciski w środku (zapis i tak odrzuciłby silnik).
  */
-function Editable({ readOnly, children }: { readOnly: boolean; children: ReactNode }) {
+function Editable({ readOnly, className = "", children }: { readOnly: boolean; className?: string; children: ReactNode }) {
   return (
-    <fieldset disabled={readOnly} className="m-0 min-w-0 border-0 p-0 disabled:opacity-60">
+    <fieldset disabled={readOnly} className={`m-0 min-w-0 border-0 p-0 disabled:opacity-60 ${className}`}>
       {children}
     </fieldset>
   );
@@ -176,8 +176,9 @@ export function TaskPanel({ taskId }: { taskId: string }) {
             : `Lista „${data.lists.find((l) => l.id === task.listId)?.name ?? ""}” jest udostępniona Ci tylko do podglądu — zadania nie da się zmienić.`}
         </p>
       ) : null}
-      <Editable readOnly={readOnly}>
-        <div className="flex items-start gap-2">
+      {/* „Wyślij do…” obok tytułu, poza blokadą edycji (wysłać można też zadanie tylko do podglądu). */}
+      <div className="flex items-start gap-2">
+        <Editable readOnly={readOnly} className="flex flex-1 items-start gap-2">
           <button
             type="button"
             role="checkbox"
@@ -190,7 +191,10 @@ export function TaskPanel({ taskId }: { taskId: string }) {
             {task.status === "done" ? "✓" : ""}
           </button>
           <TitleField key={`${task.id}:${task.title}`} value={task.title} onSave={(title) => void update({ title })} />
-        </div>
+        </Editable>
+        <SendToField taskId={task.id} />
+      </div>
+      <Editable readOnly={readOnly}>
 
         <Block id="details" title="Szczegóły">
         <div className="grid grid-cols-2 gap-3 @xl:grid-cols-3">
@@ -332,12 +336,9 @@ export function TaskPanel({ taskId }: { taskId: string }) {
 
       <div className="mt-4 flex items-center justify-between border-t border-[var(--line)] pt-3 text-xs text-[var(--muted)]">
         <span>Dodano {task.createdAt.startsWith("1970") ? "teraz (jeszcze nie wysłane)" : shortDate(task.createdAt.slice(0, 10))}</span>
-        <span className="flex items-center gap-2">
-          <SendToField taskId={task.id} />
-          <Button kind="danger" disabled={readOnly} onClick={remove}>
-            Przenieś do kosza
-          </Button>
-        </span>
+        <Button kind="danger" disabled={readOnly} onClick={remove}>
+          Przenieś do kosza
+        </Button>
       </div>
     </PanelFrame>
   );
@@ -357,7 +358,7 @@ function SendToField({ taskId }: { taskId: string }) {
       aria-label="Wyślij do…"
       title={PLUGIN_SEND_NOTE}
       value=""
-      className="w-auto text-xs"
+      className="mt-1 w-auto shrink-0 text-xs"
       onChange={(e) => {
         const rule = sendable.find((r) => r.id === e.target.value);
         if (rule) void run(pluginRequestOps(userId, rule.id, [taskId]), { text: `Wysyłka do „${rule.name}” czeka na serwer` });
@@ -939,7 +940,7 @@ function TitleField({ value, onSave }: { value: string; onSave: (title: string) 
           e.currentTarget.blur();
         }
       }}
-      className="min-w-0 flex-1 resize-none rounded-md border border-transparent bg-transparent px-1 py-0.5 text-lg font-semibold outline-none hover:border-[var(--line)] focus:border-[var(--accent)] disabled:cursor-not-allowed disabled:hover:border-transparent"
+      className="field-sizing-content min-w-0 flex-1 resize-none rounded-md border border-transparent bg-transparent px-1 py-0.5 text-lg font-semibold outline-none hover:border-[var(--line)] focus:border-[var(--accent)] disabled:cursor-not-allowed disabled:hover:border-transparent"
     />
   );
 }
