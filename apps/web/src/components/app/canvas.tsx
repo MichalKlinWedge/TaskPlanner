@@ -183,6 +183,9 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   const [adding, setAdding] = useState<CanvasCell | null>(null);
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
   const [coloringGroup, setColoringGroup] = useState<string | null>(null);
+  // Pełny ekran: obszar karteczek przykrywa aplikację (warstwa `fixed`), a przeglądarka — o ile
+  // pozwoli — przechodzi w tryb pełnoekranowy. Dymki „Cofnij” zostają widoczne (są nad warstwą).
+  const [full, setFull] = useState(false);
   // Najnowsze dane dla obsługi wskaźnika (zmiany z synchronizacji w trakcie przeciągania).
   const latest = useRef({ layout, groups, view });
   useEffect(() => {
@@ -399,8 +402,38 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   };
 
   // ── Klawiatura (Enter, Esc, E, T, 1–4, Delete działają z `shell.tsx` na zaznaczonych kartach) ──
+  const enterFull = () => {
+    setFull(true);
+    void document.documentElement.requestFullscreen?.().catch(() => undefined);
+  };
+  const exitFull = () => {
+    setFull(false);
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+  };
+  // Esc w trybie pełnoekranowym przeglądarki zamyka go sam — wtedy wraca też zwykły układ.
+  useEffect(() => {
+    const onChange = () => {
+      if (!document.fullscreenElement) setFull(false);
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange);
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    };
+  }, []);
+  // Panel zadania jest poza obszarem karteczek — otwarcie zadania wychodzi z pełnego ekranu.
+  const open = (id: string | null) => {
+    if (full) exitFull();
+    openTask(id);
+  };
+
   const onKeyDown = (e: ReactKeyboardEvent) => {
-    if (e.target !== e.currentTarget) return;
+    if (e.key === "Escape" && full && !adding && !editingGroup) {
+      e.preventDefault();
+      return exitFull();
+    }
+    // Pozostałe skróty tylko na samej tablicy (nie w polach nazwy grupy / nowej karteczki).
+    if (e.target !== box.current) return;
     const arrows: Record<string, CanvasCell> = { ArrowLeft: { col: -1, row: 0 }, ArrowRight: { col: 1, row: 0 }, ArrowUp: { col: 0, row: -1 }, ArrowDown: { col: 0, row: 1 } };
     const ctrl = e.ctrlKey || e.metaKey;
     if (arrows[e.key] && selected.size) {
@@ -472,8 +505,9 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   const note = !canEdit ? READONLY_LIST_NOTE : !online ? "Karteczki wymagają połączenia — bez sieci tylko podgląd." : null;
 
   return (
-    <div className="flex flex-col gap-2" data-testid="canvas-view">
+    <div className={full ? "fixed inset-0 z-[25] flex flex-col gap-2 bg-[var(--background)] p-3" : "flex flex-col gap-2"} onKeyDown={onKeyDown} data-testid="canvas-view" data-full={full || undefined}>
       <div className="flex flex-wrap items-center gap-2 text-xs">
+        {full ? <span className="mr-1 text-sm font-semibold">{list.name}</span> : null}
         <Button className="py-1 text-xs" disabled={!editable} onClick={() => startAdding(centerCell())} title="Nowa karteczka (N, dwuklik w puste miejsce)">
           + Karteczka
         </Button>
@@ -496,13 +530,16 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
             Dopasuj
           </button>
         </div>
+        <Button className="py-1 text-xs" onClick={full ? exitFull : enterFull} title={full ? "Zamknij pełny ekran (Esc)" : "Karteczki na cały ekran"} data-testid="canvas-full">
+          {full ? "✕ Zamknij pełny ekran" : "⛶ Pełny ekran"}
+        </Button>
       </div>
       {note ? (
         <p className="rounded-md bg-amber-100 px-3 py-1.5 text-xs text-amber-900 dark:bg-amber-900/40 dark:text-amber-100" data-testid="canvas-note">
           {note}
         </p>
       ) : null}
-      <div className="flex h-[calc(100vh-12rem)] min-h-80 gap-2">
+      <div className={`flex gap-2 ${full ? "min-h-0 flex-1" : "h-[calc(100vh-12rem)] min-h-80"}`}>
         <div
           ref={box}
           tabIndex={0}
@@ -518,7 +555,6 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
           onDoubleClick={(e) => {
             if (!(e.target as HTMLElement).closest("[data-canvas-card], [data-canvas-group-tab], [data-canvas-add]")) startAdding(cellAt(e.clientX, e.clientY));
           }}
-          onKeyDown={onKeyDown}
           data-testid="canvas-board"
         >
           <div className="absolute left-0 top-0 origin-top-left" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }}>
@@ -572,7 +608,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
                   offset={offset}
                   editable={editable}
                   onPointerDown={startCardDrag}
-                  onOpen={openTask}
+                  onOpen={open}
                 />
               );
             })}
@@ -629,12 +665,12 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
           ) : null}
         </div>
         <aside
-          className={`flex w-52 shrink-0 flex-col rounded-lg border border-[var(--line)] bg-[var(--surface)] ${drag?.kind === "cards" && drag.moved ? "ring-2 ring-[var(--accent)]/40" : ""}`}
+          className={`flex w-56 shrink-0 flex-col rounded-lg border border-[var(--line)] bg-[var(--surface)] ${drag?.kind === "cards" && drag.moved ? "ring-2 ring-[var(--accent)]/40" : ""}`}
           data-canvas-tray
           data-testid="canvas-tray"
           aria-label="Do ułożenia"
         >
-          <div className="flex items-center gap-2 border-b border-[var(--line)] px-3 py-2 text-xs">
+          <div className="flex items-center gap-2 whitespace-nowrap border-b border-[var(--line)] px-3 py-2 text-xs">
             <span className="font-medium">Do ułożenia</span>
             <span className="text-[var(--muted)]">{layout.tray.length}</span>
             <span className="flex-1" />
@@ -659,7 +695,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
                 className={`cursor-grab select-none rounded px-2 py-1.5 text-xs ${selected.has(task.id) ? "ring-2 ring-[var(--accent)]" : ""} ${drag?.kind === "tray" && drag.id === task.id && drag.moved ? "opacity-40" : ""}`}
                 style={{ ...frameStyle(task), background: `color-mix(in srgb, ${canvasColorTag(task, tagsById)?.color ?? CANVAS_DEFAULT_COLOR} 30%, var(--surface))` }}
                 onPointerDown={(e) => startTrayDrag(e, task.id)}
-                onDoubleClick={() => openTask(task.id)}
+                onDoubleClick={() => open(task.id)}
                 title={editable ? "Przeciągnij na tablicę · dwuklik otwiera zadanie" : "Dwuklik otwiera zadanie"}
               >
                 <span className="line-clamp-2 break-words">{task.title}</span>
