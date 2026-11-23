@@ -21,6 +21,8 @@ export interface PluginField {
   optional?: boolean;
   /** Wartość, gdy pole puste (szablon akcji albo konfiguracja). */
   defaultValue?: string;
+  /** Pole jednowierszowe (formularz: `input` zamiast `textarea`). */
+  singleLine?: boolean;
 }
 
 export interface PluginDef {
@@ -102,7 +104,7 @@ const GITLAB: PluginDef = {
   name: 'GitLab',
   description:
     'Zadanie jako issue w projekcie GitLab (gitlab.com albo własny serwer https). Issue jest powiązane z zadaniem: ' +
-    'ukończenie i kosz je zamykają, przywrócenie otwiera, zmiana terminu ustawia termin, tag zmienia etykiety, zmiana odpowiedzialnego — przypisanych, ' +
+    'ukończenie i kosz je zamykają, przywrócenie otwiera, zmiana terminu ustawia termin (pole „Termin issue”), tag zmienia etykiety, zmiana odpowiedzialnego — przypisanych, ' +
     'komentarz dodaje notatkę, ponowne „Wyślij do…” aktualizuje tytuł i opis. Token: Personal / Project Access Token z zakresem „api”.',
   configSchema: z.object({
     baseUrl: HttpUrl.default('https://gitlab.com'),
@@ -125,18 +127,34 @@ const GITLAB: PluginDef = {
     title: z.string().max(500, 'Tytuł: najwyżej 500 znaków.').optional(),
     description: z.string().max(5000, 'Opis: najwyżej 5000 znaków.').optional(),
     labels: z.string().max(500, 'Etykiety: najwyżej 500 znaków.').optional(),
+    dueDate: z
+      .string()
+      .max(100, 'Termin: najwyżej 100 znaków.')
+      .refine((v) => /^\s*(\{\{\s*[a-z_]+\s*\}\}|\d{4}-\d{2}-\d{2})?\s*$/.test(v), 'Termin issue: pole szablonu (np. {{due}}) albo data RRRR-MM-DD.')
+      .optional(),
     assignees: z.string().max(500, 'Przypisani: najwyżej 500 znaków.').optional(),
   }),
   actionFields: [
-    { key: 'title', label: 'Tytuł issue', kind: 'template', optional: true, placeholder: '{{title}}', defaultValue: '{{title}}' },
+    { key: 'title', label: 'Tytuł issue', kind: 'template', optional: true, placeholder: '{{title}}', defaultValue: '{{title}}', singleLine: true },
     { key: 'description', label: 'Opis issue (Markdown)', kind: 'template', optional: true, placeholder: GITLAB_DESCRIPTION, defaultValue: GITLAB_DESCRIPTION },
-    { key: 'labels', label: 'Etykiety (po przecinku)', kind: 'template', optional: true, placeholder: 'task-planner, {{tags}}' },
+    { key: 'labels', label: 'Etykiety (po przecinku)', kind: 'template', optional: true, placeholder: 'task-planner, {{tags}}', singleLine: true },
+    {
+      key: 'dueDate',
+      label: 'Termin issue (Due date)',
+      kind: 'template',
+      optional: true,
+      placeholder: '{{due}}',
+      defaultValue: '{{due}}',
+      singleLine: true,
+      help: 'Domyślnie termin zadania ({{due}}); można wpisać stałą datę RRRR-MM-DD. Zadanie bez terminu — issue bez terminu.',
+    },
     {
       key: 'assignees',
       label: 'Przypisz do (nazwy użytkowników GitLaba, po przecinku)',
       kind: 'template',
       optional: true,
       placeholder: 'jan.kowalski',
+      singleLine: true,
       help: 'Nazwa z adresu profilu (gitlab.com/<nazwa>); {{assignee}} zadziała, gdy nazwy osób w Task Plannerze to nazwy z GitLaba. W planie Free GitLab bierze tylko pierwszą osobę.',
     },
   ],

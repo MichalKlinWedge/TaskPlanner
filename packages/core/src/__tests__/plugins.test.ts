@@ -20,6 +20,7 @@ import {
   gitlabChange,
   gitlabCreate,
   gitlabExternalId,
+  gitlabDueDate,
   gitlabLabels,
   gitlabUsernames,
   gitlabMarker,
@@ -404,7 +405,7 @@ describe('podgląd reguły', () => {
 
   it('GitLab: puste pola = domyślne (tytuł zadania, opis z linkiem), żądanie = treść nowego issue', () => {
     const preview = rulePreview({ rule: { id: CONN, name: 'Issue', trigger: { kind: 'manual' } }, def: PLUGINS.gitlab, action: { labels: 'zgłoszenie, {{tags}}' }, task, appUrl: 'https://x.test' });
-    expect(preview.fields).toEqual({ title: 'Ekspres "przecieka"', description: `\n\n---\n[Zadanie w Task Plannerze](https://x.test/?task=${TASK})`, labels: 'zgłoszenie, zgłoś', assignees: '' });
+    expect(preview.fields).toEqual({ title: 'Ekspres "przecieka"', description: `\n\n---\n[Zadanie w Task Plannerze](https://x.test/?task=${TASK})`, labels: 'zgłoszenie, zgłoś', dueDate: '2026-11-24', assignees: '' });
     expect(preview.request.body).toEqual({
       title: 'Ekspres "przecieka"',
       description: `---\n[Zadanie w Task Plannerze](https://x.test/?task=${TASK})\n\n${gitlabMarker(preview.payload.id)}`,
@@ -412,6 +413,17 @@ describe('podgląd reguły', () => {
       due_date: '2026-11-24',
       assignees: [],
     });
+  });
+
+  it('GitLab: termin issue z szablonu albo stała data; zła wartość = bez terminu; walidacja przy zapisie', () => {
+    const body = (dueDate: string) => rulePreview({ rule: { id: CONN, name: 'Issue', trigger: { kind: 'manual' } }, def: PLUGINS.gitlab, action: { dueDate }, task, appUrl: 'https://x.test' }).request.body as { due_date: string | null };
+    expect(body('').due_date).toBe('2026-11-24');
+    expect(body('2026-12-31').due_date).toBe('2026-12-31');
+    expect(body('{{time}}').due_date).toBeNull();
+    expect(gitlabDueDate(' 2026-12-01 ')).toBe('2026-12-01');
+    expect(gitlabDueDate('jutro')).toBeNull();
+    expect(PLUGINS.gitlab.actionSchema.safeParse({ dueDate: '{{due}}' }).success).toBe(true);
+    expect(PLUGINS.gitlab.actionSchema.safeParse({ dueDate: 'jutro' }).success).toBe(false);
   });
 });
 

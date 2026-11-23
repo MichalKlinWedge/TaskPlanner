@@ -399,6 +399,8 @@ describe('GitLab (I3)', () => {
       { status: 'sent', external_url: issue!.web_url },
       { status: 'sent', external_url: issue!.web_url },
     ]);
+    // Reguła na „nowe zadanie” założyłaby issue zadaniom z kolejnych testów.
+    expect((await push(user, [{ table: 'plugin_rules', id: ruleId, set: { enabled: false } }])).rejected).toEqual([]);
   });
 
   it('„Wyślij do…” ponownie aktualizuje to samo issue; GitLab 503 → ponowienie bez drugiego issue', async () => {

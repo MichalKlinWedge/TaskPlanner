@@ -32,6 +32,12 @@ export const gitlabLabels = (text: string): string =>
 export const gitlabUsernames = (text: string): string[] =>
   [...new Set(text.split(/[,\s]+/).map((name) => name.trim().replace(/^@/, '')).filter(Boolean))];
 
+/** Termin issue z pola akcji (już wypełnionego): data `RRRR-MM-DD` albo `null` (puste / coś innego). */
+export const gitlabDueDate = (text: string | undefined): string | null => {
+  const value = (text ?? '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) ? value : null;
+};
+
 export interface GitlabIssueBody {
   title: string;
   description: string;
@@ -51,7 +57,7 @@ export function gitlabIssueBody(fields: Readonly<Record<string, string>>, task: 
     title: title.length > GITLAB_TITLE_MAX ? `${title.slice(0, GITLAB_TITLE_MAX - 1)}…` : title,
     description: `${description}${description ? '\n\n' : ''}${gitlabMarker(deliveryId)}`,
     labels: gitlabLabels(fields.labels ?? ''),
-    due_date: task.dueDate,
+    due_date: gitlabDueDate(fields.dueDate),
     assignees: gitlabUsernames(fields.assignees ?? ''),
   };
 }

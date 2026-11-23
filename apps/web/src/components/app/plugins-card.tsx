@@ -443,15 +443,31 @@ function Rules({
           </Field>
           {draft.kind === "event" ? <EventFields draft={draft} setDraft={setDraft} /> : null}
           {def?.actionFields.map((f) => (
-            <Field key={f.key} label={f.label} hint={f.kind === "template" ? `${f.help ? `${f.help} ` : ""}Pola: ${TEMPLATE_FIELDS.map((t) => `{{${t.key}}}`).join(" ")}` : f.help}>
-              <textarea
-                className="min-h-16 w-full rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5 text-sm"
-                value={draft.action[f.key] ?? ""}
-                placeholder={f.placeholder}
-                onChange={(e) => setDraft({ ...draft, action: { ...draft.action, [f.key]: e.target.value } })}
-              />
+            <Field key={f.key} label={f.label} hint={f.help}>
+              {f.singleLine ? (
+                <Input value={draft.action[f.key] ?? ""} placeholder={f.placeholder} onChange={(e) => setDraft({ ...draft, action: { ...draft.action, [f.key]: e.target.value } })} />
+              ) : (
+                <textarea
+                  className="min-h-16 w-full rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5 text-sm"
+                  value={draft.action[f.key] ?? ""}
+                  placeholder={f.placeholder}
+                  onChange={(e) => setDraft({ ...draft, action: { ...draft.action, [f.key]: e.target.value } })}
+                />
+              )}
             </Field>
           ))}
+          {def?.actionFields.some((f) => f.kind === "template") ? (
+            <p className="text-xs text-[var(--muted)]">
+              Pola do wstawienia w szablonach:{" "}
+              {TEMPLATE_FIELDS.map((t, i) => (
+                <span key={t.key}>
+                  {i ? ", " : ""}
+                  <code>{`{{${t.key}}}`}</code> — {t.label.charAt(0).toLowerCase() + t.label.slice(1)}
+                </span>
+              ))}
+              .
+            </p>
+          ) : null}
           <AfterSendFields draft={draft} setDraft={setDraft} />
           {def ? <RulePreview draft={draft} def={def} /> : null}
           <div className="flex gap-2">
