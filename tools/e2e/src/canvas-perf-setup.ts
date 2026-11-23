@@ -1,7 +1,8 @@
 /**
  * Przed pomiarem „Karteczek”: konto `canvas-perf@taskplanner.test` od zera, onboarding i lista
  * w widoku „Karteczki” z 500 ułożonymi karteczkami (25 kolumn × 20 wierszy; różne długości tytułów,
- * priorytety, kolorowe tagi, część z osobą odpowiedzialną) — przez `push_changes`.
+ * priorytety, kolorowe tagi, część z osobą odpowiedzialną) i ok. 480 strzałkami (co druga karta „blokuje”
+ * sąsiada z prawej, co druga „wynika z” karty nad nią) — przez `push_changes`.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -44,6 +45,8 @@ export default async function canvasPerfSetup(config: FullConfig) {
     ...TAGS.map((t, i) => ({ table: 'tags', id: tagIds[i]!, patch: { name: t.name, color: t.color, sort_key: String.fromCharCode(97 + i) } })),
     ...PEOPLE.map((p, i) => ({ table: 'collaborators', id: people[i]!, patch: { name: p.name, acronym: p.acronym } })),
   ];
+  // Zależności po wszystkich zadaniach (następnik musi już istnieć).
+  const deps: typeof ops = [];
   for (let i = 0; i < CANVAS_PERF_CARDS; i++) {
     const id = uuidv5(`canvas-perf:task:${i}:${account.id}`);
     // Tytuły od 1 do 14 słów — dopasowanie czcionki w pełnym zakresie.
@@ -60,8 +63,14 @@ export default async function canvasPerfSetup(config: FullConfig) {
         canvas_pos: { col: i % COLUMNS, row: Math.floor(i / COLUMNS) },
       },
     });
+    // Strzałki: „blokuje” sąsiada z prawej (karty parzyste, bez ostatniej kolumny), „wynika z” karty nad nią (nieparzyste).
+    if (i % 2 === 0 && i % COLUMNS !== COLUMNS - 1) {
+      deps.push({ table: 'task_dependencies', id: uuidv5(`canvas-perf:dep:${i}:${account.id}`), patch: { predecessor_id: id, successor_id: uuidv5(`canvas-perf:task:${i + 1}:${account.id}`) } });
+    }
+    if (i % 2 === 1 && i >= COLUMNS) (ops[ops.length - 1]!.patch as Record<string, unknown>).derived_from = [uuidv5(`canvas-perf:task:${i - COLUMNS}:${account.id}`)];
     if (i % 5 !== 4) ops.push({ table: 'task_tags', id: uuidv5(`canvas-perf:tt:${i}:${account.id}`), patch: { task_id: id, tag_id: tagIds[i % TAGS.length]!, sort_key: 'a' } });
   }
+  ops.push(...deps);
   const rejected = await push(account, ops, 'canvas-perf');
   if (rejected) throw new Error(`Przygotowanie ${CANVAS_PERF_EMAIL}: ${rejected} odrzuconych operacji.`);
   mkdirSync(fileURLToPath(new URL('../.auth/', import.meta.url)), { recursive: true });

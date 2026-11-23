@@ -12,7 +12,7 @@ import type { SqlRow, SqlValue } from './local-db.ts';
  * innych zegarów, a cały JSON przy 10 000 zadań to ~5 MB na odczyt.
  */
 export const TASK_COLUMNS = `t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
-  t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count, t.assignee_id, t.board_column_id, t.canvas_pos,
+  t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count, t.assignee_id, t.board_column_id, t.canvas_pos, t.derived_from,
   json_object('status', json_extract(t.field_clock, '$.status')) as field_clock`;
 
 /**

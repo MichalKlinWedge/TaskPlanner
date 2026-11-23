@@ -39,6 +39,7 @@ export interface LocalTaskRow {
   assignee_id?: string | null;
   board_column_id?: string | null;
   canvas_pos?: unknown;
+  derived_from?: unknown;
   field_clock?: unknown;
 }
 
@@ -56,6 +57,15 @@ export function canvasPosOf(raw: unknown): { col: number; row: number } | null {
   if (raw === null || raw === undefined) return null;
   const value = json(raw) as { col?: unknown; row?: unknown } | null;
   return value && Number.isInteger(value.col) && Number.isInteger(value.row) ? { col: value.col as number, row: value.row as number } : null;
+}
+
+/** `derived_from` z lokalnego wiersza (tekst JSON albo tablica) → id źródeł; brak / zły zapis / pusta → `null` (bez Zod — gorąca ścieżka). */
+export function derivedFromOf(raw: unknown): string[] | null {
+  if (raw === null || raw === undefined) return null;
+  const value = json(raw);
+  if (!Array.isArray(value)) return null;
+  const ids = value.filter((id): id is string => typeof id === 'string');
+  return ids.length ? ids : null;
 }
 
 /** Czas z HLC pola (`field_clock`) jako ISO; brak / zły zapis → `null`. */
@@ -99,6 +109,7 @@ export function toViewTask(row: LocalTaskRow, tagIds: readonly string[] = []): V
     assigneeId: row.assignee_id ?? null,
     boardColumnId: row.board_column_id ?? null,
     canvasPos: canvasPosOf(row.canvas_pos),
+    derivedFrom: derivedFromOf(row.derived_from),
   };
 }
 
@@ -630,6 +641,7 @@ const BEFORE: Record<string, (t: ViewTask) => unknown> = {
   start_date: (t) => t.startDate,
   postpone_count: (t) => t.postponeCount,
   canvas_pos: (t) => t.canvasPos ?? null,
+  derived_from: (t) => t.derivedFrom ?? null,
   deleted_at: () => null,
 };
 

@@ -25,7 +25,11 @@ export function XlsIcon({ className = "h-4 w-4" }: { className?: string }) {
 
 /** Pobranie skoroszytu jako plik. */
 export function downloadXlsx(fileName: string, sheets: readonly XlsxSheet[]): void {
-  const blob = new Blob([xlsxWorkbook(sheets)], { type: XLSX_MIME });
+  downloadBlob(fileName, new Blob([xlsxWorkbook(sheets)], { type: XLSX_MIME }));
+}
+
+/** Pobranie danych jako plik (link `download` na adres `blob:`). */
+export function downloadBlob(fileName: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
   const link = Object.assign(document.createElement("a"), { href: url, download: fileName });
   document.body.append(link);

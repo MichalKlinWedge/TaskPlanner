@@ -7,14 +7,21 @@
  */
 import {
   addCanvasGroupOps,
+  addDependencyOps,
+  addDerivedLinkOps,
   assigneeOf,
+  CANVAS_ARROW,
   CANVAS_CARD,
   CANVAS_DEFAULT_COLOR,
   CANVAS_FRAME,
   CANVAS_STEP,
   CANVAS_ZOOM,
   canvasArrangeOps,
+  canvasArrowHead,
+  canvasArrows,
+  canvasArrowSegment,
   canvasBounds,
+  canvasCardRect,
   canvasColorTag,
   canvasLayout,
   canvasMoveOps,
@@ -27,6 +34,8 @@ import {
   clampCanvasZoom,
   cellKey,
   collaboratorBadge,
+  dependencyErrorText,
+  derivedLinkErrorText,
   fitTitle,
   moveCanvasGroupOps,
   nearestFreeCell,
@@ -34,10 +43,16 @@ import {
   PRIORITY,
   READONLY_LIST_NOTE,
   removeCanvasGroupOps,
+  removeDependencyOps,
+  removeDerivedLinkOps,
   updateCanvasGroupOps,
+  violations,
   withCompleted,
   zoomCanvasViewport,
+  type CanvasArrow,
+  type CanvasArrowKind,
   type CanvasCell,
+  type CanvasSegment,
   type CanvasTasks,
   type CanvasViewport,
   type CanvasGroup,
@@ -49,7 +64,9 @@ import {
 } from "@taskplanner/core";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { listEditable, type AppData, type List, type Tag } from "@/lib/app-data";
+import { useDependencies } from "@/lib/dependencies";
 import { useAppEnv } from "./app-env";
+import { CanvasExportButton } from "./canvas-export";
 import { QuickAdd } from "./quick-add";
 import { TagColorPicker } from "./tag-chip";
 import { useTaskActions } from "./task-item";
@@ -152,7 +169,12 @@ type Drag =
   | { kind: "marquee"; x0: number; y0: number; x1: number; y1: number }
   | { kind: "tray"; id: string; clientX: number; clientY: number; moved: boolean }
   | { kind: "group"; id: string; dx: number; dy: number; moved: boolean }
-  | { kind: "resize"; id: string; dx: number; dy: number };
+  | { kind: "resize"; id: string; dx: number; dy: number }
+  /** Rysowanie strzałki z uchwytu karty: koniec szkicu w px tablicy, karta pod kursorem. */
+  | { kind: "link"; fromId: string; x: number; y: number; overId: string | null };
+
+/** Karta pod wskaźnikiem (id zadania) — cel strzałki. */
+const cardIdAt = (e: PointerEvent) => document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-canvas-card]")?.getAttribute("data-task-id") ?? null;
 
 const MOVE_THRESHOLD = 4;
 const cellsOf = (dx: number, dy: number, zoom: number): CanvasCell => ({ col: Math.round(dx / zoom / CANVAS_STEP.x), row: Math.round(dy / zoom / CANVAS_STEP.y) });
@@ -212,6 +234,14 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   const tagsById = useMemo(() => new Map(data.tags.map((t) => [t.id, t])), [data.tags]);
   const subtasks = useMemo(() => canvasSubtaskProgress(data.tasks), [data.tasks]);
   const titles = useMemo(() => new Map(data.tasks.map((t) => [t.id, t.title])), [data.tasks]);
+  const quoted = useCallback((id: string) => `„${titles.get(id) ?? "?"}”`, [titles]);
+
+  // Strzałki: „blokuje” = zależności (te same co na osi czasu i w panelu), „wynika z” = `tasks.derived_from`.
+  const deps = useDependencies(store);
+  const violated = useMemo(() => new Set(violations(data.tasks, deps).map((v) => v.dependency.id)), [data.tasks, deps]);
+  const links = useMemo(() => canvasArrows(new Set(layout.placed.map((p) => p.task.id)), data.tasks, deps, violated), [layout, data.tasks, deps, violated]);
+  // „⇢ N” na karcie: połączenia z kartami, których nie ma na tablicy (tekst = tytuły do dymka).
+  const offBoard = useMemo(() => new Map([...links.offBoard].map(([id, others]) => [id, others.map((o) => titles.get(o) ?? "?").join("\n")])), [links, titles]);
 
   // Osoby na karcie: odpowiedzialny (pełny znaczek) i uczestnicy (obrys) — te same obiekty między
   // przerysowaniami, żeby `memo` kart działało.
@@ -239,6 +269,10 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   // pozwoli — przechodzi w tryb pełnoekranowy. Dymki „Cofnij” zostają widoczne (są nad warstwą).
   const [full, setFull] = useState(false);
   const [spacePan, setSpacePan] = useState(false);
+  // Strzałki: zaznaczona (klucz `CanvasArrow.key`), menu rodzaju po upuszczeniu, ostatnio wybrany rodzaj.
+  const [selectedArrow, setSelectedArrow] = useState<string | null>(null);
+  const [linkMenu, setLinkMenu] = useState<{ fromId: string; toId: string; x: number; y: number } | null>(null);
+  const [lastKind, setLastKind] = useState<CanvasArrowKind>("blocks");
   // Najnowsze dane dla obsługi wskaźnika (zmiany z synchronizacji w trakcie przeciągania).
   const latest = useRef({ layout, groups, view });
   useEffect(() => {
@@ -248,6 +282,8 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
 
   const selected = useMemo(() => new Set(cards.filter((c) => selectedIds.has(c.id)).map((c) => c.id)), [cards, selectedIds]);
   const placedById = useMemo(() => new Map(layout.placed.map((p) => [p.task.id, p])), [layout]);
+  // Zaznaczona karta wygrywa ze strzałką (Delete działa wtedy na karty, jak dotąd).
+  const arrowSel = selected.size ? null : selectedArrow;
 
   const selectOnly = (ids: readonly string[]) => {
     for (const id of selectedIds) if (!ids.includes(id)) select(id, "toggle");
@@ -363,6 +399,8 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   const startCardDrag = (e: ReactPointerEvent, id: string) => {
     if (e.button !== 0) return;
     e.stopPropagation();
+    setLinkMenu(null);
+    setSelectedArrow(null);
     box.current?.focus({ preventScroll: true });
     if (spacePan) return startPan(e);
     if (e.ctrlKey || e.metaKey) return select(id, "toggle");
@@ -420,6 +458,8 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   const startBackground = (e: ReactPointerEvent) => {
     if (e.button !== 0 && e.button !== 1) return;
     box.current?.focus({ preventScroll: true });
+    setLinkMenu(null);
+    if (e.button === 0) setSelectedArrow(null);
     if (e.shiftKey && e.button === 0 && !spacePan) {
       const w0 = toWorld(e.clientX, e.clientY);
       track(
@@ -467,6 +507,76 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   const startAdding = (target: CanvasCell) => {
     if (!editable) return;
     setAdding(nearestFreeCell(layout.occupied, target));
+  };
+
+  // ── Strzałki ──
+  /** Przeciąganie z uchwytu karty: szkic za kursorem, upuszczenie na innej karcie → menu rodzaju. */
+  const startLink = (e: ReactPointerEvent, fromId: string) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    if (spacePan) return startPan(e);
+    if (!editable) return;
+    e.preventDefault();
+    box.current?.focus({ preventScroll: true });
+    setLinkMenu(null);
+    setSelectedArrow(null);
+    track(
+      e,
+      (_dx, _dy, move) => {
+        if (pinching()) return setDrag(null);
+        const w = toWorld(move.clientX, move.clientY);
+        const over = cardIdAt(move);
+        setDrag({ kind: "link", fromId, x: w.x, y: w.y, overId: over && over !== fromId ? over : null });
+      },
+      (_dx, _dy, up) => {
+        setDrag(null);
+        const toId = cardIdAt(up);
+        if (!toId || toId === fromId || pinching()) return;
+        const w = toWorld(up.clientX, up.clientY);
+        setLinkMenu({ fromId, toId, x: w.x, y: w.y });
+      },
+    );
+  };
+
+  const createLink = (kind: CanvasArrowKind) => {
+    const menu = linkMenu;
+    setLinkMenu(null);
+    box.current?.focus({ preventScroll: true });
+    if (!menu || !editable) return;
+    setLastKind(kind);
+    const sentence = CANVAS_ARROW[kind].sentence(quoted(menu.fromId), quoted(menu.toId));
+    if (kind === "blocks") {
+      const result = addDependencyOps(data.tasks, deps, { predecessorId: menu.fromId, successorId: menu.toId });
+      if ("error" in result) return notify(dependencyErrorText(result.error, quoted));
+      return void apply(result.ops, `Zależność: ${sentence}`, result.undo);
+    }
+    const result = addDerivedLinkOps(data.tasks, { fromId: menu.fromId, toId: menu.toId });
+    if ("error" in result) return notify(derivedLinkErrorText(result.error, quoted));
+    void apply(result.ops, `Powiązanie: ${sentence}`, result.undo);
+  };
+
+  const removeArrow = (arrow: CanvasArrow) => {
+    setSelectedArrow(null);
+    if (!editable) return;
+    const sentence = CANVAS_ARROW[arrow.kind].sentence(quoted(arrow.fromId), quoted(arrow.toId));
+    if (arrow.dependencyId) {
+      const { ops, undo } = removeDependencyOps(arrow.dependencyId);
+      return void apply(ops, `Usunięto zależność: ${sentence}`, undo);
+    }
+    const task = data.tasks.find((t) => t.id === arrow.toId);
+    if (!task) return;
+    const { ops, undo } = removeDerivedLinkOps(task, arrow.fromId);
+    void apply(ops, `Usunięto powiązanie: ${sentence}`, undo);
+  };
+
+  const arrowDown = (e: ReactPointerEvent, key: string) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    if (spacePan) return startPan(e);
+    box.current?.focus({ preventScroll: true });
+    setLinkMenu(null);
+    setSelectedArrow(key);
+    selectOnly([]);
   };
 
   // ── Grupy ──
@@ -538,12 +648,14 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     openTask(id);
   };
   // Stałe funkcje dla kart (`memo`): wołają najnowsze wersje obsługi.
-  const cardHandlers = useRef({ down: startCardDrag, open });
+  const cardHandlers = useRef({ down: startCardDrag, open, link: startLink, arrow: arrowDown });
   useLayoutEffect(() => {
-    cardHandlers.current = { down: startCardDrag, open };
+    cardHandlers.current = { down: startCardDrag, open, link: startLink, arrow: arrowDown };
   });
   const onCardDown = useCallback((e: ReactPointerEvent, id: string) => cardHandlers.current.down(e, id), []);
   const onCardOpen = useCallback((id: string) => cardHandlers.current.open(id), []);
+  const onHandleDown = useCallback((e: ReactPointerEvent, id: string) => cardHandlers.current.link(e, id), []);
+  const onArrowDown = useCallback((e: ReactPointerEvent, key: string) => cardHandlers.current.arrow(e, key), []);
 
   const onKeyUp = (e: ReactKeyboardEvent) => {
     if (e.key === " ") setSpacePan(false);
@@ -561,6 +673,15 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
       // Klawisz nie dochodzi do skrótów `shell.tsx` (nasłuch na `window`).
       e.preventDefault();
       e.stopPropagation();
+      return;
+    }
+    // Zaznaczona strzałka: Delete / Backspace usuwa ją (nie zadania), Esc odznacza. Klawisz nie dochodzi do `shell.tsx`.
+    const arrow = arrowSel ? links.arrows.find((a) => a.key === arrowSel) : undefined;
+    if (arrow && e.target === box.current && (e.key === "Delete" || e.key === "Backspace" || e.key === "Escape")) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape") setSelectedArrow(null);
+      else removeArrow(arrow);
       return;
     }
     if (e.key === "Escape" && full && !adding && !editingGroup) {
@@ -631,6 +752,30 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     return group ? cellInGroup(cell, group) : false;
   };
 
+  // Odcinki strzałek: od wyświetlanej komórki karty, na żywo za przeciąganą kartą / blokiem / grupą.
+  const groupOffset = groupDrag ? { x: groupDrag.dx / view.zoom, y: groupDrag.dy / view.zoom } : null;
+  const rectOf = (id: string) => {
+    const p = placedById.get(id);
+    if (!p) return null;
+    return canvasCardRect(p.cell, dragging?.has(id) ? cardDelta : groupOffset && groupMovesCard(p.cell) ? groupOffset : null);
+  };
+  const segments: { arrow: CanvasArrow; seg: CanvasSegment }[] = [];
+  for (const arrow of links.arrows) {
+    const a = rectOf(arrow.fromId);
+    const b = rectOf(arrow.toId);
+    const seg = a && b ? canvasArrowSegment(a, b, arrow.offset) : null;
+    if (seg) segments.push({ arrow, seg });
+  }
+  const linkDraft = drag?.kind === "link" ? drag : null;
+  const draftSeg = (() => {
+    if (!linkDraft) return null;
+    const from = rectOf(linkDraft.fromId);
+    if (!from) return null;
+    const target = linkDraft.overId ? rectOf(linkDraft.overId) : null;
+    return target ? canvasArrowSegment(from, target) : canvasArrowSegment(from, { x: linkDraft.x, y: linkDraft.y, w: 0, h: 0 }, 0, 0);
+  })();
+  const selectedSeg = arrowSel ? segments.find((s) => s.arrow.key === arrowSel) : undefined;
+
   const showText = view.zoom >= CANVAS_ZOOM.textMin;
   const legend = useMemo(() => {
     const seen = new Map<string, Tag>();
@@ -674,9 +819,9 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
         {/* Podstawa 0: podpowiedź wypełnia wolne miejsce i skraca się, zamiast zawijać pasek. */}
         <span
           className="hidden min-w-0 flex-[1_1_0] truncate text-right text-[var(--muted)] lg:block"
-          title="Dwuklik — nowa karteczka · Shift+przeciąganie — zaznaczanie ramką · spacja+przeciąganie — przesuwanie tablicy · Ctrl+kółko albo dwa palce — powiększenie"
+          title="Dwuklik — nowa karteczka · uchwyt ● na karcie przeciągnięty na inną kartę — strzałka „blokuje” albo „wynika z” (klik w strzałkę + Delete usuwa) · Shift+przeciąganie — zaznaczanie ramką · spacja+przeciąganie — przesuwanie tablicy · Ctrl+kółko albo dwa palce — powiększenie"
         >
-          Dwuklik — nowa · Shift — zaznaczanie · Spacja — przesuwanie · Ctrl+kółko — powiększenie
+          Dwuklik — nowa · ● — strzałka · Shift — zaznaczanie · Spacja — przesuwanie · Ctrl+kółko — powiększenie
         </span>
         <div className="flex items-center overflow-hidden rounded-md border border-[var(--line)]" role="group" aria-label="Powiększenie">
           <button type="button" className="px-2 py-1 hover:bg-[var(--hover)]" onClick={() => zoomAt(1 / CANVAS_ZOOM.step)} aria-label="Pomniejsz" title="Pomniejsz (−)">
@@ -692,6 +837,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
             Dopasuj
           </button>
         </div>
+        <CanvasExportButton listName={list.name} today={ctx.today} placed={layout.placed} trayCount={layout.tray.length} groups={groups} tags={tagsById} people={people} subtasks={subtasks} titles={titles} selected={selected} />
         <Button className="py-1 text-xs" onClick={full ? exitFull : enterFull} title={full ? "Zamknij pełny ekran (Esc)" : "Karteczki na cały ekran"} data-testid="canvas-full">
           {full ? "✕ Zamknij pełny ekran" : "⛶ Pełny ekran"}
         </Button>
@@ -707,7 +853,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
           tabIndex={0}
           role="application"
           aria-label={`Karteczki listy „${list.name}”`}
-          className={`relative min-w-0 flex-1 touch-none overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--background)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${drag?.kind === "pan" ? "cursor-grabbing" : spacePan ? "cursor-grab [&_*]:!cursor-grab" : ""}`}
+          className={`relative min-w-0 flex-1 touch-none overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--background)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${drag?.kind === "pan" ? "cursor-grabbing" : drag?.kind === "link" ? "cursor-crosshair [&_*]:!cursor-crosshair" : spacePan ? "cursor-grab [&_*]:!cursor-grab" : ""}`}
           style={{
             backgroundImage: "radial-gradient(circle, var(--line) 1.2px, transparent 1.3px)",
             backgroundSize: `${CANVAS_STEP.x * view.zoom}px ${CANVAS_STEP.y * view.zoom}px`,
@@ -763,6 +909,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
                 style={{ left: cell.col * CANVAS_STEP.x, top: cell.row * CANVAS_STEP.y, width: CANVAS_CARD.width, height: CANVAS_CARD.height }}
               />
             ))}
+            <ArrowLayer layer="base" segments={segments} selected={arrowSel} interactive={editable} onArrowDown={onArrowDown} />
             {layout.placed.map((p) => {
               const offset = dragging?.has(p.task.id) ? cardDelta : groupDrag && groupMovesCard(p.cell) ? { x: groupDrag.dx / view.zoom, y: groupDrag.dy / view.zoom } : null;
               return (
@@ -780,11 +927,29 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
                   showText={showText}
                   offset={offset}
                   editable={editable}
+                  offBoard={offBoard.get(p.task.id) ?? null}
+                  linkTarget={linkDraft?.overId === p.task.id || linkDraft?.fromId === p.task.id}
                   onPointerDown={onCardDown}
                   onOpen={onCardOpen}
+                  onHandleDown={onHandleDown}
                 />
               );
             })}
+            {/* Nad kartami: zaznaczona strzałka i szkic rysowanej (bez obsługi wskaźnika — klik trafia w kartę pod spodem). */}
+            {selectedSeg || draftSeg ? (
+              <ArrowLayer
+                layer="top"
+                segments={[
+                  ...(selectedSeg ? [selectedSeg] : []),
+                  ...(draftSeg ? [{ arrow: { key: "draft", kind: lastKind, fromId: "", toId: "", dependencyId: null, violated: false, offset: 0 }, seg: draftSeg }] : []),
+                ]}
+                selected={selectedSeg ? arrowSel : null}
+                draft={Boolean(draftSeg)}
+                interactive={false}
+                onArrowDown={onArrowDown}
+                className="z-[15]"
+              />
+            ) : null}
             {adding ? (
               <div
                 className="absolute z-20 rounded-md border border-[var(--accent)] bg-[var(--surface)] p-2 shadow-lg"
@@ -816,6 +981,30 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
               />
             ) : null}
           </div>
+          {selectedSeg ? (
+            <ArrowLabel
+              arrow={selectedSeg.arrow}
+              x={view.x + ((selectedSeg.seg.x1 + selectedSeg.seg.x2) / 2) * view.zoom}
+              y={view.y + ((selectedSeg.seg.y1 + selectedSeg.seg.y2) / 2) * view.zoom}
+              sentence={CANVAS_ARROW[selectedSeg.arrow.kind].sentence(quoted(selectedSeg.arrow.fromId), quoted(selectedSeg.arrow.toId))}
+              editable={editable}
+              onRemove={() => removeArrow(selectedSeg.arrow)}
+            />
+          ) : null}
+          {linkMenu && editable ? (
+            <LinkMenu
+              x={view.x + linkMenu.x * view.zoom}
+              y={view.y + linkMenu.y * view.zoom}
+              from={quoted(linkMenu.fromId)}
+              to={quoted(linkMenu.toId)}
+              preferred={lastKind}
+              onPick={createLink}
+              onCancel={() => {
+                setLinkMenu(null);
+                box.current?.focus({ preventScroll: true });
+              }}
+            />
+          ) : null}
           {!layout.placed.length && !adding ? (
             <p className="pointer-events-none absolute inset-x-0 top-1/3 text-center text-sm text-[var(--muted)]">
               {layout.tray.length ? "Przeciągnij karteczki z paska „Do ułożenia” albo kliknij „Ułóż wszystkie”." : editable ? "Kliknij dwukrotnie, aby dodać pierwszą karteczkę." : "Brak karteczek."}
@@ -887,7 +1076,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
         </div>
       ) : null}
       <p className="text-[11px] text-[var(--muted)]">
-        {plural(layout.placed.length, ["karteczka", "karteczki", "karteczek"])} na tablicy · kolor = pierwszy kolorowy tag zadania (kolejność tagów zmienisz w panelu zadania) · ramka = priorytet
+        {plural(layout.placed.length, ["karteczka", "karteczki", "karteczek"])} na tablicy · kolor = pierwszy kolorowy tag zadania (kolejność tagów zmienisz w panelu zadania) · ramka = priorytet · strzałka ciągła = blokuje (zależność, czerwona — naruszona kolejność), przerywana = wynika z
       </p>
     </div>
   );
@@ -917,8 +1106,11 @@ const Card = memo(function Card({
   showText,
   offset,
   editable,
+  offBoard,
+  linkTarget,
   onPointerDown,
   onOpen,
+  onHandleDown,
 }: {
   task: ViewTask;
   cell: CanvasCell;
@@ -934,8 +1126,13 @@ const Card = memo(function Card({
   showText: boolean;
   offset: { x: number; y: number } | null;
   editable: boolean;
+  /** Tytuły zadań po drugiej stronie połączeń, których nie widać na tablicy (po jednym w linii); `null` = brak. */
+  offBoard: string | null;
+  /** Początek albo cel rysowanej strzałki (podświetlenie). */
+  linkTarget: boolean;
   onPointerDown: (e: ReactPointerEvent, id: string) => void;
   onOpen: (id: string) => void;
+  onHandleDown: (e: ReactPointerEvent, id: string) => void;
 }) {
   const fit = showText ? titleFit(task.title) : null;
   const closed = task.status === "done" || task.status === "cancelled";
@@ -950,7 +1147,7 @@ const Card = memo(function Card({
       aria-label={`${task.title}${parentTitle !== null ? ` (podzadanie „${parentTitle}”)` : ""} — ${PRIORITY[task.priority].label.toLowerCase()} priorytet${people.assignee ? `, ${people.assignee.name}` : ""}`}
       aria-pressed={selected}
       title={`${task.title}${parentTitle !== null ? `\nPodzadanie: „${parentTitle}”` : ""}${displaced ? "\n(pokazana obok — ktoś położył kartę w tym samym miejscu)" : ""}`}
-      className={`absolute select-none ${editable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${selected ? "z-10 outline outline-2 outline-offset-2 outline-[var(--accent)]" : ""} ${offset ? "z-20 opacity-80" : ""} ${closed ? "opacity-50" : ""}`}
+      className={`group/card absolute select-none ${editable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${selected ? "z-10 outline outline-2 outline-offset-2 outline-[var(--accent)]" : linkTarget ? "outline outline-2 outline-offset-4 outline-dashed outline-[var(--accent)]" : ""} ${offset ? "z-20 opacity-80" : ""} ${closed ? "opacity-50" : ""}`}
       style={{
         ["--card-color" as string]: color,
         left: cell.col * CANVAS_STEP.x,
@@ -985,11 +1182,16 @@ const Card = memo(function Card({
         ) : (
           <div className="flex-1" />
         )}
-          {/* Odstęp pod paskiem: znaczek odpowiedzialnego przy prawej krawędzi stoi nad zagiętym rogiem. */}
-        <div className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--muted)]" style={{ height: CARD_FOOT, paddingBottom: CARD_FOOT - 20 }}>
+          {/* Odstęp pod paskiem + z prawej: znaczki osób kończą się przed zagiętym rogiem (nie nachodzi na nie). */}
+        <div className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--muted)]" style={{ height: CARD_FOOT, paddingBottom: CARD_FOOT - 20, paddingRight: CARD_FOLD - CARD_PAD + 4 }}>
           {parentTitle !== null && showText ? (
             <span className="min-w-0 truncate" title={`Podzadanie: „${parentTitle}”`} data-testid="canvas-parent">
               ↑ {parentTitle}
+            </span>
+          ) : null}
+          {offBoard !== null && showText ? (
+            <span className="shrink-0 tabular-nums" title={`Połączenia z karteczkami poza tablicą:\n${offBoard}`} data-testid="canvas-offboard">
+              ⇢ {offBoard.split("\n").length}
             </span>
           ) : null}
           {subtasksTotal && showText ? (
@@ -1024,6 +1226,17 @@ const Card = memo(function Card({
           ) : null}
         </div>
       </div>
+      {editable ? (
+        // Uchwyt strzałki: przeciągnięcie na inną kartę → „blokuje” / „wynika z”. Widoczny po najechaniu (CSS) i na zaznaczonej karcie.
+        <span
+          data-canvas-handle
+          role="button"
+          aria-label={`Strzałka od „${task.title}”`}
+          title="Przeciągnij na inną karteczkę — strzałka „blokuje” albo „wynika z”"
+          className={`absolute -right-2 top-1/2 z-10 h-4 w-4 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-[var(--accent)] bg-[var(--surface)] shadow transition-opacity ${selected ? "opacity-100" : "opacity-0 group-hover/card:opacity-100"}`}
+          onPointerDown={(e) => onHandleDown(e, task.id)}
+        />
+      ) : null}
       {/* Zagięty róg: odwrotna strona kartki (ciemniejsza przy zgięciu) rzucająca cień na przód. */}
       <span className="pointer-events-none absolute bottom-0 right-0" style={{ width: CARD_FOLD, height: CARD_FOLD, filter: "drop-shadow(-1px -1px 2px rgb(0 0 0 / 0.3))" }} aria-hidden>
         <span
@@ -1037,6 +1250,229 @@ const Card = memo(function Card({
     </div>
   );
 });
+
+// ── Strzałki ──────────────────────────────────────────────────────────────────────────────────
+
+/** Margines warstwy SVG wokół odcinków (groty, szeroki obrys do klikania). */
+const ARROW_PAD = 16;
+
+/**
+ * Warstwa strzałek (SVG w px tablicy). Rozmiar = prostokąt obejmujący odcinki, więc obsługa wskaźnika
+ * działa też dla współrzędnych ujemnych; tło warstwy nie łapie kliknięć (tylko szeroki obrys strzałki).
+ */
+function ArrowLayer({
+  layer,
+  segments,
+  selected,
+  interactive,
+  draft = false,
+  className = "",
+  onArrowDown,
+}: {
+  /** `base` — wszystkie strzałki pod kartami, `top` — zaznaczona i szkic nad kartami. */
+  layer: "base" | "top";
+  segments: readonly { arrow: CanvasArrow; seg: CanvasSegment }[];
+  selected: string | null;
+  interactive: boolean;
+  draft?: boolean;
+  className?: string;
+  onArrowDown: (e: ReactPointerEvent, key: string) => void;
+}) {
+  if (!segments.length) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const { seg } of segments) {
+    minX = Math.min(minX, seg.x1, seg.x2);
+    minY = Math.min(minY, seg.y1, seg.y2);
+    maxX = Math.max(maxX, seg.x1, seg.x2);
+    maxY = Math.max(maxY, seg.y1, seg.y2);
+  }
+  const x = Math.floor(minX - ARROW_PAD);
+  const y = Math.floor(minY - ARROW_PAD);
+  const w = Math.ceil(maxX + ARROW_PAD) - x;
+  const h = Math.ceil(maxY + ARROW_PAD) - y;
+  return (
+    <svg
+      className={`pointer-events-none absolute overflow-visible ${className}`}
+      style={{ left: x, top: y, width: w, height: h }}
+      viewBox={`${x} ${y} ${w} ${h}`}
+      aria-hidden
+      data-canvas-arrows={layer}
+      data-draft={draft || undefined}
+    >
+      {segments.map(({ arrow, seg }) => (
+        <Arrow
+          key={arrow.key}
+          id={arrow.key}
+          kind={arrow.kind}
+          fromId={arrow.fromId}
+          toId={arrow.toId}
+          violated={arrow.violated}
+          selected={arrow.key === selected}
+          draft={arrow.key === "draft"}
+          interactive={interactive}
+          x1={seg.x1}
+          y1={seg.y1}
+          x2={seg.x2}
+          y2={seg.y2}
+          onDown={onArrowDown}
+        />
+      ))}
+    </svg>
+  );
+}
+
+/** Jedna strzałka: tylko liczby i teksty w propsach (`memo`) — przy przeciąganiu przerysowują się tylko ruszane. */
+const Arrow = memo(function Arrow({
+  id,
+  kind,
+  fromId,
+  toId,
+  violated,
+  selected,
+  draft,
+  interactive,
+  x1,
+  y1,
+  x2,
+  y2,
+  onDown,
+}: {
+  id: string;
+  kind: CanvasArrowKind;
+  fromId: string;
+  toId: string;
+  violated: boolean;
+  selected: boolean;
+  draft: boolean;
+  interactive: boolean;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  onDown: (e: ReactPointerEvent, key: string) => void;
+}) {
+  const color = selected || draft ? "var(--accent)" : violated ? "var(--danger)" : "var(--muted)";
+  const width = (kind === "blocks" ? 2 : 1.5) + (selected ? 1 : 0);
+  const seg = { x1, y1, x2, y2 };
+  const head = canvasArrowHead(seg, kind === "blocks" ? 10 : 9, kind === "blocks" ? 8 : 9)
+    .map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`)
+    .join(" ");
+  // Linia „blokuje” kończy się u podstawy grotu (pełny grot zakrywa resztę, a koniec linii nie wystaje zza czubka).
+  const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+  const back = kind === "blocks" ? 8 : 0;
+  const ex = x2 - ((x2 - x1) / len) * back;
+  const ey = y2 - ((y2 - y1) / len) * back;
+  return (
+    <g data-canvas-arrow={draft ? undefined : id} data-kind={kind} data-from={fromId || undefined} data-to={toId || undefined} data-violated={violated || undefined} data-selected={selected || undefined}>
+      {interactive ? (
+        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth={12} strokeLinecap="round" style={{ pointerEvents: "stroke", cursor: "pointer" }} onPointerDown={(e) => onDown(e, id)}>
+          <title>{`${CANVAS_ARROW[kind].label}${violated ? " — naruszona kolejność" : ""} (kliknij, aby zaznaczyć)`}</title>
+        </line>
+      ) : null}
+      <line x1={x1} y1={y1} x2={ex} y2={ey} stroke={color} strokeWidth={width} strokeDasharray={kind === "derived" ? "6 4" : undefined} strokeLinecap="round" />
+      {kind === "blocks" ? (
+        <polygon points={head} fill={color} />
+      ) : (
+        <polyline points={head} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" />
+      )}
+    </g>
+  );
+});
+
+/** Etykieta zaznaczonej strzałki (px obszaru, nie skaluje się z powiększeniem): rodzaj, zdanie, ✕. */
+function ArrowLabel({ arrow, x, y, sentence, editable, onRemove }: { arrow: CanvasArrow; x: number; y: number; sentence: string; editable: boolean; onRemove: () => void }) {
+  return (
+    <div
+      className="absolute z-30 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border border-[var(--accent)] bg-[var(--surface)] px-2 py-0.5 text-[11px] shadow"
+      style={{ left: x, top: y }}
+      title={sentence}
+      onPointerDown={(e) => e.stopPropagation()}
+      data-testid="canvas-arrow-label"
+    >
+      {arrow.violated ? <span className="text-[var(--danger)]">⚠</span> : null}
+      <span className="font-medium">{CANVAS_ARROW[arrow.kind].label}</span>
+      {arrow.kind === "blocks" && arrow.violated ? <span className="text-[var(--muted)]">kolejność naruszona</span> : null}
+      {editable ? (
+        <button type="button" className="opacity-60 hover:opacity-100" aria-label={`Usuń strzałkę: ${sentence}`} title="Usuń strzałkę (Delete)" onClick={onRemove}>
+          ✕
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Menu po upuszczeniu strzałki na karcie: rodzaj połączenia (B / W, Enter = ostatni rodzaj, Esc = nic). */
+function LinkMenu({
+  x,
+  y,
+  from,
+  to,
+  preferred,
+  onPick,
+  onCancel,
+}: {
+  x: number;
+  y: number;
+  from: string;
+  to: string;
+  preferred: CanvasArrowKind;
+  onPick: (kind: CanvasArrowKind) => void;
+  onCancel: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => ref.current?.focus({ preventScroll: true }), []);
+  const items: { kind: CanvasArrowKind; key: string; hint: string }[] = [
+    { kind: "blocks", key: "B", hint: "zależność — jak na osi czasu" },
+    { kind: "derived", key: "W", hint: "samo powiązanie, bez terminów" },
+  ];
+  return (
+    <div
+      ref={ref}
+      tabIndex={-1}
+      role="menu"
+      aria-label="Rodzaj strzałki"
+      className="absolute z-40 flex w-72 flex-col rounded-md border border-[var(--line)] bg-[var(--surface)] p-1 text-xs shadow-lg outline-none"
+      style={{ left: x + 8, top: y + 8 }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        const key = e.key.toLowerCase();
+        const pick = key === "b" ? "blocks" : key === "w" ? "derived" : e.key === "Enter" ? preferred : null;
+        if (pick) onPick(pick);
+        else if (e.key === "Escape") onCancel();
+        else return;
+        // Klawisz nie dochodzi do skrótów tablicy ani `shell.tsx`.
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onCancel();
+      }}
+      data-testid="canvas-link-menu"
+    >
+      {items.map((item) => (
+        <button
+          key={item.kind}
+          type="button"
+          role="menuitem"
+          className={`flex items-start gap-2 rounded px-2 py-1.5 text-left hover:bg-[var(--hover)] ${item.kind === preferred ? "bg-[var(--hover)]" : ""}`}
+          onClick={() => onPick(item.kind)}
+        >
+          <kbd className="mt-0.5 rounded border border-[var(--line)] px-1 text-[10px] text-[var(--muted)]">{item.key}</kbd>
+          <span className="min-w-0">
+            <span className="block truncate font-medium">{CANVAS_ARROW[item.kind].sentence(from, to)}</span>
+            <span className="text-[var(--muted)]">{item.hint}</span>
+          </span>
+        </button>
+      ))}
+      <button type="button" role="menuitem" className="rounded px-2 py-1 text-left text-[var(--muted)] hover:bg-[var(--hover)]" onClick={onCancel}>
+        Anuluj (Esc)
+      </button>
+    </div>
+  );
+}
 
 // ── Grupa ─────────────────────────────────────────────────────────────────────────────────────
 

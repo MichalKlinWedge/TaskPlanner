@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   CANVAS_CARD,
   addCanvasGroupOps,
+  addDerivedLinkOps,
   canvasArrangeOps,
+  canvasArrowHead,
+  canvasArrows,
+  canvasArrowSegment,
+  canvasCardRect,
   canvasBounds,
   canvasColorTag,
   canvasGroupsOf,
@@ -14,14 +19,18 @@ import {
   canvasUnplaceOps,
   cellInGroup,
   cellKey,
+  derivedLinkErrorText,
   fitTitle,
   moveCanvasGroupOps,
   nearestFreeCell,
   removeCanvasGroupOps,
+  removeDerivedLinkOps,
   updateCanvasGroupOps,
   zoomCanvasViewport,
+  type DerivedLinkError,
 } from '../canvas.ts';
-import { canvasPosOf, moveTaskOps, reorderTaskTagOps } from '../tasks.ts';
+import { DERIVED_FROM_MAX } from '../schemas/model.ts';
+import { canvasPosOf, derivedFromOf, moveTaskOps, reorderTaskTagOps } from '../tasks.ts';
 import { taskTagId } from '../ids.ts';
 import type { TaskStatus } from '../schemas/primitives.ts';
 
@@ -333,5 +342,99 @@ describe('zoomCanvasViewport', () => {
   it('granice powiększenia', () => {
     expect(zoomCanvasViewport(view, 100, { x: 0, y: 0 }).zoom).toBe(2);
     expect(zoomCanvasViewport(view, 0.001, { x: 0, y: 0 }).zoom).toBe(0.25);
+  });
+});
+
+describe('strzałki: canvasArrows / canvasArrowSegment / „wynika z”', () => {
+  const T = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
+  const [A, B, C, D] = [T(1), T(2), T(3), T(4)];
+  const dep = (id: string, predecessorId: string, successorId: string) => ({ id, predecessorId, successorId, lagDays: 0 });
+
+  it('rysuje tylko połączenia z oboma końcami na tablicy; reszta to „poza tablicą” widocznej karty', () => {
+    const tasks = [
+      { id: A, derivedFrom: null },
+      { id: B, derivedFrom: [A] },
+      { id: C, derivedFrom: [A, 'zniknęło'] },
+      { id: D, derivedFrom: null },
+    ];
+    const deps = [dep('d1', A, B), dep('d2', B, C), dep('d3', D, A), dep('d4', A, 'kosz')];
+    const { arrows, offBoard } = canvasArrows(new Set([A, B, D]), tasks, deps, new Set(['d3']));
+    expect(arrows.map((a) => [a.key, a.kind, a.fromId, a.toId, a.violated])).toEqual([
+      ['b:d1', 'blocks', A, B, false],
+      ['b:d3', 'blocks', D, A, true],
+      [`d:${A}:${B}`, 'derived', A, B, false],
+    ]);
+    // C w pasku: B → C (zależność) i A → C („wynika z”) liczone na widocznych kartach; zadanie z kosza pominięte.
+    expect(offBoard.get(B)).toEqual([C]);
+    expect(offBoard.get(A)).toEqual([C]);
+    expect(offBoard.has(D)).toBe(false);
+  });
+
+  it('kilka strzałek tej samej pary dostaje równoległe tory, przeciwne kierunki po obu stronach', () => {
+    const tasks = [{ id: A, derivedFrom: [B] }, { id: B, derivedFrom: null }];
+    const { arrows } = canvasArrows(new Set([A, B]), tasks, [dep('d1', A, B)]);
+    expect(arrows).toHaveLength(2);
+    const [blocks, derived] = [arrows.find((a) => a.kind === 'blocks')!, arrows.find((a) => a.kind === 'derived')!];
+    expect(Math.abs(blocks.offset)).toBe(3);
+    // A → B i B → A z tym samym przesunięciem względem własnego kierunku = tory po dwóch stronach osi.
+    expect(blocks.offset).toBe(derived.offset);
+    const segA = canvasArrowSegment(canvasCardRect({ col: 0, row: 0 }), canvasCardRect({ col: 2, row: 0 }), blocks.offset)!;
+    const segB = canvasArrowSegment(canvasCardRect({ col: 2, row: 0 }), canvasCardRect({ col: 0, row: 0 }), derived.offset)!;
+    expect(segA.y1).not.toBeCloseTo(segB.y1);
+    expect(Math.abs(segA.y1 - segB.y1)).toBeCloseTo(6);
+  });
+
+  it('odcinek zaczyna się i kończy przy krawędziach kart (z odstępem), a za blisko → null', () => {
+    const seg = canvasArrowSegment(canvasCardRect({ col: 0, row: 0 }), canvasCardRect({ col: 1, row: 0 }))!;
+    expect(seg).toEqual({ x1: CANVAS_CARD.width + 4, y1: CANVAS_CARD.height / 2, x2: 204 - 4, y2: CANVAS_CARD.height / 2 });
+    const down = canvasArrowSegment(canvasCardRect({ col: 0, row: 0 }), canvasCardRect({ col: 0, row: 1 }))!;
+    expect(down).toEqual({ x1: 90, y1: 124, x2: 90, y2: 144 - 4 });
+    // Przekątna: wyjście przez krótszy bok (góra/dół, bo karta jest szersza niż wyższa przy tym kącie).
+    const diag = canvasArrowSegment(canvasCardRect({ col: 0, row: 0 }), canvasCardRect({ col: 1, row: 1 }))!;
+    expect(diag.x1).toBeGreaterThan(CANVAS_CARD.width / 2);
+    expect(diag.x1 <= CANVAS_CARD.width + 4 && diag.y1 <= CANVAS_CARD.height + 4).toBe(true);
+    // Karta w ręku nad drugą kartą — nic do narysowania.
+    expect(canvasArrowSegment(canvasCardRect({ col: 0, row: 0 }), canvasCardRect({ col: 0, row: 0 }, { x: 30, y: 10 }))).toBeNull();
+    const head = canvasArrowHead(seg);
+    expect(head[1]).toEqual([seg.x2, seg.y2]);
+    expect(head[0]![0]).toBeCloseTo(seg.x2 - 10);
+  });
+
+  it('addDerivedLinkOps: dopisuje źródło do listy, odrzuca siebie, duplikat, koło i limit', () => {
+    const tasks = [
+      { id: A, derivedFrom: null },
+      { id: B, derivedFrom: [A] },
+      { id: C, derivedFrom: [B] },
+    ];
+    expect(addDerivedLinkOps(tasks, { fromId: A, toId: C })).toEqual({
+      ops: [{ table: 'tasks', id: C, patch: { derived_from: [B, A] } }],
+      undo: [{ table: 'tasks', id: C, patch: { derived_from: [B] } }],
+    });
+    expect(addDerivedLinkOps(tasks, { fromId: D, toId: A })).toEqual({ error: { reason: 'missing' } });
+    expect(addDerivedLinkOps(tasks, { fromId: A, toId: A })).toEqual({ error: { reason: 'self' } });
+    expect(addDerivedLinkOps(tasks, { fromId: A, toId: B })).toEqual({ error: { reason: 'duplicate' } });
+    const cycle = addDerivedLinkOps(tasks, { fromId: C, toId: A });
+    expect(cycle).toEqual({ error: { reason: 'cycle', cycle: [C, A, B, C] } });
+    expect(derivedLinkErrorText((cycle as { error: DerivedLinkError }).error, (id) => ({ [A]: 'A', [B]: 'B', [C]: 'C' })[id]!)).toBe('To powiązanie zamknęłoby koło: C → A → B → C.');
+    const full = [{ id: A, derivedFrom: null }, { id: B, derivedFrom: Array.from({ length: DERIVED_FROM_MAX }, (_, i) => `x${i}`) }];
+    expect(addDerivedLinkOps(full, { fromId: A, toId: B })).toEqual({ error: { reason: 'limit' } });
+  });
+
+  it('removeDerivedLinkOps: usuwa jedno źródło; ostatnie → null; cofnięcie przywraca listę', () => {
+    expect(removeDerivedLinkOps({ id: C, derivedFrom: [A, B] }, A)).toEqual({
+      ops: [{ table: 'tasks', id: C, patch: { derived_from: [B] } }],
+      undo: [{ table: 'tasks', id: C, patch: { derived_from: [A, B] } }],
+    });
+    expect(removeDerivedLinkOps({ id: C, derivedFrom: [A] }, A).ops).toEqual([{ table: 'tasks', id: C, patch: { derived_from: null } }]);
+    expect(removeDerivedLinkOps({ id: C, derivedFrom: null }, A)).toEqual({ ops: [], undo: [] });
+  });
+
+  it('derivedFromOf czyta tekst JSON i tablicę, odrzuca złe zapisy', () => {
+    expect(derivedFromOf(JSON.stringify([A, B]))).toEqual([A, B]);
+    expect(derivedFromOf([A, 3])).toEqual([A]);
+    expect(derivedFromOf('[]')).toBeNull();
+    expect(derivedFromOf('{"a":1}')).toBeNull();
+    expect(derivedFromOf('zepsute')).toBeNull();
+    expect(derivedFromOf(null)).toBeNull();
   });
 });

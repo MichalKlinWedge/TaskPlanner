@@ -255,3 +255,22 @@ Uwagi:
 - Pierwsza klatka przesuwania tablicy trwa ~200 ms; dalsze mieszczą się w 16,7 ms. Karty są od 23.11.2026 w `memo` ze stałymi propsami (obsługa zdarzeń przez `useRef`, osoby z `useMemo`) i nie przerysowują się przy ruchu widoku — mimo to klatka została, więc jej przyczyna leży poza Reactem (przypuszczalnie pierwsze przemalowanie tła w kropki pod całą warstwą kart). Niezbadane.
 - Kryterium odbioru (dwie osoby, 30 kart naraz) — test E2E `tests/canvas-shared.spec.ts`: ruch jednej osoby widać u drugiej po 0,24–0,50 s (lokalny Supabase, Realtime).
 - Szczypanie dwoma palcami nie jest mierzone (brak urządzenia dotykowego w Playwright bez emulacji) — liczy to samo co Ctrl+kółko (`zoomCanvasViewport`).
+
+### Ze strzałkami — 500 kart, 478 strzałek (23.11.2026)
+
+Ta sama tablica z 478 strzałkami z `canvas-perf-setup.ts`: co druga karta „blokuje” sąsiada z prawej (`task_dependencies`), co druga „wynika z” karty nad nią (`tasks.derived_from`). Nowy pomiar: rysowanie strzałki z uchwytu karty (0, 0) na kartę (2, 3) — szkic w każdej klatce, potem menu rodzaju.
+
+| Pomiar | Mediana | Max | Uwagi |
+|---|---|---|---|
+| Pierwsze otwarcie (pusta baza → 500 kart + 478 strzałek) | 3 277 ms | — | więcej wierszy do pobrania (zależności); widok gotowy po synchronizacji |
+| Widok: Inbox → „Karteczki” | 220 ms | 243 ms | + geometria strzałek i warstwa SVG |
+| Przeciąganie karty | 60 kl./s | — | p95 16,7 ms, najgorsza 17 ms, 0/222 zgubionych |
+| Rysowanie strzałki | 57 kl./s | — | p95 16,7 ms, najgorsza 67 ms, 2/91 zgubione (początek gestu) |
+| Przesuwanie tablicy | 57 kl./s | — | p95 16,8 ms, najgorsza 50 ms |
+| Powiększanie Ctrl+kółko | 55 kl./s | — | p95 16,8 ms, najgorsza 133 ms, 6/130 zgubionych |
+| „Dopasuj” (100 % → 25 %) | 75 ms | 77 ms | |
+| Upuszczenie na zajętą komórkę → karta w wolnej | 205 ms | 230 ms | strzałki karty przeliczane razem z układem |
+
+Uwagi:
+- Kryterium z projektu (przeciąganie bez gubienia klatek, p95 ≤ 33 ms) spełnione: p95 16,7 ms przy przeciąganiu karty i rysowaniu strzałki. Strzałka to `memo` z liczbami w propsach — przy ruchu karty przerysowują się tylko jej strzałki.
+- Wolniejsze niż bez strzałek: przełączenie widoku (100 → 220 ms) i upuszczenie (108 → 205 ms) — przeliczenie `canvasArrows` i naruszeń (`violations`) na wszystkich zadaniach przy każdej zmianie danych. Do zbadania, jeśli będzie przeszkadzać (np. naruszenia liczone tylko dla zależności z kartami na tablicy).

@@ -52,9 +52,9 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     columns: columns<'tasks'>()([
       'list_id', 'parent_id', 'kind', 'title', 'description_md', 'status', 'priority', 'start_date', 'due_date', 'due_time',
       'duration_min', 'time_zone', 'recurrence', 'habit', 'completed_at', 'sort_key', 'board_sort_key', 'source', 'postpone_count',
-      'assignee_id', 'board_column_id', 'canvas_pos',
+      'assignee_id', 'board_column_id', 'canvas_pos', 'derived_from',
     ]),
-    json: ['recurrence', 'habit', 'source', 'canvas_pos'],
+    json: ['recurrence', 'habit', 'source', 'canvas_pos', 'derived_from'],
     scope: 'derived',
   },
   tags: {
