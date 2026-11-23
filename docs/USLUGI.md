@@ -41,6 +41,24 @@ Stan na **18.11.2026** (oficjalna dokumentacja i cenniki). Przed wprowadzeniem n
 
 **Wniosek:** wysyłki GitLaba mieszczą się w limicie Free z zapasem (≤ 60 wysyłek / min na połączenie, 1–3 wywołania na wysyłkę).
 
+## Gemini API — własny klucz użytkownika (AI v1.x, sprawdzone 23.11.2026)
+Model: każdy użytkownik podpina własny klucz (BYOK), klucz w Vault, zapytania z Edge Function `ai`. Strony `ai.google.dev/gemini-api/…` przekierowują teraz na `aistudio.google.com/docs/…`. Warunki: Gemini API Additional Terms (obowiązują od 23.03.2026) + Google APIs Terms of Service (zmiana 9.11.2021).
+
+| Warunek | Wartość | Pewność | Źródło |
+|---|---|---|---|
+| Klucz | tworzony w AI Studio (`aistudio.google.com/apikey`); od 28.05.2026 nowe klucze to „auth keys” powiązane z kontem usługi; niezastrzeżone klucze standardowe są odrzucane — „Restrict to Gemini API only” | W | aistudio.google.com/docs/api-key |
+| Klucz po stronie klienta | dokumentacja: nigdy w przeglądarce ani w aplikacji mobilnej w produkcji, zalecany pośredni serwer → Vault + Edge Function | W | j.w. |
+| Usługa płatna / niepłatna | płatna tylko przez projekt Cloud z **aktywnym rozliczeniem**; darmowy limit = usługa niepłatna | W | aistudio.google.com/docs/terms |
+| **Użytkownicy w EOG / CH / UK** | „You may use only Paid Services when making API Clients available to users in the EEA…” — Task Planner dla zaproszonych osób w Polsce to taki „API Client” → **tylko klucze z projektu z rozliczeniem**. Warunki nie mówią nic o kluczu należącym do użytkownika (BYOK) — przyjmujemy ostrożnie, że wymóg obowiązuje | W (tekst) / N (BYOK) | j.w. |
+| Dane | niepłatne: treść służy do ulepszania produktów, mogą ją czytać ludzie (po odłączeniu od konta), „Do not submit … personal information to the Unpaid Services”; płatne: bez ulepszania, Data Processing Addendum, logi tylko do wykrywania nadużyć. Deweloper z EOG ma warunki płatne także na darmowym limicie — kryterium to miejsce dewelopera, nie użytkowników | W | j.w. |
+| Przeznaczenie i wiek | „for professional or business purposes, not for consumer use”; korzystający 18+; nie w aplikacji „likely to be accessed” przez osoby < 18 — aplikacja tylko na zaproszenie, dorośli | W (tekst) / Ś (ocena) | j.w. |
+| Poświadczenia i odpowiedzialność | klucze poufne (API ToS 4.b.1); BYOK nieopisany; zakaz sublicencjonowania API (4.a) przy kluczu użytkownika raczej nie dotyczy; deweloper odpowiada za nadużycia użytkowników aplikacji (9.c) i musi mieć politykę prywatności (3.d) | Ś | developers.google.com/terms |
+| Limity | per **projekt**, nie per klucz; dzienne kasują się o północy czasu pacyficznego; strona nie podaje liczb dla darmowego Flash / Flash-Lite (tylko AI Studio → `aistudio.google.com/rate-limit`); Tier 1 = podpięte rozliczenie (zwykle od razu), pułap wydatków 250 USD, 10 USD / 10 min | W | aistudio.google.com/docs/rate-limits |
+| Ceny (Standard, USD / mln tokenów, wejście / wyjście) | 3.5 Flash-Lite 0,30 / 2,50 z darmowym limitem („Used to improve our products”: niepłatne tak, płatne nie); 3.8 i 3.6 Flash też z darmowym limitem, ceny płatne zmieniają się 1.01.2027 | W | aistudio.google.com/docs/pricing |
+| Regiony | Polska i cała EOG dostępne | W | aistudio.google.com/docs/available-regions |
+
+**Wniosek:** własny klucz użytkownika — tak, ale **z projektu z włączonym rozliczeniem** (Tier 1). Darmowy klucz najwyżej do testów właściciela (jak ExpeditionPlan: jeden klucz, dostęp tylko dla właściciela). Aplikacja nie sprawdzi, czy klucz jest płatny — przy podpinaniu oświadczenie i instrukcja włączenia rozliczeń. Szacunkowy koszt na 3.5 Flash-Lite: rozbicie zadania ≈ 0,002 USD, ułożenie dnia ≈ 0,002 USD, podsumowanie tygodnia ≈ 0,004 USD — przy codziennym użyciu ≈ 0,1 USD / mies. na osobę. Przed wdrożeniem sprawdzić, czy „auth keys” działają z nagłówkiem `x-goog-api-key` z Edge Function. Claude API i OpenAI (tylko płatne) — niesprawdzone.
+
 ## Expo EAS (Free)
 | Warunek | Wartość | Pewność | Źródło |
 |---|---|---|---|
