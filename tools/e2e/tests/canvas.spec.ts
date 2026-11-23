@@ -1,8 +1,10 @@
 /**
  * Widok „Karteczki” (v1.x): karteczka nie wchodzi na zajętą komórkę, karta z paska „Do ułożenia”
  * na tablicę, dwuklik dodaje karteczkę w komórce, kolejność tagów zmienia kolor, pełny ekran,
- * przełącznik „Tylko główne / Z podzadaniami”, blokada edycji bez sieci. Dane listy z `global-setup.ts` (`canvasIds`).
+ * przełącznik „Tylko główne / Z podzadaniami”, eksport PNG / PDF (także offline), blokada edycji bez sieci. Dane listy z `global-setup.ts` (`canvasIds`).
  */
+import { readFile } from 'node:fs/promises';
+
 import type { Locator } from '@playwright/test';
 
 import { E2E_CANVAS } from '../src/constants.ts';
@@ -125,6 +127,29 @@ test('karteczki: przesuwanie bez nachodzenia, pasek, dodawanie, kolor z tagu, pe
     await view.getByRole('radio', { name: 'Tylko główne' }).click();
     await expect(card(ids.sub)).toHaveCount(0);
     expect((await server.task(E2E_CANVAS.sub))?.canvas_pos).toEqual({ col: -2, row: 3 });
+  });
+
+  await test.step('eksport: PNG online i PDF offline — poprawny nagłówek pliku, niezerowy rozmiar', async () => {
+    const save = async (button: 'canvas-export-png' | 'canvas-export-pdf') => {
+      await page.getByTestId('canvas-export').click();
+      const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId(button).click()]);
+      return { name: download.suggestedFilename(), bytes: await readFile((await download.path())!) };
+    };
+    const png = await save('canvas-export-png');
+    expect(png.name).toMatch(/^burza-e2e-\d{4}-\d{2}-\d{2}\.png$/);
+    expect([...png.bytes.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    // Szerokość z nagłówka IHDR: skala 2× (co najmniej dwie karty po 180 px).
+    expect(png.bytes.readUInt32BE(16)).toBeGreaterThan(2 * 2 * 180);
+    await context.setOffline(true);
+    await expect(page.getByTestId('canvas-note')).toBeVisible();
+    const pdf = await save('canvas-export-pdf');
+    expect(pdf.name).toMatch(/\.pdf$/);
+    expect(pdf.bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    expect(pdf.bytes.subarray(-8).toString('latin1')).toContain('%%EOF');
+    expect(pdf.bytes.toString('latin1')).toContain('/Filter /DCTDecode');
+    expect(pdf.bytes.length).toBeGreaterThan(5000);
+    await context.setOffline(false);
+    await expect(page.getByTestId('canvas-note')).toBeHidden();
   });
 
   await test.step('bez sieci edycja zablokowana', async () => {

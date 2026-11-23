@@ -50,6 +50,7 @@ import {
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { listEditable, type AppData, type List, type Tag } from "@/lib/app-data";
 import { useAppEnv } from "./app-env";
+import { CanvasExportButton } from "./canvas-export";
 import { QuickAdd } from "./quick-add";
 import { TagColorPicker } from "./tag-chip";
 import { useTaskActions } from "./task-item";
@@ -692,6 +693,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
             Dopasuj
           </button>
         </div>
+        <CanvasExportButton listName={list.name} today={ctx.today} placed={layout.placed} trayCount={layout.tray.length} groups={groups} tags={tagsById} people={people} subtasks={subtasks} titles={titles} selected={selected} />
         <Button className="py-1 text-xs" onClick={full ? exitFull : enterFull} title={full ? "Zamknij pełny ekran (Esc)" : "Karteczki na cały ekran"} data-testid="canvas-full">
           {full ? "✕ Zamknij pełny ekran" : "⛶ Pełny ekran"}
         </Button>

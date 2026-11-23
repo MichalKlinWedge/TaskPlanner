@@ -78,5 +78,6 @@ describe('eksport zadań', () => {
   it('nazwa pliku bez polskich znaków', () => {
     expect(exportFileName('Remont kuchni — Łazienka!', '2026-11-20')).toBe('remont-kuchni-lazienka-2026-11-20.xlsx');
     expect(exportFileName('@@@', '2026-11-20')).toBe('zadania-2026-11-20.xlsx');
+    expect(exportFileName('Burza mózgów', '2026-11-23', 'png')).toBe('burza-mozgow-2026-11-23.png');
   });
 });

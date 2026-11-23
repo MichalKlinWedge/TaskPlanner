@@ -1,6 +1,7 @@
 export * from './app-update.ts';
 export * from './attachments.ts';
 export * from './canvas.ts';
+export * from './canvas-export.ts';
 export * from './backup.ts';
 export * from './collaborators.ts';
 export * from './comments.ts';
@@ -19,6 +20,7 @@ export * from './labels.ts';
 export * from './markdown.ts';
 export * from './markdown-edit.ts';
 export * from './onboarding.ts';
+export * from './pdf.ts';
 export * from './plugins/index.ts';
 export * from './quick-add.ts';
 export * from './recurrence.ts';

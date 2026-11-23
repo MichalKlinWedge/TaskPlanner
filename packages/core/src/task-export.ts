@@ -78,11 +78,11 @@ export function tasksSheet(rows: readonly TaskExportRow[], names: TaskExportName
   };
 }
 
-/** Nazwa pliku: „Remont kuchni” + dzień → `remont-kuchni-2026-11-20.xlsx`. */
-export function exportFileName(title: string, today: LocalDate): string {
+/** Nazwa pliku: „Remont kuchni” + dzień → `remont-kuchni-2026-11-20.xlsx` (albo inne rozszerzenie, np. `png`, `pdf`). */
+export function exportFileName(title: string, today: LocalDate, extension = 'xlsx'): string {
   const slug = normalizeText(title)
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60);
-  return `${slug || 'zadania'}-${today}.xlsx`;
+  return `${slug || 'zadania'}-${today}.${extension}`;
 }
