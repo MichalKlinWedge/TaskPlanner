@@ -102,8 +102,8 @@ const GITLAB: PluginDef = {
   name: 'GitLab',
   description:
     'Zadanie jako issue w projekcie GitLab (gitlab.com albo własny serwer https). Issue jest powiązane z zadaniem: ' +
-    'ukończenie i kosz je zamykają, przywrócenie otwiera, zmiana terminu ustawia termin, tag zmienia etykiety, komentarz dodaje notatkę, ' +
-    'ponowne „Wyślij do…” aktualizuje tytuł i opis. Token: Personal / Project Access Token z zakresem „api”.',
+    'ukończenie i kosz je zamykają, przywrócenie otwiera, zmiana terminu ustawia termin, tag zmienia etykiety, zmiana odpowiedzialnego — przypisanych, ' +
+    'komentarz dodaje notatkę, ponowne „Wyślij do…” aktualizuje tytuł i opis. Token: Personal / Project Access Token z zakresem „api”.',
   configSchema: z.object({
     baseUrl: HttpUrl.default('https://gitlab.com'),
     project: z.string().trim().min(1, 'Podaj projekt (ścieżkę albo numer).').max(255, 'Projekt: najwyżej 255 znaków.'),
@@ -125,11 +125,20 @@ const GITLAB: PluginDef = {
     title: z.string().max(500, 'Tytuł: najwyżej 500 znaków.').optional(),
     description: z.string().max(5000, 'Opis: najwyżej 5000 znaków.').optional(),
     labels: z.string().max(500, 'Etykiety: najwyżej 500 znaków.').optional(),
+    assignees: z.string().max(500, 'Przypisani: najwyżej 500 znaków.').optional(),
   }),
   actionFields: [
     { key: 'title', label: 'Tytuł issue', kind: 'template', optional: true, placeholder: '{{title}}', defaultValue: '{{title}}' },
     { key: 'description', label: 'Opis issue (Markdown)', kind: 'template', optional: true, placeholder: GITLAB_DESCRIPTION, defaultValue: GITLAB_DESCRIPTION },
     { key: 'labels', label: 'Etykiety (po przecinku)', kind: 'template', optional: true, placeholder: 'task-planner, {{tags}}' },
+    {
+      key: 'assignees',
+      label: 'Przypisz do (nazwy użytkowników GitLaba, po przecinku)',
+      kind: 'template',
+      optional: true,
+      placeholder: 'jan.kowalski',
+      help: 'Nazwa z adresu profilu (gitlab.com/<nazwa>); {{assignee}} zadziała, gdy nazwy osób w Task Plannerze to nazwy z GitLaba. W planie Free GitLab bierze tylko pierwszą osobę.',
+    },
   ],
   events: PLUGIN_EVENTS,
   escape: 'plain',

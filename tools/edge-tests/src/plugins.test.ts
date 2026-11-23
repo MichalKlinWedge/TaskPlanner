@@ -230,3 +230,37 @@ describe('GitLab (I3)', () => {
     expect(await gitlab.test(ctxFor(fakeNet([json({ message: '404 Project Not Found' }, 404)])))).toMatchObject({ ok: false, error: 'Nie ma takiego projektu albo token go nie widzi' });
   });
 });
+
+describe('GitLab — przypisani (I3)', () => {
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  const ctxFor = (net: NetDeps) => ({ config: { baseUrl: 'https://gitlab.example.com', project: 'g/p' }, secrets: { token: 'glpat-xxxxxxxx' }, net, now: () => NOW });
+  const delivery = (events: PluginEvent[], assignees: string, link: { externalId: string; externalUrl: string | null } | null = null) => {
+    const payload = pluginPayload({ id: 'd-2', events, sentAt: NOW.toISOString(), rule: { id: 'r', name: 'GitLab' }, task: SAMPLE_TASK, appUrl: 'https://app' });
+    const fields = renderActionFields(PLUGINS.gitlab, { assignees }, SAMPLE_TASK, { event: events[0]!, url: payload.task.url });
+    return { id: 'd-2', payload, fields, link, retry: false };
+  };
+
+  it('nazwy → assignee_ids przy tworzeniu (GET /users?username=)', async () => {
+    const net = fakeNet([json([{ id: 41, username: 'jan.kowalski' }]), json([{ id: 42, username: 'ola' }]), json({ iid: 5, project_id: 7, web_url: 'https://gitlab.example.com/g/p/-/issues/5' }, 201)]);
+    expect(await gitlab.deliver(ctxFor(net), delivery(['task.created'], '@jan.kowalski, ola'))).toMatchObject({ ok: true, externalId: '7:5' });
+    expect(net.calls.slice(0, 2).map((c) => new URL(c.url).search)).toEqual(['?username=jan.kowalski', '?username=ola']);
+    expect(JSON.parse(String(net.calls[2]!.init.body))).toMatchObject({ assignee_ids: [41, 42] });
+    expect(JSON.parse(String(net.calls[2]!.init.body))).not.toHaveProperty('assignees');
+  });
+
+  it('zmiana odpowiedzialnego zmienia przypisanych; ukończenie nie pyta o użytkowników', async () => {
+    const link = { externalId: '7:5', externalUrl: null };
+    const net = fakeNet([json([{ id: 41, username: 'jan.kowalski' }]), json({ iid: 5, project_id: 7 }), json({ iid: 5, project_id: 7 })]);
+    await gitlab.deliver(ctxFor(net), delivery(['task.assigned'], 'jan.kowalski', link));
+    expect(JSON.parse(String(net.calls[1]!.init.body))).toEqual({ assignee_ids: [41] });
+    await gitlab.deliver(ctxFor(net), delivery(['task.completed'], 'jan.kowalski', link));
+    expect(net.calls).toHaveLength(3);
+    expect(JSON.parse(String(net.calls[2]!.init.body))).toEqual({ state_event: 'close' });
+  });
+
+  it('nieznana nazwa → błąd bez ponowień, issue nie powstaje', async () => {
+    const net = fakeNet([json([])]);
+    expect(await gitlab.deliver(ctxFor(net), delivery(['task.created'], 'nikt'))).toEqual({ ok: false, retryable: false, error: 'Nie ma użytkownika GitLaba „nikt” — popraw pole „Przypisz do” w regule' });
+    expect(net.calls).toHaveLength(1);
+  });
+});

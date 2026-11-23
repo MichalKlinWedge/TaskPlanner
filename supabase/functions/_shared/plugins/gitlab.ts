@@ -4,6 +4,7 @@
  *
  * Bez powiązania: `POST /projects/:id/issues` (znacznik id wysyłki w opisie; ponowienie najpierw szuka issue
  * z tym znacznikiem — GitLab nie ma `Idempotency-Key`), potem zamknięcie ukończonego / notatka z komentarza.
+ * Przypisani: nazwy użytkowników z reguły → `assignee_ids` (`GET /users?username=`, tylko gdy potrzebne).
  * Z powiązaniem (`plugin_links`): `PUT /projects/:id/issues/:iid` + `POST …/notes`; issue usunięte w GitLabie
  * (404) → nowe issue. Ochrona SSRF jak w webhooku (tylko `https`, publiczne IP, bez przekierowań).
  * Odpowiedź: 401 / 403 = połączenie wyłączone (zły token, brak uprawnień), 429 / 5xx / sieć / 10 s = ponowienie,
@@ -99,11 +100,39 @@ const asIssue = (data: unknown): Issue | null => {
 const issuePath = (issue: Pick<Issue, 'projectId' | 'iid'>) => `/projects/${issue.projectId}/issues/${issue.iid}`;
 
 /** Zmiany powiązanego issue; `missing` = issue już nie istnieje (usunięte w GitLabie). */
-async function applyChange(ctx: RuntimeContext, issue: Issue, change: GitlabChange, status?: number): Promise<DeliveryResult | 'missing'> {
+/** Nazwy użytkowników → id (`GET /users?username=`); nieznana nazwa = błąd bez ponowień (do poprawy w regule). */
+async function userIds(ctx: RuntimeContext, names: readonly string[]): Promise<number[] | Failure> {
+  const ids: number[] = [];
+  for (const name of names) {
+    const r = await api(ctx, 'GET', `/users?username=${encodeURIComponent(name)}`);
+    if (!r.ok) return r.failure;
+    const user = (Array.isArray(r.data) ? r.data : []).find((u) => typeof u.username === 'string' && u.username.toLowerCase() === name.toLowerCase());
+    if (!user || typeof user.id !== 'number') return { ok: false, retryable: false, error: `Nie ma użytkownika GitLaba „${name}” — popraw pole „Przypisz do” w regule` };
+    ids.push(user.id);
+  }
+  return ids;
+}
+
+/** Id przypisanych liczone raz na wysyłkę i tylko wtedy, gdy są potrzebne. */
+type Assignees = () => Promise<number[] | Failure>;
+
+/** `assignees` (nazwy) w treści → `assignee_ids`; błąd, gdy nazwa nieznana. */
+async function withAssigneeIds<T extends { assignees?: string[] }>(body: T, assignees: Assignees): Promise<Omit<T, 'assignees'> & { assignee_ids?: number[] } | Failure> {
+  const { assignees: names, ...rest } = body;
+  if (!names?.length) return rest;
+  const ids = await assignees();
+  return Array.isArray(ids) ? { ...rest, assignee_ids: ids } : ids;
+}
+
+const isFailure = (value: unknown): value is Failure => typeof value === 'object' && value !== null && (value as { ok?: unknown }).ok === false;
+
+async function applyChange(ctx: RuntimeContext, issue: Issue, change: GitlabChange, assignees: Assignees, status?: number): Promise<DeliveryResult | 'missing'> {
   let url = issue.url;
   let httpStatus = status;
   if (Object.keys(change.put).length) {
-    const r = await api(ctx, 'PUT', issuePath(issue), change.put);
+    const put = await withAssigneeIds(change.put, assignees);
+    if (isFailure(put)) return put;
+    const r = await api(ctx, 'PUT', issuePath(issue), put);
     if (!r.ok) return r.status === 404 ? 'missing' : r.failure;
     url = asIssue(r.data)?.url ?? url;
     httpStatus = r.status;
@@ -130,6 +159,7 @@ const createBody = (issue: GitlabIssueBody) => ({
   description: issue.description,
   ...(issue.labels && { labels: issue.labels }),
   ...(issue.due_date && { due_date: issue.due_date }),
+  ...(issue.assignees.length && { assignees: issue.assignees }),
 });
 
 export const gitlab: PluginRuntime = {
@@ -151,9 +181,11 @@ export const gitlab: PluginRuntime = {
 
   async deliver(ctx, { id, payload, fields, link, retry }) {
     const issue = gitlabIssueBody(fields, payload.task, id);
+    let resolved: Promise<number[] | Failure> | null = null;
+    const assignees: Assignees = () => (resolved ??= userIds(ctx, issue.assignees));
     const linked = parseGitlabExternalId(link?.externalId);
     if (linked) {
-      const result = await applyChange(ctx, { ...linked, url: link?.externalUrl ?? null }, gitlabChange(payload.events, payload.task, issue, payload.comment));
+      const result = await applyChange(ctx, { ...linked, url: link?.externalUrl ?? null }, gitlabChange(payload.events, payload.task, issue, payload.comment), assignees);
       if (result !== 'missing') return result;
     }
     const plan = gitlabCreate(payload.events, payload.task, issue, payload.comment);
@@ -167,13 +199,15 @@ export const gitlab: PluginRuntime = {
       created = found;
     }
     if (!created) {
-      const r = await api(ctx, 'POST', `/projects/${project}/issues`, createBody(plan.create));
+      const body = await withAssigneeIds(createBody(plan.create), assignees);
+      if (isFailure(body)) return body;
+      const r = await api(ctx, 'POST', `/projects/${project}/issues`, body);
       if (!r.ok) return r.status === 404 ? { ok: false, retryable: false, error: 'Nie ma takiego projektu albo token go nie widzi', httpStatus: 404 } : r.failure;
       created = asIssue(r.data);
       status = r.status;
       if (!created) return { ok: false, retryable: false, error: 'GitLab nie zwrócił utworzonego issue', httpStatus: r.status };
     }
-    const after = await applyChange(ctx, created, plan.after, status);
+    const after = await applyChange(ctx, created, plan.after, assignees, status);
     return after === 'missing' ? { ok: false, retryable: true, error: 'Utworzone issue zniknęło — ponowię' } : after;
   },
 };

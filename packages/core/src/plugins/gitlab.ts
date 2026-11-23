@@ -6,7 +6,8 @@
  * Zadanie ↔ issue: pierwsza wysyłka zadania przez połączenie tworzy issue (z ukrytym znacznikiem id wysyłki
  * w opisie — ponowienie po zerwanym połączeniu znajduje już utworzone issue zamiast robić drugie), kolejne
  * zmieniają to samo issue: ukończenie / kosz → zamknięcie, przywrócenie → otwarcie, termin → `due_date`,
- * tagi → etykiety, komentarz → notatka, ponowne „Wyślij do…” → tytuł, opis, etykiety, termin i stan.
+ * tagi → etykiety, odpowiedzialny → przypisani (`assignees`), komentarz → notatka, ponowne „Wyślij do…” →
+ * tytuł, opis, etykiety, przypisani, termin i stan.
  */
 import type { PluginEvent } from './events.ts';
 import type { PluginPayload } from './payload.ts';
@@ -27,11 +28,17 @@ export const gitlabApiUrl = (baseUrl: string, path: string): string => `${baseUr
 export const gitlabLabels = (text: string): string =>
   [...new Set(text.split(',').map((label) => label.trim()).filter(Boolean))].join(',');
 
+/** Nazwy użytkowników GitLaba z pola „po przecinku” (`@` z przodu dozwolone): bez pustych i powtórzeń. */
+export const gitlabUsernames = (text: string): string[] =>
+  [...new Set(text.split(/[,\s]+/).map((name) => name.trim().replace(/^@/, '')).filter(Boolean))];
+
 export interface GitlabIssueBody {
   title: string;
   description: string;
   labels: string;
   due_date: string | null;
+  /** Nazwy użytkowników do przypisania — Edge Function zamienia je na `assignee_ids` (puste = bez zmian). */
+  assignees: string[];
 }
 
 type PayloadTask = PluginPayload['task'];
@@ -45,12 +52,13 @@ export function gitlabIssueBody(fields: Readonly<Record<string, string>>, task: 
     description: `${description}${description ? '\n\n' : ''}${gitlabMarker(deliveryId)}`,
     labels: gitlabLabels(fields.labels ?? ''),
     due_date: task.dueDate,
+    assignees: gitlabUsernames(fields.assignees ?? ''),
   };
 }
 
 /** Zmiany powiązanego issue: pola `PUT /issues/:iid` (puste = bez zmian) i notatka. */
 export interface GitlabChange {
-  put: Partial<Pick<GitlabIssueBody, 'title' | 'description' | 'labels' | 'due_date'>> & { state_event?: 'close' | 'reopen' };
+  put: Partial<Pick<GitlabIssueBody, 'title' | 'description' | 'labels' | 'due_date' | 'assignees'>> & { state_event?: 'close' | 'reopen' };
   note?: string;
 }
 
@@ -67,7 +75,7 @@ export function gitlabChange(events: readonly PluginEvent[], task: PayloadTask, 
   const has = (e: PluginEvent) => events.includes(e);
   const put: GitlabChange['put'] = {};
   if (has('task.sent')) {
-    Object.assign(put, { title: issue.title, description: issue.description, due_date: issue.due_date }, issue.labels && { labels: issue.labels });
+    Object.assign(put, { title: issue.title, description: issue.description, due_date: issue.due_date }, issue.labels && { labels: issue.labels }, issue.assignees.length && { assignees: issue.assignees });
     put.state_event = closed(task.status) ? 'close' : 'reopen';
   }
   if (has('task.deleted') || has('task.completed')) put.state_event = 'close';
@@ -75,6 +83,8 @@ export function gitlabChange(events: readonly PluginEvent[], task: PayloadTask, 
   if (has('task.due_changed')) put.due_date = issue.due_date;
   // Puste etykiety nie czyszczą issue (etykiety dodane w GitLabie zostają).
   if ((has('task.tagged') || has('task.untagged')) && issue.labels) put.labels = issue.labels;
+  // Tak samo osoby: puste pole nie zdejmuje przypisania zrobionego w GitLabie.
+  if (has('task.assigned') && issue.assignees.length) put.assignees = issue.assignees;
   return { put, ...(has('task.commented') && comment && { note: gitlabNote(comment, task) }) };
 }
 

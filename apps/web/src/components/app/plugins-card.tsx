@@ -426,7 +426,7 @@ function Rules({
           </Field>
           {draft.kind === "event" ? <EventFields draft={draft} setDraft={setDraft} /> : null}
           {def?.actionFields.map((f) => (
-            <Field key={f.key} label={f.label} hint={f.kind === "template" ? `Pola: ${TEMPLATE_FIELDS.map((t) => `{{${t.key}}}`).join(" ")}` : f.help}>
+            <Field key={f.key} label={f.label} hint={f.kind === "template" ? `${f.help ? `${f.help} ` : ""}Pola: ${TEMPLATE_FIELDS.map((t) => `{{${t.key}}}`).join(" ")}` : f.help}>
               <textarea
                 className="min-h-16 w-full rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-1.5 text-sm"
                 value={draft.action[f.key] ?? ""}

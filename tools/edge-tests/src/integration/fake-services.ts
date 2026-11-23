@@ -71,6 +71,7 @@ export interface FakeIssue {
   description: string;
   labels: string[];
   due_date: string | null;
+  assignee_ids: number[];
   state: 'opened' | 'closed';
   web_url: string;
   notes: string[];
@@ -125,7 +126,15 @@ export class FakeServices {
   /** Strony dla `link-preview` (Etap 10): `/pages/<nazwa>`; `delayMs` — odpowiedź po czasie. */
   pages = new Map<string, { status?: number; headers?: Record<string, string>; body?: string | Buffer; delayMs?: number }>();
   /** GitLab (plugin I3): jeden projekt `grupa/projekt` (id 77), token `glpat-test-token`; `gitlabStatus` — wymuszona odpowiedź. */
-  gitlab = { projectId: 77, path: 'grupa/projekt', token: 'glpat-test-token', issues: [] as FakeIssue[], requests: [] as { method: string; path: string }[], status: null as number | null };
+  gitlab = {
+    projectId: 77,
+    path: 'grupa/projekt',
+    token: 'glpat-test-token',
+    users: [{ id: 501, username: 'jan.kowalski' }],
+    issues: [] as FakeIssue[],
+    requests: [] as { method: string; path: string }[],
+    status: null as number | null,
+  };
 
   async start(): Promise<void> {
     this.server = createServer((req, res) => {
@@ -255,6 +264,7 @@ export class FakeServices {
     if (req.headers['private-token'] !== g.token) return send(res, 401, { message: '401 Unauthorized' });
     if (g.status) return send(res, g.status, { message: `${g.status} wymuszone` });
     const body = raw.length ? (JSON.parse(raw.toString('utf8')) as Record<string, unknown>) : {};
+    if (path === '/users') return send(res, 200, g.users.filter((u) => u.username === url.searchParams.get('username')));
     const m = /^\/projects\/([^/]+)(\/issues(?:\/(\d+)(\/notes)?)?)?$/.exec(path);
     const ref = m ? decodeURIComponent(m[1]!) : '';
     if (!m || (ref !== g.path && ref !== String(g.projectId))) return send(res, 404, { message: '404 Project Not Found' });
@@ -273,6 +283,7 @@ export class FakeServices {
         description: String(body.description ?? ''),
         labels: String(body.labels ?? '').split(',').filter(Boolean),
         due_date: (body.due_date as string | undefined) ?? null,
+        assignee_ids: (body.assignee_ids as number[] | undefined) ?? [],
         state: 'opened',
         web_url: `https://gitlab.test/${g.path}/-/issues/${iid}`,
         notes: [],
@@ -290,6 +301,7 @@ export class FakeServices {
     if (typeof body.description === 'string') issue.description = body.description;
     if (typeof body.labels === 'string') issue.labels = body.labels.split(',').filter(Boolean);
     if ('due_date' in body) issue.due_date = (body.due_date as string | null) ?? null;
+    if (Array.isArray(body.assignee_ids)) issue.assignee_ids = body.assignee_ids as number[];
     if (body.state_event === 'close') issue.state = 'closed';
     if (body.state_event === 'reopen') issue.state = 'opened';
     return send(res, 200, issue);

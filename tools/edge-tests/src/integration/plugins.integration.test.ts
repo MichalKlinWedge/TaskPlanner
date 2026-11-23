@@ -373,12 +373,12 @@ describe('GitLab (I3)', () => {
       name: 'Do GitLaba',
       trigger: { kind: 'event', events: ['task.created', 'task.completed', 'task.commented'] },
       options: { delaySec: 1 },
-      action: { labels: 'task-planner, {{priority}}' },
+      action: { labels: 'task-planner, {{priority}}', assignees: '@jan.kowalski' },
     });
     const id = uuidv7();
     expect((await push(user, [{ table: 'tasks', id, set: { list_id: ws.inbox, title: 'Serwer nie wstaje', description_md: 'Po aktualizacji jądra.', due_date: '2026-12-01' } }])).rejected).toEqual([]);
     const [issue] = await waitFor(async () => (issueOf(id).length ? issueOf(id) : null), 20_000, 'issue w GitLabie');
-    expect(issue).toMatchObject({ title: 'Serwer nie wstaje', labels: ['task-planner', 'Niski'], due_date: '2026-12-01', state: 'opened' });
+    expect(issue).toMatchObject({ title: 'Serwer nie wstaje', labels: ['task-planner', 'Niski'], due_date: '2026-12-01', assignee_ids: [501], state: 'opened' });
     expect(issue!.description).toContain('Po aktualizacji jądra.');
     expect(issue!.description).toContain(`?task=${id}`);
     const { data: link } = await db.from('plugin_links').select('external_id, external_url').eq('connection_id', conn).eq('task_id', id).single();
