@@ -125,8 +125,12 @@ test('karteczki: przesuwanie bez nachodzenia, pasek, dodawanie, kolor z tagu, pe
     await view.getByRole('radio', { name: 'Z podzadaniami' }).click();
     await expect(card(ids.sub)).toBeVisible();
     await expect(card(ids.sub).getByTestId('canvas-parent')).toContainText(E2E_CANVAS.second);
+    // Linia rodzic → podzadanie (kropkowana, tylko do oglądania).
+    const parentLine = board.locator(`[data-canvas-arrow][data-kind="parent"][data-from="${ids.second}"][data-to="${ids.sub}"]`);
+    await expect(parentLine).toHaveCount(1);
     await view.getByRole('radio', { name: 'Tylko główne' }).click();
     await expect(card(ids.sub)).toHaveCount(0);
+    await expect(parentLine).toHaveCount(0);
     expect((await server.task(E2E_CANVAS.sub))?.canvas_pos).toEqual({ col: -2, row: 3 });
   });
 

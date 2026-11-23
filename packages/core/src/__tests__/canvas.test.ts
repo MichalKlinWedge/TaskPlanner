@@ -370,6 +370,23 @@ describe('strzałki: canvasArrows / canvasArrowSegment / „wynika z”', () => 
     expect(offBoard.has(D)).toBe(false);
   });
 
+  it('linie rodzic → podzadanie: tylko gdy obie karty na tablicy, bez „poza tablicą”; parents: false je wyłącza', () => {
+    const tasks = [
+      { id: A, derivedFrom: null, parentId: null },
+      { id: B, derivedFrom: null, parentId: A },
+      { id: C, derivedFrom: null, parentId: A },
+    ];
+    const { arrows, offBoard } = canvasArrows(new Set([A, B]), tasks, [dep('d1', A, B)]);
+    expect(arrows.map((a) => [a.key, a.kind, a.fromId, a.toId])).toEqual([
+      ['b:d1', 'blocks', A, B],
+      [`p:${B}`, 'parent', A, B],
+    ]);
+    // Ta sama para co zależność → osobne tory.
+    expect(arrows.map((a) => a.offset)).toEqual([-3, 3]);
+    expect(offBoard.size).toBe(0);
+    expect(canvasArrows(new Set([A, B]), tasks, [], new Set(), { parents: false }).arrows).toEqual([]);
+  });
+
   it('kilka strzałek tej samej pary dostaje równoległe tory, przeciwne kierunki po obu stronach', () => {
     const tasks = [{ id: A, derivedFrom: [B] }, { id: B, derivedFrom: null }];
     const { arrows } = canvasArrows(new Set([A, B]), tasks, [dep('d1', A, B)]);
