@@ -30,6 +30,17 @@ Stan na **18.11.2026** (oficjalna dokumentacja i cenniki). Przed wprowadzeniem n
 
 **Budżet wywołań (M21, 23.11.2026):** `reminders-push` co minutę ≈ 43 200 / mies.; `plugins` — `cron/tick` co minutę tylko przy zaległej pracy (`plugins_tick()` sprawdza w bazie, więc ≤ 43 200) plus `flush` raz na transakcję z prośbą o wysyłkę albo zmianą zadania przy włączonej regule zdarzeniowej (I2: przebieg w tle `EdgeRuntime.waitUntil`, czeka na okno opóźnienia ≤ 45 s — czas oczekiwania nie zużywa CPU, mieści się w 150 s wall clock); razem z `calendar-sync` (co 10 min) daleko poniżej 500 000. Przebieg wysyłek kończy się po 100 s (limit 150 s wall clock), resztę bierze następny.
 
+## GitLab REST API v4 (plugin I3, sprawdzone 23.11.2026)
+| Warunek | Wartość | Pewność | Źródło |
+|---|---|---|---|
+| Uwierzytelnienie | nagłówek `PRIVATE-TOKEN` — Personal / Project Access Token z zakresem `api` (token użytkownika w Vault, nie nasz) | W | docs.gitlab.com/user/profile/personal_access_tokens |
+| Ważność tokenu | domyślnie najwyżej 365 dni (od 17.6 do 400 dni za flagą), potem 401 → połączenie wyłączone, „Nowy sekret” je włącza | W | docs.gitlab.com/user/profile/personal_access_tokens |
+| Limit API gitlab.com (na użytkownika) | Free 100 / min (5 000 / h), Premium 1 250 / min, Ultimate 2 000 / min; pojedyncze endpointy mają niższe; 429 + `Retry-After` | S (strona podaje też sprzeczne „100 / min”) | docs.gitlab.com/user/gitlab_com/rate_limits |
+| Idempotencja | brak `Idempotency-Key` — ponowienie szuka issue po znaczniku id wysyłki w opisie | W | docs.gitlab.com/api/issues |
+| Self-managed | ten sam API pod `<adres>/api/v4`; tylko `https` z publicznym IP (SSRF jak webhook) | W | — |
+
+**Wniosek:** wysyłki GitLaba mieszczą się w limicie Free z zapasem (≤ 60 wysyłek / min na połączenie, 1–3 wywołania na wysyłkę).
+
 ## Expo EAS (Free)
 | Warunek | Wartość | Pewność | Źródło |
 |---|---|---|---|

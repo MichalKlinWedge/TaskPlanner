@@ -3,7 +3,7 @@
  * `http://host.docker.internal:54590` (`.env.test`): Google OAuth + Calendar API v3 (calendarList,
  * events.list z `syncToken` i stronicowaniem, watch, channels.stop; Etap 12: calendars.insert, events
  * insert/get/patch/delete z `If-Match` → 412, zajęty id → 409, usunięte → 410), plik ICS z ETag, usługa Web Push,
- * odbiorca webhooków pluginów (`/hooks/<nazwa>`, M21).
+ * odbiorca webhooków pluginów (`/hooks/<nazwa>`, M21), GitLab REST API v4 pod `/gitlab/api/v4/…` (plugin I3).
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 
@@ -62,6 +62,20 @@ export interface HookRequest {
   at: number;
 }
 
+/** Issue fałszywego GitLaba (plugin I3). */
+export interface FakeIssue {
+  id: number;
+  iid: number;
+  project_id: number;
+  title: string;
+  description: string;
+  labels: string[];
+  due_date: string | null;
+  state: 'opened' | 'closed';
+  web_url: string;
+  notes: string[];
+}
+
 export interface PushRequest {
   id: string;
   headers: Record<string, string | string[] | undefined>;
@@ -110,6 +124,8 @@ export class FakeServices {
   hookReplies = new Map<string, { status: number; headers?: Record<string, string>; delayMs?: number; body?: string; location?: string }>();
   /** Strony dla `link-preview` (Etap 10): `/pages/<nazwa>`; `delayMs` — odpowiedź po czasie. */
   pages = new Map<string, { status?: number; headers?: Record<string, string>; body?: string | Buffer; delayMs?: number }>();
+  /** GitLab (plugin I3): jeden projekt `grupa/projekt` (id 77), token `glpat-test-token`; `gitlabStatus` — wymuszona odpowiedź. */
+  gitlab = { projectId: 77, path: 'grupa/projekt', token: 'glpat-test-token', issues: [] as FakeIssue[], requests: [] as { method: string; path: string }[], status: null as number | null };
 
   async start(): Promise<void> {
     this.server = createServer((req, res) => {
@@ -138,6 +154,11 @@ export class FakeServices {
 
   hooksFor(name: string) {
     return this.hooks.filter((h) => h.name === name);
+  }
+
+  /** Adres fałszywego GitLaba widziany z kontenera funkcji. */
+  gitlabUrl() {
+    return `http://host.docker.internal:${FAKE_PORT}/gitlab`;
   }
 
   /** Adres strony testowej widziany z kontenera funkcji. */
@@ -227,6 +248,53 @@ export class FakeServices {
     return t;
   }
 
+  private gitlabApi(req: IncomingMessage, res: ServerResponse, path: string, url: URL, raw: Buffer) {
+    const g = this.gitlab;
+    const method = req.method ?? 'GET';
+    g.requests.push({ method, path });
+    if (req.headers['private-token'] !== g.token) return send(res, 401, { message: '401 Unauthorized' });
+    if (g.status) return send(res, g.status, { message: `${g.status} wymuszone` });
+    const body = raw.length ? (JSON.parse(raw.toString('utf8')) as Record<string, unknown>) : {};
+    const m = /^\/projects\/([^/]+)(\/issues(?:\/(\d+)(\/notes)?)?)?$/.exec(path);
+    const ref = m ? decodeURIComponent(m[1]!) : '';
+    if (!m || (ref !== g.path && ref !== String(g.projectId))) return send(res, 404, { message: '404 Project Not Found' });
+    if (!m[2]) return send(res, 200, { id: g.projectId, path_with_namespace: g.path, web_url: `https://gitlab.test/${g.path}` });
+    if (!m[3]) {
+      if (method === 'GET') {
+        const q = url.searchParams.get('search') ?? '';
+        return send(res, 200, g.issues.filter((i) => i.description.includes(q)));
+      }
+      const iid = g.issues.length + 1;
+      const issue: FakeIssue = {
+        id: 1000 + iid,
+        iid,
+        project_id: g.projectId,
+        title: String(body.title ?? ''),
+        description: String(body.description ?? ''),
+        labels: String(body.labels ?? '').split(',').filter(Boolean),
+        due_date: (body.due_date as string | undefined) ?? null,
+        state: 'opened',
+        web_url: `https://gitlab.test/${g.path}/-/issues/${iid}`,
+        notes: [],
+      };
+      g.issues.push(issue);
+      return send(res, 201, issue);
+    }
+    const issue = g.issues.find((i) => i.iid === Number(m[3]));
+    if (!issue) return send(res, 404, { message: '404 Not found' });
+    if (m[4]) {
+      issue.notes.push(String(body.body ?? ''));
+      return send(res, 201, { id: issue.notes.length, body: body.body });
+    }
+    if (typeof body.title === 'string') issue.title = body.title;
+    if (typeof body.description === 'string') issue.description = body.description;
+    if (typeof body.labels === 'string') issue.labels = body.labels.split(',').filter(Boolean);
+    if ('due_date' in body) issue.due_date = (body.due_date as string | null) ?? null;
+    if (body.state_event === 'close') issue.state = 'closed';
+    if (body.state_event === 'reopen') issue.state = 'opened';
+    return send(res, 200, issue);
+  }
+
   private async handle(req: IncomingMessage, res: ServerResponse) {
     const url = new URL(req.url!, `http://localhost:${FAKE_PORT}`);
     const path = url.pathname;
@@ -239,6 +307,8 @@ export class FakeServices {
       this.hooks.push({ name, method: req.method ?? '', headers: req.headers, body: body.toString('utf8'), status: reply.status, at: Date.now() });
       return send(res, reply.status, reply.body ?? { ok: reply.status < 300 }, { ...(reply.location && { location: reply.location }), ...reply.headers });
     }
+
+    if (path.startsWith('/gitlab/api/v4/')) return this.gitlabApi(req, res, path.slice('/gitlab/api/v4'.length), url, body);
 
     if (path.startsWith('/push/')) {
       const id = path.slice('/push/'.length);

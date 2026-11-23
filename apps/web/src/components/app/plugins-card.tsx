@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Ustawienia → „Integracje” (M21, etapy I1–I2): połączenia z usługami zewnętrznymi (na razie Webhook), reguły
+ * Ustawienia → „Integracje” (M21, etapy I1–I3): połączenia z usługami zewnętrznymi (Webhook, GitLab), reguły
  * ręczne („Wyślij do…”) i zdarzeniowe (zdarzenia + filtr + opóźnienie) z szablonem treści i podglądem ładunku,
  * historia wysyłek z „Ponów”. Połączenia zmienia Edge Function `plugins`
  * (online; sekret idzie od razu do Vault i nie da się go potem odczytać), reguły zapisują się lokalnie
@@ -110,6 +110,7 @@ function ConnectionItem({ connection: c, busy, act }: { connection: PluginConnec
         <span className="text-xs text-[var(--muted)]">
           {def?.name ?? c.plugin} · {PLUGIN_CONNECTION_STATUS[c.status]}
           {typeof c.config.url === "string" ? ` · ${c.config.url}` : ""}
+          {typeof c.config.project === "string" ? ` · ${c.config.project}${typeof c.config.baseUrl === "string" && c.config.baseUrl !== "https://gitlab.com" ? ` (${c.config.baseUrl})` : ""}` : ""}
           {c.lastUsedAt ? ` · ostatnio ${dateTime(c.lastUsedAt)}` : ""}
         </span>
       </div>
@@ -166,7 +167,14 @@ function SecretInputs({ def, values, onChange }: { def: PluginDef; values: Recor
       {def.secretFields.map((f) => (
         <Field key={f.key} label={f.label} hint={f.help}>
           <div className="flex gap-2">
-            <Input value={values[f.key] ?? ""} onChange={(e) => onChange({ ...values, [f.key]: e.target.value })} autoComplete="off" spellCheck={false} className="min-w-0 flex-1 font-mono" />
+            <Input
+              value={values[f.key] ?? ""}
+              onChange={(e) => onChange({ ...values, [f.key]: e.target.value })}
+              type={f.generate ? "text" : "password"}
+              autoComplete="off"
+              spellCheck={false}
+              className="min-w-0 flex-1 font-mono"
+            />
             {f.generate ? (
               <Button kind="ghost" onClick={() => onChange({ ...values, [f.key]: generateSecret() })}>
                 Generuj
@@ -221,7 +229,8 @@ function NewConnection({ busy, act }: { busy: boolean; act: Act }) {
       className="space-y-2 rounded-md border border-[var(--line)] p-3"
       onSubmit={(e) => {
         e.preventDefault();
-        const parsedConfig = def.configSchema.safeParse(config);
+        // Puste pole = wartość domyślna schematu (np. adres gitlab.com).
+        const parsedConfig = def.configSchema.safeParse(Object.fromEntries(Object.entries(config).filter(([, v]) => v.trim() !== "")));
         if (!parsedConfig.success) return void act(async () => Promise.reject(new Error(parsedConfig.error.issues[0]?.message ?? "Niepoprawne dane.")));
         const parsedSecrets = def.secretSchema.safeParse(secrets);
         if (!parsedSecrets.success) return void act(async () => Promise.reject(new Error(parsedSecrets.error.issues[0]?.message ?? "Niepoprawny sekret.")));
@@ -529,8 +538,8 @@ function RulePreview({ draft, def }: { draft: RuleDraftState; def: PluginDef }) 
     }
     return rulePreview({
       rule: { id: draft.id ?? SAMPLE_TASK.id, name: draft.name.trim() || "(bez nazwy)", trigger },
-      template: typeof draft.action.message === "string" ? draft.action.message : "",
-      escape: def.escape,
+      def,
+      action: draft.action,
       task: taskData,
       appUrl: window.location.origin,
     });
@@ -541,7 +550,7 @@ function RulePreview({ draft, def }: { draft: RuleDraftState; def: PluginDef }) 
   const fits = task && trigger.kind === "event" && trigger.filter ? matchesFilter(trigger.filter, today)(task) : null;
   return (
     <details className="rounded-md border border-[var(--line)] p-2">
-      <summary className="cursor-pointer text-xs font-medium">Podgląd ładunku</summary>
+      <summary className="cursor-pointer text-xs font-medium">{def.linksTasks ? "Podgląd żądania" : "Podgląd ładunku"}</summary>
       <div className="mt-2 space-y-2">
         <div className="flex flex-wrap gap-2">
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Szukaj zadania do podglądu…" aria-label="Szukaj zadania do podglądu" className="min-w-0 flex-1" />
@@ -562,8 +571,14 @@ function RulePreview({ draft, def }: { draft: RuleDraftState; def: PluginDef }) 
           {trigger.kind === "event"
             ? "Wszystkie zaznaczone zdarzenia w jednej wysyłce; naprawdę idą te, które zaszły w oknie opóźnienia. Id i czas wysyłki są przykładowe."
             : "Id i czas wysyłki są przykładowe."}
+          {def.linksTasks
+            ? " Pokazane jest nowe issue; gdy zadanie ma już issue z tego połączenia, wysyłka je zmienia (stan, termin, etykiety, notatka), a ponowne „Wyślij do…” aktualizuje też tytuł i opis."
+            : ""}
         </p>
-        <pre className="max-h-80 overflow-auto rounded bg-[var(--hover)] p-2 text-xs">{JSON.stringify(preview, null, 2)}</pre>
+        <p className="text-xs font-medium">
+          {preview.request.method} {preview.request.path}
+        </p>
+        <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded bg-[var(--hover)] p-2 text-xs">{JSON.stringify(preview.request.body, null, 2)}</pre>
       </div>
     </details>
   );
@@ -580,6 +595,7 @@ interface DeliveryRow {
   created_at: string;
   sent_at: string | null;
   title: string | null;
+  external_url: string | null;
 }
 
 const RETRYABLE = new Set(["failed", "dead", "skipped"]);
@@ -597,7 +613,7 @@ function Deliveries({ rules, connections }: { rules: PluginRule[]; connections: 
   const load = useCallback(async () => {
     const { data, error } = await supabaseBrowser()
       .from("plugin_deliveries")
-      .select("id, rule_id, connection_id, status, attempts, next_attempt_at, error, created_at, sent_at, title:payload->task->>title")
+      .select("id, rule_id, connection_id, status, attempts, next_attempt_at, error, created_at, sent_at, external_url, title:payload->task->>title")
       .order("created_at", { ascending: false })
       .limit(30);
     if (error) setProblem(navigator.onLine ? `Nie udało się wczytać historii: ${error.message}` : "Historia jest na serwerze — wczyta się po powrocie sieci.");
@@ -648,6 +664,11 @@ function Deliveries({ rules, connections }: { rules: PluginRule[]; connections: 
                   {ruleName(d.rule_id) ?? connectionLabel(d.connection_id) ?? ""} · {dateTime(d.sent_at ?? d.created_at)}
                   {d.status === "pending" && d.attempts > 0 && d.next_attempt_at ? ` · próba ${d.attempts + 1} o ${dateTime(d.next_attempt_at)}` : ""}
                 </span>
+                {d.external_url && /^https?:\/\//.test(d.external_url) ? (
+                  <a href={d.external_url} target="_blank" rel="noreferrer noopener" className="text-xs text-[var(--accent)] underline">
+                    Otwórz ↗
+                  </a>
+                ) : null}
                 {RETRYABLE.has(d.status) ? (
                   <Button kind="ghost" disabled={busy} onClick={() => void retry(d.id)}>
                     Ponów

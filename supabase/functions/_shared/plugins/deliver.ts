@@ -31,12 +31,13 @@ import {
 import { PLUGIN_EVENTS, PluginTaskState, type PluginEvent } from '../../../../packages/core/src/plugins/events.ts';
 import { PluginTaskData, pluginPayload, requestDeliveryId, retryDelaySec, taskUrl } from '../../../../packages/core/src/plugins/payload.ts';
 import { parsePluginRule, type PluginRule } from '../../../../packages/core/src/plugins/rules.ts';
-import { pluginMessage } from '../../../../packages/core/src/plugins/template.ts';
+import { renderActionFields } from '../../../../packages/core/src/plugins/template.ts';
 import type { LocalDate } from '../../../../packages/core/src/schemas/primitives.ts';
 import type { DeliveryResult, NetDeps, PluginRuntime } from './types.ts';
+import { gitlab } from './gitlab.ts';
 import { webhook } from './webhook.ts';
 
-export const RUNTIMES: Record<string, PluginRuntime> = { webhook };
+export const RUNTIMES: Record<string, PluginRuntime> = { webhook, gitlab };
 
 /** Najwięcej wysłanych na połączenie w ciągu minuty (nadmiar czeka na następny przebieg). */
 export const PER_MINUTE = 60;
@@ -346,6 +347,10 @@ async function recheck(deps: EngineDeps, d: DeliveryRow, rule: PluginRule): Prom
 /** Wynik pluginu → stan wysyłki (i połączenia przy 401 / 403 / 410). */
 async function settle(deps: EngineDeps, d: DeliveryRow, result: DeliveryResult, extra: Record<string, unknown>, connectionId: string | null): Promise<Outcome> {
   const now = (deps.now ?? (() => new Date()))();
+  if (result.ok && result.skipped) {
+    await finish(deps, d.id, { ...extra, status: 'skipped', error: result.skipped, external_id: result.externalId ?? null, external_url: result.externalUrl ?? null });
+    return 'skipped';
+  }
   if (result.ok) {
     await finish(deps, d.id, { ...extra, status: 'sent', sent_at: now.toISOString(), error: null, http_status: result.httpStatus ?? null, external_id: result.externalId ?? null, external_url: result.externalUrl ?? null });
     if (connectionId) await deps.db.from('plugin_connections').update({ last_used_at: now.toISOString() }).eq('id', connectionId);
@@ -411,8 +416,8 @@ export async function deliverOne(deps: EngineDeps, d: DeliveryRow): Promise<Outc
     const action = def.actionSchema.safeParse(rule.action ?? {});
     const events = event?.events ?? ((d.events.length ? d.events : ['task.sent']) as PluginEvent[]);
     const url = taskUrl(deps.appUrl, task.data.id);
-    const template = action.success && typeof action.data.message === 'string' ? action.data.message : '';
-    const message = pluginMessage(template, task.data, { event: events[0]!, url, escape: def.escape });
+    const fields = renderActionFields(def, action.success ? action.data : {}, task.data, { event: events[0]!, url });
+    const message = fields.message || undefined;
     const payload = pluginPayload({
       id: d.id,
       events,
@@ -424,7 +429,24 @@ export async function deliverOne(deps: EngineDeps, d: DeliveryRow): Promise<Outc
       occurrence: event?.occurrence,
       comment: event?.comment,
     });
-    const result = await runtime.deliver({ config: config.data, secrets, net: deps.net, now: deps.now ?? (() => new Date()) }, { id: d.id, payload });
+    const link = def.linksTasks
+      ? (check(await db.from('plugin_links').select('external_id, external_url').eq('connection_id', connection.id).eq('task_id', d.task_id).maybeSingle(), 'plugin_links') as {
+          external_id: string;
+          external_url: string | null;
+        } | null)
+      : null;
+    const result = await runtime.deliver(
+      { config: config.data, secrets, net: deps.net, now: deps.now ?? (() => new Date()) },
+      { id: d.id, payload, fields, link: link && { externalId: link.external_id, externalUrl: link.external_url }, retry: d.attempts > 1 },
+    );
+    if (def.linksTasks && result.ok && result.externalId && result.externalId !== link?.external_id) {
+      check(
+        await db
+          .from('plugin_links')
+          .upsert({ connection_id: connection.id, task_id: d.task_id, user_id: d.user_id, external_id: result.externalId, external_url: result.externalUrl ?? null, updated_at: now.toISOString() }, { onConflict: 'connection_id,task_id' }),
+        'plugin_links upsert',
+      );
+    }
     return await settle(deps, d, result, { payload, events }, connection.id);
   } catch (error) {
     deps.log?.(`wysyłka ${d.id}`, error);
@@ -446,8 +468,14 @@ export async function deliverDue(deps: EngineDeps, summary: RunSummary, started 
   while (Date.now() - started < BUDGET_MS) {
     const claimed = check(await deps.db.rpc('claim_plugin_deliveries', { p_limit: CLAIM_BATCH, p_per_minute: PER_MINUTE }), 'claim_plugin_deliveries') as DeliveryRow[] | null;
     if (!claimed?.length) return;
-    await eachLimited(claimed, PARALLEL, async (d) => {
-      summary[await deliverOne(deps, d)]++;
+    // Wysyłki jednego zadania przez jedno połączenie po kolei (plugin z powiązaniem nie założy dwóch issue).
+    const groups = new Map<string, DeliveryRow[]>();
+    for (const d of claimed) {
+      const key = `${d.connection_id}:${d.task_id}`;
+      groups.set(key, [...(groups.get(key) ?? []), d]);
+    }
+    await eachLimited([...groups.values()], PARALLEL, async (group) => {
+      for (const d of group) summary[await deliverOne(deps, d)]++;
     });
   }
 }

@@ -43,7 +43,8 @@ export function checkWebhookUrl(raw: string, allowHosts: readonly string[] = [],
 
 const ipv4Like = (host: string) => /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
 
-async function checkResolved(url: URL, net: NetDeps, allow: ReadonlySet<string>) {
+/** Każdy adres IP hosta publiczny (poza hostami testów) albo `PreviewError`. */
+export async function checkResolved(url: URL, net: NetDeps, allow: ReadonlySet<string>) {
   if (isAllowed(url, allow)) return;
   const host = url.hostname.replace(/^\[|\]$/g, '');
   const ips = ipv4Like(host) || host.includes(':') ? [host] : await net.resolve(host).catch(() => []);
@@ -59,7 +60,8 @@ export function retryAfterSec(value: string | null, now: Date): number | undefin
   return Number.isNaN(at) ? undefined : Math.max(0, Math.ceil((at - now.getTime()) / 1000));
 }
 
-async function responseText(res: Response): Promise<string> {
+/** Początek odpowiedzi odbiorcy do błędu w historii. */
+export async function responseText(res: Response): Promise<string> {
   try {
     const text = await res.text();
     return text.replace(/\s+/g, ' ').trim().slice(0, ERROR_BODY_CHARS);
@@ -141,7 +143,7 @@ export const webhook: PluginRuntime = {
     return postWebhook(ctx.net, configUrl(ctx), { id, event: 'test', body: JSON.stringify(payload), secret: ctx.secrets.signingSecret ?? '', now });
   },
 
-  async deliver(ctx, delivery: { id: string; payload: PluginPayload }) {
+  async deliver(ctx, delivery) {
     return postWebhook(ctx.net, configUrl(ctx), {
       id: delivery.id,
       event: delivery.payload.event,

@@ -15,7 +15,9 @@ import { matchesFilter, type ViewTask } from '../views.ts';
 import { PLUGIN_EVENTS, PluginTaskState, pluginEvents, type PluginEvent } from './events.ts';
 import { deliveryId, pluginPayload, taskUrl, type PluginPayload, type PluginTaskData } from './payload.ts';
 import { DEFAULT_DELAY_SEC, type PluginRule, type PluginTrigger } from './rules.ts';
-import { pluginMessage, type TemplateEscape } from './template.ts';
+import { renderActionFields } from './template.ts';
+import type { PluginDef } from './catalog.ts';
+import { gitlabIssueBody } from './gitlab.ts';
 
 /** Ukończenie wystąpienia serii z kolejki (id wiersza `task_completions`). */
 export const OutboxCompletion = z.object({ id: z.string(), occurrence: z.string() });
@@ -184,29 +186,43 @@ export function viewTaskData(
   };
 }
 
+/** Podgląd wysyłki: ładunek, wypełnione pola akcji i to, co naprawdę idzie do usługi (`request`). */
+export interface RulePreview {
+  payload: PluginPayload;
+  fields: Record<string, string>;
+  request: { method: string; path: string; body: unknown };
+}
+
 /**
- * Podgląd wysyłki reguły dla zadania: ładunek (z treścią z szablonu) taki, jaki zbuduje serwer — zdarzenia
- * reguły zdarzeniowej połączone w jedną wysyłkę, ręczna = `task.sent`. Id i chwila wysłania są przykładowe.
+ * Podgląd wysyłki reguły dla zadania taki, jaki zbuduje serwer — zdarzenia reguły zdarzeniowej połączone
+ * w jedną wysyłkę, ręczna = `task.sent`. Id i chwila wysłania są przykładowe; GitLab — nowe issue.
  */
 export function rulePreview(input: {
   rule: { id: string; name: string; trigger: PluginTrigger };
-  template: string;
-  escape: TemplateEscape;
+  def: PluginDef;
+  action: Record<string, unknown>;
   task: PluginTaskData;
   appUrl: string;
   now?: Date;
-}): PluginPayload {
-  const { rule, task } = input;
+}): RulePreview {
+  const { rule, task, def } = input;
   const events: PluginEvent[] = rule.trigger.kind === 'event' ? PLUGIN_EVENTS.filter((e) => (rule.trigger as { events: readonly string[] }).events.includes(e)) : ['task.sent'];
   if (!events.length) events.push('task.sent');
   const url = taskUrl(input.appUrl, task.id);
-  return pluginPayload({
-    id: deliveryId(rule.id, `preview:${task.id}`),
+  const fields = renderActionFields(def, input.action, task, { event: events[0]!, url });
+  const id = deliveryId(rule.id, `preview:${task.id}`);
+  const payload = pluginPayload({
+    id,
     events,
     sentAt: (input.now ?? new Date()).toISOString(),
     rule: { id: rule.id, name: rule.name },
     task,
     appUrl: input.appUrl,
-    message: pluginMessage(input.template, task, { event: events[0]!, url, escape: input.escape }),
+    message: fields.message,
   });
+  const request =
+    def.id === 'gitlab'
+      ? { method: 'POST', path: '/api/v4/projects/…/issues', body: gitlabIssueBody(fields, payload.task, id) }
+      : { method: 'POST', path: '(adres webhooka)', body: payload };
+  return { payload, fields, request };
 }

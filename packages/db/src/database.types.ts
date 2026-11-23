@@ -349,6 +349,32 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"plugin_links": {
+                  Row: {
+                    "connection_id": string,"created_at": string,"external_id": string,"external_url": string | null,"task_id": string,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "connection_id": string,"created_at"?: string,"external_id": string,"external_url"?: string | null,"task_id": string,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "connection_id"?: string,"created_at"?: string,"external_id"?: string,"external_url"?: string | null,"task_id"?: string,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "plugin_links_connection_id_fkey"
+      columns: ["connection_id"]
+isOneToOne: false
+      referencedRelation: "plugin_connections"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "plugin_links_task_id_fkey"
+      columns: ["task_id"]
+isOneToOne: false
+      referencedRelation: "tasks"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"plugin_outbox": {
                   Row: {
                     "after": Json | null,"before": Json | null,"created_at": string,"extra": Json | null,"id": number,"origin": string,"processed_at": string | null,"row_id": string,"scope_id": string,"table_name": string,"task_id": string | null

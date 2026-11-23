@@ -4,3 +4,4 @@ export * from './events.ts';
 export * from './payload.ts';
 export * from './rules.ts';
 export * from './template.ts';
+export * from './gitlab.ts';

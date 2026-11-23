@@ -3,6 +3,7 @@
  * znaków według celu (JSON / Markdown / Slack). Podgląd reguły pokazuje dokładny wynik dla wybranego zadania.
  */
 import { PRIORITY, TASK_STATUS, PLUGIN_EVENT } from '../labels.ts';
+import type { PluginDef } from './catalog.ts';
 import type { PluginEvent } from './events.ts';
 import type { PluginTaskData } from './payload.ts';
 
@@ -63,6 +64,21 @@ export function templateValues(task: PluginTaskData, opts: { event: PluginEvent;
   };
 }
 
-/** Treść akcji z szablonu reguły dla zadania — to samo liczy serwer przy wysyłce i podgląd w aplikacji. */
-export const pluginMessage = (template: string, task: PluginTaskData, opts: { event: PluginEvent; url: string; escape: TemplateEscape }): string | undefined =>
-  template ? renderTemplate(template, templateValues(task, opts), opts.escape) : undefined;
+/**
+ * Pola akcji reguły dla zadania: szablony wypełnione (puste = `defaultValue` pola), inne pola bez zmian.
+ * To samo liczy serwer przy wysyłce i podgląd reguły w aplikacji.
+ */
+export function renderActionFields(
+  def: Pick<PluginDef, 'actionFields' | 'escape'>,
+  action: Record<string, unknown>,
+  task: PluginTaskData,
+  opts: { event: PluginEvent; url: string },
+): Record<string, string> {
+  const values = templateValues(task, opts);
+  const out: Record<string, string> = {};
+  for (const field of def.actionFields) {
+    const raw = typeof action[field.key] === 'string' && (action[field.key] as string) !== '' ? (action[field.key] as string) : (field.defaultValue ?? '');
+    out[field.key] = field.kind === 'template' ? renderTemplate(raw, values, def.escape) : raw;
+  }
+  return out;
+}

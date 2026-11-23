@@ -13,6 +13,14 @@ import {
   ruleEvents,
   rulePreview,
   viewTaskData,
+  gitlabApiUrl,
+  gitlabChange,
+  gitlabCreate,
+  gitlabExternalId,
+  gitlabLabels,
+  gitlabMarker,
+  gitlabProjectRef,
+  parseGitlabExternalId,
   generateSecret,
   MAX_DELIVERY_ATTEMPTS,
   parsePluginConnection,
@@ -345,26 +353,66 @@ describe('podgląd reguły', () => {
     { list: 'Biuro', listKind: 'list', workspace: 'Praca', tags: ['zgłoś'], assignee: null },
   );
 
-  it('reguła zdarzeniowa: zdarzenia w kolejności katalogu, treść z szablonu z ucieczką pluginu', () => {
-    const payload = rulePreview({
+  it('reguła zdarzeniowa: zdarzenia w kolejności katalogu, treść z szablonu, żądanie = ładunek webhooka', () => {
+    const preview = rulePreview({
       rule: { id: CONN, name: 'Zgłoś', trigger: { kind: 'event', events: ['task.tagged', 'task.created'] } },
-      template: '{"t": "{{title}}", "e": "{{event}}"}',
-      escape: 'json',
+      def: PLUGINS.webhook,
+      action: { message: '{{title}} / {{event}}' },
       task,
       appUrl: 'https://app.example.com/',
       now: new Date('2026-11-23T10:00:00Z'),
     });
-    expect(payload).toMatchObject({
+    expect(preview.payload).toMatchObject({
       event: 'task.created',
       events: ['task.created', 'task.tagged'],
-      message: '{"t": "Ekspres \\"przecieka\\"", "e": "Dodane zadanie"}',
+      message: 'Ekspres "przecieka" / Dodane zadanie',
       task: { list: { id: LIST, name: 'Biuro' }, tags: ['zgłoś'], url: `https://app.example.com/?task=${TASK}` },
     });
+    expect(preview.request.body).toBe(preview.payload);
   });
 
   it('reguła ręczna = task.sent; pusty szablon — bez treści', () => {
-    const payload = rulePreview({ rule: { id: CONN, name: 'Ręczna', trigger: { kind: 'manual' } }, template: '', escape: 'plain', task, appUrl: 'https://x.test' });
+    const { payload } = rulePreview({ rule: { id: CONN, name: 'Ręczna', trigger: { kind: 'manual' } }, def: PLUGINS.webhook, action: {}, task, appUrl: 'https://x.test' });
     expect(payload.events).toEqual(['task.sent']);
     expect(payload).not.toHaveProperty('message');
+  });
+
+  it('GitLab: puste pola = domyślne (tytuł zadania, opis z linkiem), żądanie = treść nowego issue', () => {
+    const preview = rulePreview({ rule: { id: CONN, name: 'Issue', trigger: { kind: 'manual' } }, def: PLUGINS.gitlab, action: { labels: 'zgłoszenie, {{tags}}' }, task, appUrl: 'https://x.test' });
+    expect(preview.fields).toEqual({ title: 'Ekspres "przecieka"', description: `\n\n---\n[Zadanie w Task Plannerze](https://x.test/?task=${TASK})`, labels: 'zgłoszenie, zgłoś' });
+    expect(preview.request.body).toEqual({
+      title: 'Ekspres "przecieka"',
+      description: `---\n[Zadanie w Task Plannerze](https://x.test/?task=${TASK})\n\n${gitlabMarker(preview.payload.id)}`,
+      labels: 'zgłoszenie,zgłoś',
+      due_date: '2026-11-24',
+    });
+  });
+});
+
+describe('GitLab — plan zmian powiązanego issue', () => {
+  const issue = { title: 'T', description: 'D', labels: 'a,b', due_date: '2026-11-24' };
+  const task = pluginPayload({ id: 'd', events: ['task.sent'], sentAt: 'x', rule: null, task: SAMPLE_TASK, appUrl: 'https://app' }).task;
+
+  it('zdarzenia → pola PUT; „Wyślij do…” = pełna aktualizacja ze stanem zadania', () => {
+    expect(gitlabChange(['task.completed'], task, issue)).toEqual({ put: { state_event: 'close' } });
+    expect(gitlabChange(['task.restored'], task, issue)).toEqual({ put: { state_event: 'reopen' } });
+    expect(gitlabChange(['task.moved', 'task.assigned'], task, issue)).toEqual({ put: {} });
+    expect(gitlabChange(['task.untagged'], task, { ...issue, labels: '' })).toEqual({ put: {} });
+    expect(gitlabChange(['task.sent'], { ...task, status: 'done' }, issue)).toEqual({ put: { title: 'T', description: 'D', due_date: '2026-11-24', labels: 'a,b', state_event: 'close' } });
+    expect(gitlabChange(['task.commented'], task, issue, { body: 'Hej' }).note).toBe(`Hej\n\n— komentarz w [Task Plannerze](${task.url})`);
+  });
+
+  it('bez issue: same zmiany stanu nic nie zakładają; reszta zakłada', () => {
+    expect(gitlabCreate(['task.deleted', 'task.untagged'], task, issue)).toBeNull();
+    expect(gitlabCreate(['task.created'], task, issue)).toEqual({ create: issue, after: { put: {} } });
+  });
+
+  it('etykiety, projekt, id obiektu', () => {
+    expect(gitlabLabels(' a, b ,, a,c ')).toBe('a,b,c');
+    expect(gitlabProjectRef('/grupa/pod/projekt/')).toBe('grupa%2Fpod%2Fprojekt');
+    expect(gitlabApiUrl('https://git.example.com/gitlab/', '/projects/1')).toBe('https://git.example.com/gitlab/api/v4/projects/1');
+    expect(parseGitlabExternalId(gitlabExternalId(7, 12))).toEqual({ projectId: 7, iid: 12 });
+    expect(parseGitlabExternalId('x')).toBeNull();
+    expect(PLUGINS.gitlab.configSchema.parse({ project: 'g/p' })).toEqual({ baseUrl: 'https://gitlab.com', project: 'g/p' });
   });
 });

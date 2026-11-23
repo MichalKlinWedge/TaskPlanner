@@ -3,7 +3,8 @@
  * (`/hooks/<nazwa>`; `host.docker.internal` zwolniony przez `PLUGIN_TEST_HOSTS` z `.env.test`):
  * połączenia (sekret w Vault, tylko https, SSRF), „Wyślij próbne”, „Wyślij do…” zapisane przez `push_changes`
  * → wyzwalacz → `pg_net` → `plugins/flush` → dokładnie jedna podpisana wysyłka, ponowienia bez duplikatów,
- * wyłączenie połączenia po 401, „Ponów”, usunięcie połączenia.
+ * wyłączenie połączenia po 401, „Ponów”, usunięcie połączenia; I2 — reguły zdarzeniowe; I3 — GitLab (fałszywy
+ * GitLab pod `/gitlab/api/v4/…`: issue, powiązanie `plugin_links`, zamknięcie, notatka, ponowienie bez duplikatu).
  */
 import { createHmac } from 'node:crypto';
 
@@ -344,5 +345,83 @@ describe('reguły zdarzeniowe (I2)', () => {
     expect(JSON.parse(fake.hooksFor('integracja')[0]!.body).rule.id).toBe(on);
     await waitFor(async () => (await deliveriesFor(off))[0]?.status === 'skipped', 10_000, 'pominięta bez opcji');
     expect((await deliveriesFor(off))[0]!.error).toMatch(/^Zadanie z integracji/);
+  });
+});
+
+describe('GitLab (I3)', () => {
+  const connectGitlab = async (token = fake.gitlab.token) => {
+    const res = await fn('plugins/connections/create', {
+      jwt: user.jwt,
+      body: JSON.stringify({ plugin: 'gitlab', label: 'GitLab', config: { baseUrl: fake.gitlabUrl(), project: fake.gitlab.path }, secrets: { token } }),
+    });
+    const body = await res.json();
+    expect(res.status, JSON.stringify(body)).toBe(200);
+    return body.connectionId as string;
+  };
+  const issueOf = (taskId: string) => fake.gitlab.issues.filter((i) => i.description.includes(taskId));
+
+  it('„Wyślij próbne” sprawdza projekt i token', async () => {
+    const id = await connectGitlab();
+    expect(await (await fn('plugins/test', { jwt: user.jwt, body: JSON.stringify({ connectionId: id }) })).json()).toEqual({ ok: true, httpStatus: 200 });
+    const bad = await connectGitlab('zly-token-123');
+    expect(await (await fn('plugins/test', { jwt: user.jwt, body: JSON.stringify({ connectionId: bad }) })).json()).toMatchObject({ ok: false, httpStatus: 401 });
+  });
+
+  it('reguła zdarzeniowa: nowe zadanie → jedno issue z powiązaniem; ukończenie zamyka to samo issue, komentarz = notatka', async () => {
+    const conn = await connectGitlab();
+    const ruleId = await rule(conn, {
+      name: 'Do GitLaba',
+      trigger: { kind: 'event', events: ['task.created', 'task.completed', 'task.commented'] },
+      options: { delaySec: 1 },
+      action: { labels: 'task-planner, {{priority}}' },
+    });
+    const id = uuidv7();
+    expect((await push(user, [{ table: 'tasks', id, set: { list_id: ws.inbox, title: 'Serwer nie wstaje', description_md: 'Po aktualizacji jądra.', due_date: '2026-12-01' } }])).rejected).toEqual([]);
+    const [issue] = await waitFor(async () => (issueOf(id).length ? issueOf(id) : null), 20_000, 'issue w GitLabie');
+    expect(issue).toMatchObject({ title: 'Serwer nie wstaje', labels: ['task-planner', 'Niski'], due_date: '2026-12-01', state: 'opened' });
+    expect(issue!.description).toContain('Po aktualizacji jądra.');
+    expect(issue!.description).toContain(`?task=${id}`);
+    const { data: link } = await db.from('plugin_links').select('external_id, external_url').eq('connection_id', conn).eq('task_id', id).single();
+    expect(link).toEqual({ external_id: `77:${issue!.iid}`, external_url: issue!.web_url });
+    const { data: own } = await user.client.from('plugin_links').select('external_url').eq('task_id', id);
+    expect(own).toEqual([{ external_url: issue!.web_url }]);
+
+    await push(user, [
+      { table: 'tasks', id, set: { status: 'done', completed_at: new Date().toISOString() } },
+      { table: 'task_comments', id: uuidv7(), set: { task_id: id, body: 'Pomógł restart', posted_at: new Date().toISOString() } },
+    ]);
+    await waitFor(async () => issue!.state === 'closed' && issue!.notes.length === 1, 20_000, 'zamknięte issue z notatką');
+    expect(issue!.notes[0]).toMatch(/^Pomógł restart/);
+    expect(issueOf(id)).toHaveLength(1);
+    const deliveries = ((await db.from('plugin_deliveries').select('status, external_url').eq('rule_id', ruleId).order('created_at')).data ?? []) as Record<string, unknown>[];
+    expect(deliveries).toEqual([
+      { status: 'sent', external_url: issue!.web_url },
+      { status: 'sent', external_url: issue!.web_url },
+    ]);
+  });
+
+  it('„Wyślij do…” ponownie aktualizuje to samo issue; GitLab 503 → ponowienie bez drugiego issue', async () => {
+    const conn = await connectGitlab();
+    const ruleId = await rule(conn, { name: 'Issue ręcznie', action: { title: '[TP] {{title}}' } });
+    const id = uuidv7();
+    expect((await push(user, [{ table: 'tasks', id, set: { list_id: ws.inbox, title: 'Faktura' } }])).rejected).toEqual([]);
+    const sendTask = async () => {
+      const op = { table: 'plugin_requests', id: uuidv7(), set: { rule_id: ruleId, task_id: id, requested_at: new Date().toISOString() } };
+      expect((await push(user, [op])).rejected).toEqual([]);
+      return requestDeliveryId(ruleId, op.id);
+    };
+    const first = await sendTask();
+    await waitFor(async () => (await delivery(first))?.status === 'sent', 20_000, 'pierwsze issue');
+    expect(issueOf(id).map((i) => i.title)).toEqual(['[TP] Faktura']);
+
+    await push(user, [{ table: 'tasks', id, set: { title: 'Faktura VAT' } }]);
+    fake.gitlab.status = 503;
+    const second = await sendTask();
+    await waitFor(async () => (await delivery(second))?.attempts === 1 && (await delivery(second))?.status === 'pending', 20_000, 'nieudana próba');
+    fake.gitlab.status = null;
+    await db.from('plugin_deliveries').update({ next_attempt_at: new Date().toISOString() }).eq('id', second);
+    await flush();
+    await waitFor(async () => (await delivery(second))?.status === 'sent', 20_000, 'ponowienie');
+    expect(issueOf(id).map((i) => i.title)).toEqual(['[TP] Faktura VAT']);
   });
 });
