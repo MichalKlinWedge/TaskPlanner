@@ -65,7 +65,8 @@ export function AiSection() {
           />
         </Row>
       )}
-      {message ? <P tone={message.tone}>{message.text}</P> : null}
+      {/* Błąd „Sprawdź” jest już na koncie jako „Ostatni błąd” — bez powtórzenia. */}
+      {message && !(message.tone === 'bad' && message.text === account?.lastError) ? <P tone={message.tone}>{message.text}</P> : null}
       <P muted>{aiDataNote(account?.provider ?? 'gemini')}</P>
     </Section>
   );

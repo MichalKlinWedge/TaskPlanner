@@ -88,7 +88,8 @@ export function AiCard({ store }: { store: TabStore }) {
         </div>
       )}
 
-      {message ? (
+      {/* Błąd „Sprawdź” jest już na koncie jako „Ostatni błąd” — bez powtórzenia. */}
+      {message && !(message.tone === "error" && message.text === account?.lastError) ? (
         <div className="mt-3">
           <Notice tone={message.tone}>{message.text}</Notice>
         </div>
