@@ -1,3 +1,4 @@
+export * from './ai.ts';
 export * from './app-update.ts';
 export * from './attachments.ts';
 export * from './canvas.ts';

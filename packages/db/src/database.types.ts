@@ -25,6 +25,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"ai_accounts": {
+                  Row: {
+                    "billing_confirmed_at": string,"created_at": string,"deleted_at": string | null,"id": string,"key_hint": string | null,"last_error": string | null,"model": string | null,"models": NonNullable<Json>,"provider": string,"row_version": number,"secret_id": string | null,"status": string,"updated_at": string,"user_id": string,"verified_at": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "billing_confirmed_at": string,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"key_hint"?: string | null,"last_error"?: string | null,"model"?: string | null,"models"?: NonNullable<Json>,"provider": string,"row_version"?: number,"secret_id"?: string | null,"status"?: string,"updated_at"?: string,"user_id": string,"verified_at"?: string | null
+                  }
+                  Update: {
+                    "billing_confirmed_at"?: string,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"key_hint"?: string | null,"last_error"?: string | null,"model"?: string | null,"models"?: NonNullable<Json>,"provider"?: string,"row_version"?: number,"secret_id"?: string | null,"status"?: string,"updated_at"?: string,"user_id"?: string,"verified_at"?: string | null
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"allowed_emails": {
                   Row: {
                     "created_at": string,"note": string | null,"pattern": string
@@ -920,6 +934,15 @@ isOneToOne: false
                            },
 "add_invite":
 { Args: { "p_note"?: string,"p_pattern": string }; Returns: undefined
+                           },
+"ai_account_remove":
+{ Args: { "p_account": string }; Returns: undefined
+                           },
+"ai_secret_get":
+{ Args: { "p_account": string }; Returns: string
+                           },
+"ai_secret_set":
+{ Args: { "p_account": string,"p_secret": string }; Returns: undefined
                            },
 "attachment_quota_bytes":
 { Args: Record<PropertyKey, never>; Returns: number

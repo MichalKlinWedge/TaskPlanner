@@ -51,10 +51,10 @@ type Operation =
  * 5 = `tags.workspace_ids`, 6 = `collaborators.workspace_ids`, 7 = `workspaces.board_columns`,
  * `tasks.board_column_id`, 8 = `lists.board_columns`, 9 = `_scopes` (role w zakresach),
  * 10 = `lists.guest_access`, `_scopes.hidden`, 11 = `_scopes.members`, 12 = `scope_collaborators`, 13 = `scope_tags`, 14 = `tasks.canvas_pos`, `lists.canvas_groups`, `task_tags.sort_key`,
- * 15 = `plugin_rules`, `plugin_requests`, `plugin_connections` (pluginy, M21), 16 = `project_templates`. Pole `ids` w `changed` nie podbija wersji:
+ * 15 = `plugin_rules`, `plugin_requests`, `plugin_connections` (pluginy, M21), 16 = `project_templates`, 17 = `ai_accounts`. Pole `ids` w `changed` nie podbija wersji:
  * jest opcjonalne w obie strony (bez niego widoki czytają całe tabele).
  */
-export const TAB_PROTOCOL = 16;
+export const TAB_PROTOCOL = 17;
 
 /** Błąd zapisu przez lidera ze starszą wersją aplikacji. */
 export const STALE_LEADER_MESSAGE = 'Aplikacja jest otwarta w innej karcie w starszej wersji — odśwież albo zamknij tamtą kartę i spróbuj ponownie.';

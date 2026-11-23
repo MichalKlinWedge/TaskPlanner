@@ -1,6 +1,7 @@
 /**
  * Etykiety wartości ze schematów (SPECYFIKACJA §7.9). Aplikacje nie definiują własnych.
  */
+import type { AiAccountStatus, AiProvider } from './ai.ts';
 import type { BackupTable } from './backup.ts';
 import type { FocusPhase } from './focus.ts';
 import type { PluginEvent } from './plugins/events.ts';
@@ -339,3 +340,43 @@ export const PLUGIN_TRIGGER: Record<'manual' | 'event', string> = {
 
 /** Wysyłki wymagają serwera — tekst dla „Wyślij do…” offline. */
 export const PLUGIN_SEND_NOTE = 'Wysyłka wyjdzie z serwera po synchronizacji — także gdy teraz nie ma sieci.';
+
+// ── Asystent AI na własnym koncie (v1.x) ─────────────────────────────────────────────────────
+
+/** Dostawca AI: nazwa, firma (zdanie „dane idą do…”), skąd wziąć klucz i jak włączyć rozliczenie. */
+export const AI_PROVIDER: Record<AiProvider, { label: string; company: string; keyUrl: string; keyHelp: string; billingUrl: string }> = {
+  gemini: {
+    label: 'Gemini (Google)',
+    company: 'Google',
+    keyUrl: 'https://aistudio.google.com/apikey',
+    keyHelp:
+      'W Google AI Studio wybierz projekt z podpiętym kontem rozliczeniowym (Billing → „Set up billing”, poziom Tier 1), '
+      + 'utwórz klucz („Create API key”, ograniczony do Gemini API) i wklej go tutaj. Klucz bez rozliczenia działa na darmowym '
+      + 'limicie, ale wtedy Google może wykorzystywać treść zapytań — w aplikacji dla osób w UE wolno używać tylko usług płatnych.',
+    billingUrl: 'https://aistudio.google.com/usage',
+  },
+};
+
+/** Stan konta AI (`ai_accounts.status`). */
+export const AI_ACCOUNT_STATUS: Record<AiAccountStatus, { label: string; tone: 'muted' | 'ok' | 'error' }> = {
+  unverified: { label: 'niesprawdzone — kliknij „Sprawdź”', tone: 'muted' },
+  active: { label: 'działa', tone: 'ok' },
+  error: { label: 'błąd klucza', tone: 'error' },
+};
+
+/** Wstęp karty „Asystent AI”. */
+export const AI_INTRO =
+  'Funkcje ✨ (rozbijanie zadania na kroki, ułożenie dnia, podsumowanie tygodnia) korzystają z Twojego własnego klucza AI — '
+  + 'aplikacja nie ma wspólnego klucza, a koszt i limity zapytań są po stronie Twojego projektu u dostawcy. Bez podpiętego konta '
+  + 'wszystko inne działa jak dotąd.';
+
+/** Oświadczenie (checkbox) przy podpinaniu i zmianie klucza. */
+export const AI_BILLING_STATEMENT = 'Klucz pochodzi z projektu Google z włączonym rozliczeniem';
+
+/** Dokąd idą dane przy funkcjach AI. */
+export const aiDataNote = (provider: AiProvider): string =>
+  `Przy użyciu funkcji ✨ dane potrzebnych zadań (tytuły, skrócone opisy, daty, czasy; osoby tylko skrótami, bez e-maili) idą do ${AI_PROVIDER[provider].company}. `
+  + 'Klucz jest przechowywany zaszyfrowany na serwerze (Supabase Vault) i nigdy nie trafia do przeglądarki ani telefonu.';
+
+/** Zmiany konta AI wymagają serwera. */
+export const AI_OFFLINE_NOTE = 'Konto AI zmienia się tylko online.';
