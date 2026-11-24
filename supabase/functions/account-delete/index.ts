@@ -6,7 +6,8 @@
  *   1. kalendarze — przez `calendar-sync/accounts/delete` z tym samym JWT (Google: zatrzymanie
  *      kanałów `watch` i odwołanie tokenu, sekret z Vault znika triggerem);
  *   2. pliki w Storage `attachments/{user_id}/…` (Storage nie kasuje ich kaskadą);
- *   3. `auth.admin.deleteUser` — kaskadą zakresy (`sync_scopes.owner_id`), wszystkie wiersze
+ *   3. `auth.admin.deleteUser` — przestrzenie z innym właścicielem przechodzą na niego (wyzwalacz
+ *      `hand_over_workspaces`), reszta kaskadą: zakresy (`sync_scopes.owner_id`), wszystkie wiersze
  *      synchronizowane, urządzenia, subskrypcje push, dziennik błędów.
  * Przerwane w połowie można powtórzyć (każdy krok jest idempotentny). Kopie zapasowe
  * (`db-backup.yml`) zawierają dane do końca ich retencji.

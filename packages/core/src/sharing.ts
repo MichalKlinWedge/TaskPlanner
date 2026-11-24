@@ -20,6 +20,90 @@ export const SCOPE_ROLE_HINT: Record<ShareRole, string> = {
   viewer: 'tylko czyta',
 };
 
+// ── Właściciele przestrzeni (migracja `*_v1x_workspace_owners.sql`) ────────────────────────────
+//
+// Właścicieli może być kilku, z tymi samymi uprawnieniami; jeden jest głównym (`primary`). Rolę
+// właściciela proponuje się członkowi — zaczyna działać dopiero po jego zgodzie.
+
+/** Co dzieje się z dotychczasowym właścicielem po przejęciu przestrzeni przez inną osobę. */
+export type OwnerAfter = ShareRole | 'leave';
+
+export const OWNER_AFTER: Record<OwnerAfter, string> = {
+  editor: 'Edytor',
+  viewer: 'Podgląd',
+  leave: 'Opuść przestrzeń',
+};
+
+export const OWNER_OFFER_NOTE =
+  'Właściciel może wszystko: zaprasza i usuwa osoby, zmienia role i dostęp do list, archiwizuje i usuwa przestrzeń. Rola zaczyna działać dopiero, gdy ta osoba ją przyjmie (propozycja jest ważna 14 dni).';
+
+export interface SpaceMember {
+  userId: string;
+  email: string;
+  role: ScopeRole;
+  me: boolean;
+  /** Główny właściciel przestrzeni. */
+  primary?: boolean;
+}
+
+/** Nazwa roli członka; „Główny właściciel” tylko wtedy, gdy właścicieli jest kilku. */
+export function memberRoleLabel(member: Pick<SpaceMember, 'role' | 'primary'>, members: readonly Pick<SpaceMember, 'role'>[]): string {
+  return member.primary && members.filter((m) => m.role === 'owner').length > 1 ? 'Główny właściciel' : SCOPE_ROLE[member.role];
+}
+
+/** Czy `actor` może zmienić rolę `member` albo usunąć go z przestrzeni (innego właściciela — tylko główny). */
+export function canManageMember(actor: SpaceMember | undefined, member: SpaceMember): boolean {
+  if (actor?.role !== 'owner' || member.userId === actor.userId) return false;
+  return member.role !== 'owner' || !!actor.primary;
+}
+
+/** Komu można przekazać przestrzeń (każdy inny członek, też współwłaściciel). */
+export const ownershipHeirs = (members: readonly SpaceMember[]): SpaceMember[] => members.filter((m) => !m.me);
+
+/** Pytanie przed wysłaniem propozycji: `after` `null` — kolejny właściciel, inaczej przekazanie przestrzeni. */
+export function ownerOfferQuestion(email: string, workspace: string, after: OwnerAfter | null): string {
+  if (!after) return `Zaproponować ${email} rolę właściciela przestrzeni „${workspace}”? Po przyjęciu ta osoba będzie mieć te same uprawnienia co Ty — także do usunięcia przestrzeni.`;
+  return `Przekazać przestrzeń „${workspace}” osobie ${email}? Gdy ta osoba potwierdzi przejęcie, stracisz rolę właściciela i ${
+    after === 'leave' ? 'opuścisz przestrzeń — jej zadania znikną z Twoich urządzeń' : `zostaniesz z rolą ${SCOPE_ROLE[after]}`
+  }. Do tego czasu nic się nie zmienia i możesz się wycofać.`;
+}
+
+/** Pytanie przed zrzeczeniem się roli współwłaściciela (bez następcy). */
+export function ownerResignQuestion(workspace: string, after: OwnerAfter): string {
+  return after === 'leave'
+    ? `Zrzec się roli właściciela i opuścić przestrzeń „${workspace}”? Jej zadania znikną z Twoich urządzeń; wrócisz tylko z nowym zaproszeniem.`
+    : `Zrzec się roli właściciela przestrzeni „${workspace}”? Zostaniesz z rolą ${SCOPE_ROLE[after]}.`;
+}
+
+/** Propozycja dla zalogowanego (`my_ownership_offers`). */
+export interface OwnershipOffer {
+  id: string;
+  scopeId: string;
+  workspace: string;
+  offeredBy: string | null;
+  after: OwnerAfter | null;
+  /** Po przyjęciu zalogowany zostaje głównym właścicielem. */
+  primary: boolean;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/** Treść propozycji dla adresata (pasek u góry aplikacji). */
+export function ownershipOfferText(offer: Pick<OwnershipOffer, 'workspace' | 'offeredBy' | 'after'>): string {
+  const who = offer.offeredBy ?? 'Właściciel';
+  return offer.after
+    ? `${who} chce przekazać Ci przestrzeń „${offer.workspace}” — zrzeka się roli właściciela na Twoją rzecz.`
+    : `${who} proponuje Ci rolę właściciela przestrzeni „${offer.workspace}”.`;
+}
+
+/** Potwierdzenie przejęcia — pokazywane adresatowi przed przyjęciem. */
+export function ownershipAcceptQuestion(offer: Pick<OwnershipOffer, 'workspace' | 'offeredBy' | 'after' | 'primary'>): string {
+  const rights = `${offer.primary ? 'Zostaniesz głównym właścicielem' : 'Zostaniesz właścicielem'} przestrzeni „${offer.workspace}” ze wszystkimi uprawnieniami: osoby i role, dostęp do list, archiwizacja i usunięcie przestrzeni.`;
+  if (!offer.after) return rights;
+  const who = offer.offeredBy ?? 'Dotychczasowy właściciel';
+  return `${rights} ${who} ${offer.after === 'leave' ? 'opuści przestrzeń' : `straci rolę właściciela (zostanie z rolą ${SCOPE_ROLE[offer.after]})`}. Cofnąć to można tylko kolejnym przekazaniem.`;
+}
+
 /** Parametr adresu z tokenem zaproszenia (`/?invite=<token>`). */
 export const INVITE_PARAM = 'invite';
 
@@ -65,7 +149,7 @@ export const GUEST_ACCESS_HINT: Record<GuestAccess, string> = {
 };
 
 export const GUEST_ACCESS_NOTE =
-  'Dostęp do listy dotyczy wszystkich osób, którym udostępniono przestrzeń (Ty jako właściciel zawsze masz pełny). Liczy się słabsze z dwóch: rola osoby i ustawienie listy.';
+  'Dostęp do listy dotyczy wszystkich osób, którym udostępniono przestrzeń (właściciele zawsze mają pełny). Liczy się słabsze z dwóch: rola osoby i ustawienie listy.';
 
 export const READONLY_LIST_NOTE = 'Ta lista jest udostępniona Ci tylko do podglądu — zadań nie da się zmienić.';
 
