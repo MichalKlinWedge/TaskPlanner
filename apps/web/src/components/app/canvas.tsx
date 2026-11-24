@@ -817,6 +817,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
           context={arrangeContext}
           selected={selected}
           editable={editable}
+          subtasksShown={show === "all"}
           onPreview={setArrangePreview}
           onApply={(plan, label) => {
             if (!plan.ops.length) return notify(`${label}: ${canvasArrangeSummary(plan)}.`);

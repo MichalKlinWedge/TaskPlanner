@@ -242,6 +242,56 @@ describe('Ułóż według strzałek', () => {
   });
 });
 
+describe('Ułóż według hierarchii', () => {
+  // a (główne): a1 (a11, a12), a2; b (główne): b1; c, d — bez podzadań. Kolejność rodzeństwa = sort_key.
+  const tree = (): T[] => [
+    task('a', [5, 5], { sortKey: 'a' }),
+    task('a1', [0, 0], { sortKey: 'a', parentId: 'a' }),
+    task('a2', [9, 9], { sortKey: 'b', parentId: 'a' }),
+    task('a11', null, { sortKey: 'b', parentId: 'a1' }),
+    task('a12', [3, 3], { sortKey: 'a', parentId: 'a1' }),
+    task('b', [1, 7], { sortKey: 'b' }),
+    task('b1', [2, 7], { sortKey: 'a', parentId: 'b' }),
+    task('c', [8, 0], { sortKey: 'c' }),
+    task('d', [8, 1], { sortKey: 'd' }),
+  ];
+
+  it('drzewo od lewej: główne, podzadania co drugą kolumnę, rodzic w wierszu pierwszego dziecka, bez podzadań z boku', () => {
+    const ts = tree();
+    const p = plan(ts, { kind: 'hierarchy' });
+    const after = apply(ts, [], p.ops);
+    // Kotwica (0, 0) = lewy górny róg kart na tablicy.
+    expect(cells(after.tasks)).toEqual({
+      a: '0:0',
+      a1: '2:0',
+      a12: '4:0',
+      a11: '4:1',
+      a2: '2:2',
+      b: '0:4',
+      b1: '2:4',
+      // Wysokość drzewa 5 wierszy → 1 kolumna z prawej (za kolumną 4 i jedną pustą).
+      c: '6:0',
+      d: '6:1',
+    });
+    noOverlap(after.tasks);
+    expect(p.groups).toEqual([]);
+    expect(plan(after.tasks, { kind: 'hierarchy' }).ops).toEqual([]);
+  });
+
+  it('podzadanie bez rodzica w zakresie jest korzeniem; tryb „Tylko główne” = same korzenie z boku od (0, 0)', () => {
+    const ts = tree();
+    const sel = plan(ts, { kind: 'hierarchy' }, { selection: new Set(['a1', 'a11', 'a12']) });
+    const after = apply(ts, [], sel.ops);
+    const at = positions(after.tasks);
+    expect(at('a11').col - at('a1').col).toBe(2);
+    expect(at('a12').row).toBe(at('a1').row);
+    noOverlap(after.tasks);
+    const top = ts.filter((t) => !t.parentId);
+    const flat = apply(top, [], plan(top, { kind: 'hierarchy' }).ops);
+    expect(cells(flat.tasks)).toEqual({ a: '1:0', b: '2:0', c: '3:0', d: '4:0' });
+  });
+});
+
 describe('Zagęść', () => {
   it('ciągi pustych kolumn i wierszy skracają się do jednej; róg stoi; grupy jadą z kartami', () => {
     const ts = [task('a', [2, 3]), task('b', [3, 3]), task('c', [9, 3]), task('d', [9, 10]), task('h', null)];
@@ -280,7 +330,7 @@ describe('wydajność', () => {
     }
     const layout = canvasLayout(ts);
     const ctx: CanvasArrangeContext = { listId: L, groups: [group(P1, 'G', 0, 0, 5, 5)], tags, dependencies: deps, today: '2026-11-18' };
-    const modes: CanvasArrange[] = [{ kind: 'by', by: 'color' }, { kind: 'by', by: 'priority' }, { kind: 'arrows' }, { kind: 'compact' }];
+    const modes: CanvasArrange[] = [{ kind: 'by', by: 'color' }, { kind: 'by', by: 'priority' }, { kind: 'arrows' }, { kind: 'hierarchy' }, { kind: 'compact' }];
     for (const mode of modes) canvasArrangePlan(layout, mode, ctx); // rozgrzewka JIT
     for (const mode of modes) {
       const t0 = performance.now();

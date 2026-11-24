@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Menu „Ułóż” w pasku Karteczek: „Według …” (kolumny kategorii z ramkami grup), „Według strzałek”
- * i „Zagęść”. Logika w core `canvas-arrange.ts` (`canvasArrangePlan`); tu tylko menu, podgląd (plan
+ * Menu „Ułóż” w pasku Karteczek: „Według …” (kolumny kategorii z ramkami grup), „Według strzałek”,
+ * „Według hierarchii” i „Zagęść”. Logika w core `canvas-arrange.ts` (`canvasArrangePlan`); tu tylko menu, podgląd (plan
  * przekazany do tablicy przy najechaniu / fokusie pozycji) i zastosowanie jedną paczką z „Cofnij”.
  * Opcje pamiętane na urządzeniu (`tp-canvas-arrange`).
  */
@@ -72,6 +72,7 @@ export function CanvasArrangeButton<T extends CanvasArrangeTask>({
   context,
   selected,
   editable,
+  subtasksShown,
   onPreview,
   onApply,
 }: {
@@ -81,6 +82,8 @@ export function CanvasArrangeButton<T extends CanvasArrangeTask>({
   /** Zaznaczone zadania (karty z tablicy i z paska). */
   selected: ReadonlySet<string>;
   editable: boolean;
+  /** Tryb „Z podzadaniami” — bez niego „Według hierarchii” widzi tylko zadania główne. */
+  subtasksShown: boolean;
   onPreview: (plan: CanvasArrangePlan | null) => void;
   onApply: (plan: CanvasArrangePlan, label: string) => void;
 }) {
@@ -138,6 +141,12 @@ export function CanvasArrangeButton<T extends CanvasArrangeTask>({
       hint: "Kolumny kategorii",
     })),
     { key: "arrows", label: "Według strzałek", mode: { kind: "arrows" }, hint: "Poprzednik na lewo od następnika, karty bez połączeń z boku" },
+    {
+      key: "hierarchy",
+      label: "Według hierarchii",
+      mode: { kind: "hierarchy" },
+      hint: subtasksShown ? "Zadania główne od lewej, podzadania w kolejnych kolumnach i tak w dół" : "Włącz „Z podzadaniami”, żeby ułożyć też podzadania",
+    },
     { key: "compact", label: "Zagęść", mode: { kind: "compact" }, hint: "Najwyżej jedna pusta kolumna / wiersz odstępu; grupy jadą z kartami (zawsze cała tablica)" },
   ];
 

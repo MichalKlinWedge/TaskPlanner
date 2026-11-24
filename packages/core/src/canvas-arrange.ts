@@ -1,8 +1,9 @@
 /**
  * Automatyczne układanie karteczek (menu „Ułóż” w widoku „Karteczki”, tylko web).
  *
- * Trzy sposoby: „Według …” (kolumny kategorii z opcjonalnymi ramkami grup), „Według strzałek” (warstwy
- * od lewej do prawej, karty bez połączeń z boku) i „Zagęść” (skraca puste kolumny i wiersze, zachowując
+ * Cztery sposoby: „Według …” (kolumny kategorii z opcjonalnymi ramkami grup), „Według strzałek” (warstwy
+ * od lewej do prawej, karty bez połączeń z boku), „Według hierarchii” (drzewo: zadania główne, ich podzadania
+ * w kolejnych kolumnach i tak w dół) i „Zagęść” (skraca puste kolumny i wiersze, zachowując
  * względny układ). Wynik to plan: operacje do jednej paczki `mutateMany` z „Cofnij” + podgląd (komórki
  * docelowe, ramki). Wynik zależy tylko od danych (pozycje, id, `sort_key`, tagi, zależności, data) —
  * dwie osoby dostają to samo — a karta już stojąca na swoim miejscu nie dostaje zapisu, więc ponowne
@@ -39,11 +40,14 @@ export type CanvasArrangeBy = 'color' | 'priority' | 'assignee' | 'status' | 'du
 export type CanvasArrange =
   | { kind: 'by'; by: CanvasArrangeBy; /** Ramka grupy z nazwą kategorii wokół każdej kolumny (domyślnie tak). */ frames?: boolean }
   | { kind: 'arrows' }
+  | { kind: 'hierarchy' }
   | { kind: 'compact' };
 
 export type CanvasArrangeTask = Pick<ViewTask, 'id' | 'canvasPos' | 'sortKey' | 'priority' | 'status' | 'dueDate' | 'tagIds'> & {
   assigneeId?: string | null;
   derivedFrom?: readonly string[] | null;
+  /** Rodzic (podzadanie) — „Według hierarchii”. */
+  parentId?: string | null;
 };
 
 export interface CanvasArrangeContext {
@@ -139,7 +143,7 @@ export function canvasArrangePlan<T extends CanvasArrangeTask>(layout: CanvasLay
   const items: Item<T>[] = [...placed.map((p) => ({ task: p.task, cell: p.cell })), ...tray.map((task) => ({ task, cell: null }))];
   if (!items.length) return empty(ctx.groups);
 
-  const pattern = mode.kind === 'by' ? columnsPattern(items, mode.by, ctx) : arrowsPattern(items, ctx);
+  const pattern = mode.kind === 'by' ? columnsPattern(items, mode.by, ctx) : mode.kind === 'arrows' ? arrowsPattern(items, ctx) : hierarchyPattern(items);
   // Grupy: ramka kategorii przejmuje istniejącą grupę o tym samym id (wcześniejsze „Ułóż”) albo tej samej
   // nazwie — o ile nie ma w niej kart spoza zakresu. Grupy, z których wszystkie karty poszły do układu,
   // znikają; pozostałe zostają na miejscu i układ je omija.
@@ -386,12 +390,64 @@ function arrowsPattern(items: readonly Item<CanvasArrangeTask>[], ctx: CanvasArr
   }
 
   const lonely = items.map((i) => i.task.id).filter((id) => !succ.has(id) && !pred.has(id));
-  if (lonely.length) {
-    const height = Math.max(1, row0 - 1);
-    const width = comps.size ? Math.min(CANVAS_ARRANGE_COLUMNS, Math.max(1, Math.ceil(lonely.length / height))) : CANVAS_ARRANGE_COLUMNS;
-    const col0 = comps.size ? widest + 1 : 0;
-    lonely.forEach((id, j) => cells.set(id, { col: col0 + (j % width), row: Math.floor(j / width) }));
+  sideBlock(cells, lonely, comps.size ? { height: row0 - 1, right: widest + 1 } : null);
+  return { cells, frames: [] };
+}
+
+/**
+ * Karty bez połączeń (bez podzadań): blok wierszami z prawej strony głównego układu (`main` = jego wysokość
+ * i pierwsza wolna kolumna za jedną pustą), najwyżej `CANVAS_ARRANGE_COLUMNS` kolumn; bez głównego układu — od (0, 0).
+ */
+function sideBlock(cells: Map<string, Cell>, ids: readonly string[], main: { height: number; right: number } | null) {
+  if (!ids.length) return;
+  const width = main ? Math.min(CANVAS_ARRANGE_COLUMNS, Math.max(1, Math.ceil(ids.length / Math.max(1, main.height)))) : CANVAS_ARRANGE_COLUMNS;
+  const col0 = main ? main.right : 0;
+  ids.forEach((id, j) => cells.set(id, { col: col0 + (j % width), row: Math.floor(j / width) }));
+}
+
+/**
+ * „Według hierarchii”: drzewo od lewej do prawej — zadanie główne w kolumnie 0, jego podzadania w kolumnie 2,
+ * ich podzadania w 4 itd. (co druga kolumna, jak warstwy strzałek; linie rodzic → podzadanie są wtedy czytelne).
+ * Rodzic stoi w wierszu swojego pierwszego podzadania, każdy liść ma własny wiersz, drzewa zadań głównych jedno
+ * pod drugim z pustym wierszem. Kolejność rodzeństwa = kolejność ręczna listy (`sort_key`, potem id), więc wynik
+ * nie zależy od dotychczasowych komórek. Karta, której rodzica nie ma w układzie (np. podzadanie z zaznaczenia
+ * bez rodzica, tryb „Tylko główne”), jest korzeniem; korzenie bez podzadań — w bloku z prawej, jak karty bez połączeń.
+ */
+function hierarchyPattern(items: readonly Item<CanvasArrangeTask>[]): Pattern {
+  const order = (a: CanvasArrangeTask, b: CanvasArrangeTask) => cmp(a.sortKey, b.sortKey) || byId(a, b);
+  const byIdMap = new Map(items.map((i) => [i.task.id, i.task]));
+  const children = new Map<string, CanvasArrangeTask[]>();
+  const roots: CanvasArrangeTask[] = [];
+  for (const { task } of items) {
+    const parent = task.parentId && task.parentId !== task.id ? byIdMap.get(task.parentId) : undefined;
+    if (parent) (children.get(parent.id) ?? children.set(parent.id, []).get(parent.id)!).push(task);
+    else roots.push(task);
   }
+  for (const list of children.values()) list.sort(order);
+  roots.sort(order);
+
+  const cells = new Map<string, Cell>();
+  let row = 0;
+  let right = 0;
+  const place = (task: CanvasArrangeTask, depth: number) => {
+    const col = 2 * depth;
+    right = Math.max(right, col);
+    const start = row;
+    const kids = children.get(task.id) ?? [];
+    cells.set(task.id, { col, row: start });
+    if (!kids.length) row++;
+    else for (const kid of kids) if (!cells.has(kid.id)) place(kid, depth + 1);
+  };
+  const trees = roots.filter((t) => children.has(t.id));
+  for (const root of trees) {
+    place(root, 0);
+    row++;
+  }
+  sideBlock(
+    cells,
+    roots.filter((t) => !children.has(t.id)).map((t) => t.id),
+    trees.length ? { height: row - 1, right: right + 2 } : null,
+  );
   return { cells, frames: [] };
 }
 

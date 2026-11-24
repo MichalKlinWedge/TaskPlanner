@@ -140,7 +140,7 @@ test(`${CANVAS_PERF_CARDS} karteczek`, async ({ page }) => {
   // w nowych komórkach i „Cofnij” (3 razy).
   const lastArrange = `performance.getEntriesByName('tp-canvas-arrange').length > 0`;
   await page.getByTestId('canvas-arrange').click();
-  for (const key of ['color', 'priority', 'assignee', 'status', 'due', 'arrows', 'compact']) {
+  for (const key of ['color', 'priority', 'assignee', 'status', 'due', 'arrows', 'hierarchy', 'compact']) {
     const computes: number[] = [];
     const previews: number[] = [];
     for (let i = 0; i < 5; i++) {

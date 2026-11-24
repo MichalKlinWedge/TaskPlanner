@@ -3,7 +3,7 @@
  * na tablicę, dwuklik dodaje karteczkę w komórce, kolejność tagów zmienia kolor, pełny ekran,
  * przełącznik „Tylko główne / Z podzadaniami”, eksport PNG / PDF (także offline), blokada edycji bez sieci,
  * strzałki („blokuje” = zależność, cykl odrzucony, „wynika z”, Delete i „Cofnij”), menu „Ułóż” (podgląd,
- * według priorytetu z ramkami, „Cofnij”, ponownie bez zmian, „Zagęść”, offline). Dane listy z `global-setup.ts` (`canvasIds`).
+ * według priorytetu z ramkami, „Cofnij”, ponownie bez zmian, „Zagęść”, „Według hierarchii”, offline). Dane listy z `global-setup.ts` (`canvasIds`).
  */
 import { readFile } from 'node:fs/promises';
 
@@ -257,7 +257,7 @@ test('karteczki: strzałka „blokuje” = zależność na serwerze, cykl odrzuc
   });
 });
 
-test('karteczki: „Ułóż” — podgląd, według priorytetu z ramkami, „Cofnij”, ponownie bez zmian, zagęszczanie, offline', async ({ page, context, server }) => {
+test('karteczki: „Ułóż” — podgląd, według priorytetu z ramkami, „Cofnij”, ponownie bez zmian, zagęszczanie, hierarchia, offline', async ({ page, context, server }) => {
   const ids = canvasIds(server.userId);
   await openApp(page, `#/list/${ids.list}`);
   const view = page.getByTestId('canvas-view');
@@ -324,6 +324,20 @@ test('karteczki: „Ułóż” — podgląd, według priorytetu z ramkami, „Co
     await page.getByTestId('canvas-arrange-compact').hover();
     await expect(page.getByTestId('canvas-arrange-compact')).toContainText('nic do zmiany');
     await page.keyboard.press('Escape');
+  });
+
+  await test.step('„Według hierarchii” (z podzadaniami): podzadanie dwie kolumny na prawo od rodzica, w jego wierszu', async () => {
+    await view.getByRole('radio', { name: 'Z podzadaniami' }).click();
+    await expect(card(ids.sub)).toBeVisible();
+    await arrange.click();
+    await page.getByTestId('canvas-arrange-hierarchy').click();
+    await expect.poll(async () => {
+      const [parent, sub] = [await pos(E2E_CANVAS.second), await pos(E2E_CANVAS.sub)];
+      return parent && sub ? { dc: sub.col - parent.col, dr: sub.row - parent.row } : null;
+    }).toEqual({ dc: 2, dr: 0 });
+    await expect(board.locator(`[data-canvas-arrow][data-kind="parent"][data-from="${ids.second}"][data-to="${ids.sub}"]`)).toHaveCount(1);
+    await view.getByRole('radio', { name: 'Tylko główne' }).click();
+    await expect(card(ids.sub)).toHaveCount(0);
   });
 
   await test.step('bez sieci menu „Ułóż” wyłączone', async () => {
