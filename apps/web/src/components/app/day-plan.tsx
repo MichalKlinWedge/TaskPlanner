@@ -5,9 +5,9 @@
  * zewnętrznych, wolne okna w godzinach pracy, linia „teraz”, wiersz „cały dzień” i lista konfliktów.
  * Wszystko z `core/time-blocking.ts` (`blocksForDay`, `conflicts`, `freeSlots`, `blockLanes`); układanie
  * bloków przeciąganiem — w kalendarzu (`#/calendar`), automatyczne — „Ułóż dzień” (`day-planner.tsx`, szkic
- * jako przerywane bloki do „Zastosuj”).
+ * jako przerywane bloki do „Zastosuj”). Przełącznik „Dziś | Jutro” wybiera dzień, chyba że ekran podaje `date`.
  */
-import { addDays, blockLanes, blocksForDay, conflictIds, conflicts, DAY_PLANNER, freeSlots, habitSlots, isOpen, localDateTimeAt, plural, PRIORITY, withDraft, withoutBlock, zonedInstant, type Block, type ProfileSettings, type ViewContext } from "@taskplanner/core";
+import { addDays, blockLanes, blocksForDay, conflictIds, conflicts, DAY_PLANNER, dayLabel, freeSlots, habitSlots, isOpen, localDateTimeAt, plural, PRIORITY, withDraft, withoutBlock, zonedInstant, type Block, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
 import { useEffect, useMemo, useState } from "react";
 
 import type { AppData } from "@/lib/app-data";
@@ -33,30 +33,38 @@ function useNowMinute(dayStartMs: number): number {
   return Math.round((now - dayStartMs) / 60_000);
 }
 
-export function DayPlan({ data, ctx, settings }: { data: AppData; ctx: ViewContext; settings: ProfileSettings }) {
+/** `date` — dzień ustalony przez ekran (przegląd dnia ma własny przełącznik); bez niego „Dziś | Jutro” tutaj. */
+export function DayPlan({ data, ctx, settings, date: fixed }: { data: AppData; ctx: ViewContext; settings: ProfileSettings; date?: LocalDate }) {
   const { store, openTask, select } = useAppEnv();
   const { today, timeZone } = ctx;
+  const tomorrow = addDays(today, 1);
+  // Wybór jako data: po północy wybrane „jutro” staje się „dziś”.
+  const [picked, setPicked] = useState<LocalDate | null>(null);
+  const date = fixed ?? (picked === tomorrow ? tomorrow : today);
   const tasks = useMemo(() => data.tasks.filter((t) => t.kind === "task" && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId)), [data.tasks, ctx.workspaceId]);
-  const range = useMemo(() => ({ from: today, to: addDays(today, 1) }), [today]);
+  const range = useMemo(() => ({ from: date, to: addDays(date, 1) }), [date]);
   const events = useCalendarEvents(store, range, timeZone);
-  const dayStart = zonedInstant(today, "00:00", timeZone).getTime();
+  const dayStart = zonedInstant(date, "00:00", timeZone).getTime();
   const nowMin = useNowMinute(dayStart);
 
   const habits = useMemo(
-    () => habitSlots(data.tasks.filter((t) => !ctx.workspaceId || t.workspaceId === ctx.workspaceId), data.habitCompletions, today, addDays(today, 1), today),
-    [data.tasks, data.habitCompletions, ctx.workspaceId, today],
+    () => habitSlots(data.tasks.filter((t) => !ctx.workspaceId || t.workspaceId === ctx.workspaceId), data.habitCompletions, date, addDays(date, 1), today),
+    [data.tasks, data.habitCompletions, ctx.workspaceId, date, today],
   );
 
   const taskById = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
-  const [preview, setPreview] = useState<PlanPreview | null>(null);
+  // Szkic osobno dla każdego dnia — przełączenie go nie gubi, a spóźniona odpowiedź AI trafia do swojego dnia.
+  const [previews, setPreviews] = useState<Record<LocalDate, PlanPreview | null>>({});
+  const preview = previews[date] ?? null;
+  const setPreview = (next: PlanPreview | null) => setPreviews((all) => ({ ...all, [date]: next }));
   // Zadania zamknięte od ułożenia znikają ze szkicu.
   const draft = useMemo(() => preview && { ...preview, blocks: preview.blocks.filter((b) => isOpen(taskById.get(b.taskId) ?? { status: "cancelled" })) }, [preview, taskById]);
 
   const plan = useMemo(() => {
-    const day = blocksForDay(tasks, events.list, today, { timeZone, defaultDurationMin: settings.defaultDurationMin, habits });
+    const day = blocksForDay(tasks, events.list, date, { timeZone, defaultDurationMin: settings.defaultDurationMin, habits });
     const list = conflicts(day.timed);
     return { day, list, hot: conflictIds(list), free: freeSlots(day, settings.workHours, { timeZone }), lanes: blockLanes(day.timed) };
-  }, [tasks, habits, events.list, today, timeZone, settings.defaultDurationMin, settings.workHours]);
+  }, [tasks, habits, events.list, date, timeZone, settings.defaultDurationMin, settings.workHours]);
 
   const day = useMemo(() => (draft ? withDraft(plan.day, draft.blocks, taskById, timeZone) : plan.day), [draft, plan.day, taskById, timeZone]);
   const lanes = useMemo(() => (draft ? blockLanes(day.timed) : plan.lanes), [draft, day.timed, plan.lanes]);
@@ -85,7 +93,24 @@ export function DayPlan({ data, ctx, settings }: { data: AppData; ctx: ViewConte
         </a>
       </header>
 
-      <DayPlanner data={data} ctx={ctx} settings={settings} events={events.list} nowMin={nowMin} preview={draft} onPreview={setPreview} />
+      {fixed ? null : (
+        <div className="mb-2 flex w-fit rounded-md border border-[var(--line)] text-xs" role="group" aria-label={DAY_PLANNER.days}>
+          {[today, tomorrow].map((d) => (
+            <button
+              key={d}
+              type="button"
+              aria-pressed={date === d}
+              title={dayLabel(d)}
+              className={`px-2 py-0.5 ${date === d ? "bg-[var(--accent)] text-white" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`}
+              onClick={() => setPicked(d)}
+            >
+              {d === today ? DAY_PLANNER.today : DAY_PLANNER.tomorrow}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <DayPlanner key={date} data={data} ctx={ctx} date={date} settings={settings} events={events.list} nowMin={nowMin} preview={draft} onPreview={setPreview} />
 
       {plan.list.length ? (
         <section className="mb-2 rounded-md border border-[var(--danger)]/40 bg-red-50 p-2 text-xs dark:bg-red-950/30" aria-label="Konflikty">
