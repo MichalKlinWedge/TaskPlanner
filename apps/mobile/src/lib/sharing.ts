@@ -5,20 +5,13 @@
  * zalogowanie (`rememberInviteToken` → `acceptLinkInvite`). Po przyjęciu / opuszczeniu przestrzeni `syncNow()` pobiera albo usuwa jej dane.
  * Odpowiednik webowego `lib/sharing.ts`.
  */
-import { isTransientError, type ScopeRole, type ShareRole } from '@taskplanner/core';
+import { isTransientError, type OwnerAfter, type OwnershipOffer, type ScopeRole, type ShareRole, type SpaceMember } from '@taskplanner/core';
 import Storage from 'expo-sqlite/kv-store';
 import { useEffect, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 
 import { sessionUser } from './config';
 import { supabaseClient, syncNow } from './sync';
-
-export interface ScopeMember {
-  userId: string;
-  email: string;
-  role: ScopeRole;
-  me: boolean;
-}
 
 export interface PendingInvite {
   id: string;
@@ -30,10 +23,24 @@ export interface PendingInvite {
   expired: boolean;
 }
 
+/** Propozycja roli właściciela czekająca na odpowiedź (`mine` — wysłana przez zalogowanego). */
+export interface PendingOwnerOffer {
+  id: string;
+  userId: string;
+  email: string;
+  offeredBy: string;
+  mine: boolean;
+  after: OwnerAfter | null;
+  createdAt: string;
+  expiresAt: string;
+  expired: boolean;
+}
+
 export interface WorkspaceSharing {
   role: ScopeRole;
-  members: ScopeMember[];
+  members: SpaceMember[];
   invites: PendingInvite[];
+  offers: PendingOwnerOffer[];
 }
 
 export interface MyInvite {
@@ -62,7 +69,19 @@ export async function removeMember(scope: string, user: string, self = false) {
   if (self) await syncNow().catch(() => undefined);
 }
 
+/** Propozycja roli właściciela (`after` `null`) albo przekazania przestrzeni — działa dopiero po zgodzie adresata. */
+export const offerOwnership = (scope: string, user: string, after: OwnerAfter | null) => call<string>('offer_workspace_ownership', { p_scope: scope, p_user: user, p_after: after });
+export const cancelOwnershipOffer = (id: string) => call<boolean>('cancel_workspace_ownership_offer', { p_id: id });
+
+/** Współwłaściciel (nie główny) rezygnuje z roli bez następcy; wcześniej wysyła swoje zmiany. */
+export async function resignOwner(scope: string, after: OwnerAfter) {
+  await syncNow().catch(() => undefined);
+  await call<void>('resign_workspace_owner', { p_scope: scope, p_after: after });
+  await syncNow().catch(() => undefined);
+}
+
 let invites: MyInvite[] = [];
+let offers: OwnershipOffer[] = [];
 let loadedAt = 0;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
@@ -72,7 +91,7 @@ export async function refreshScopeInvites(force = false) {
   if (!sessionUser().online || (!force && Date.now() - loadedAt < 60_000)) return;
   loadedAt = Date.now();
   try {
-    invites = await call<MyInvite[]>('my_scope_invites');
+    [invites, offers] = await Promise.all([call<MyInvite[]>('my_scope_invites'), call<OwnershipOffer[]>('my_ownership_offers').catch(() => offers)]);
     emit();
   } catch {
     loadedAt = 0; // offline albo chwilowy błąd — następna próba przy kolejnym ekranie
@@ -86,6 +105,18 @@ export async function answerScopeInvite(invite: MyInvite, accept: boolean) {
   emit();
   if (accept) await syncNow().catch(() => undefined);
   void refreshScopeInvites(true);
+}
+
+/** Odpowiedź na propozycję własności; po przyjęciu rola przychodzi synchronizacją. */
+export async function answerOwnershipOffer(offer: OwnershipOffer, accept: boolean) {
+  try {
+    await call<string>('answer_workspace_ownership_offer', { p_id: offer.id, p_accept: accept });
+  } finally {
+    void refreshScopeInvites(true);
+  }
+  offers = offers.filter((o) => o.id !== offer.id);
+  emit();
+  if (accept) await syncNow().catch(() => undefined);
 }
 
 const TOKEN_KEY = 'invite.token';
@@ -134,3 +165,6 @@ export function useScopeInvites(): MyInvite[] {
   }, []);
   return useSyncExternalStore(subscribe, () => invites);
 }
+
+/** Propozycje własności do zalogowanego — z tej samej listy co `useScopeInvites`. */
+export const useOwnershipOffers = (): OwnershipOffer[] => useSyncExternalStore(subscribe, () => offers);
