@@ -6,7 +6,7 @@ import { isOnboarded, onboardingOps, ProfileSettings, type OnboardingInput } fro
 import { decodeRow, type SyncEngine } from '@taskplanner/sync';
 
 import { sessionUser } from './config';
-import { localEngine } from './sync';
+import { localEngine, mutate } from './sync';
 
 export interface Profile {
   id: string;
@@ -64,6 +64,28 @@ export function deviceTimeZone(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+let saving: Promise<void> = Promise.resolve();
+
+/**
+ * Zmiana kilku pól `profiles.settings` na aktualnym stanie z bazy (kolejne dotknięcia po sobie się nie
+ * nadpisują, pola nieznane tej wersji zostają). Odrzuca wartości niezgodne ze schematem.
+ */
+export function updateSettings(patch: (settings: ProfileSettings) => Partial<ProfileSettings>): Promise<void> {
+  const work = saving.then(async () => {
+    const engine = await localEngine();
+    const row = await engine.get('profiles', engine.userId);
+    if (!row) throw new Error('Profil jeszcze się nie pobrał — spróbuj po synchronizacji.');
+    const { settings } = decodeRow<{ settings: Record<string, unknown> | null }>('profiles', row);
+    const current = ProfileSettings.safeParse(settings ?? {});
+    const next = { ...settings, ...patch(current.success ? current.data : ProfileSettings.parse({})) };
+    const parsed = ProfileSettings.safeParse(next);
+    if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? 'Niepoprawne ustawienia.');
+    await mutate('profiles', engine.userId, { settings: next });
+  });
+  saving = work.catch(() => undefined);
+  return work;
 }
 
 /** Zapis onboardingu: profil, przestrzenie z Inboxem; wysyłka po ostatniej operacji. */

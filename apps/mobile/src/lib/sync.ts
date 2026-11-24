@@ -307,6 +307,18 @@ export async function syncNow(): Promise<number> {
   return Date.now() - start;
 }
 
+/**
+ * Ile zmian z telefonu nie dotarło jeszcze na serwer — po próbie wysłania (wylogowanie czyści lokalne
+ * dane, więc niewysłane by przepadły). Bez sieci albo sesji zostaje liczba z kolejki.
+ */
+export async function unsentChanges(): Promise<number> {
+  const engine = await localEngine();
+  const left = await engine.pendingCount();
+  if (!left || !sessionUser().online || !serverConfig() || !(await checkAuth())) return left;
+  await engine.sync().catch(() => undefined);
+  return engine.pendingCount();
+}
+
 let wakeups: { remove(): void }[] = [];
 
 /** Realtime + pierwsze pobranie + budzenie po powrocie sieci i aplikacji (tylko na ekranie, nie w zadaniu w tle). */

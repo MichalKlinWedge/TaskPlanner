@@ -1,6 +1,6 @@
 /**
  * Formularz nawyku (Etap 8): nazwa, lista, jak często (codziennie / wybrane dni / co miesiąc w ustalony
- * dzień / N razy w tygodniu lub miesiącu), cel ilościowy, początek, pora i przypomnienie o tej porze. Formularz ↔ pola —
+ * dzień / N razy w tygodniu lub miesiącu), cel ilościowy, początek, pora i przypomnienia (przed porą / jednorazowe). Formularz ↔ pola —
  * `habitDraft` / `habitSaveOps` z core (jak `HabitEditor` na webie). `?id=` — edycja.
  */
 import {
@@ -12,11 +12,16 @@ import {
   LIST_KIND,
   pluralForm,
   previewDates,
+  relativeDay,
+  REMINDER_PRESETS,
+  reminderOffset,
   shortDate,
   WEEKDAY,
   WEEKDAY_CODES,
   type HabitDraft,
+  type HabitReminderDraft,
   type IsoWeekday,
+  type LocalDate,
   type LocalTime,
   type MonthlyBy,
   type WeekdayCode,
@@ -42,6 +47,9 @@ const MONTHLY_BY: [MonthlyBy, string][] = [
 const NTH: [number, string][] = [[1, 'pierwszy'], [2, 'drugi'], [3, 'trzeci'], [4, 'czwarty'], [-1, 'ostatni']];
 const weekdayName = (d: WeekdayCode) => WEEKDAY[(WEEKDAY_CODES.indexOf(d) + 1) as IsoWeekday].label;
 
+const reminderLabel = (r: HabitReminderDraft, today: LocalDate): string =>
+  r.kind === 'relative' ? (r.offsetMin === 0 ? 'o porze nawyku' : `${reminderOffset(r.offsetMin)} porą nawyku`) : `jednorazowo: ${relativeDay(r.atDate, today)}, ${r.atTime}`;
+
 function Value({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
   const p = usePalette();
   return (
@@ -60,8 +68,23 @@ export default function HabitFormScreen() {
   const { data, today, workspaceId } = useView();
   const { run } = useTaskActions();
   const task = id ? (data.tasks.find((t) => t.id === id && t.kind === 'habit') ?? null) : null;
-  const reminderIds =
-    useLocalQuery(['reminders'], async (engine) => (id ? (await engine.db.all<{ id: string }>('select id from reminders where task_id = ? and deleted_at is null', [id])).map((r) => r.id) : []), [id]) ?? [];
+  const savedReminders = useLocalQuery(
+    ['reminders'],
+    async (engine) =>
+      (id
+        ? await engine.db.all<{ id: string; kind: string; offset_min: number | null; at_date: string | null; at_time: string | null }>(
+            'select id, kind, offset_min, at_date, at_time from reminders where task_id = ? and deleted_at is null order by kind desc, offset_min, at_date, at_time',
+            [id],
+          )
+        : []
+      ).map(
+        (r): HabitReminderDraft & { id: string } =>
+          r.kind === 'absolute'
+            ? { id: r.id, kind: 'absolute', atDate: String(r.at_date) as LocalDate, atTime: String(r.at_time).slice(0, 5) as LocalTime }
+            : { id: r.id, kind: 'relative', offsetMin: Number(r.offset_min) },
+      ),
+    [id],
+  );
   const initial = useMemo(() => habitDraft(task, today), [task, today]);
   const [title, setTitle] = useState(task?.title ?? '');
   const [listId, setListId] = useState(task?.listId ?? targetInbox(data, workspaceId)?.id ?? data.lists[0]?.id ?? '');
@@ -75,8 +98,9 @@ export default function HabitFormScreen() {
   const [unit, setUnit] = useState(initial.unit ?? '');
   const [start, setStart] = useState(initial.start);
   const [time, setTime] = useState<LocalTime | null>(initial.time);
-  const [remindChoice, setRemind] = useState<boolean | null>(null);
-  const remind = remindChoice ?? (task ? reminderIds.length > 0 : false);
+  // Lista przypomnień: z bazy, dopóki użytkownik jej nie zmieni (zapis dopiero przy „Zapisz”).
+  const [reminderList, setReminderList] = useState<HabitReminderDraft[] | null>(null);
+  const reminders: HabitReminderDraft[] = reminderList ?? savedReminders ?? [];
   const [error, setError] = useState<string | null>(null);
 
   if (id && !task) {
@@ -105,6 +129,20 @@ export default function HabitFormScreen() {
     }
   })();
 
+  const addReminder = async () => {
+    const offsets = REMINDER_PRESETS.filter((m) => m < 1440 && !reminders.some((r) => r.kind === 'relative' && r.offsetMin === m));
+    const choice = await pickOption<number | 'abs'>('Przypomnienie nawyku', [
+      ...(time ? offsets.map((m) => ({ label: reminderLabel({ kind: 'relative', offsetMin: m }, today), value: m })) : []),
+      { label: 'Jednorazowo: dzień i godzina…', value: 'abs' as const, ...(!time && { hint: 'Przypomnienia przed porą nawyku — po ustawieniu pory' }) },
+    ]);
+    if (choice === undefined) return;
+    if (choice !== 'abs') return setReminderList([...reminders, { kind: 'relative', offsetMin: choice }]);
+    const atDate = await pickDate({ title: 'Dzień przypomnienia', value: start > today ? start : today, today, firstDayOfWeek: data.settings.firstDayOfWeek });
+    if (!atDate) return;
+    const atTime = await pickTime({ title: 'Godzina przypomnienia', value: time ?? '09:00' });
+    if (atTime) setReminderList([...reminders, { kind: 'absolute', atDate, atTime }]);
+  };
+
   const submit = async () => {
     try {
       const schedule: HabitDraft['schedule'] =
@@ -119,10 +157,19 @@ export default function HabitFormScreen() {
                 : { kind: 'daily' };
       // `...initial` — pola draftu, których formularz nie edytuje, zostają (np. koniec reguły).
       const draft: HabitDraft = { ...initial, schedule, start, target: quantity ? Number(target.replace(',', '.')) : null, unit: quantity ? unit : null, time };
-      if (remind && !draft.time) throw new Error('Przypomnienie wymaga pory.');
-      const { taskId, ops } = habitSaveOps({ id: task?.id, title, listId, draft, remind, reminderIds, lastSortKey: lastSortKey(data, listId), now: new Date() });
+      if (reminders.some((r) => r.kind === 'relative') && !draft.time) throw new Error('Przypomnienie przed porą nawyku wymaga pory — ustaw ją albo dodaj przypomnienie na dzień i godzinę.');
+      const { taskId, ops } = habitSaveOps({
+        id: task?.id,
+        title,
+        listId,
+        draft,
+        reminders,
+        reminderIds: (savedReminders ?? []).map((r) => r.id),
+        lastSortKey: lastSortKey(data, listId),
+        now: new Date(),
+      });
       await run(ops, { text: task ? `Zapisano „${title.trim()}”` : `Dodano nawyk „${title.trim()}”` });
-      if (remind && !(await permissionState()).notifications) await requestNotificationPermission();
+      if (reminders.length && !(await permissionState()).notifications) await requestNotificationPermission();
       if (task) router.back();
       else router.replace({ pathname: '/habit/[id]', params: { id: taskId } });
     } catch (e) {
@@ -284,11 +331,23 @@ export default function HabitFormScreen() {
           <Value label="Pora (opcjonalnie)" value={time ?? '—'} onPress={() => void pickTime({ title: 'Pora nawyku', value: time, allowNone: true }).then((t) => t !== undefined && setTime(t))} />
         </View>
       </View>
-      <View style={styles.switchRow}>
-        <Text style={{ color: p.fg, fontSize: 15, flex: 1 }}>Przypomnij o tej porze</Text>
-        <Switch value={remind} onValueChange={setRemind} />
+      <Text style={[styles.label, { color: p.fg }]}>Przypomnienia</Text>
+      {reminders.map((r, i) => (
+        <View key={r.id ?? `new-${i}`} style={styles.switchRow}>
+          <Text style={{ color: p.fg, fontSize: 15, flex: 1 }}>🔔 {reminderLabel(r, today)}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Usuń przypomnienie" hitSlop={10} onPress={() => setReminderList(reminders.filter((_, j) => j !== i))}>
+            <Text style={{ color: p.muted, fontSize: 18 }}>×</Text>
+          </Pressable>
+        </View>
+      ))}
+      <View style={styles.wrap}>
+        <Chip label="+ Dodaj przypomnienie" onPress={() => void addReminder()} />
       </View>
-      {remind ? <Text style={{ color: p.muted, fontSize: 12 }}>Powiadomienie przychodzi w dni nawyku, chyba że już odhaczony; ma przycisk „Zrobione”.</Text> : null}
+      {reminders.length ? (
+        <Text style={{ color: p.muted, fontSize: 12 }}>
+          Przed porą — w każdy dzień nawyku, chyba że już odhaczony; jednorazowe — raz, w wybranym dniu. Powiadomienie ma przycisk „Zrobione”.
+        </Text>
+      ) : null}
       {error ? (
         <Text accessibilityRole="alert" style={{ color: p.bad }}>
           {error}

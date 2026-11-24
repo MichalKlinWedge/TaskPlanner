@@ -8,13 +8,14 @@ import { UpdateSection } from '@/components/app-update';
 import { BackgroundStatus } from '@/components/background-status';
 import { ErrorsSection } from '@/components/errors-section';
 import { InvitesSection } from '@/components/invites-section';
+import { ProfileSection } from '@/components/profile-section';
 import { SyncIndicator } from '@/components/sync-indicator';
 import { Button, Field, P, Row, Screen, Section, usePalette } from '@/components/ui';
 import { useView } from '@/lib/app-data';
 import { deleteAccount, sendMagicLink, signInWithGoogle, signOut, verifyEmailCode } from '@/lib/auth';
 import { CLOUD_SERVER, saveServerConfig, serverConfig, sessionUser } from '@/lib/config';
 import { useSyncStatus } from '@/lib/local-query';
-import { mutate, onSessionChange, type PullPerf } from '@/lib/sync';
+import { mutate, onSessionChange, unsentChanges, type PullPerf } from '@/lib/sync';
 
 const seconds = (ms: number) => `${(ms / 1000).toLocaleString('pl-PL', { maximumFractionDigits: 1, minimumFractionDigits: 1 })} s`;
 
@@ -124,6 +125,18 @@ export default function Settings() {
   const saveServer = () => {
     if (url !== config?.url || key !== config?.key) saveServerConfig({ url, key });
   };
+  // Najpierw wysyłka zaległych zmian: lokalne dane znikają, więc o tym, czego serwer nie ma, trzeba wiedzieć przed potwierdzeniem.
+  const confirmSignOut = () =>
+    run(async () => {
+      const left = await unsentChanges();
+      const text = left
+        ? `Niewysłane zmiany: ${left}. Serwer jeszcze ich nie ma (brak sieci albo sesji) — po wylogowaniu przepadną. Lepiej wyloguj się, gdy telefon się zsynchronizuje.`
+        : 'Wszystkie zmiany są na serwerze. Dane na telefonie zostaną usunięte i wrócą po ponownym zalogowaniu.';
+      Alert.alert(left ? 'Wylogować mimo niewysłanych zmian?' : 'Wylogować?', text, [
+        { text: 'Anuluj', style: 'cancel' },
+        { text: left ? 'Wyloguj mimo to' : 'Wyloguj', style: 'destructive', onPress: () => void run(async () => (await signOut(), 'Wylogowano.')) },
+      ]);
+    });
   const validEmail = /^\S+@\S+\.\S+$/.test(email.trim());
 
   // Logowanie: tryb bez konta i ponowne logowanie po utracie sesji (to samo konto — bez czyszczenia danych, `signedIn`).
@@ -199,13 +212,8 @@ export default function Settings() {
               <Button
                 disabled={busy}
                 kind="danger"
-                title="Wyloguj (czyści dane lokalne)"
-                onPress={() =>
-                  Alert.alert('Wylogować?', 'Dane na telefonie zostaną usunięte; niewysłane zmiany przepadną.', [
-                    { text: 'Anuluj', style: 'cancel' },
-                    { text: 'Wyloguj', style: 'destructive', onPress: () => void run(async () => (await signOut(), 'Wylogowano.')) },
-                  ])
-                }
+                title={busy ? 'Chwila…' : 'Wyloguj (czyści dane lokalne)'}
+                onPress={() => void confirmSignOut()}
               />
             </Row>
           </>
@@ -221,6 +229,8 @@ export default function Settings() {
       </Section>
 
       <UpdateSection />
+
+      <ProfileSection />
 
       <FocusSection />
 

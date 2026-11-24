@@ -68,8 +68,8 @@ import {
   type ViewTask,
 } from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AppState, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { confirm, useTaskActions } from '@/components/actions';
 import { BreakdownField } from '@/components/ai-breakdown';
@@ -302,7 +302,7 @@ export default function TaskScreen() {
           <DependenciesField key={`dep:${task.id}`} task={task} data={data} />
 
           <Block title="Opis">
-            <DescriptionField taskId={task.id} />
+            <DescriptionField key={task.id} taskId={task.id} />
           </Block>
         </Editable>
 
@@ -976,7 +976,11 @@ function DependenciesField({ task, data }: { task: ViewTask; data: AppData }) {
 
 type Selection = { start: number; end: number };
 
-/** Opis: podgląd Markdown (dotknięcie „Edytuj”) albo pole tekstowe z paskiem formatowania. */
+/**
+ * Opis: podgląd Markdown (dotknięcie „Edytuj”) albo pole tekstowe z paskiem formatowania. Szkic
+ * zapisuje „Gotowe”, wyjście z ekranu i przejście aplikacji w tło (system może ją ubić); „Anuluj”
+ * przywraca opis sprzed edycji.
+ */
 function DescriptionField({ taskId }: { taskId: string }) {
   const p = usePalette();
   const { run } = useTaskActions();
@@ -988,6 +992,26 @@ function DescriptionField({ taskId }: { taskId: string }) {
     const md = value.trim();
     if (md !== (saved ?? '').trim()) void run([{ table: 'tasks', id: taskId, patch: { description_md: md || null } }]);
   };
+  // Opis z wejścia w edycję i ostatnio zapisany szkic: nietknięty szkic nie nadpisuje zmiany z innego urządzenia.
+  const entry = useRef('');
+  const stored = useRef('');
+  const flush = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    flush.current = () => {
+      if (!editing || draft.trim() === stored.current.trim()) return;
+      stored.current = draft;
+      save(draft);
+    };
+  });
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') flush.current();
+    });
+    return () => {
+      sub.remove();
+      flush.current();
+    };
+  }, []);
   const wrap = (mark: string) => {
     const { start, end } = selection;
     const inner = draft.slice(start, end) || 'tekst';
@@ -1012,6 +1036,8 @@ function DescriptionField({ taskId }: { taskId: string }) {
             label={saved.trim() ? 'Edytuj opis' : '+ Dodaj opis'}
             onPress={() => {
               // Zmiana z innego urządzenia nie przerywa pisania: szkic tylko przy wejściu w edycję.
+              entry.current = saved;
+              stored.current = saved;
               setDraft(saved);
               setEditing(true);
             }}
@@ -1045,14 +1071,14 @@ function DescriptionField({ taskId }: { taskId: string }) {
           label="Gotowe"
           color={p.accent}
           onPress={() => {
-            save(draft);
+            flush.current();
             setEditing(false);
           }}
         />
         <Pill
           label="Anuluj"
           onPress={() => {
-            setDraft(saved);
+            if (stored.current !== entry.current) save(entry.current);
             setEditing(false);
           }}
         />

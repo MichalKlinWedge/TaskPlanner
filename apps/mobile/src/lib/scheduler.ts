@@ -13,6 +13,7 @@ import { Platform } from 'react-native';
 
 import { readJson, sessionUser, writeJson } from './config';
 import { loadTask, type AppData } from './app-data';
+import { phoneRemindersOn } from './device';
 import { headlessData } from './headless';
 import { localEngine } from './sync';
 
@@ -99,7 +100,8 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
     if (!perm.granted) return null;
     const data = given ?? (await headlessData());
     const engine = await localEngine();
-    const [rules, zones] = await Promise.all([
+    const [on, rules, zones] = await Promise.all([
+      phoneRemindersOn(engine),
       engine.db.all<{ id: string; task_id: string; kind: string; offset_min: number | null; at_date: string | null; at_time: string | null }>(
         // Przypomnienie dostaje jego autor (jak `reminders-push`) — we wspólnej przestrzeni nie dzwonią cudze.
         'select id, task_id, kind, offset_min, at_date, at_time from reminders where deleted_at is null and (created_by is null or created_by = ?)',
@@ -112,7 +114,8 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
     const byId = new Map(tasks.map((t) => [t.id, t]));
     const { timeZone, defaultReminderTime } = data.settings;
     // Wpisy nawyków: dzień już zaliczony, wolny albo okres z osiągniętym celem nie przypomina.
-    const fires = reminderFireTimes(tasks, rules.map(toReminderRule), {
+    // Kanał wyłączony dla tego telefonu (tu albo na webie) — pusta lista, więc zaplanowane znikają.
+    const fires = reminderFireTimes(tasks, on ? rules.map(toReminderRule) : [], {
       from: new Date(now),
       timeZone,
       defaultTime: defaultReminderTime,

@@ -4,13 +4,16 @@
  * przeplanowanie M8, rejestracja i ostatnie przebiegi synchronizacji w tle.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Switch, Text, View } from 'react-native';
 
 import { backgroundRuns, backgroundState, runBackgroundSync, type BackgroundRun, type BackgroundState } from '@/lib/background-sync';
+import { sessionUser } from '@/lib/config';
+import { phoneRemindersOn, setPhoneReminders } from '@/lib/device';
+import { useLocalQuery } from '@/lib/local-query';
 import { permissionState, requestExactAlarms, requestNotificationPermission, type PermissionState } from '@/lib/reminders';
 import { lastSchedule, scheduleReminders, type ScheduleResult } from '@/lib/scheduler';
 
-import { Button, P, Row, Section } from './ui';
+import { Button, P, Row, Section, usePalette } from './ui';
 
 const when = (ms: number) => new Date(ms).toLocaleString('pl-PL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -31,7 +34,9 @@ async function readState(): Promise<State> {
 }
 
 export function BackgroundStatus() {
+  const p = usePalette();
   const [state, setState] = useState<State | null>(null);
+  const on = useLocalQuery(['devices'], phoneRemindersOn);
   const [busy, setBusy] = useState(false);
   const refresh = useCallback(() => {
     void readState().then(setState);
@@ -70,6 +75,25 @@ export function BackgroundStatus() {
         {!permissions.notifications ? <Button title="Włącz powiadomienia" disabled={busy} onPress={() => void act(requestNotificationPermission)} /> : null}
         {!permissions.exactAlarms ? <Button kind="secondary" title="Dokładne alarmy…" disabled={busy} onPress={() => void act(() => requestExactAlarms().catch(() => false))} /> : null}
       </Row>
+      {sessionUser().online && on !== undefined ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: p.fg, fontSize: 15 }}>Przypomnienia na tym telefonie</Text>
+            <Text style={{ color: p.muted, fontSize: 12 }}>Wyłącz, jeśli wystarczą powiadomienia przeglądarki (też dźwięk końca etapu skupienia). Pozostałe urządzenia: Ustawienia na komputerze.</Text>
+          </View>
+          <Switch
+            accessibilityLabel="Przypomnienia na tym telefonie"
+            value={on}
+            disabled={busy}
+            onValueChange={(enabled) =>
+              void act(async () => {
+                await setPhoneReminders(enabled);
+                if (enabled && !permissions.notifications) await requestNotificationPermission();
+              })
+            }
+          />
+        </View>
+      ) : null}
       {schedule ? (
         <P muted>
           {schedule.error

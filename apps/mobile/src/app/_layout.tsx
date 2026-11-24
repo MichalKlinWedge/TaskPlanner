@@ -14,14 +14,18 @@ import { Button, usePalette } from '@/components/ui';
 import { onAppData, type AppData } from '@/lib/app-data';
 import { registerBackgroundSync } from '@/lib/background-sync';
 import { sessionUser } from '@/lib/config';
+import { startDevice } from '@/lib/device';
 import { flushErrors, reportError, setErrorRoute } from '@/lib/error-log';
 import { startCapture } from '@/lib/files';
-import { startFocusWork } from '@/lib/focus';
+import { startFocusWork, syncFocusNotifications } from '@/lib/focus';
 import { loadProfile, onboardingGateHeld, onOnboardingGateRelease } from '@/lib/profile';
 import { handleResponse, setupNotifications } from '@/lib/reminders';
 import { scheduleReminders } from '@/lib/scheduler';
 import { localEngine, onSessionChange, onSynced, startOnlineSync } from '@/lib/sync';
+import { applySavedTheme, applyTheme } from '@/lib/theme';
 import { refreshWidgets } from '@/widget/refresh';
+
+applySavedTheme();
 
 /** Głęboki link (skrót aplikacji, powiadomienie) do ekranu nad zakładkami — pod spodem zawsze zakładki. */
 export const unstable_settings = { anchor: '(tabs)' };
@@ -142,6 +146,7 @@ function BackgroundWork() {
     };
     const offData = onAppData((data) => {
       if (!data.loaded) return;
+      applyTheme(data.settings.theme);
       if (AppState.currentState !== 'active') return run(data);
       if (pending) clearTimeout(pending.timer);
       pending = { data, timer: setTimeout(() => run(data), 1500) };
@@ -177,6 +182,11 @@ function useAppStart() {
     void flushErrors();
     startCapture();
     const offSynced = onSynced(() => void flushErrors());
+    // Telefon na liście urządzeń; wyłączone przypomnienia (tu albo na webie) działają od razu.
+    const stopDevice = startDevice(() => {
+      void scheduleReminders();
+      void syncFocusNotifications();
+    });
     // Akcja z powiadomienia, gdy aplikacja jest na wierzchu (w tle obsługuje ją zadanie z index.ts).
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       void handleResponse(response, 'foreground');
@@ -185,6 +195,7 @@ function useAppStart() {
       alive = false;
       sub.remove();
       offSynced();
+      stopDevice();
       stopFocus?.();
     };
   }, []);
