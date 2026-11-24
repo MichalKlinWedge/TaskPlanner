@@ -28,6 +28,7 @@ import {
   reviewStartOp,
   reviewStats,
   uuidv7,
+  WEEK_SUMMARY,
   weeklyReview,
   type DayState,
   type HabitCompletion,
@@ -37,6 +38,7 @@ import {
   type ReviewKind,
   type ViewContext,
   type ViewTask,
+  type WeekSummary,
 } from "@taskplanner/core";
 import { STALE_LEADER_MESSAGE } from "@taskplanner/sync";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -49,6 +51,7 @@ import { DayPlan } from "./day-plan";
 import { QuickAdd } from "./quick-add";
 import { useTaskActions } from "./task-item";
 import { Button, Input, navLinkClass, Select } from "./ui";
+import { WeekSummaryStep } from "./week-summary";
 
 type Kind = ReviewAction["kind"];
 const KINDS = Object.keys(REVIEW_ACTION) as Kind[];
@@ -69,11 +72,12 @@ function useReviewSession(kind: ReviewKind) {
   useEffect(() => {
     void store.mutateMany([reviewStartOp(id, kind, new Date())]).catch(() => undefined);
   }, [store, id, kind]);
-  const finished = useRef(false);
-  return (log: readonly LogEntry[]) => {
-    if (finished.current) return;
-    finished.current = true;
-    void store.mutateMany([reviewFinishOp(id, reviewStats(log, { today }), new Date())]).catch(() => undefined);
+  // Drugi raz (po „Wróć do kroków”) zapisuje się tylko zmieniony opis tygodnia.
+  const finished = useRef<{ summary: string | null } | null>(null);
+  return (log: readonly LogEntry[], summary: string | null = null) => {
+    if (finished.current && finished.current.summary === summary) return;
+    finished.current = { summary };
+    void store.mutateMany([reviewFinishOp(id, { ...reviewStats(log, { today }), ...(summary && { summary }) }, new Date())]).catch(() => undefined);
   };
 }
 
@@ -365,6 +369,7 @@ const STEPS = [
   { id: "waiting", title: "Oczekuje > 7 dni" },
   { id: "upcoming", title: "Nadchodzący tydzień" },
   { id: "habits", title: "Nawyki tygodnia" },
+  { id: "summary", title: WEEK_SUMMARY.step },
 ] as const;
 type Step = (typeof STEPS)[number]["id"];
 
@@ -386,6 +391,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
   const [log, setLog] = useState<LogEntry[]>([]);
   const [picking, setPicking] = useState<string | null>(null);
   const [finished, setFinished] = useState(false);
+  const [summary, setSummary] = useState<WeekSummary | null>(null);
 
   const from = addDays(ctx.today, -6);
   const completionRows = useLocalQuery<Record<string, string | number | null>>(
@@ -413,6 +419,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
     waiting: review.waiting.length,
     upcoming: review.upcoming.days.reduce((n, d) => n + d.items.length, 0),
     habits: review.habits.length,
+    summary: 0,
   };
   const at = STEPS.findIndex((s) => s.id === step);
 
@@ -464,6 +471,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
           <Stat label="Projekty bez kroku" value={String(review.projectsWithoutNext.length)} />
           <Stat label="Zaległe" value={String(review.overdue.length)} />
         </section>
+        {summary ? <p className="rounded-md border border-[var(--line)] p-3 text-sm">{summary.text}</p> : null}
         <p className="text-sm">{review.inbox.length === 0 && review.projectsWithoutNext.length === 0 ? "Inbox pusty, każdy aktywny projekt ma następny krok." : "Zostało coś do uporządkowania — wróć do kroków albo zrób to później."}</p>
         <div className="flex gap-2">
           <Button kind="primary" onClick={onExit}>
@@ -531,7 +539,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
             className={`rounded-full border px-2.5 py-1 text-xs ${s.id === step ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)] hover:bg-[var(--hover)]"}`}
           >
             {i + 1}. {s.title}
-            {s.id !== "upcoming" && s.id !== "habits" ? <span className={`ml-1 ${counts[s.id] ? "font-semibold" : "opacity-60"}`}>{counts[s.id] || "✓"}</span> : null}
+            {s.id !== "upcoming" && s.id !== "habits" && s.id !== "summary" ? <span className={`ml-1 ${counts[s.id] ? "font-semibold" : "opacity-60"}`}>{counts[s.id] || "✓"}</span> : null}
           </button>
         ))}
       </nav>
@@ -634,6 +642,8 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
               Otwórz kalendarz tygodnia →
             </a>
           </>
+        ) : step === "summary" ? (
+          <WeekSummaryStep ctx={ctx} review={review} summary={summary} onSummary={setSummary} onAct={act} />
         ) : review.habits.length ? (
           <table className="text-sm">
             <tbody>
@@ -668,7 +678,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
           <Button
             kind="primary"
             onClick={() => {
-              finish(log);
+              finish(log, summary?.text ?? null);
               setFinished(true);
             }}
           >

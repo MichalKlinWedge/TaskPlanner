@@ -5,7 +5,7 @@
  * użytkownika) — klucz idzie tylko w ciele zapytania do funkcji i zostaje w Vault; konto wraca zwykłą
  * synchronizacją (`ai_accounts`, tylko do odczytu, bez klucza).
  */
-import { AI_NEEDS_NETWORK, AI_OFFLINE_NOTE, parseAiAccount, type AiAccount, type AiAccountTestResult, type AiBreakdownRequest, type AiBreakdownResult, type AiDayPlanRequest, type AiDayPlanResult, type AiProvider } from "@taskplanner/core";
+import { AI_NEEDS_NETWORK, AI_OFFLINE_NOTE, parseAiAccount, type AiAccount, type AiAccountTestResult, type AiBreakdownRequest, type AiBreakdownResult, type AiDayPlanRequest, type AiDayPlanResult, type AiProvider, type AiWeekSummaryRequest, type AiWeekSummaryResult } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useMemo } from "react";
 
@@ -39,6 +39,8 @@ export const testAiAccount = (accountId: string) => call<AiAccountTestResult>("a
 export const askBreakdown = (request: AiBreakdownRequest) => call<AiBreakdownResult>("breakdown", request);
 /** „✨ Ułóż z AI”: propozycja godzin od modelu (nic nie zapisuje; sprawdza ją `dayPlanFromAi`). */
 export const askDayPlan = (request: AiDayPlanRequest) => call<AiDayPlanResult>("day-plan", request);
+/** „✨ Opisz tydzień”: zdania ze znacznikami i sugestie (nic nie zapisuje; sprawdza je `weekSummaryFromAi`). */
+export const askWeekSummary = (request: AiWeekSummaryRequest) => call<AiWeekSummaryResult>("week-summary", request);
 
 type Row = Record<string, string | number | null>;
 

@@ -227,6 +227,39 @@ describe('Edge Function ai — konto', () => {
     });
   });
 
+  describe('„Opisz tydzień”', () => {
+    const request = (over: Record<string, unknown> = {}) => ({
+      accountId,
+      from: '2026-11-18',
+      today: '2026-11-24',
+      facts: [
+        { key: 'ukonczone', label: 'Ukończone', text: '5 ukończonych zadań' },
+        { key: 'zalegle', label: 'Zaległe', text: '2 zaległe zadania' },
+      ],
+      tasks: [{ n: 1, title: 'Oferta', state: 'overdue', list: 'Praca', dueDate: '2026-11-20', series: false }],
+      hint: null,
+      ...over,
+    });
+
+    it('zdania ze znacznikami i sugestie; liczby i zmyślone numery odpadają, nic nie zapisane', async () => {
+      const before = sql(`select sync_version from public.sync_scopes where id = '${user.id}'`);
+      const good = ['Za tobą {ukonczone}.', 'Czeka {zalegle}.', 'Zacznij od {z1}.'];
+      fake.gemini.answers.push(JSON.stringify({ sentences: [...good, 'Masz 9 spraw.'], suggestions: [{ n: 1, kind: 'tomorrow', reason: 'Czeka długo.' }, { n: 7, kind: 'today' }] }));
+      const res = await call('week-summary', user, request());
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body).toMatchObject({ sentences: good, suggestions: [{ n: 1, kind: 'tomorrow', date: null, reason: 'Czeka długo.' }] });
+      expect(fake.gemini.prompts.at(-1)!.text).toContain('2 zaległe zadania');
+      expect(sql(`select sync_version from public.sync_scopes where id = '${user.id}'`)).toBe(before);
+    });
+
+    it('bez logowania 401, cudze konto 404, zły kontekst 400', async () => {
+      expect((await call('week-summary', null, request())).status).toBe(401);
+      expect((await call('week-summary', other, request())).status).toBe(404);
+      expect((await call('week-summary', user, request({ facts: [] }))).status).toBe(400);
+      expect((await call('week-summary', user, request({ facts: [{ key: 'zły klucz', label: 'x', text: 'x' }] }))).status).toBe(400);
+    });
+  });
+
   it('„Odłącz”: klucz znika z Vault, wiersz z deleted_at wraca do klienta jako usunięcie', async () => {
     const before = (await user.client.rpc('pull_changes', { p_since: {} })).data.scopes[user.id].version as number;
     expect((await call('accounts/delete', user, { accountId })).status).toBe(200);

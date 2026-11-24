@@ -4,7 +4,7 @@
  * ani w lokalnej bazie; konto wraca synchronizacją (`ai_accounts`, tylko do odczytu). Konto podpięte na webie
  * widać tu bez ponownego wklejania klucza.
  */
-import { AI_NEEDS_NETWORK, AI_OFFLINE_NOTE, parseAiAccount, type AiAccount, type AiAccountTestResult, type AiBreakdownRequest, type AiBreakdownResult, type AiDayPlanRequest, type AiDayPlanResult, type AiProvider } from '@taskplanner/core';
+import { AI_NEEDS_NETWORK, AI_OFFLINE_NOTE, parseAiAccount, type AiAccount, type AiAccountTestResult, type AiBreakdownRequest, type AiBreakdownResult, type AiDayPlanRequest, type AiDayPlanResult, type AiProvider, type AiWeekSummaryRequest, type AiWeekSummaryResult } from '@taskplanner/core';
 import type { SqlRow } from '@taskplanner/sync';
 
 import { sessionUser } from './config';
@@ -35,6 +35,8 @@ export const testAiAccount = (accountId: string) => call<AiAccountTestResult>('a
 export const askBreakdown = (request: AiBreakdownRequest) => call<AiBreakdownResult>('breakdown', request);
 /** „✨ Ułóż z AI”: propozycja godzin od modelu (nic nie zapisuje; sprawdza ją `dayPlanFromAi`). */
 export const askDayPlan = (request: AiDayPlanRequest) => call<AiDayPlanResult>('day-plan', request);
+/** „✨ Opisz tydzień”: zdania ze znacznikami i sugestie (nic nie zapisuje; sprawdza je `weekSummaryFromAi`). */
+export const askWeekSummary = (request: AiWeekSummaryRequest) => call<AiWeekSummaryResult>('week-summary', request);
 
 /** Konto AI z lokalnej bazy (działa offline; `null` = nie podpięte). */
 export function useAiAccount(): AiAccount | null {

@@ -40,18 +40,21 @@ export interface LogEntry {
   action: ReviewAction;
 }
 
-/** Sesja `review_sessions`: początek przy wejściu (raz), koniec ze statystykami (raz). */
+/**
+ * Sesja `review_sessions`: początek przy wejściu (raz), koniec ze statystykami (raz; po „Wróć do kroków”
+ * zapisuje się tylko zmieniony opis tygodnia).
+ */
 export function useReviewSession(kind: ReviewKind, today: LocalDate) {
   const [id] = useState(() => uuidv7());
   useEffect(() => {
     void mutateMany([reviewStartOp(id, kind, new Date())]).catch(() => undefined);
   }, [id, kind]);
-  const finished = useRef(false);
+  const finished = useRef<{ summary: string | null } | null>(null);
   return useCallback(
-    (log: readonly LogEntry[]) => {
-      if (finished.current) return;
-      finished.current = true;
-      void mutateMany([reviewFinishOp(id, reviewStats(log, { today }), new Date())]).catch(() => undefined);
+    (log: readonly LogEntry[], summary: string | null = null) => {
+      if (finished.current && finished.current.summary === summary) return;
+      finished.current = { summary };
+      void mutateMany([reviewFinishOp(id, { ...reviewStats(log, { today }), ...(summary && { summary }) }, new Date())]).catch(() => undefined);
     },
     [id, today],
   );

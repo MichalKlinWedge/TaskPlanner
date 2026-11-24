@@ -6,9 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiError } from '../../../packages/ai/src/index.ts';
 import type { AiBreakdownRequest } from '../../../packages/core/src/ai-breakdown.ts';
 import { AiDayPlanRequest } from '../../../packages/core/src/ai-day-plan.ts';
+import { AiWeekSummaryRequest } from '../../../packages/core/src/ai-week-summary.ts';
 import { aiClient, checkAiKey, chooseModel, modelProblem, testPatch } from '../../../supabase/functions/_shared/ai/accounts.ts';
 import { aiErrorStatus, runBreakdown } from '../../../supabase/functions/_shared/ai/breakdown.ts';
 import { runDayPlan } from '../../../supabase/functions/_shared/ai/day-plan.ts';
+import { runWeekSummary } from '../../../supabase/functions/_shared/ai/week-summary.ts';
 
 const KEY = `AQ.${'k'.repeat(50)}`;
 const BASE = 'http://fake.test/gemini/v1beta';
@@ -125,6 +127,41 @@ describe('runDayPlan („Ułóż z AI”)', () => {
     expect(bodies).toHaveLength(2);
     expect(bodies[0]).toContain('rano trudne rzeczy');
     expect(bodies[0]).toContain('09:00–12:00');
+  });
+});
+
+describe('runWeekSummary („Opisz tydzień”)', () => {
+  const request = AiWeekSummaryRequest.parse({
+    accountId: '0190a000-0000-4000-8000-00000000000a',
+    from: '2026-11-18',
+    today: '2026-11-24',
+    facts: [
+      { key: 'ukonczone', label: 'Ukończone', text: '5 ukończonych zadań' },
+      { key: 'zalegle', label: 'Zaległe', text: '2 zaległe zadania' },
+    ],
+    tasks: [
+      { n: 1, title: 'Oferta', state: 'overdue', list: 'Praca', dueDate: '2026-11-20', series: false },
+      { n: 2, title: 'Raport', state: 'done', list: 'Praca', dueDate: null, series: false },
+    ],
+    hint: 'praca',
+  });
+  const good = ['Za tobą {ukonczone}.', 'Czeka {zalegle}.', 'Zacznij od {z1}.'];
+
+  it('zdania z liczbą odpadają, sugestie tylko przy numerach do decyzji', async () => {
+    const bodies = answers(JSON.stringify({ sentences: [...good, 'Masz 3 sprawy.'], suggestions: [{ n: 1, kind: 'tomorrow' }, { n: 2, kind: 'today' }, { n: 9, kind: 'today' }] }));
+    expect(await runWeekSummary(client(), request)).toEqual({ sentences: good, suggestions: [{ n: 1, kind: 'tomorrow', date: null, reason: null }], model: 'gemini-3.5-flash-lite' });
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toContain('5 ukończonych zadań');
+    expect(bodies[0]).toContain('wskazowkaUzytkownika');
+  });
+
+  it('za mało zdań bez liczb = jedna naprawa z powodami, potem błąd', async () => {
+    const bodies = answers(JSON.stringify({ sentences: ['Masz 5 zadań.', 'Trzy zaległe.', 'Dobrze.'] }), JSON.stringify({ sentences: good }));
+    expect((await runWeekSummary(client(), request)).sentences).toEqual(good);
+    expect(bodies[1]).toContain('Liczba wpisana poza znacznikiem faktu.');
+    expect(bodies[1]).toContain('Liczebnik słowny poza znacznikiem faktu.');
+    answers('{"sentences":["Masz 5."]}', '{"sentences":["Masz 5."]}');
+    await expect(runWeekSummary(client(), request)).rejects.toThrow('nie zgadza się ze schematem');
   });
 });
 

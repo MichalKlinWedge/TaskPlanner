@@ -1,7 +1,7 @@
 /**
- * Przegląd tygodnia (Etap 9, M16) — sześć kroków jak `#/review/weekly` na webie: Inbox do zera
+ * Przegląd tygodnia (Etap 9, M16) — siedem kroków jak `#/review/weekly` na webie: Inbox do zera
  * (z „Przenieś do…”), zaległe, aktywne projekty bez następnego kroku, „oczekuje” > 7 dni,
- * nadchodzący tydzień, nawyki z 7 dni. Kroki i liczniki — `weeklyReview` z core, decyzje przy
+ * nadchodzący tydzień, nawyki z 7 dni, podsumowanie (`WeekSummaryStep`). Kroki i liczniki — `weeklyReview` z core, decyzje przy
  * każdym zadaniu przez `bulkTaskOps` (z „Cofnij”), na końcu podsumowanie i zapis `review_sessions`.
  * Chipy filtra zawężają zadania w krokach Inbox, Zaległe, Oczekuje i Nadchodzący tydzień (projekty
  * i nawyki zostają całe); filtr trwa do opuszczenia ekranu, podsumowanie liczy wszystko.
@@ -18,10 +18,12 @@ import {
   PRIORITY,
   relativeDay,
   reviewStats,
+  WEEK_SUMMARY,
   weeklyReview,
   type FilterQuery,
   type ReviewAction,
   type ViewTask,
+  type WeekSummary,
 } from '@taskplanner/core';
 import { router, Stack } from 'expo-router';
 import { useMemo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
@@ -35,6 +37,7 @@ import { pickDate, pickOption } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
 import { DecisionButtons, useDecide, useReviewSession, type LogEntry, type ReviewKindKey } from '@/components/review';
 import { Button, Chip, ColorDot, usePalette } from '@/components/ui';
+import { WeekSummaryStep } from '@/components/week-summary';
 import { listLabel, useView } from '@/lib/app-data';
 
 const STEPS = [
@@ -44,6 +47,7 @@ const STEPS = [
   { id: 'waiting', title: 'Oczekuje > 7 dni' },
   { id: 'upcoming', title: 'Nadchodzący tydzień' },
   { id: 'habits', title: 'Nawyki tygodnia' },
+  { id: 'summary', title: WEEK_SUMMARY.step },
 ] as const;
 type Step = (typeof STEPS)[number]['id'];
 /** Kroki z pojedynczymi zadaniami — tylko w nich działa filtr. */
@@ -60,6 +64,7 @@ export default function WeeklyReviewScreen() {
   const [step, setStep] = useState<Step>('inbox');
   const [log, setLog] = useState<LogEntry[]>([]);
   const [finished, setFinished] = useState(false);
+  const [summary, setSummary] = useState<WeekSummary | null>(null);
   const [filter, setFilter] = useState<FilterQuery>({});
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
 
@@ -85,6 +90,7 @@ export default function WeeklyReviewScreen() {
     waiting: review.waiting.length,
     upcoming: review.upcoming.days.reduce((n, d) => n + d.items.length, 0),
     habits: review.habits.length,
+    summary: 0,
   };
   const at = STEPS.findIndex((s) => s.id === step);
   const go = (s: Step) => {
@@ -148,6 +154,7 @@ export default function WeeklyReviewScreen() {
             </View>
           ))}
         </View>
+        {summary ? <Text style={{ color: p.fg, fontSize: 15, lineHeight: 21 }}>{summary.text}</Text> : null}
         <Text style={{ color: p.fg }}>{clean ? 'Inbox pusty, każdy aktywny projekt ma następny krok.' : 'Zostało coś do uporządkowania — wróć do kroków albo zrób to później.'}</Text>
         <Button title="Gotowe" onPress={() => router.back()} />
         <Button kind="secondary" title="Wróć do kroków" onPress={() => setFinished(false)} />
@@ -244,6 +251,8 @@ export default function WeeklyReviewScreen() {
         </Pressable>
       </>
     );
+  } else if (step === 'summary') {
+    body = <WeekSummaryStep data={data} ctx={ctx} review={full} summary={summary} onSummary={setSummary} onAct={act} />;
   } else {
     body = review.habits.length
       ? review.habits.map(({ task, days }) => (
@@ -269,7 +278,7 @@ export default function WeeklyReviewScreen() {
       <Stack.Screen options={{ title: 'Przegląd tygodnia' }} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.steps} style={styles.stepBar}>
         {STEPS.map((s, i) => {
-          const count = s.id === 'upcoming' || s.id === 'habits' ? '' : ` ${counts[s.id] || '✓'}`;
+          const count = s.id === 'upcoming' || s.id === 'habits' || s.id === 'summary' ? '' : ` ${counts[s.id] || '✓'}`;
           return <Chip key={s.id} label={`${i + 1}. ${s.title}${count}`} selected={s.id === step} onPress={() => go(s.id)} />;
         })}
       </ScrollView>
@@ -291,7 +300,7 @@ export default function WeeklyReviewScreen() {
           <Button
             title="Zakończ przegląd"
             onPress={() => {
-              finish(log);
+              finish(log, summary?.text ?? null);
               setFinished(true);
             }}
           />

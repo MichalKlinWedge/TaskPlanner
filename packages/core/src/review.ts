@@ -132,6 +132,9 @@ export function weeklyReview(
   };
 }
 
+/** Najdłuższe podsumowanie tygodnia w `review_sessions.stats` (znaki). */
+export const WEEK_SUMMARY_MAX = 4_000;
+
 /** Zawartość `review_sessions.stats`. */
 export const ReviewStats = z.object({
   reviewed: z.number().int().min(0),
@@ -141,6 +144,8 @@ export const ReviewStats = z.object({
   deleted: z.number().int().min(0),
   /** Ile z przejrzanych było oznaczonych do decyzji. */
   needsDecision: z.number().int().min(0),
+  /** Przegląd tygodnia: opis z „✨ Opisz tydzień” (v1.x). */
+  summary: z.string().max(WEEK_SUMMARY_MAX).optional(),
 });
 export type ReviewStats = z.infer<typeof ReviewStats>;
 
@@ -176,6 +181,16 @@ export const reviewStartOp = (id: string, kind: ReviewKind, now: Date): TaskOp =
 });
 
 export const reviewFinishOp = (id: string, stats: ReviewStats, now: Date): TaskOp => ({ table: 'review_sessions', id, patch: { finished_at: now.toISOString(), stats } });
+
+/** Opis tygodnia zapisany w sesji (`stats` z lokalnej bazy: tekst JSON albo obiekt); `null`, gdy go nie ma. */
+export function reviewSummary(stats: unknown): string | null {
+  try {
+    const parsed = ReviewStats.safeParse(typeof stats === 'string' ? JSON.parse(stats) : stats);
+    return (parsed.success && parsed.data.summary?.trim()) || null;
+  } catch {
+    return null;
+  }
+}
 
 export interface ReviewSchedule {
   dailyReview: { enabled: boolean; time: LocalTime };

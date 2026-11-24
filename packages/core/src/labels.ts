@@ -382,7 +382,7 @@ export const AI_ACCOUNT_STATUS: Record<AiAccountStatus, { label: string; tone: '
 
 /** Wstęp karty „Asystent AI”. */
 export const AI_INTRO =
-  'Funkcje ✨ („Rozbij na kroki” przy podzadaniach i „Ułóż z AI” w „Planie dnia”; podsumowanie tygodnia w kolejnej wersji) korzystają z Twojego własnego klucza AI — '
+  'Funkcje ✨ („Rozbij na kroki” przy podzadaniach, „Ułóż z AI” w „Planie dnia” i „Opisz tydzień” w przeglądzie tygodnia) korzystają z Twojego własnego klucza AI — '
   + 'aplikacja nie ma wspólnego klucza, a koszt i limity zapytań są po stronie Twojego projektu u dostawcy. Bez podpiętego konta '
   + 'wszystko inne działa jak dotąd.';
 
@@ -441,6 +441,26 @@ export const UNPLACED_REASON: Record<UnplacedReason, string> = {
 /** Do kogo idą dane przy „Ułóż z AI”. */
 export const aiDayPlanNote = (provider: AiProvider): string =>
   `Tytuły zadań, czasy, priorytety, terminy i wolne okna idą do ${AI_PROVIDER[provider].company} na Twoim kluczu; adresy e-mail są zasłaniane, wydarzenia z kalendarza nie wychodzą. Nic się nie zapisze bez „Zastosuj”.`;
+
+/** „Podsumowanie” w przeglądzie tygodnia. */
+export const WEEK_SUMMARY = {
+  step: 'Podsumowanie',
+  lists: 'Ukończone według list',
+  habits: 'Nawyki',
+  hint: 'Na czym się skupić (opcjonalnie), np. „praca”',
+  ai: '✨ Opisz tydzień',
+  again: '✨ Opisz ponownie',
+  busy: 'AI opisuje tydzień…',
+  discard: 'Odrzuć opis',
+  saved: 'Opis zapisze się w tym przeglądzie po „Zakończ przegląd”.',
+  suggestions: 'Sugestie',
+  previous: 'Poprzednie podsumowanie',
+  invalid: 'AI nie napisało opisu zgodnego z liczbami — spróbuj ponownie.',
+} as const;
+
+/** Dokąd idą dane przy „Opisz tydzień”. */
+export const aiWeekSummaryNote = (provider: AiProvider): string =>
+  `Liczby z podsumowania, nazwy list i nawyków oraz tytuły i terminy zadań (zaległych, przekładanych, oczekujących i ukończonych) idą do ${AI_PROVIDER[provider].company} na Twoim kluczu; adresy e-mail są zasłaniane, opisy zadań nie wychodzą. Liczby w opisie wstawia aplikacja, sugestie działają dopiero po kliknięciu.`;
 
 /** Do kogo idą dane przy „Rozbij na kroki”. */
 export const aiBreakdownNote = (provider: AiProvider): string =>
