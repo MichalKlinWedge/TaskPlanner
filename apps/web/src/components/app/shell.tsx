@@ -29,6 +29,7 @@ import { CollaboratorsView } from "./collaborators";
 import { HabitDetail, HabitNotificationActions, HabitsView } from "./habits";
 import { DeliveryLogScreen } from "./plugins-card";
 import { QuickAddDialog } from "./quick-add";
+import { ReminderNotificationActions } from "./reminder-actions";
 import { TaskPanel } from "./task-panel";
 import { TaskActionsProvider, useTaskActions } from "./task-item";
 import { Select, Splash } from "./ui";
@@ -355,7 +356,7 @@ export function Shell({
     ) : route.view === "deliveries" ? (
       <DeliveryLogScreen />
     ) : route.view === "trash" ? (
-      <TrashView data={data} store={store} />
+      <TrashView data={data} store={store} today={today} />
     ) : route.view === "people" ? (
       <CollaboratorsView />
     ) : list ? (
@@ -423,6 +424,7 @@ export function Shell({
         <FocusProvider store={store} userId={userId} settings={settings}>
         <ReminderToasts />
         <HabitNotificationActions />
+        <ReminderNotificationActions />
         <Keyboard
           blocked={quickOpen || palette !== null || shortcutsOpen || route.view === "focus" || route.view === "review"}
           selected={selected}

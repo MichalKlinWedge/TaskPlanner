@@ -19,7 +19,9 @@ import {
   capitalized,
   dayLabel,
   daysBetween,
+  isEmptyFilter,
   localDateAt,
+  matchesFilter,
   needsDecision,
   plural,
   PRIORITY,
@@ -34,6 +36,7 @@ import {
   WEEK_SUMMARY,
   weeklyReview,
   type DayState,
+  type FilterQuery,
   type HabitCompletion,
   type LocalDate,
   type ProfileSettings,
@@ -53,6 +56,7 @@ import { useOnline } from "@/lib/use-online";
 
 import { useAppEnv } from "./app-env";
 import { DayPlan } from "./day-plan";
+import { FilterBar } from "./filter-bar";
 import { QuickAdd } from "./quick-add";
 import { useTaskActions } from "./task-item";
 import { Button, Input, navLinkClass, Select } from "./ui";
@@ -386,6 +390,9 @@ const DAY_STATE: Record<DayState, { cls: string; label: string }> = {
   off: { cls: "bg-black/5 dark:bg-white/5", label: "nie obowiązuje" },
 };
 
+/** Kroki z pojedynczymi zadaniami — tylko w nich działa filtr. */
+const FILTERED: readonly Step[] = ["inbox", "overdue", "waiting", "upcoming"];
+
 export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onExit: () => void; navigate: (route: Route) => void }) {
   const { data, store, openTask } = useAppEnv();
   const decide = useDecide();
@@ -418,7 +425,22 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
     return map;
   }, [completionRows]);
   const lists = useMemo(() => data.lists.map((l) => ({ id: l.id, workspaceId: l.workspaceId, kind: l.kind, status: l.projectStatus })), [data.lists]);
-  const review = useMemo(() => weeklyReview({ tasks: data.tasks, lists, completions }, ctx), [data.tasks, lists, completions, ctx]);
+  const full = useMemo(() => weeklyReview({ tasks: data.tasks, lists, completions }, ctx), [data.tasks, lists, completions, ctx]);
+  const [filter, setFilter] = useState<FilterQuery>({});
+  const filtered = !isEmptyFilter(filter);
+  // Filtr po wyliczeniu kroków: projekt nie staje się „bez następnego kroku”, bo filtr ukrył jego zadania.
+  const review = useMemo(() => {
+    if (isEmptyFilter(filter)) return full;
+    const match = matchesFilter(filter, ctx.today);
+    return {
+      ...full,
+      inbox: full.inbox.filter(match),
+      overdue: full.overdue.filter(match),
+      waiting: full.waiting.filter((w) => match(w.task)),
+      needsDecision: full.needsDecision.filter(match),
+      upcoming: { ...full.upcoming, days: full.upcoming.days.map((d) => ({ ...d, items: d.items.filter((it) => match(it.task)) })) },
+    };
+  }, [full, filter, ctx.today]);
 
   const counts: Record<Step, number> = {
     inbox: review.inbox.length,
@@ -475,12 +497,12 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
       <Frame title="Przegląd tygodnia — gotowe" kind="weekly" onExit={onExit} navigate={navigate}>
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Podsumowanie" data-testid="review-summary">
           <Stat label="Decyzje" value={String(stats.reviewed)} />
-          <Stat label="Inbox" value={String(review.inbox.length)} />
-          <Stat label="Projekty bez kroku" value={String(review.projectsWithoutNext.length)} />
-          <Stat label="Zaległe" value={String(review.overdue.length)} />
+          <Stat label="Inbox" value={String(full.inbox.length)} />
+          <Stat label="Projekty bez kroku" value={String(full.projectsWithoutNext.length)} />
+          <Stat label="Zaległe" value={String(full.overdue.length)} />
         </section>
         {summary ? <p className="rounded-md border border-[var(--line)] p-3 text-sm">{summary.text}</p> : null}
-        <p className="text-sm">{review.inbox.length === 0 && review.projectsWithoutNext.length === 0 ? "Inbox pusty, każdy aktywny projekt ma następny krok." : "Zostało coś do uporządkowania — wróć do kroków albo zrób to później."}</p>
+        <p className="text-sm">{full.inbox.length === 0 && full.projectsWithoutNext.length === 0 ? "Inbox pusty, każdy aktywny projekt ma następny krok." : "Zostało coś do uporządkowania — wróć do kroków albo zrób to później."}</p>
         <div className="flex gap-2">
           <Button kind="primary" onClick={onExit}>
             Gotowe
@@ -533,7 +555,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
         ))}
     </Select>
   );
-  const empty = (text: string) => <p className="rounded-md border border-dashed border-[var(--line)] px-3 py-4 text-center text-sm text-[var(--muted)]">✓ {text}</p>;
+  const empty = (text: string) => <p className="rounded-md border border-dashed border-[var(--line)] px-3 py-4 text-center text-sm text-[var(--muted)]">{filtered && FILTERED.includes(step) ? "Nic w tym kroku nie pasuje do filtra." : `✓ ${text}`}</p>;
 
   return (
     <Frame title="Przegląd tygodnia" kind="weekly" onExit={onExit} navigate={navigate}>
@@ -569,6 +591,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
         <h2 className="text-base font-semibold">
           {at + 1}. {STEPS[at]!.title}
         </h2>
+        {FILTERED.includes(step) ? <FilterBar query={filter} onChange={setFilter} /> : null}
         {step === "inbox" ? (
           review.inbox.length ? (
             <ul className="divide-y divide-[var(--line)] rounded-md border border-[var(--line)]">{review.inbox.map((t) => row(t, move(t)))}</ul>
@@ -664,7 +687,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
             </a>
           </>
         ) : step === "summary" ? (
-          <WeekSummaryStep ctx={ctx} review={review} summary={summary} onSummary={setSummary} onAct={act} start={askWeek} onStarted={onAskStarted} />
+          <WeekSummaryStep ctx={ctx} review={full} summary={summary} onSummary={setSummary} onAct={act} start={askWeek} onStarted={onAskStarted} />
         ) : review.habits.length ? (
           <table className="text-sm">
             <tbody>

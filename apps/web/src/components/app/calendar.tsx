@@ -20,6 +20,8 @@ import {
   applyFilter,
   calendarEntries,
   habitSlots,
+  isEmptyFilter,
+  matchesFilter,
   datesPatch,
   freeSlotTimes,
   isOpen,
@@ -31,6 +33,7 @@ import {
   selectInbox,
   selectToday,
   unscheduleBlockPatch,
+  type FilterQuery,
   type LocalDate,
   type ProfileSettings,
   type TaskOp,
@@ -44,6 +47,7 @@ import { useCalendarEvents } from "@/lib/calendar-events";
 import { useRoute } from "@/lib/route";
 
 import { useAppEnv } from "./app-env";
+import { FilterBar, type Field as FilterField } from "./filter-bar";
 import { useTaskActions } from "./task-item";
 import { Select } from "./ui";
 
@@ -61,6 +65,8 @@ function readPanelClosed(): boolean {
     return false;
   }
 }
+/** Termin i godzina to sama treść kalendarza. */
+const HIDDEN_FILTERS: readonly FilterField[] = ["due", "hasTime"];
 /** Ile zadań panel rysuje (reszta — zawęź źródło albo filtr). */
 const PANEL_LIMIT = 100;
 
@@ -103,6 +109,9 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
   const [view, setView] = useState<CalendarView>(readView);
   const [range, setRange] = useState<{ from: LocalDate; to: LocalDate } | null>(null);
   const [source, setSource] = useState("today");
+  // Filtr ukrywa bloki zadań i pozycje panelu; kolizje i wolne okna liczą się z całości.
+  const [filter, setFilter] = useState<FilterQuery>({});
+  const shown = useMemo(() => (isEmptyFilter(filter) ? null : matchesFilter(filter, ctx.today)), [filter, ctx.today]);
   // Przy wejściu: zwinięty, gdy zwinięto go ręcznie albo wszystkie źródła są puste (potem nie znika sam,
   // np. po przeciągnięciu ostatniego zadania — wtedy nadal przyjmuje blok do zdjęcia godziny).
   const [panelOpen, setPanelOpen] = useState(() => !readPanelClosed() && PANEL_SOURCES(data).some((s) => panelTasks(s, data, ctx).length));
@@ -126,7 +135,8 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
   const events = useMemo<EventInput[]>(() => {
     if (!range) return [];
     const entries = calendarEntries(tasks, calendarEvents.list, range.from, range.to, { timeZone, defaultDurationMin: duration, habits });
-    const out: EventInput[] = entries.map((e) => {
+    const visible = shown ? entries.filter((e) => e.kind !== "task" || (byId.has(e.id) && shown(byId.get(e.id)!))) : entries;
+    const out: EventInput[] = visible.map((e) => {
       const task = e.kind === "task" ? byId.get(e.id) : undefined;
       const source = e.kind === "event" ? calendarEvents.info.get(e.id) : undefined;
       const color = task ? (PRIORITY[task.priority]?.color ?? PRIORITY[4].color) : (source?.color ?? undefined);
@@ -151,10 +161,13 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
       }
     }
     return out;
-  }, [range, tasks, byId, habits, calendarEvents, timeZone, duration, view, settings.workHours]);
+  }, [range, tasks, byId, shown, habits, calendarEvents, timeZone, duration, view, settings.workHours]);
 
   const conflictCount = useMemo(() => events.filter((e) => e.extendedProps?.conflict).length, [events]);
-  const candidates = useMemo(() => panelTasks(source, data, ctx), [source, data, ctx]);
+  const candidates = useMemo(() => {
+    const all = panelTasks(source, data, ctx);
+    return shown ? all.filter(shown) : all;
+  }, [source, data, ctx, shown]);
   const togglePanel = () => {
     setPanelOpen(!panelOpen);
     try {
@@ -312,6 +325,7 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
       </aside>
       )}
       <div className="tp-calendar min-w-0 flex-1" data-testid="calendar">
+        <FilterBar query={filter} onChange={setFilter} hide={HIDDEN_FILTERS} />
         {conflictCount ? (
           <p className="mb-2 text-xs text-[var(--danger)]" role="status">
             ⚠ Nakładające się bloki w widocznym zakresie: {conflictCount}
@@ -327,7 +341,7 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
           headerToolbar={{ left: "prev,next today", center: "title", right: "timeGridDay,timeGridWeek,dayGridMonth" }}
           locale={plLocale}
           firstDay={ctx.firstDayOfWeek ?? 1}
-          height="calc(100dvh - 9rem)"
+          height="calc(100dvh - 11rem)"
           scrollTime={`${settings.workHours.start}:00`}
           businessHours={{ daysOfWeek: settings.workHours.days.map((d) => d % 7), startTime: settings.workHours.start, endTime: settings.workHours.end }}
           snapDuration="00:15:00"

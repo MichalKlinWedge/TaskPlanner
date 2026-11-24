@@ -160,9 +160,13 @@ export function WorkspaceChips({ ids, workspaces, label, onChange }: { ids: read
 
 export function SavedFilterView({ data, ctx, filter, navigate }: { data: AppData; ctx: ViewContext; filter: SavedFilter; navigate: (route: Route) => void }) {
   const { run } = useTaskActions();
-  const [query, setQuery] = useState<FilterQuery>(filter.query);
+  // Zmiany na ekranie są ważne dla tej wersji zapisanego filtra; zapis z innego urządzenia je zastępuje.
+  const saved = JSON.stringify(filter.query);
+  const [draft, setDraft] = useState<{ key: string; query: FilterQuery } | null>(null);
+  const query = draft?.key === saved ? draft.query : filter.query;
+  const setQuery = (next: FilterQuery) => setDraft({ key: saved, query: next });
   const [renaming, setRenaming] = useState(false);
-  const changed = JSON.stringify(query) !== JSON.stringify(filter.query);
+  const changed = JSON.stringify(query) !== saved;
   const count = filtered(data.tasks, query, ctx).length;
   const update = (patch: Record<string, unknown>) => run([{ table: "saved_filters", id: filter.id, patch }]);
   const names = {

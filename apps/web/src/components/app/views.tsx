@@ -18,12 +18,15 @@ import {
   GROUP_BY,
   groupTasks,
   habitsForDay,
+  isEmptyFilter,
   isOpen,
   LIST_COLUMN,
   LIST_KIND,
+  matchesFilter,
   orderedColumns,
   plural,
   progress,
+  PROJECT_STATUS,
   relativeDay,
   selectInbox,
   selectToday,
@@ -39,6 +42,7 @@ import {
   VIEW_SECTION,
   withCompleted,
   type CompletedMode,
+  type FilterQuery,
   type GroupBy,
   type ListColumn,
   type LocalDate,
@@ -62,7 +66,9 @@ import { Board } from "./board";
 import { CanvasView } from "./canvas";
 import { DayDnd, DayDrop, DraggableTaskItem, SortableTaskItem, SortableTaskList } from "./dnd";
 import { TaskExportButton } from "./export";
+import { FilterBar } from "./filter-bar";
 import { HabitTodayItem } from "./habits";
+import { ProjectStatusSelect } from "./project-status";
 import { PurgeButton } from "./purge-button";
 import { QuickAdd } from "./quick-add";
 import { TaskColumnsHeader, TaskItem, useTaskActions } from "./task-item";
@@ -359,7 +365,7 @@ function ColumnsPicker({
 const VIEW_LABEL = { list: "Lista", kanban: "Tablica", canvas: "Karteczki" } as const;
 
 export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; ctx: ViewContext; list: List; store: TabStore; toolbar?: ReactNode }) {
-  const { notify } = useTaskActions();
+  const { notify, run } = useTaskActions();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   // „+” przy zadaniu: górne pole dodaje podzadania tego zadania, po dodaniu wraca do zwykłego trybu.
   const [subParent, setSubParent] = useState<{ id: string; title: string } | null>(null);
@@ -491,6 +497,21 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
           return listShareBadge(ws?.role, list.guestAccess, ws?.members);
         })()}
       >
+        {list.kind === "project" ? (
+          <ProjectStatusSelect
+            name={list.name}
+            value={list.projectStatus}
+            onChange={
+              editable
+                ? (status) =>
+                    void run([{ table: "lists", id: list.id, patch: { project_status: status } }], {
+                      text: `„${list.name}” — ${PROJECT_STATUS[status].toLowerCase()}`,
+                      undo: [{ table: "lists", id: list.id, patch: { project_status: list.projectStatus } }],
+                    })
+                : undefined
+            }
+          />
+        ) : null}
         {list.kind === "project" ? <SaveTemplateButton listId={list.id} listName={list.name} /> : null}
         <TaskExportButton
           title={list.name}
@@ -582,20 +603,24 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
  * Kosz (M3): usunięte w ostatnich 30 dniach, przywracanie razem z podzadaniami usuniętymi naraz; kliknięcie
  * otwiera szczegóły w panelu tylko do odczytu (`TaskPanel`).
  */
-export function TrashView({ data, store }: { data: AppData; store: TabStore }) {
+export function TrashView({ data, store, today }: { data: AppData; store: TabStore; today: LocalDate }) {
   const { run } = useTaskActions();
   const { openTask, openTaskId } = useAppEnv();
   const { tasks: trashed, alive } = useTrash(store, data);
   const roots = trashRoots(trashed);
+  const [filter, setFilter] = useState<FilterQuery>({});
+  const filtered = !isEmptyFilter(filter);
+  const shown = filtered ? roots.filter(matchesFilter(filter, today)) : roots;
   const names = listNames(data);
   const open = openTaskId ? trashPreview(trashed, openTaskId, alive)?.root.id : undefined;
 
   return (
     <>
       <Header title="Kosz" subtitle={`Usunięte zadania zostają tu ${TRASH_DAYS} dni, potem znikają na stałe. Kliknij zadanie, aby zobaczyć szczegóły.`} />
-      {roots.length ? (
+      <FilterBar query={filter} onChange={setFilter} />
+      {shown.length ? (
         <ul className="divide-y divide-[var(--line)]" aria-label="Zadania w koszu">
-          {roots.map((t) => {
+          {shown.map((t) => {
             const inside = trashedWith(trashed, t.id).length;
             return (
               // `data-card`: kliknięcie w wiersz nie zamyka panelu (jak karty tablicy).
@@ -616,7 +641,7 @@ export function TrashView({ data, store }: { data: AppData; store: TabStore }) {
           })}
         </ul>
       ) : (
-        <Empty>Kosz jest pusty.</Empty>
+        <Empty>{filtered && roots.length ? "Nic w koszu nie pasuje do filtra." : "Kosz jest pusty."}</Empty>
       )}
     </>
   );

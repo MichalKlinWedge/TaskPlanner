@@ -1,11 +1,12 @@
 "use client";
 
-import { canEditScope, COLORS, GUEST_ACCESS, GUEST_ACCESS_HINT, inboxId, keyBetween, LIST_KIND, listAccess, reorderPatches, SCOPE_ROLE, uuidv7, type GuestAccess, type ListKind, type ScopeRole } from "@taskplanner/core";
+import { canEditScope, COLORS, GUEST_ACCESS, GUEST_ACCESS_HINT, inboxId, keyBetween, LIST_KIND, listAccess, listKindPatch, plural, reorderPatches, SCOPE_ROLE, TRASH_DAYS, uuidv7, type GuestAccess, type ListKind, type ProjectStatus, type ScopeRole } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useState, type FormEvent } from "react";
 
 import { useLocalQuery } from "@/lib/local-store";
 
+import { ProjectStatusSelect } from "./project-status";
 import { SharingPanel } from "./sharing";
 import { TemplatePicker, TemplatesCard, useCreateFromTemplate, useProjectTemplates, type TemplateChoice } from "./templates";
 import { Button, Card, IconButton, Input, Notice, Select } from "./ui";
@@ -31,8 +32,17 @@ interface ListRow extends Record<string, string | number | null> {
   archived_at: string | null;
   /** Dostęp gości (`lists.guest_access`); `null` = lista jeszcze niezsynchronizowana (domyślnie `edit`). */
   guest_access: GuestAccess | null;
+  project_status: ProjectStatus | null;
+  start_date: string | null;
+  end_date: string | null;
   open: number;
+  /** Wszystkie nieusunięte zadania (lista z zadaniami nie znika, tylko się archiwizuje). */
+  total: number;
+  /** Zadania w koszu — po usunięciu listy nie ma dokąd ich przywrócić. */
+  trashed: number;
 }
+
+type NewListKind = Exclude<ListKind, "inbox">;
 
 const byKey = <T extends { sort_key: string; id: string }>(a: T, b: T) => (a.sort_key < b.sort_key ? -1 : a.sort_key > b.sort_key ? 1 : a.id < b.id ? -1 : 1);
 
@@ -46,12 +56,17 @@ export function WorkspacesScreen({ store, email }: { store: TabStore; email: str
     [],
     ["workspaces"],
   );
+  // Granica kosza liczona przy wejściu (stabilna wartość parametru zapytania).
+  const [trashSince] = useState(() => new Date(Date.now() - TRASH_DAYS * 86_400_000).toISOString());
   const { rows: lists } = useLocalQuery<ListRow>(
     store,
-    `select l.id, l.scope_id, l.kind, l.name, l.color, l.sort_key, l.archived_at, l.guest_access,
-            (select count(*) from tasks t where t.list_id = l.id and t.deleted_at is null and t.status not in ('done', 'cancelled')) as open
-       from lists l where l.deleted_at is null`,
-    [],
+    `select l.id, l.scope_id, l.kind, l.name, l.color, l.sort_key, l.archived_at, l.guest_access, l.project_status, l.start_date, l.end_date,
+            coalesce(c.open, 0) as open, coalesce(c.total, 0) as total, coalesce(c.trashed, 0) as trashed
+       from lists l left join (
+         select list_id, sum(deleted_at is null and status not in ('done', 'cancelled')) as open, sum(deleted_at is null) as total, sum(deleted_at > ?) as trashed
+           from tasks group by list_id) c on c.list_id = l.id
+      where l.deleted_at is null`,
+    [trashSince],
     ["lists", "tasks"],
   );
 
@@ -153,14 +168,18 @@ function WorkspaceCard({
     });
 
   const createFromTemplate = useCreateFromTemplate();
-  const addList = (name: string, kind: ListKind, template: TemplateChoice | null) =>
+  const addList = (name: string, kind: NewListKind, color: string | null, template: TemplateChoice | null) =>
     run(() =>
       kind === "project" && template
-        ? store.mutateMany(createFromTemplate(template, workspace.id, name, activeOthers.at(-1)?.sort_key).ops)
+        ? // Kolor wybrany przy dodawaniu zastępuje kolor z szablonu.
+          store.mutateMany(
+            createFromTemplate(template, workspace.id, name, activeOthers.at(-1)?.sort_key).ops.map((op) => (color && op.table === "lists" ? { ...op, patch: { ...op.patch, color } } : op)),
+          )
         : store.mutate("lists", uuidv7(), {
             scope_id: workspace.id,
             kind,
             name,
+            color,
             project_status: kind === "project" ? "active" : null,
             sort_key: keyBetween(activeOthers.at(-1)?.sort_key ?? "a"),
           }),
@@ -236,7 +255,7 @@ function WorkspaceCard({
           />
         ))}
       </ul>
-      {!archived && editable ? <AddListForm store={store} onAdd={(name, kind, template) => void addList(name, kind, template)} /> : null}
+      {!archived && editable ? <AddListForm store={store} onAdd={(name, kind, color, template) => void addList(name, kind, color, template)} /> : null}
     </Card>
   );
 }
@@ -267,15 +286,32 @@ function ListItem({
   const guestAccess = list.guest_access ?? "edit";
   // Gość: lista tylko do podglądu blokuje też nazwę, kolor, kolejność i archiwizację.
   const editable = scopeEditable && listAccess(role, guestAccess) === "edit";
+  const changeKind = (kind: NewListKind) => {
+    if (kind === "list" && (list.start_date || list.end_date) && !window.confirm(`Zmienić projekt „${list.name}” w listę? Zniknie jego status oraz data początku i końca.`)) return;
+    void update({ ...listKindPatch({ kind: list.kind, projectStatus: list.project_status }, kind) });
+  };
+  const remove = () => {
+    const trashed = Number(list.trashed);
+    const note = trashed ? ` ${plural(trashed, ["zadania", "zadań", "zadań"])} z kosza nie będzie już można przywrócić.` : "";
+    if (window.confirm(`Usunąć pustą listę „${list.name}”?${note}`)) void update({ deleted_at: new Date().toISOString() });
+  };
   return (
-    <li className={`flex flex-wrap items-center gap-2 py-2 text-sm ${archived ? "opacity-60" : ""}`}>
+    <li data-list={list.id} className={`flex flex-wrap items-center gap-2 py-2 text-sm ${archived ? "opacity-60" : ""}`}>
       {editable ? (
         <ColorPicker value={list.color} onChange={(color) => void update({ color })} label={`Kolor listy ${list.name}`} />
       ) : (
         <span className="h-4 w-4 rounded-full border border-[var(--line)]" style={{ background: list.color ?? "transparent" }} />
       )}
       {inbox || !editable ? <span className="font-medium">{list.name}</span> : <EditableName value={list.name} max={200} onSave={(name) => void update({ name })} />}
-      <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs">{LIST_KIND[list.kind]}</span>
+      {inbox || !editable ? (
+        <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs">{LIST_KIND[list.kind]}</span>
+      ) : (
+        <Select value={list.kind} onChange={(e) => changeKind(e.target.value as NewListKind)} aria-label={`Rodzaj: ${list.name}`} className="py-0.5 text-xs">
+          <option value="list">{LIST_KIND.list}</option>
+          <option value="project">{LIST_KIND.project}</option>
+        </Select>
+      )}
+      {list.kind === "project" ? <ProjectStatusSelect name={list.name} value={list.project_status} onChange={editable ? (status) => void update({ project_status: status }) : undefined} /> : null}
       {owner && guestAccess !== "edit" ? (
         <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs" title={GUEST_ACCESS_HINT[guestAccess]} data-testid="list-guest-access">
           dla gości: {GUEST_ACCESS[guestAccess].toLowerCase()}
@@ -299,6 +335,11 @@ function ListItem({
           <Button kind="ghost" onClick={() => void update({ archived_at: archived ? null : new Date().toISOString() })}>
             {archived ? "Przywróć" : "Archiwizuj"}
           </Button>
+          {Number(list.total) === 0 ? (
+            <Button kind="ghost" onClick={remove} title="Usuń pustą listę" className="text-[var(--danger)]">
+              Usuń
+            </Button>
+          ) : null}
         </>
       ) : null}
     </li>
@@ -391,9 +432,10 @@ function AddForm({ placeholder, button, onAdd }: { placeholder: string; button: 
   );
 }
 
-function AddListForm({ store, onAdd }: { store: TabStore; onAdd: (name: string, kind: ListKind, template: TemplateChoice | null) => void }) {
+function AddListForm({ store, onAdd }: { store: TabStore; onAdd: (name: string, kind: NewListKind, color: string | null, template: TemplateChoice | null) => void }) {
   const [name, setName] = useState("");
-  const [kind, setKind] = useState<ListKind>("list");
+  const [kind, setKind] = useState<NewListKind>("list");
+  const [color, setColor] = useState<string | null>(null);
   const templates = useProjectTemplates(store);
   const [template, setTemplate] = useState<TemplateChoice | null>(null);
   // Szablon usunięty w międzyczasie (inne urządzenie) — pusty projekt.
@@ -401,14 +443,16 @@ function AddListForm({ store, onAdd }: { store: TabStore; onAdd: (name: string, 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!name.trim()) return;
-    onAdd(name.trim(), kind, kind === "project" ? chosen : null);
+    onAdd(name.trim(), kind, color, kind === "project" ? chosen : null);
     setName("");
+    setColor(null);
     setTemplate(null);
   };
   return (
-    <form onSubmit={submit} className="mt-3 flex flex-wrap gap-2">
+    <form onSubmit={submit} className="mt-3 flex flex-wrap items-center gap-2">
+      <ColorPicker value={color} onChange={setColor} label="Kolor nowej listy" />
       <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nowa lista albo projekt" maxLength={200} aria-label="Nazwa nowej listy" className="min-w-48 flex-1" />
-      <Select value={kind} onChange={(e) => setKind(e.target.value as ListKind)} aria-label="Rodzaj" className="w-32">
+      <Select value={kind} onChange={(e) => setKind(e.target.value as NewListKind)} aria-label="Rodzaj" className="w-32">
         <option value="list">{LIST_KIND.list}</option>
         <option value="project">{LIST_KIND.project}</option>
       </Select>

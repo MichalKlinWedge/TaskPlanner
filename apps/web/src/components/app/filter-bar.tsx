@@ -10,7 +10,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useAppEnv } from "./app-env";
 
-type Field = "tags" | "priorities" | "lists" | "statuses" | "assignees" | "due" | "hasTime";
+export type Field = "tags" | "priorities" | "lists" | "statuses" | "assignees" | "due" | "hasTime";
 
 const FIELD_LABEL: Record<Field, string> = {
   tags: "Tagi",
@@ -31,12 +31,17 @@ export function Popover({ onClose, children }: { onClose: () => void; children: 
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // Esc zamyka samo okienko (nie paletę, przegląd ani panel pod nim) — stąd faza przechwytywania.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      onClose();
+    };
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
   }, [onClose]);
   return (

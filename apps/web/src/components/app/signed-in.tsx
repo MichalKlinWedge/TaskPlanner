@@ -222,7 +222,8 @@ function AppHeader({ store, email, settingsLink }: { store: TabStore; email: str
     }
     if (left > 0 && !window.confirm(`${left} zmian nie zostało jeszcze wysłanych na serwer. Wylogować mimo to? Zostaną w tej przeglądarce do następnego logowania.`)) return;
     closeStore();
-    await supabaseBrowser().auth.signOut();
+    // Tylko ta przeglądarka: domyślny zakres (`global`) kończyłby też sesję na telefonie.
+    await supabaseBrowser().auth.signOut({ scope: "local" });
   };
 
   const label = !online
