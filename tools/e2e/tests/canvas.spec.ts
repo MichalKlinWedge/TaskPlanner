@@ -112,6 +112,22 @@ test('karteczki: przesuwanie bez nachodzenia, pasek, dodawanie, kolor z tagu, pe
     await expect(page.getByRole('button', { name: 'Zamknij panel (Esc)' })).toBeHidden();
   });
 
+  await test.step('„? Pomoc”: opis sterowania w całości na ekranie, zamyka go Esc i klik w tablicę', async () => {
+    const help = page.getByTestId('canvas-help');
+    await page.getByTestId('canvas-help-button').click();
+    await expect(help).toContainText('zaznaczanie ramką');
+    const rect = (await help.boundingBox())!;
+    const size = page.viewportSize()!;
+    expect(rect.x).toBeGreaterThanOrEqual(0);
+    expect(rect.x + rect.width).toBeLessThanOrEqual(size.width);
+    expect(rect.y + rect.height).toBeLessThanOrEqual(size.height);
+    await page.keyboard.press('Escape');
+    await expect(help).toBeHidden();
+    await page.getByTestId('canvas-help-button').click();
+    await board.click({ position: { x: 10, y: 10 } });
+    await expect(help).toBeHidden();
+  });
+
   await test.step('pełny ekran i wyjście klawiszem Esc', async () => {
     await page.getByTestId('canvas-full').click();
     await expect(view).toHaveAttribute('data-full', 'true');
