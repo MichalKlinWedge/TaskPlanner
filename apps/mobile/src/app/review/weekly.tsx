@@ -8,6 +8,8 @@
  */
 import {
   addDays,
+  AI_NEEDS_NETWORK,
+  aiAccountReady,
   bulkTaskOps,
   capitalized,
   dayLabel,
@@ -25,8 +27,9 @@ import {
   type ViewTask,
   type WeekSummary,
 } from '@taskplanner/core';
+import { useNetworkState } from 'expo-network';
 import { router, Stack } from 'expo-router';
-import { useMemo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -38,6 +41,7 @@ import { QuickAddField } from '@/components/quick-add-field';
 import { DecisionButtons, useDecide, useReviewSession, type LogEntry, type ReviewKindKey } from '@/components/review';
 import { Button, Chip, ColorDot, usePalette } from '@/components/ui';
 import { WeekSummaryStep } from '@/components/week-summary';
+import { useAiAccount } from '@/lib/ai';
 import { listLabel, useView } from '@/lib/app-data';
 
 const STEPS = [
@@ -65,6 +69,10 @@ export default function WeeklyReviewScreen() {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [finished, setFinished] = useState(false);
   const [summary, setSummary] = useState<WeekSummary | null>(null);
+  const [askWeek, setAskWeek] = useState(false);
+  const onAskStarted = useCallback(() => setAskWeek(false), []);
+  const account = useAiAccount();
+  const online = useNetworkState().isConnected !== false;
   const [filter, setFilter] = useState<FilterQuery>({});
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
 
@@ -252,7 +260,7 @@ export default function WeeklyReviewScreen() {
       </>
     );
   } else if (step === 'summary') {
-    body = <WeekSummaryStep data={data} ctx={ctx} review={full} summary={summary} onSummary={setSummary} onAct={act} />;
+    body = <WeekSummaryStep data={data} ctx={ctx} review={full} summary={summary} onSummary={setSummary} onAct={act} start={askWeek} onStarted={onAskStarted} />;
   } else {
     body = review.habits.length
       ? review.habits.map(({ task, days }) => (
@@ -286,6 +294,19 @@ export default function WeeklyReviewScreen() {
         <Text style={[styles.h2, { color: p.fg }]}>
           {at + 1}. {STEPS[at]!.title}
         </Text>
+        {aiAccountReady(account) && step !== 'summary' ? (
+          <View style={styles.next}>
+            <Chip
+              label={summary ? WEEK_SUMMARY.again : WEEK_SUMMARY.ai}
+              disabled={!online}
+              onPress={() => {
+                setAskWeek(true);
+                go('summary');
+              }}
+            />
+            {online ? null : <Text style={{ color: p.muted, fontSize: 12 }}>{AI_NEEDS_NETWORK}</Text>}
+          </View>
+        ) : null}
         {FILTERED.includes(step) ? <FilterBar query={filter} onChange={setFilter} /> : null}
         {body}
         {review.needsDecision.length && (step === 'overdue' || step === 'inbox') ? (

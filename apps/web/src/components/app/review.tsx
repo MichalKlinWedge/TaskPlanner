@@ -9,6 +9,9 @@
  */
 import {
   addDays,
+  AI_NEEDS_NETWORK,
+  aiAccountReady,
+  aiWeekSummaryNote,
   localDateTimeAt,
   bulkTaskOps,
   dailyReviewQueue,
@@ -41,10 +44,12 @@ import {
   type WeekSummary,
 } from "@taskplanner/core";
 import { STALE_LEADER_MESSAGE } from "@taskplanner/sync";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { useAiAccount } from "@/lib/ai";
 import { useLocalQuery } from "@/lib/local-store";
 import type { Route } from "@/lib/route";
+import { useOnline } from "@/lib/use-online";
 
 import { useAppEnv } from "./app-env";
 import { DayPlan } from "./day-plan";
@@ -391,6 +396,10 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
   const [picking, setPicking] = useState<string | null>(null);
   const [finished, setFinished] = useState(false);
   const [summary, setSummary] = useState<WeekSummary | null>(null);
+  const [askWeek, setAskWeek] = useState(false);
+  const onAskStarted = useCallback(() => setAskWeek(false), []);
+  const account = useAiAccount(store);
+  const online = useOnline();
 
   const from = addDays(ctx.today, -6);
   const completionRows = useLocalQuery<Record<string, string | number | null>>(
@@ -542,6 +551,19 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
           </button>
         ))}
       </nav>
+      {aiAccountReady(account) && step !== "summary" ? (
+        <Button
+          className="self-start py-1 text-xs"
+          disabled={!online}
+          title={online ? aiWeekSummaryNote(account.provider) : AI_NEEDS_NETWORK}
+          onClick={() => {
+            setAskWeek(true);
+            setStep("summary");
+          }}
+        >
+          {summary ? WEEK_SUMMARY.again : WEEK_SUMMARY.ai}
+        </Button>
+      ) : null}
 
       <section aria-label={STEPS[at]!.title} className="flex flex-col gap-3" data-testid={`review-step-${step}`}>
         <h2 className="text-base font-semibold">
@@ -642,7 +664,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
             </a>
           </>
         ) : step === "summary" ? (
-          <WeekSummaryStep ctx={ctx} review={review} summary={summary} onSummary={setSummary} onAct={act} />
+          <WeekSummaryStep ctx={ctx} review={review} summary={summary} onSummary={setSummary} onAct={act} start={askWeek} onStarted={onAskStarted} />
         ) : review.habits.length ? (
           <table className="text-sm">
             <tbody>
