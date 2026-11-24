@@ -79,7 +79,8 @@ export const BACKUP_DEFAULTS: Partial<Record<BackupTable, Record<string, unknown
   workspaces: { sort_key: 'n' },
 };
 
-const pick = (table: BackupTable, row: Record<string, unknown>, defaults: Record<string, unknown> = {}): BackupRow =>
+/** Wiersz kopii: tylko pola kopii, puste → `defaults` albo `null`. */
+export const pickBackupRow = (table: BackupTable, row: Record<string, unknown>, defaults: Record<string, unknown> = {}): BackupRow =>
   Object.fromEntries(backupFields(table).map((field) => [field, row[field] ?? defaults[field] ?? null])) as BackupRow;
 
 /** Kopia z wierszy lokalnej bazy (`jsonb` już odczytane); wiersze po `id`, tylko pola kopii, puste kolumny `not null` → domyślne bazy. */
@@ -87,7 +88,7 @@ export function createBackup({ userId, exportedAt, tables }: { userId: string; e
   const out = {} as Record<BackupTable, BackupRow[]>;
   for (const table of BACKUP_TABLES) {
     out[table] = (tables[table] ?? [])
-      .map((row) => pick(table, row, BACKUP_DEFAULTS[table]))
+      .map((row) => pickBackupRow(table, row, BACKUP_DEFAULTS[table]))
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
   return { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt, userId, tables: out };
@@ -98,6 +99,23 @@ const issueText = (error: z.ZodError) =>
     .slice(0, 3)
     .map((issue) => (issue.path.length ? `${issue.path.join('.')}: ${issue.message}` : issue.message))
     .join('; ');
+
+/** Wiersze tabeli zgodne ze schematem (wartości z pliku bez zmian); złe i z powtórzonym id — do `invalid`. */
+export function checkBackupRows(table: BackupTable, rows: readonly Record<string, unknown>[], invalid: InvalidRow[]): BackupRow[] {
+  const seen = new Set<string>();
+  const out: BackupRow[] = [];
+  for (const raw of rows) {
+    const id = typeof raw.id === 'string' ? raw.id : null;
+    const checked = rowSchemas[table].safeParse(raw);
+    if (!checked.success) invalid.push({ table, id, message: issueText(checked.error) });
+    else if (seen.has(id!)) invalid.push({ table, id, message: 'Powtórzony identyfikator.' });
+    else {
+      seen.add(id!);
+      out.push(pickBackupRow(table, raw));
+    }
+  }
+  return out;
+}
 
 /**
  * Odczyt pliku kopii. Zła koperta (nie ta aplikacja, nowsza wersja) — `BackupError`; wiersze
@@ -117,20 +135,7 @@ export function readBackup(input: unknown): { backup: Backup; invalid: InvalidRo
   }
   const invalid: InvalidRow[] = [];
   const tables = {} as Record<BackupTable, BackupRow[]>;
-  for (const table of BACKUP_TABLES) {
-    const seen = new Set<string>();
-    tables[table] = [];
-    for (const raw of envelope.data.tables[table] ?? []) {
-      const id = typeof raw.id === 'string' ? raw.id : null;
-      const checked = rowSchemas[table].safeParse(raw);
-      if (!checked.success) invalid.push({ table, id, message: issueText(checked.error) });
-      else if (seen.has(id!)) invalid.push({ table, id, message: 'Powtórzony identyfikator.' });
-      else {
-        seen.add(id!);
-        tables[table].push(pick(table, raw));
-      }
-    }
-  }
+  for (const table of BACKUP_TABLES) tables[table] = checkBackupRows(table, envelope.data.tables[table] ?? [], invalid);
   const { exportedAt, userId } = envelope.data;
   return { backup: { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt, userId, tables }, invalid };
 }
@@ -233,7 +238,7 @@ export interface BackupPlan {
 }
 
 /** Zadania tak, żeby rodzic był przed podzadaniem (serwer wylicza listę podzadania z rodzica). */
-function parentsFirst(rows: readonly BackupRow[]): BackupRow[] {
+export function parentsFirst(rows: readonly BackupRow[]): BackupRow[] {
   const byId = new Map(rows.map((row) => [row.id, row]));
   const depth = new Map<string, number>();
   const depthOf = (row: BackupRow): number => {

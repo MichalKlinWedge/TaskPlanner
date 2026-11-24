@@ -46,4 +46,5 @@ export * from './timeline.ts';
 export * from './views.ts';
 export * from './week-summary.ts';
 export * from './widgets.ts';
+export * from './workspace-file.ts';
 export * from './xlsx.ts';
