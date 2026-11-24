@@ -33,7 +33,7 @@ import {
 import type { SqlRow } from '@taskplanner/sync';
 import { useNetworkState } from 'expo-network';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { askWeekSummary, useAiAccount } from '@/lib/ai';
@@ -50,6 +50,9 @@ interface Props {
   summary: WeekSummary | null;
   onSummary: (summary: WeekSummary | null) => void;
   onAct: (task: ViewTask, action: ReviewAction) => void;
+  /** Przycisk „✨ Opisz tydzień” z innego kroku: zapytanie rusza po wczytaniu danych (`onStarted` gasi prośbę). */
+  start: boolean;
+  onStarted: () => void;
 }
 
 function Rows({ title, facts }: { title: string; facts: readonly WeekFact[] }) {
@@ -70,7 +73,7 @@ function Rows({ title, facts }: { title: string; facts: readonly WeekFact[] }) {
   );
 }
 
-export function WeekSummaryStep({ data, ctx, review, summary, onSummary, onAct }: Props) {
+export function WeekSummaryStep({ data, ctx, review, summary, onSummary, onAct, start, onStarted }: Props) {
   const p = usePalette();
   const { entries } = useFocusData();
   const account = useAiAccount();
@@ -140,6 +143,17 @@ export function WeekSummaryStep({ data, ctx, review, summary, onSummary, onAct }
     }
   };
 
+  const loaded = series !== undefined && aiAccountReady(account);
+  const latest = useRef(ask);
+  useEffect(() => {
+    latest.current = ask;
+  });
+  useEffect(() => {
+    if (!start || !loaded) return;
+    onStarted();
+    void latest.current();
+  }, [start, loaded, onStarted]);
+
   const suggestions = (summary?.suggestions ?? []).flatMap((s) => {
     const task = byId.get(s.taskId);
     return task && weekSuggestionActive(task, s, ctx) ? [{ ...s, task }] : [];
@@ -150,18 +164,6 @@ export function WeekSummaryStep({ data, ctx, review, summary, onSummary, onAct }
       <P muted>
         {dayMonth(facts.from)} – {dayMonth(facts.to)}
       </P>
-      <View style={styles.tiles}>
-        {texts.main.map((f) => (
-          <View key={f.key} style={[styles.tile, f.key === 'pelnyDzien' && styles.wide, { borderColor: p.border, backgroundColor: p.card }]}>
-            <Text style={{ color: p.muted, fontSize: 12 }}>{f.label}</Text>
-            <Text style={{ color: p.fg, fontSize: 18, fontWeight: '600' }}>{f.value}</Text>
-          </View>
-        ))}
-      </View>
-      {note ? <P muted>Następne 7 dni: {note}.</P> : null}
-      <Rows title={WEEK_SUMMARY.lists} facts={texts.lists} />
-      <Rows title={WEEK_SUMMARY.habits} facts={texts.habits} />
-
       {aiAccountReady(account) ? (
         <View style={[styles.box, { borderColor: p.border }]}>
           <TextInput
@@ -205,6 +207,18 @@ export function WeekSummaryStep({ data, ctx, review, summary, onSummary, onAct }
           ))}
         </View>
       ) : null}
+
+      <View style={styles.tiles}>
+        {texts.main.map((f) => (
+          <View key={f.key} style={[styles.tile, f.key === 'pelnyDzien' && styles.wide, { borderColor: p.border, backgroundColor: p.card }]}>
+            <Text style={{ color: p.muted, fontSize: 12 }}>{f.label}</Text>
+            <Text style={{ color: p.fg, fontSize: 18, fontWeight: '600' }}>{f.value}</Text>
+          </View>
+        ))}
+      </View>
+      {note ? <P muted>Następne 7 dni: {note}.</P> : null}
+      <Rows title={WEEK_SUMMARY.lists} facts={texts.lists} />
+      <Rows title={WEEK_SUMMARY.habits} facts={texts.habits} />
 
       {previous ? (
         <View style={styles.group}>

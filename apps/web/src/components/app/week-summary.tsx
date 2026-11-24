@@ -32,7 +32,7 @@ import {
   type WeeklyReview,
   type WeekSummary,
 } from "@taskplanner/core";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { askWeekSummary, useAiAccount } from "@/lib/ai";
 import { listEditable } from "@/lib/app-data";
@@ -49,6 +49,9 @@ interface Props {
   summary: WeekSummary | null;
   onSummary: (summary: WeekSummary | null) => void;
   onAct: (task: ViewTask, action: ReviewAction) => void;
+  /** Przycisk „✨ Opisz tydzień” z innego kroku: zapytanie rusza po wczytaniu danych (`onStarted` gasi prośbę). */
+  start: boolean;
+  onStarted: () => void;
 }
 
 function Rows({ title, facts }: { title: string; facts: readonly WeekFact[] }) {
@@ -68,7 +71,7 @@ function Rows({ title, facts }: { title: string; facts: readonly WeekFact[] }) {
   );
 }
 
-export function WeekSummaryStep({ ctx, review, summary, onSummary, onAct }: Props) {
+export function WeekSummaryStep({ ctx, review, summary, onSummary, onAct, start, onStarted }: Props) {
   const { data, store, settings, openTask } = useAppEnv();
   const focus = useFocus();
   const account = useAiAccount(store);
@@ -77,13 +80,13 @@ export function WeekSummaryStep({ ctx, review, summary, onSummary, onAct }: Prop
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const seriesRows = useLocalQuery<Record<string, string | null>>(
+  const series = useLocalQuery<Record<string, string | null>>(
     store,
     `select c.task_id, c.completed_at from task_completions c join tasks t on t.id = c.task_id
        where c.deleted_at is null and c.kind = 'done' and t.kind = 'task' and t.deleted_at is null and c.completed_at >= ?`,
     [addDays(weekFactsFrom(ctx.today), -2)],
     ["task_completions", "tasks"],
-  ).rows;
+  );
   const sessions = useLocalQuery<Record<string, string | null>>(
     store,
     "select finished_at, stats from review_sessions where deleted_at is null and kind = 'weekly' and finished_at is not null and stats is not null order by finished_at desc limit 20",
@@ -97,7 +100,7 @@ export function WeekSummaryStep({ ctx, review, summary, onSummary, onAct }: Prop
       weekFacts(
         {
           tasks: data.tasks,
-          seriesDone: seriesRows.map((r) => ({ taskId: String(r.task_id), completedAt: String(r.completed_at) })),
+          seriesDone: series.rows.map((r) => ({ taskId: String(r.task_id), completedAt: String(r.completed_at) })),
           habitCompletions: data.habitCompletions,
           timeEntries: focus.entries,
           workHours: settings.workHours,
@@ -105,7 +108,7 @@ export function WeekSummaryStep({ ctx, review, summary, onSummary, onAct }: Prop
         },
         ctx,
       ),
-    [data.tasks, data.habitCompletions, seriesRows, focus.entries, settings.workHours, minute, ctx],
+    [data.tasks, data.habitCompletions, series.rows, focus.entries, settings.workHours, minute, ctx],
   );
   const listName = (id: string) => {
     const list = data.lists.find((l) => l.id === id);
@@ -139,6 +142,17 @@ export function WeekSummaryStep({ ctx, review, summary, onSummary, onAct }: Prop
     }
   };
 
+  const loaded = series.ms !== null && ready;
+  const latest = useRef(ask);
+  useEffect(() => {
+    latest.current = ask;
+  });
+  useEffect(() => {
+    if (!start || !loaded) return;
+    onStarted();
+    void latest.current();
+  }, [start, loaded, onStarted]);
+
   const suggestions = (summary?.suggestions ?? []).flatMap((s) => {
     const task = byId.get(s.taskId);
     return task && weekSuggestionActive(task, s, ctx) ? [{ ...s, task }] : [];
@@ -149,20 +163,6 @@ export function WeekSummaryStep({ ctx, review, summary, onSummary, onAct }: Prop
       <p className="text-xs text-[var(--muted)]">
         {dayMonth(facts.from)} – {dayMonth(facts.to)}
       </p>
-      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="week-facts">
-        {texts.main.map((f) => (
-          <div key={f.key} className={`rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 ${f.key === "pelnyDzien" ? "col-span-2" : ""}`} data-fact={f.key}>
-            <dt className="text-xs text-[var(--muted)]">{f.label}</dt>
-            <dd className="text-lg font-semibold tabular-nums">{f.value}</dd>
-          </div>
-        ))}
-      </dl>
-      {note ? <p className="text-xs text-[var(--muted)]">Następne 7 dni: {note}.</p> : null}
-      <div className="flex flex-wrap gap-3">
-        <Rows title={WEEK_SUMMARY.lists} facts={texts.lists} />
-        <Rows title={WEEK_SUMMARY.habits} facts={texts.habits} />
-      </div>
-
       {ready ? (
         <div className="flex flex-col gap-2 rounded-md border border-[var(--line)] p-3" data-testid="week-ai">
           <div className="flex flex-wrap gap-2">
@@ -214,6 +214,20 @@ export function WeekSummaryStep({ ctx, review, summary, onSummary, onAct }: Prop
           ) : null}
         </div>
       ) : null}
+
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="week-facts">
+        {texts.main.map((f) => (
+          <div key={f.key} className={`rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 ${f.key === "pelnyDzien" ? "col-span-2" : ""}`} data-fact={f.key}>
+            <dt className="text-xs text-[var(--muted)]">{f.label}</dt>
+            <dd className="text-lg font-semibold tabular-nums">{f.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {note ? <p className="text-xs text-[var(--muted)]">Następne 7 dni: {note}.</p> : null}
+      <div className="flex flex-wrap gap-3">
+        <Rows title={WEEK_SUMMARY.lists} facts={texts.lists} />
+        <Rows title={WEEK_SUMMARY.habits} facts={texts.habits} />
+      </div>
 
       {previous ? (
         <details className="text-sm">
