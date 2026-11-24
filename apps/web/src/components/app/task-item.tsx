@@ -10,6 +10,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 
 import { listEditable } from "@/lib/app-data";
 import { clampWidth, type ColumnWidths, type WidthColumn } from "@/lib/list-widths";
+import { onRejectedOps } from "@/lib/local-store";
 
 import { useAppEnv } from "./app-env";
 import { TAG_CHIP, tagChipStyle } from "./tag-chip";
@@ -42,7 +43,7 @@ export const useTaskActions = (): TaskActions => {
 const apply = (store: TabStore, ops: readonly TaskOp[]) => store.mutateMany(ops);
 
 /** Akcje zadań i dymek „Cofnij” na dole ekranu. `tasks` — do pytania o otwarte podzadania. */
-export function TaskActionsProvider({ store, timeZone, tasks, children }: { store: TabStore; timeZone?: string; tasks: readonly ViewTask[]; children: ReactNode }) {
+export function TaskActionsProvider({ store, userId, timeZone, tasks, children }: { store: TabStore; userId: string; timeZone?: string; tasks: readonly ViewTask[]; children: ReactNode }) {
   const [toast, setToast] = useState<Toast | null>(null);
   const next = useRef(0);
 
@@ -53,6 +54,12 @@ export function TaskActionsProvider({ store, timeZone, tasks, children }: { stor
   }, [toast]);
 
   const show = useCallback((text: string, undo?: TaskOp[]) => setToast({ id: ++next.current, text, undo }), []);
+
+  // Zmiana odrzucona przez serwer jest już cofnięta lokalnie — bez dymku znikałaby bez słowa.
+  useEffect(
+    () => onRejectedOps(userId, (messages) => show(`Serwer odrzucił zmianę — cofnięto ją: ${messages.join("; ")}`)),
+    [userId, show],
+  );
 
   const toggle = useCallback(
     async (task: ViewTask, { habitDone }: { habitDone?: boolean } = {}) => {

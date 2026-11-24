@@ -210,6 +210,40 @@ test('karteczki: strzałka „blokuje” = zależność na serwerze, cykl odrzuc
   await expect(card(ids.first)).toBeVisible();
   await view.getByRole('button', { name: 'Dopasuj' }).click();
 
+  await test.step('bez wyboru w menu strzałka nie powstaje i widać dlaczego; szkic zostaje do wyboru', async () => {
+    await drawArrow(ids.first, ids.second);
+    await expect(menu).toContainText('Wybierz rodzaj strzałki');
+    await expect(board.locator('[data-canvas-arrows="top"][data-draft] [data-kind]')).toHaveCount(1);
+    const box = (await board.boundingBox())!;
+    await page.mouse.click(box.x + box.width - 20, box.y + 20);
+    await expect(menu).toBeHidden();
+    await expect(page.getByRole('status').filter({ hasText: 'Strzałki nie dodano' })).toBeVisible();
+    await expect(arrow(ids.first, ids.second, 'blocks')).toHaveCount(0);
+    // Esc to świadoma rezygnacja — bez dymku.
+    await page.getByRole('status').filter({ hasText: 'Strzałki nie dodano' }).getByRole('button', { name: 'Zamknij' }).click();
+    await drawArrow(ids.first, ids.second);
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(page.getByRole('status').filter({ hasText: 'Strzałki nie dodano' })).toHaveCount(0);
+  });
+
+  await test.step('zależność odrzucona przez serwer znika z komunikatem', async () => {
+    await page.route('**/rest/v1/rpc/push_changes', async (route) => {
+      const ops = (route.request().postDataJSON() as { p_ops: { op: string; table: string; id: string }[] }).p_ops;
+      const bad = ops.filter((o) => o.table === 'task_dependencies');
+      const response = await route.fetch({ postData: JSON.stringify({ p_ops: ops.filter((o) => !bad.includes(o)) }) });
+      const result = (await response.json()) as { rejected: unknown[]; rows: unknown[] };
+      result.rejected.push(...bad.map((o) => ({ op: o.op, code: 'TP003', message: 'Lista tylko do podglądu' })));
+      result.rows.push(...bad.map((o) => ({ table: o.table, id: o.id, row: null })));
+      await route.fulfill({ response, json: result });
+    });
+    await drawArrow(ids.first, ids.second);
+    await menu.getByRole('menuitem', { name: /blokuje/ }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Serwer odrzucił zmianę — cofnięto ją: Lista tylko do podglądu (TP003)' })).toBeVisible();
+    await expect(arrow(ids.first, ids.second, 'blocks')).toHaveCount(0);
+    await page.unroute('**/rest/v1/rpc/push_changes');
+  });
+
   await test.step('„blokuje” tworzy wiersz task_dependencies na serwerze', async () => {
     await drawArrow(ids.first, ids.second);
     await menu.getByRole('menuitem', { name: /blokuje/ }).click();

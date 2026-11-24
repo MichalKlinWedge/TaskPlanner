@@ -22,6 +22,30 @@ export interface StoreStatus {
   lastSyncAt: number | null;
 }
 
+// Odrzucone przez serwer zmiany (cofnięte w lokalnej bazie) — silnik działa w karcie lidera, więc treść idzie
+// też do pozostałych kart: zmianę mogła zrobić każda z nich.
+const rejectedListeners = new Set<(messages: string[]) => void>();
+const REJECTED_CHANNEL = "tp-rejected";
+
+/** Komunikaty o zmianach odrzuconych przez serwer (także zgłoszone przez inną kartę tego konta). */
+export function onRejectedOps(userId: string, listener: (messages: string[]) => void): () => void {
+  rejectedListeners.add(listener);
+  const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(`${REJECTED_CHANNEL}-${userId}`);
+  if (channel) channel.onmessage = (e: MessageEvent<string[]>) => listener(e.data);
+  return () => {
+    rejectedListeners.delete(listener);
+    channel?.close();
+  };
+}
+
+function announceRejected(userId: string, messages: string[]) {
+  for (const listener of rejectedListeners) listener(messages);
+  if (typeof BroadcastChannel === "undefined") return;
+  const channel = new BroadcastChannel(`${REJECTED_CHANNEL}-${userId}`);
+  channel.postMessage(messages);
+  channel.close();
+}
+
 const EMPTY_STATUS: StoreStatus = { storage: "—", error: null, syncing: false, pullPage: null, lastSyncAt: null };
 
 let current: { userId: string; store: TabStore; status: StoreStatus; listeners: Set<() => void> } | null = null;
@@ -56,6 +80,7 @@ export function storeFor(userId: string): TabStore {
           update({ error: `Odrzucone: ${ops.map((o) => o.code).join(", ")}` });
           // Odrzucenie przez serwer to błąd reguł po stronie klienta — każdy kod osobno (bez danych zadań).
           for (const op of ops) reportError("rejected", { code: op.code, message: op.message });
+          announceRejected(userId, [...new Set(ops.map((op) => `${op.message} (${op.code})`))]);
         },
         onPullProgress: ({ page, done }) => update({ pullPage: done ? null : page }),
         onSyncState: (state) =>
