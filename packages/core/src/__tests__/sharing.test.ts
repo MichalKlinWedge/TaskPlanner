@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
-import { canEditList, canEditScope, inviteLink, inviteTokenFrom, listAccess, listShareBadge, shareEmail } from '../sharing.ts';
+import {
+  canEditList,
+  canEditScope,
+  canManageMember,
+  inviteLink,
+  inviteTokenFrom,
+  listAccess,
+  listShareBadge,
+  memberRoleLabel,
+  ownerOfferQuestion,
+  ownershipAcceptQuestion,
+  ownershipHeirs,
+  ownershipOfferText,
+  shareEmail,
+  type SpaceMember,
+} from '../sharing.ts';
 
 describe('współdzielenie przestrzeni', () => {
   it('adres zapraszanej osoby: normalizacja, bez domen', () => {
@@ -46,5 +61,43 @@ describe('współdzielenie przestrzeni', () => {
     expect(listShareBadge('editor', 'view', 2)?.label).toBe('Udostępniona Ci do podglądu');
     expect(listShareBadge('viewer', 'edit', 2)?.icon).toBe('👁');
     expect(listShareBadge('editor', 'hidden', 2)).toBeNull();
+  });
+});
+
+describe('właściciele przestrzeni', () => {
+  const member = (userId: string, role: SpaceMember['role'], extra: Partial<SpaceMember> = {}): SpaceMember => ({ userId, email: `${userId}@x.pl`, role, me: false, primary: false, ...extra });
+  const main = member('a', 'owner', { primary: true });
+  const second = member('b', 'owner');
+  const editor = member('c', 'editor');
+
+  it('rola głównego właściciela nazwana tylko przy kilku właścicielach', () => {
+    expect(memberRoleLabel(main, [main, editor])).toBe('Właściciel');
+    expect(memberRoleLabel(main, [main, second])).toBe('Główny właściciel');
+    expect(memberRoleLabel(second, [main, second])).toBe('Właściciel');
+  });
+
+  it('członkami zarządza właściciel, innym właścicielem — tylko główny', () => {
+    expect(canManageMember(main, editor)).toBe(true);
+    expect(canManageMember(main, second)).toBe(true);
+    expect(canManageMember(second, editor)).toBe(true);
+    expect(canManageMember(second, main)).toBe(false);
+    expect(canManageMember(main, main)).toBe(false);
+    expect(canManageMember(editor, member('d', 'viewer'))).toBe(false);
+    expect(canManageMember(undefined, editor)).toBe(false);
+  });
+
+  it('następcą może być każdy poza mną', () => {
+    expect(ownershipHeirs([{ ...main, me: true }, second, editor]).map((m) => m.userId)).toEqual(['b', 'c']);
+  });
+
+  it('pytania mówią, co się stanie z obiema stronami', () => {
+    expect(ownerOfferQuestion('b@x.pl', 'Firma', null)).toContain('te same uprawnienia');
+    expect(ownerOfferQuestion('b@x.pl', 'Firma', 'leave')).toContain('opuścisz przestrzeń');
+    expect(ownerOfferQuestion('b@x.pl', 'Firma', 'editor')).toContain('zostaniesz z rolą Edytor');
+    const offer = { workspace: 'Firma', offeredBy: 'a@x.pl', after: 'editor', primary: true } as const;
+    expect(ownershipOfferText(offer)).toBe('a@x.pl chce przekazać Ci przestrzeń „Firma” — zrzeka się roli właściciela na Twoją rzecz.');
+    expect(ownershipAcceptQuestion(offer)).toContain('głównym właścicielem');
+    expect(ownershipAcceptQuestion(offer)).toContain('a@x.pl straci rolę właściciela');
+    expect(ownershipAcceptQuestion({ ...offer, after: null, primary: false })).not.toContain('straci');
   });
 });

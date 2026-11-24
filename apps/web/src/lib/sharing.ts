@@ -4,18 +4,11 @@
  * z Google / linku e-mail nie zachowuje parametrów), `AppRoot` czyści adres; przyjmuje go `ScopeInvites`
  * po zalogowaniu. Wszystko wymaga sieci — dane przestrzeni przychodzą potem zwykłą synchronizacją.
  */
-import { inviteTokenFrom, INVITE_PARAM, type ScopeRole, type ShareRole } from "@taskplanner/core";
+import { inviteTokenFrom, INVITE_PARAM, type OwnerAfter, type OwnershipOffer, type ScopeRole, type ShareRole, type SpaceMember } from "@taskplanner/core";
 
 import { supabaseBrowser } from "./supabase-browser";
 
 const TOKEN_KEY = "tp-invite-token";
-
-export interface ScopeMember {
-  userId: string;
-  email: string;
-  role: ScopeRole;
-  me: boolean;
-}
 
 export interface PendingInvite {
   id: string;
@@ -27,10 +20,24 @@ export interface PendingInvite {
   expired: boolean;
 }
 
+/** Propozycja roli właściciela czekająca na odpowiedź (`mine` — wysłana przez zalogowanego). */
+export interface PendingOwnerOffer {
+  id: string;
+  userId: string;
+  email: string;
+  offeredBy: string;
+  mine: boolean;
+  after: OwnerAfter | null;
+  createdAt: string;
+  expiresAt: string;
+  expired: boolean;
+}
+
 export interface WorkspaceSharing {
   role: ScopeRole;
-  members: ScopeMember[];
+  members: SpaceMember[];
   invites: PendingInvite[];
+  offers: PendingOwnerOffer[];
 }
 
 export interface MyInvite {
@@ -102,3 +109,10 @@ export const removeMember = (scope: string, user: string) => call<void>("remove_
 export const myInvites = () => call<MyInvite[]>("my_scope_invites");
 export const acceptInvite = (by: { id: string } | { token: string }) => call<string>("accept_scope_invite", "id" in by ? { p_id: by.id } : { p_token: by.token });
 export const declineInvite = (id: string) => call<boolean>("decline_scope_invite", { p_id: id });
+/** Propozycja roli właściciela (`after` `null`) albo przekazania przestrzeni — działa dopiero po zgodzie adresata. */
+export const offerOwnership = (scope: string, user: string, after: OwnerAfter | null) => call<string>("offer_workspace_ownership", { p_scope: scope, p_user: user, p_after: after });
+export const cancelOwnershipOffer = (id: string) => call<boolean>("cancel_workspace_ownership_offer", { p_id: id });
+export const myOwnershipOffers = () => call<OwnershipOffer[]>("my_ownership_offers");
+export const answerOwnershipOffer = (id: string, accept: boolean) => call<string>("answer_workspace_ownership_offer", { p_id: id, p_accept: accept });
+/** Współwłaściciel (nie główny) rezygnuje z roli bez następcy. */
+export const resignOwner = (scope: string, after: OwnerAfter) => call<void>("resign_workspace_owner", { p_scope: scope, p_after: after });
