@@ -242,18 +242,21 @@ export function TaskColumnsHeader({ columns, widths = {}, onResize }: { columns:
 
 export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, columnTags, widths = {} }: TaskItemProps) {
   const { toggle } = useTaskActions();
-  const { openTask, selectedIds, select, data } = useAppEnv();
-  const selected = selectedIds.has(task.id);
+  const { openTask, selectedIds, select, data, trashed } = useAppEnv();
+  const inTrash = trashed?.has(task.id) ?? false;
+  const selected = !inTrash && selectedIds.has(task.id);
   const attachments = data.attachments.get(task.id)?.length ?? 0;
   const assignee = assigneeOf(task.assigneeId, data.collaborators);
   const closed = task.kind === "habit" ? Boolean(habitDone) : !isOpen(task);
-  // Przestrzeń albo lista udostępniona do podglądu: zadanie da się otworzyć, ale nie odhaczyć.
-  const readOnly = !listEditable(data, task.listId);
+  // Przestrzeń albo lista udostępniona do podglądu, zadanie w koszu: da się otworzyć, ale nie odhaczyć.
+  const readOnly = inTrash || !listEditable(data, task.listId);
   const date = virtualDate ?? task.dueDate;
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
   // Kolumna „Koniec” / „Odpowiedzialny” zastępuje to samo w szarym wierszu pod tytułem.
   const onOpen = (e: MouseEvent) => {
+    // Zadań z kosza nie zaznacza się do operacji grupowych.
+    if (inTrash) return openTask(task.id);
     // Ctrl / Shift + klik — zaznaczanie wielu (operacje grupowe), zwykły klik — panel.
     if (e.ctrlKey || e.metaKey) return select(task.id, "toggle");
     if (e.shiftKey) return select(task.id, "range");

@@ -59,12 +59,16 @@ import {
   tagsForWorkspace,
   taskTagId,
   taskTagOps,
+  trashListLabel,
+  trashPreview,
   uuidv7,
   type Dependency,
   type LocalDate,
   type Recurrence,
   type TaskLink,
   type TaskStatus,
+  type TrashedTask,
+  type TrashPreview,
   type ViewTask,
 } from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
@@ -75,7 +79,7 @@ import { confirm, useTaskActions } from '@/components/actions';
 import { BreakdownField } from '@/components/ai-breakdown';
 import { AttachmentsField } from '@/components/attachments-field';
 import { DescriptionField } from '@/components/description-field';
-import { PanelSection } from '@/components/panel-section';
+import { LockedSections, PanelSection } from '@/components/panel-section';
 import { pickAmount, pickDate, pickOption, pickTime } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
 import { RecurrenceEditor } from '@/components/recurrence-editor';
@@ -89,6 +93,7 @@ import { useLocalQuery } from '@/lib/local-query';
 import { useSendableRules } from '@/lib/plugins';
 import { rememberRecent } from '@/lib/recent';
 import { permissionState, requestNotificationPermission } from '@/lib/reminders';
+import { useTrash } from '@/lib/trash';
 
 const STATUSES = Object.keys(TASK_STATUS) as TaskStatus[];
 const DURATIONS = [5, 10, 15, 30, 45, 60, 90, 120, 180, 240];
@@ -99,16 +104,11 @@ const LAGS = [-2, -1, 0, 1, 2, 3, 5, 7, 10, 14, 21, 30];
 const then = <T,>(choice: Promise<T>, act: (value: T) => unknown) => void choice.then((value) => void act(value));
 
 /**
- * Część ekranu, którą da się zmieniać. W przestrzeni udostępnionej do podglądu wyszarzona i bez
- * dotyku (przewijanie działa — gesty przechodzą do `ScrollView`); zapis i tak odrzuciłby silnik.
+ * Część ekranu, którą da się zmieniać. W przestrzeni udostępnionej do podglądu i w koszu treść sekcji jest
+ * wyszarzona i bez dotyku (`LockedSections`); wiersz tytułu blokuje się osobno.
  */
 function Editable({ readOnly, children }: { readOnly: boolean; children: ReactNode }) {
-  if (!readOnly) return <>{children}</>;
-  return (
-    <View pointerEvents="none" accessibilityState={{ disabled: true }} style={{ opacity: 0.5, gap: 12 }}>
-      {children}
-    </View>
-  );
+  return <LockedSections value={readOnly}>{children}</LockedSections>;
 }
 
 /** Zwijana karta sekcji; klucz = tytuł bez licznika („Podzadania · 2/3” → „Podzadania”), ten sam co na webie. */
@@ -152,31 +152,39 @@ function Pill({ label, onPress, color }: { label: string; onPress: () => void; c
 export default function TaskScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const p = usePalette();
-  const { data, today } = useView();
+  const { data: live, today } = useView();
   const actions = useTaskActions();
   const { run, toggle } = actions;
-  const task = data.tasks.find((t) => t.id === id);
+  const liveTask = live.tasks.find((t) => t.id === id);
+  // Zadanie w koszu: ten sam ekran tylko do odczytu, z przywróceniem.
+  const trashed = useTrash(live.loaded && !liveTask);
+  const trash = useMemo(() => (liveTask || !trashed ? null : trashPreview(trashed, id, new Set(live.tasks.map((t) => t.id)))), [liveTask, trashed, id, live.tasks]);
+  // Zadania z kosza obok żywych: sekcje (zależności, zadanie nadrzędne) czytają je z `data.tasks`.
+  const data = useMemo(() => (trash && trashed ? { ...live, tasks: [...live.tasks, ...trashed] } : live), [live, trash, trashed]);
+  const task = liveTask ?? trash?.task;
   useEffect(() => rememberRecent(id), [id]);
 
   if (!task) {
     return (
       <View style={{ flex: 1, padding: 16, backgroundColor: p.bg }}>
         <Stack.Screen options={{ title: 'Zadanie' }} />
-        <Text style={{ color: p.muted }}>{data.loaded ? 'Tego zadania już nie ma (usunięte albo w zarchiwizowanej liście).' : 'Wczytywanie…'}</Text>
+        <Text style={{ color: p.muted }}>{live.loaded && trashed ? 'Tego zadania już nie ma (usunięte na stałe, nie ma go na tym urządzeniu albo jest w zarchiwizowanej liście).' : 'Wczytywanie…'}</Text>
       </View>
     );
   }
 
   const update = (patch: Record<string, unknown>, toast?: string) => run([{ table: 'tasks', id: task.id, patch }], toast ? { text: toast } : undefined);
   const parent = task.parentId ? data.tasks.find((t) => t.id === task.parentId) : undefined;
-  const children = data.tasks.filter((t) => t.parentId === task.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
+  const children = trash ? trash.children : data.tasks.filter((t) => t.parentId === task.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
   const closed = task.status === 'done' || task.status === 'cancelled';
   const color = PRIORITY[task.priority].color;
   // Własne kolumny tablicy listy zadania (tryb „Własne”) — tylko zadania najwyższego poziomu.
   const boardDefs = data.lists.find((l) => l.id === task.listId)?.boardColumns ?? [];
   const boardColumn = taskBoardColumn(task, boardDefs);
   const scopeReadOnly = !canEditScope(data.workspaces.find((w) => w.id === task.workspaceId)?.role);
-  const readOnly = !listEditable(data, task.listId);
+  const listReadOnly = !listEditable(data, task.listId);
+  // Zadanie w koszu: wszystko zablokowane, da się je tylko przywrócić.
+  const readOnly = listReadOnly || !!trash;
 
   const remove = () => {
     const ops = deleteTaskOps(data.tasks, task.id, new Date());
@@ -186,7 +194,7 @@ export default function TaskScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: p.bg }} behavior="height">
-      <Stack.Screen options={{ title: listLabel(data, task.listId) || 'Zadanie' }} />
+      <Stack.Screen options={{ title: trash ? 'Zadanie w koszu' : listLabel(data, task.listId) || 'Zadanie' }} />
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {parent ? (
           <Pressable accessibilityRole="link" onPress={() => router.replace({ pathname: '/task/[id]', params: { id: parent.id } })}>
@@ -196,7 +204,9 @@ export default function TaskScreen() {
           </Pressable>
         ) : null}
 
-        {readOnly ? (
+        {trash ? (
+          <TrashBar preview={trash} readOnly={listReadOnly} today={today} timeZone={data.settings.timeZone} />
+        ) : readOnly ? (
           <Text style={[styles.readOnly, { color: p.muted, backgroundColor: p.selected }]}>
             {scopeReadOnly
               ? `Przestrzeń „${data.workspaces.find((w) => w.id === task.workspaceId)?.name ?? ''}” jest udostępniona Ci tylko do podglądu — zadania nie da się zmienić.`
@@ -205,7 +215,7 @@ export default function TaskScreen() {
         ) : null}
 
         <Editable readOnly={readOnly}>
-          <View style={styles.titleRow}>
+          <View style={[styles.titleRow, readOnly && { opacity: 0.7 }]} pointerEvents={readOnly ? 'none' : 'auto'}>
             <Pressable
               accessibilityRole="checkbox"
               accessibilityState={{ checked: closed }}
@@ -234,7 +244,7 @@ export default function TaskScreen() {
             <Cell label="Priorytet" value={PRIORITY[task.priority].label} tone={color} onPress={() => then(pickPriority('Priorytet', task.priority), (v) => v && v !== task.priority && update({ priority: v }))} />
             <Cell
               label="Lista"
-              value={listLabel(data, task.listId)}
+              value={trash ? trashListLabel(trash.task, listLabel(data, task.listId)) : listLabel(data, task.listId)}
               onPress={() =>
                 then(pickList(data, 'Przenieś do listy', task.listId), (listId) => listId && listId !== task.listId && run(moveTaskOps(data.tasks, task.id, listId), { text: `Przeniesiono do ${listLabel(data, listId)}` }))
               }
@@ -304,9 +314,7 @@ export default function TaskScreen() {
 
         <Block title={`Podzadania${children.length ? ` · ${children.filter((c) => c.status === 'done').length}/${children.filter((c) => c.status !== 'cancelled').length}` : ''}`}>
           <View style={{ marginHorizontal: -12 }}>
-            {children.map((c) => (
-              <TaskRow key={c.id} task={c} today={today} />
-            ))}
+            {children.map((c) => (trash ? <TrashedRow key={c.id} task={c} today={today} /> : <TaskRow key={c.id} task={c} today={today} />))}
           </View>
           {readOnly ? null : canAddSubtask(data.tasks, task.id) ? (
             <>
@@ -336,11 +344,56 @@ export default function TaskScreen() {
           <Text style={{ color: p.muted, fontSize: 12, flex: 1 }}>
             Dodano {task.createdAt.startsWith('1970') ? 'teraz (jeszcze nie wysłane)' : shortDate(task.createdAt.slice(0, 10))}
           </Text>
-          <SendToButton task={task} userId={data.userId} />
-          <Button kind="danger" title="Przenieś do kosza" disabled={readOnly} onPress={remove} />
+          {trash ? null : (
+            <>
+              <SendToButton task={task} userId={data.userId} />
+              <Button kind="danger" title="Przenieś do kosza" disabled={readOnly} onPress={remove} />
+            </>
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+/** Pasek zadania w koszu: od kiedy, z czym usunięte i „Przywróć”. */
+function TrashBar({ preview, readOnly, today, timeZone }: { preview: TrashPreview<TrashedTask>; readOnly: boolean; today: LocalDate; timeZone?: string }) {
+  const p = usePalette();
+  const { run } = useTaskActions();
+  const { task, root, parent, restore, restoreAlone } = preview;
+  return (
+    <View style={[styles.trash, { backgroundColor: p.selected }]}>
+      <Text style={{ color: p.muted, fontSize: 13 }}>
+        🗑️ W koszu od {commentTime(task.deletedAt, today, timeZone)}
+        {parent ? ` (usunięte razem z „${root.title}”)` : ''} — tylko podgląd. Żeby coś zmienić, przywróć zadanie.
+      </Text>
+      <Button title={parent ? `Przywróć całość („${root.title}”)` : 'Przywróć'} disabled={readOnly} onPress={() => void run(restore, { text: `Przywrócono „${root.title}”` })} />
+      {restoreAlone ? (
+        <Button kind="secondary" title="Przywróć tylko to" disabled={readOnly} onPress={() => void run(restoreAlone, { text: `Przywrócono „${task.title}” jako zadanie główne` })} />
+      ) : null}
+      {readOnly ? <Text style={{ color: p.muted, fontSize: 12 }}>Lista jest udostępniona Ci tylko do podglądu — zadania nie da się przywrócić.</Text> : null}
+    </View>
+  );
+}
+
+/** Podzadanie w koszu: bez odhaczania i gestów `TaskRow`, dotknięcie otwiera jego podgląd. */
+function TrashedRow({ task, today }: { task: ViewTask; today: LocalDate }) {
+  const p = usePalette();
+  const closed = !isOpen(task);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={task.title}
+      accessibilityHint="Otwiera szczegóły; tylko podgląd"
+      onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}
+      style={({ pressed }) => [styles.trashedRow, { borderColor: p.border, backgroundColor: pressed ? p.border : undefined }]}
+    >
+      <Text style={{ color: closed ? p.muted : p.fg, fontSize: 15, textDecorationLine: closed ? 'line-through' : 'none' }}>
+        {closed ? '✓ ' : ''}
+        {task.title}
+      </Text>
+      {task.dueDate ? <Text style={{ color: p.muted, fontSize: 12 }}>{relativeDay(task.dueDate, today)}</Text> : null}
+    </Pressable>
   );
 }
 
@@ -982,6 +1035,8 @@ const styles = StyleSheet.create({
   body: { padding: 12, gap: 12, paddingBottom: 60 },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   readOnly: { fontSize: 13, borderRadius: 8, padding: 8 },
+  trash: { borderRadius: 8, padding: 10, gap: 8 },
+  trashedRow: { paddingHorizontal: 12, paddingVertical: 9, gap: 2, borderBottomWidth: StyleSheet.hairlineWidth },
   check: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   tick: { color: '#fff', fontSize: 14, fontWeight: '700' },
   title: { flex: 1, fontSize: 20, fontWeight: '600', paddingVertical: 4 },

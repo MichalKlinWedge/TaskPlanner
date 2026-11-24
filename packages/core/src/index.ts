@@ -44,6 +44,7 @@ export * from './tasks.ts';
 export * from './templates.ts';
 export * from './time-blocking.ts';
 export * from './timeline.ts';
+export * from './trash.ts';
 export * from './views.ts';
 export * from './week-summary.ts';
 export * from './widgets.ts';

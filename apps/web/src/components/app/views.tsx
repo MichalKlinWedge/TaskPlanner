@@ -9,7 +9,6 @@ import {
   addDays,
   buildTree,
   canAddSubtask,
-  descendants,
   capitalized,
   COMPLETED_MODE,
   dayLabel,
@@ -25,7 +24,6 @@ import {
   plural,
   progress,
   relativeDay,
-  restoreTaskOps,
   selectInbox,
   selectToday,
   selectUpcoming,
@@ -33,6 +31,10 @@ import {
   sortTasks,
   tagsForWorkspace,
   TRASH_DAYS,
+  trashedWith,
+  trashListLabel,
+  trashPreview,
+  trashRoots,
   VIEW_SECTION,
   withCompleted,
   type CompletedMode,
@@ -51,8 +53,9 @@ import { useMemo, useState, type ReactNode } from "react";
 
 import { listEditable, type AppData, type List } from "@/lib/app-data";
 import { useListWidths } from "@/lib/list-widths";
-import { useLocalQuery } from "@/lib/local-store";
+import { useTrash } from "@/lib/trash";
 
+import { useAppEnv } from "./app-env";
 import { Board } from "./board";
 import { CanvasView } from "./canvas";
 import { DayDnd, DayDrop, DraggableTaskItem, SortableTaskItem, SortableTaskList } from "./dnd";
@@ -567,41 +570,36 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
 
 // ── Kosz ─────────────────────────────────────────────────────────────────────────────────────
 
-/** Kosz (M3): usunięte w ostatnich 30 dniach, przywracanie razem z podzadaniami usuniętymi naraz. */
+/**
+ * Kosz (M3): usunięte w ostatnich 30 dniach, przywracanie razem z podzadaniami usuniętymi naraz; kliknięcie
+ * otwiera szczegóły w panelu tylko do odczytu (`TaskPanel`).
+ */
 export function TrashView({ data, store }: { data: AppData; store: TabStore }) {
   const { run } = useTaskActions();
-  // Granica liczona przy wejściu do widoku (stabilna wartość parametru zapytania).
-  const [since] = useState(() => new Date(Date.now() - TRASH_DAYS * 86_400_000).toISOString());
-  const { rows } = useLocalQuery<Record<string, string | number | null>>(
-    store,
-    "select id, parent_id, list_id, title, deleted_at from tasks where deleted_at is not null and deleted_at > ? order by deleted_at desc",
-    [since],
-    ["tasks"],
-  );
-  const trashed = rows.map((r) => ({ id: String(r.id), parentId: r.parent_id as string | null, listId: String(r.list_id), title: String(r.title), deletedAt: r.deleted_at as string }));
-  const byId = new Map(trashed.map((t) => [t.id, t]));
-  // Podzadania usunięte razem z rodzicem są pod nim (przywracają się z nim), nie osobno.
-  const roots = trashed.filter((t) => !(t.parentId && byId.get(t.parentId)?.deletedAt === t.deletedAt));
-  const alive = new Set(data.tasks.map((t) => t.id));
+  const { openTask, openTaskId } = useAppEnv();
+  const { tasks: trashed, alive } = useTrash(store, data);
+  const roots = trashRoots(trashed);
   const names = listNames(data);
+  const open = openTaskId ? trashPreview(trashed, openTaskId, alive)?.root.id : undefined;
 
   return (
     <>
-      <Header title="Kosz" subtitle={`Usunięte zadania zostają tu ${TRASH_DAYS} dni, potem znikają na stałe.`} />
+      <Header title="Kosz" subtitle={`Usunięte zadania zostają tu ${TRASH_DAYS} dni, potem znikają na stałe. Kliknij zadanie, aby zobaczyć szczegóły.`} />
       {roots.length ? (
-        <ul className="divide-y divide-[var(--line)]">
+        <ul className="divide-y divide-[var(--line)]" aria-label="Zadania w koszu">
           {roots.map((t) => {
-            const inside = descendants(trashed, t.id).filter((d) => d.deletedAt === t.deletedAt).length;
+            const inside = trashedWith(trashed, t.id).length;
             return (
-              <li key={t.id} className="flex items-center gap-3 py-2 text-sm">
-                <div className="min-w-0 flex-1">
-                  <div className="break-words">{t.title}</div>
-                  <div className="text-xs text-[var(--muted)]">
-                    {names.get(t.listId) ?? "lista zarchiwizowana"} · usunięte {new Date(t.deletedAt).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" })}
+              // `data-card`: kliknięcie w wiersz nie zamyka panelu (jak karty tablicy).
+              <li key={t.id} data-card={t.id} className={`flex items-center gap-3 text-sm ${open === t.id ? "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]" : ""}`}>
+                <button type="button" className="min-w-0 flex-1 cursor-pointer py-2 pl-2 text-left hover:text-[var(--accent)]" title="Pokaż szczegóły" aria-current={open === t.id || undefined} onClick={() => openTask(t.id)}>
+                  <span className="block break-words">{t.title}</span>
+                  <span className="block text-xs text-[var(--muted)]">
+                    {trashListLabel(t, names.get(t.listId))} · usunięte {new Date(t.deletedAt).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" })}
                     {inside ? ` · z ${plural(inside, ["podzadaniem", "podzadaniami", "podzadaniami"])}` : ""}
-                  </div>
-                </div>
-                <Button onClick={() => void run(restoreTaskOps(trashed, t.id, { parentAlive: !t.parentId || alive.has(t.parentId) }), { text: `Przywrócono „${t.title}”` })}>
+                  </span>
+                </button>
+                <Button disabled={!listEditable(data, t.listId)} onClick={() => void run(trashPreview(trashed, t.id, alive)?.restore ?? [], { text: `Przywrócono „${t.title}”` })}>
                   Przywróć
                 </Button>
               </li>

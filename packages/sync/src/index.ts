@@ -22,7 +22,7 @@ export {
   type TableSpec,
 } from './specs.ts';
 export { readProjectSource } from './templates.ts';
-export { createTaskCache, TASK_COLUMNS, type TaskCache, type TaskEntry } from './task-cache.ts';
+export { createTaskCache, TASK_COLUMNS, TRASH_SQL, type TaskCache, type TaskEntry } from './task-cache.ts';
 export { connectTabs, STALE_LEADER_MESSAGE, TAB_PROTOCOL, type TabStore, type TabStoreOptions } from './tabs.ts';
 export { createFileQueue, FileUploadError, memoryFileStore, retryDelayMs, supabaseUploader, type FileData, type FileQueue, type FileQueueOptions, type FileStore, type PendingFile } from './files.ts';
 export { exportWorkspace, workspaceImportContext, type WorkspaceExportInput, type WorkspaceImportContext } from './workspace-file.ts';

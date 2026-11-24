@@ -64,6 +64,8 @@ import {
   reorderTaskTagOps,
   taskTagId,
   taskTagOps,
+  trashListLabel,
+  trashPreview,
   uuidv7,
   type LocalDate,
   type LocalTime,
@@ -73,6 +75,8 @@ import {
   type Recurrence,
   type TaskLink,
   type TaskStatus,
+  type TrashedTask,
+  type TrashPreview,
   type ViewTask,
 } from "@taskplanner/core";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -85,16 +89,17 @@ import { descriptionExtensions, descriptionMarkdown } from "@/lib/editor";
 import { useLocalQuery } from "@/lib/local-store";
 import { usePlugins } from "@/lib/plugins";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { useTrash } from "@/lib/trash";
 
 import { BreakdownField } from "./ai-breakdown";
-import { useAppEnv } from "./app-env";
+import { AppEnvProvider, useAppEnv } from "./app-env";
 import { AttachmentsField } from "./attachments";
 import { TaskTimeField } from "./focus";
 import { QuickAdd } from "./quick-add";
 import { RecurrenceEditor } from "./recurrence-editor";
 import { TAG_CHIP, TagColorPicker, tagChipStyle } from "./tag-chip";
 import { TaskItem, useTaskActions } from "./task-item";
-import { PanelSection } from "./panel-section";
+import { LockedSections, PanelSection, useSectionsLocked } from "./panel-section";
 import { Button, CommitInput, IconButton, Input, inputClass, navLinkClass, Select } from "./ui";
 
 type Row = Record<string, string | number | null>;
@@ -112,8 +117,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
- * Część panelu, którą da się zmieniać. W przestrzeni udostępnionej do podglądu `fieldset disabled`
- * wyszarza i blokuje wszystkie pola i przyciski w środku (zapis i tak odrzuciłby silnik).
+ * Część panelu, którą da się zmieniać (wiersz tytułu; sekcje — `EditableSections`). W przestrzeni udostępnionej do
+ * podglądu i w koszu `fieldset disabled` wyszarza i blokuje wszystkie pola i przyciski w środku.
  */
 function Editable({ readOnly, className = "", children }: { readOnly: boolean; className?: string; children: ReactNode }) {
   return (
@@ -121,6 +126,11 @@ function Editable({ readOnly, className = "", children }: { readOnly: boolean; c
       {children}
     </fieldset>
   );
+}
+
+/** Sekcje, których treść jest zablokowana w podglądzie — nagłówki (zwijanie) działają dalej. */
+function EditableSections({ readOnly, children }: { readOnly: boolean; children: ReactNode }) {
+  return <LockedSections value={readOnly}>{children}</LockedSections>;
 }
 
 /** Zwijana sekcja panelu; klucz = tytuł bez licznika („Podzadania · 2/3” → „Podzadania”). */
@@ -133,9 +143,9 @@ function Block({ id, title, children }: { id?: string; title: string; children: 
   );
 }
 
+/** Panel zadania; zadanie w koszu — ten sam panel tylko do odczytu, z przywróceniem. */
 export function TaskPanel({ taskId }: { taskId: string }) {
-  const { data, userId, settings, today, timeZone, openTask } = useAppEnv();
-  const { run, toggle } = useTaskActions();
+  const { data, openTask } = useAppEnv();
   const task = data.tasks.find((t) => t.id === taskId);
 
   // Escape zamyka panel (poza polami tekstowymi i edytorem).
@@ -148,21 +158,76 @@ export function TaskPanel({ taskId }: { taskId: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [openTask]);
 
-  if (!task) {
+  return task ? <TaskDetails task={task} /> : <TrashedTaskPanel taskId={taskId} />;
+}
+
+/** Zadanie spoza widoków: w koszu tego urządzenia → podgląd, inaczej komunikat. */
+function TrashedTaskPanel({ taskId }: { taskId: string }) {
+  const env = useAppEnv();
+  const { data, store, openTask } = env;
+  const { tasks: trashed, alive, loaded } = useTrash(store, data);
+  const preview = useMemo(() => trashPreview(trashed, taskId, alive), [trashed, taskId, alive]);
+  // Zadania z kosza obok żywych: sekcje (podzadania, zależności, zadanie nadrzędne) czytają je z `data.tasks`.
+  const value = useMemo(() => ({ ...env, data: { ...data, tasks: [...data.tasks, ...trashed] }, trashed: new Map(trashed.map((t) => [t.id, t])) }), [env, data, trashed]);
+
+  if (!preview) {
     return (
       <PanelFrame onClose={() => openTask(null)}>
-        <p className="text-sm text-[var(--muted)]">Tego zadania już nie ma (usunięte albo w zarchiwizowanej liście).</p>
+        <p className="text-sm text-[var(--muted)]">{loaded ? "Tego zadania już nie ma (usunięte na stałe, nie ma go na tym urządzeniu albo jest w zarchiwizowanej liście)." : "Wczytywanie…"}</p>
       </PanelFrame>
     );
   }
+  return (
+    <AppEnvProvider value={value}>
+      <TaskDetails task={preview.task} trash={preview} />
+    </AppEnvProvider>
+  );
+}
+
+/** Pasek zadania w koszu: od kiedy, z czym usunięte i „Przywróć”. */
+function TrashBar({ preview, readOnly }: { preview: TrashPreview<TrashedTask>; readOnly: boolean }) {
+  const { today, timeZone } = useAppEnv();
+  const { run } = useTaskActions();
+  const { task, root, parent, count, restore, restoreAlone } = preview;
+  return (
+    <div className="mb-2 flex flex-col gap-2 rounded-md bg-[var(--hover)] px-2 py-2 text-xs text-[var(--muted)]" data-testid="task-trashed">
+      <p>
+        🗑️ W koszu od {commentTime(task.deletedAt, today, timeZone)}
+        {parent ? ` (usunięte razem z „${root.title}”)` : ""} — tylko podgląd. Żeby coś zmienić, przywróć zadanie.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          kind="primary"
+          disabled={readOnly}
+          title={count ? `Razem z ${plural(count, ["podzadaniem", "podzadaniami", "podzadaniami"])} usuniętymi naraz` : undefined}
+          onClick={() => void run(restore, { text: `Przywrócono „${root.title}”` })}
+        >
+          {parent ? `Przywróć całość („${root.title.length > 30 ? `${root.title.slice(0, 30)}…` : root.title}”)` : "Przywróć"}
+        </Button>
+        {restoreAlone ? (
+          <Button disabled={readOnly} title="Jako zadanie główne tej samej listy" onClick={() => void run(restoreAlone, { text: `Przywrócono „${task.title}” jako zadanie główne` })}>
+            Przywróć tylko to
+          </Button>
+        ) : null}
+      </div>
+      {readOnly ? <p>Lista jest udostępniona Ci tylko do podglądu — zadania nie da się przywrócić.</p> : null}
+    </div>
+  );
+}
+
+function TaskDetails({ task, trash }: { task: ViewTask; trash?: TrashPreview<TrashedTask> }) {
+  const { data, userId, settings, today, timeZone, openTask } = useAppEnv();
+  const { run, toggle } = useTaskActions();
 
   const update = (patch: Record<string, unknown>) => run([{ table: "tasks", id: task.id, patch }]);
   const boardColumnDefs = data.lists.find((l) => l.id === task.listId)?.boardColumns ?? [];
   const parent = task.parentId ? data.tasks.find((t) => t.id === task.parentId) : undefined;
-  const children = data.tasks.filter((t) => t.parentId === task.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
+  const children = trash ? trash.children : data.tasks.filter((t) => t.parentId === task.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
   const workspaceName = new Map(data.workspaces.map((w) => [w.id, w.name]));
   const scopeReadOnly = !canEditScope(data.workspaces.find((w) => w.id === task.workspaceId)?.role);
-  const readOnly = !listEditable(data, task.listId);
+  const listReadOnly = !listEditable(data, task.listId);
+  // Zadanie w koszu: wszystko zablokowane, da się je tylko przywrócić.
+  const readOnly = listReadOnly || !!trash;
 
   const remove = () => {
     const ops = deleteTaskOps(data.tasks, task.id, new Date());
@@ -177,7 +242,9 @@ export function TaskPanel({ taskId }: { taskId: string }) {
           ↑ {parent.title}
         </button>
       ) : null}
-      {readOnly ? (
+      {trash ? (
+        <TrashBar preview={trash} readOnly={listReadOnly} />
+      ) : readOnly ? (
         <p className="mb-2 rounded-md bg-[var(--hover)] px-2 py-1 text-xs text-[var(--muted)]" data-testid="task-read-only">
           {scopeReadOnly
             ? `Przestrzeń „${workspaceName.get(task.workspaceId)}” jest udostępniona Ci tylko do podglądu — zadania nie da się zmienić.`
@@ -200,9 +267,9 @@ export function TaskPanel({ taskId }: { taskId: string }) {
           </button>
           <TitleField key={`${task.id}:${task.title}`} value={task.title} onSave={(title) => void update({ title })} />
         </Editable>
-        <SendToField taskId={task.id} />
+        {trash ? null : <SendToField taskId={task.id} />}
       </div>
-      <Editable readOnly={readOnly}>
+      <EditableSections readOnly={readOnly}>
 
         <Block id="details" title="Szczegóły">
         <div className="grid grid-cols-2 gap-3 @xl:grid-cols-3">
@@ -229,6 +296,8 @@ export function TaskPanel({ taskId }: { taskId: string }) {
               value={task.listId}
               onChange={(e) => void run(moveTaskOps(data.tasks, task.id, e.target.value))}
             >
+              {/* Zadanie w koszu: jego listy może już nie być w widokach. */}
+              {trash && !data.lists.some((l) => l.id === task.listId) ? <option value={task.listId}>{trashListLabel(trash.task)}</option> : null}
               {data.workspaces.map((w) => (
                 <optgroup key={w.id} label={w.name}>
                   {data.lists
@@ -284,7 +353,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
         </div>
         </Block>
 
-        {task.kind === "habit" ? (
+        {task.kind === "habit" && !trash ? (
           <Block id="Nawyk" title="Cykliczne">
             <a href={`#/habit/${task.id}`} className={`self-start ${navLinkClass}`}>
               Statystyki, harmonogram i cel →
@@ -301,7 +370,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
         <CommentsField key={`com:${task.id}`} task={task} />
 
         {task.kind === "task" ? <ParentField key={`parent:${task.id}`} task={task} parent={parent} /> : null}
-      </Editable>
+      </EditableSections>
 
       <Block title={`Podzadania${children.length ? ` · ${children.filter((c) => c.status === "done").length}/${children.filter((c) => c.status !== "cancelled").length}` : ""}`}>
         {children.length ? (
@@ -322,21 +391,21 @@ export function TaskPanel({ taskId }: { taskId: string }) {
         )}
       </Block>
 
-      <Editable readOnly={readOnly}>
+      <EditableSections readOnly={readOnly}>
         <DependenciesField key={`dep:${task.id}`} task={task} />
 
         <TagsField task={task} userId={userId} />
-      </Editable>
+      </EditableSections>
 
       <AttachmentsField key={`att:${task.id}`} task={task} readOnly={readOnly} />
 
-      <Editable readOnly={readOnly}>
+      <EditableSections readOnly={readOnly}>
         <RemindersField key={`rem:${task.id}`} task={task} />
 
         <RecurrenceField key={`rec:${task.id}`} task={task} onSave={(patch) => void update(patch)} timeZone={timeZone} today={today} />
 
         {settings.focus.enabled ? <TaskTimeField task={task} /> : null}
-      </Editable>
+      </EditableSections>
 
       <History
         key={`hist:${task.id}`}
@@ -347,9 +416,11 @@ export function TaskPanel({ taskId }: { taskId: string }) {
 
       <div className="mt-4 flex items-center justify-between border-t border-[var(--line)] pt-3 text-xs text-[var(--muted)]">
         <span>Dodano {task.createdAt.startsWith("1970") ? "teraz (jeszcze nie wysłane)" : shortDate(task.createdAt.slice(0, 10))}</span>
-        <Button kind="danger" disabled={readOnly} onClick={remove}>
-          Przenieś do kosza
-        </Button>
+        {trash ? null : (
+          <Button kind="danger" disabled={readOnly} onClick={remove}>
+            Przenieś do kosza
+          </Button>
+        )}
       </div>
     </PanelFrame>
   );
@@ -1020,6 +1091,8 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
   const [coloring, setColoring] = useState<string | null>(null);
   // Przeciąganie chipów zmienia kolejność tagów zadania (pierwszy kolorowy = kolor karteczki).
   const [dragged, setDragged] = useState<number | null>(null);
+  // W podglądzie chipów nie da się przeciągać (`fieldset disabled` nie blokuje przeciągania).
+  const sortable = !useSectionsLocked() && task.tagIds.length > 1;
   const byId = new Map(data.tags.map((t) => [t.id, t]));
   const colored = coloring && task.tagIds.includes(coloring) ? byId.get(coloring) : undefined;
   // Cudzy tag (kopia z przestrzeni) — bez zmiany koloru, zmienia go autor.
@@ -1036,10 +1109,10 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
         {task.tagIds.map((id, index) => (
           <span
             key={id}
-            className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs ${TAG_CHIP} ${task.tagIds.length > 1 ? "cursor-grab" : ""} ${dragged === index ? "opacity-50" : ""}`}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs ${TAG_CHIP} ${sortable ? "cursor-grab" : ""} ${dragged === index ? "opacity-50" : ""}`}
             style={tagChipStyle(byId.get(id)?.color)}
-            draggable={task.tagIds.length > 1}
-            title={task.tagIds.length > 1 ? "Przeciągnij, aby zmienić kolejność — pierwszy kolorowy tag nadaje kolor karteczce" : undefined}
+            draggable={sortable}
+            title={sortable ? "Przeciągnij, aby zmienić kolejność — pierwszy kolorowy tag nadaje kolor karteczce" : undefined}
             data-testid="task-tag-chip"
             onDragStart={(e) => {
               setDragged(index);

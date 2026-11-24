@@ -4,7 +4,7 @@
  * Wspólne dane powłoki dla komponentów głębiej w drzewie (szybkie dodawanie, panel zadania,
  * wiersze zadań): lokalna baza, dane widoków, użytkownik, dziś i otwieranie panelu zadania.
  */
-import type { LocalDate, ProfileSettings } from "@taskplanner/core";
+import type { LocalDate, ProfileSettings, TrashedTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useContext } from "react";
 
@@ -13,6 +13,8 @@ import type { AppData } from "@/lib/app-data";
 export interface AppEnv {
   store: TabStore;
   data: AppData;
+  /** Podgląd zadania z kosza: zadania w koszu (są wtedy też w `data.tasks`) — tylko do odczytu. */
+  trashed?: ReadonlyMap<string, TrashedTask>;
   userId: string;
   timeZone?: string;
   /** Ustawienia profilu (sparsowane, z domyślnymi). */
