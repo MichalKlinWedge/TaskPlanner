@@ -1,9 +1,11 @@
 /** Zakładka „+ Task Planner”: wycinek strony w części `#` → opis zadania z cytatem i link; „✨ Streść”. */
+import { defaultWorkspaceId } from '@taskplanner/core';
 import type { BrowserContext, Page } from '@playwright/test';
 
 import { expect, openApp, test, unique, type Server } from '../src/fixtures.ts';
 
 const SITE = 'https://blog.example.test';
+const PREFIXES = ['Ogród', 'Drugie', 'Nawadnianie', 'Stara zakładka'];
 const PARAGRAPH = 'Podlewaj rano, zanim słońce nagrzeje ziemię — zażółć gęślą jaźń. ';
 
 /** Strona testowa poza aplikacją (inna domena, bez sieci). */
@@ -45,6 +47,12 @@ async function taskDetails(server: Server, title: string) {
   await expect.poll(async () => (await read()).links.length).toBe(1);
   return read();
 }
+
+// Okno otwiera się nad „Dziś”, więc zadania mają dzisiejszy termin — do kosza, żeby nie zapychały kalendarza kolejnym testom.
+test.afterEach(async ({ server }) => {
+  const { error } = await server.client.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('scope_id', defaultWorkspaceId(server.userId, 'personal')).or(PREFIXES.map((t) => `title.like.${t} *`).join(','));
+  expect(error).toBeNull();
+});
 
 test('zaznaczenie: cytat ze źródłem w opisie, poprawiony przed dodaniem; adres bez treści strony', async ({ page, context, server }) => {
   const title = unique('Ogród');
