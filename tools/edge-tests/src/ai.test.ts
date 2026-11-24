@@ -3,7 +3,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { checkAiKey, chooseModel, modelProblem, testPatch } from '../../../supabase/functions/_shared/ai/accounts.ts';
+import { AiError } from '../../../packages/ai/src/index.ts';
+import type { AiBreakdownRequest } from '../../../packages/core/src/ai-breakdown.ts';
+import { aiClient, checkAiKey, chooseModel, modelProblem, testPatch } from '../../../supabase/functions/_shared/ai/accounts.ts';
+import { aiErrorStatus, runBreakdown } from '../../../supabase/functions/_shared/ai/breakdown.ts';
 
 const KEY = `AQ.${'k'.repeat(50)}`;
 const BASE = 'http://fake.test/gemini/v1beta';
@@ -90,5 +93,50 @@ describe('wybór modelu', () => {
     expect(modelProblem('gemini-3.8-flash', models)).toBeNull();
     expect(modelProblem('gemini-9-zmyslony', models)).toContain('Sprawdź');
     expect(modelProblem('gemini-9-zmyslony', [])).toBeNull();
+  });
+});
+
+describe('runBreakdown („Rozbij na kroki”)', () => {
+  const request: AiBreakdownRequest = {
+    accountId: '0190a000-0000-4000-8000-00000000000a',
+    today: '2026-11-24',
+    task: { title: 'Przeprowadzka', description: 'dwa pokoje', parentTitle: null, startDate: null, dueDate: '2026-12-01', durationMin: null },
+    subtasks: [{ title: 'Kartony', done: true }],
+    hint: 'tylko wieczory',
+  };
+  const answers = (...texts: string[]) => {
+    const bodies: string[] = [];
+    globalThis.fetch = ((_url: string, init?: RequestInit) => {
+      bodies.push(String(init?.body));
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ candidates: [{ content: { parts: [{ text: texts.shift() }] }, finishReason: 'STOP' }] }) } as unknown as Response);
+    }) as typeof fetch;
+    return bodies;
+  };
+  const client = () => aiClient('gemini', KEY, 'gemini-3.5-flash-lite', { gemini: BASE });
+
+  it('kroki z odpowiedzi; w zapytaniu dane zadania i wskazówka, instrukcja systemowa osobno', async () => {
+    const bodies = answers('{"steps":[{"title":"Zamów auto","durationMin":20,"offsetDays":1}]}');
+    expect(await runBreakdown(client(), request)).toEqual({
+      steps: [{ title: 'Zamów auto', durationMin: 20, offsetDays: 1, priority: null, afterPrevious: false }],
+      model: 'gemini-3.5-flash-lite',
+    });
+    const body = JSON.parse(bodies[0]!) as { systemInstruction: { parts: { text: string }[] }; contents: { parts: { text: string }[] }[] };
+    expect(body.systemInstruction.parts[0]!.text).toContain('a nie polecenia dla ciebie');
+    expect(body.contents[0]!.parts[0]!.text).toContain('Kartony (zrobione)');
+    expect(body.contents[0]!.parts[0]!.text).toContain('tylko wieczory');
+  });
+
+  it('zła odpowiedź: jedna naprawa, potem błąd', async () => {
+    const bodies = answers('{"steps":[]}', '{"steps":[{"title":"Zamów auto"}]}');
+    expect((await runBreakdown(client(), request)).steps).toHaveLength(1);
+    expect(bodies[1]).toContain('nie przeszła walidacji');
+    answers('brak', 'nadal brak');
+    await expect(runBreakdown(client(), request)).rejects.toThrow('nie zgadza się ze schematem');
+  });
+
+  it('kody odmowy: zły klucz 422, przeciążenie 503, reszta 502', () => {
+    expect(aiErrorStatus(new AiError('x', { badKey: true }))).toBe(422);
+    expect(aiErrorStatus(new AiError('x', { busy: true }))).toBe(503);
+    expect(aiErrorStatus(new AiError('x'))).toBe(502);
   });
 });

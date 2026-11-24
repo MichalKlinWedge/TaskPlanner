@@ -85,6 +85,7 @@ import { useLocalQuery } from "@/lib/local-store";
 import { usePlugins } from "@/lib/plugins";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
+import { BreakdownField } from "./ai-breakdown";
 import { useAppEnv } from "./app-env";
 import { AttachmentsField } from "./attachments";
 import { TaskTimeField } from "./focus";
@@ -317,6 +318,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
           <>
             <QuickAdd parent={{ id: task.id, listId: task.listId }} placeholder="Dodaj podzadanie" />
             <AttachSubtask key={`sub:${task.id}`} task={task} />
+            <BreakdownField key={`ai:${task.id}`} task={task} />
           </>
         ) : (
           <p className="text-xs text-[var(--muted)]">Najwyżej 4 poziomy zadań — tu nie można dodać kolejnego.</p>

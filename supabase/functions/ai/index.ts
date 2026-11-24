@@ -6,18 +6,25 @@
  *                                          i wraca do stanu „niesprawdzone”; model tylko z listy ostatniego „Sprawdź”
  *   POST accounts/delete   (użytkownik) → {accountId} → klucz usunięty z Vault, `deleted_at`
  *   POST accounts/test     (użytkownik) → {accountId} → „Sprawdź” = lista modeli na kluczu → {ok, models, model} | {ok: false, error, badKey}
+ *   POST breakdown         (użytkownik) → {accountId, today, task, subtasks, hint} → „✨ Rozbij na kroki” → {steps, model};
+ *                                          szkic — funkcja niczego nie zapisuje
  *
  * Konto wraca do klientów zwykłą synchronizacją (`pull_changes`, `ai_accounts` tylko do odczytu, bez klucza).
  * Klucz nigdy nie wychodzi z funkcji: do Google jedzie nagłówkiem `x-goog-api-key` (`packages/ai`).
  * Sekrety: brak własnych; `AI_TEST_GEMINI_BASE` tylko w `.env.test` (fałszywy Gemini w testach integracyjnych).
  */
 import { AiAccountCreate, AiAccountRef, AiAccountUpdate, type AiAccountStatus, type AiModelEntry, type AiProvider, aiKeyHint } from '../../../packages/core/src/ai.ts';
-import { type AiEndpoints, checkAiKey, modelProblem, testPatch } from '../_shared/ai/accounts.ts';
+import { AiBreakdownRequest } from '../../../packages/core/src/ai-breakdown.ts';
+import { AiError } from '../../../packages/ai/src/index.ts';
+import { aiClient, type AiEndpoints, checkAiKey, modelProblem, testPatch } from '../_shared/ai/accounts.ts';
+import { aiErrorStatus, runBreakdown } from '../_shared/ai/breakdown.ts';
 import { admin, HttpError, json, optionalEnv, requireUser, route, serve } from '../_shared/runtime.ts';
 
 const FN = 'ai';
 /** Największe ciało zapytania o konto (klucz + kilka pól). */
 const MAX_BODY = 4_000;
+/** Największe ciało zapytania z kontekstem zadania (opis + tytuły podzadań). */
+const MAX_CONTEXT = 60_000;
 
 const endpoints: AiEndpoints = { gemini: optionalEnv('AI_TEST_GEMINI_BASE') };
 
@@ -29,9 +36,9 @@ interface AccountRow {
   status: AiAccountStatus;
 }
 
-async function body(req: Request): Promise<unknown> {
+async function body(req: Request, max = MAX_BODY): Promise<unknown> {
   const text = await req.text();
-  if (text.length > MAX_BODY) throw new HttpError(413, 'Za duże zapytanie');
+  if (text.length > max) throw new HttpError(413, 'Za duże zapytanie');
   try {
     return JSON.parse(text);
   } catch {
@@ -117,6 +124,33 @@ async function accountTest(req: Request): Promise<Response> {
   return json(result);
 }
 
+/**
+ * Zapytanie funkcji ✨ na koncie użytkownika: tylko sprawdzone konto z modelem; odrzucony klucz przestawia
+ * konto w stan błędu (jak „Sprawdź”), przejściowa awaria wraca samym komunikatem.
+ */
+async function askOn<T>(account: AccountRow, ask: (client: ReturnType<typeof aiClient>) => Promise<T>): Promise<T> {
+  if (account.status !== 'active' || !account.model) throw new HttpError(409, 'Konto AI nie jest sprawdzone — otwórz Ustawienia → „Asystent AI” i kliknij „Sprawdź”.');
+  const db = admin();
+  const { data: key } = await db.rpc('ai_secret_get', { p_account: account.id });
+  if (typeof key !== 'string' || !key) throw new HttpError(409, 'Brak klucza — odłącz konto AI i podepnij je ponownie.');
+  try {
+    return await ask(aiClient(account.provider, key, account.model, endpoints));
+  } catch (error) {
+    if (!(error instanceof AiError)) throw error;
+    if (error.badKey) {
+      const { error: failed } = await db.from('ai_accounts').update(testPatch({ ok: false, error: error.message, badKey: true }, account.status, new Date())).eq('id', account.id);
+      if (failed) throw failed;
+    }
+    throw new HttpError(aiErrorStatus(error), error.message);
+  }
+}
+
+async function breakdown(req: Request): Promise<Response> {
+  const user = await requireUser(req);
+  const input = parse(AiBreakdownRequest, await body(req, MAX_CONTEXT));
+  return json(await askOn(await ownAccount(user.id, input.accountId), (client) => runBreakdown(client, input)));
+}
+
 serve(async (req, url) => {
   const path = route(url, FN);
   if (req.method !== 'POST') throw new HttpError(405, 'Tylko POST');
@@ -124,5 +158,6 @@ serve(async (req, url) => {
   if (path === 'accounts/update') return accountUpdate(req);
   if (path === 'accounts/delete') return accountDelete(req);
   if (path === 'accounts/test') return accountTest(req);
+  if (path === 'breakdown') return breakdown(req);
   throw new HttpError(404, `Nieznana ścieżka ${path}`);
 });

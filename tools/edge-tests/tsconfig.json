@@ -8,6 +8,7 @@
   "include": [
     "src/**/*.ts",
     "../../supabase/functions/_shared/ai/accounts.ts",
+    "../../supabase/functions/_shared/ai/breakdown.ts",
     "../../supabase/functions/_shared/calendar.ts",
     "../../supabase/functions/_shared/calendar-sync.ts",
     "../../supabase/functions/_shared/email.ts",

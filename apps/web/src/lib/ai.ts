@@ -5,7 +5,7 @@
  * użytkownika) — klucz idzie tylko w ciele zapytania do funkcji i zostaje w Vault; konto wraca zwykłą
  * synchronizacją (`ai_accounts`, tylko do odczytu, bez klucza).
  */
-import { AI_OFFLINE_NOTE, parseAiAccount, type AiAccount, type AiAccountTestResult, type AiProvider } from "@taskplanner/core";
+import { AI_NEEDS_NETWORK, AI_OFFLINE_NOTE, parseAiAccount, type AiAccount, type AiAccountTestResult, type AiBreakdownRequest, type AiBreakdownResult, type AiProvider } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useMemo } from "react";
 
@@ -15,7 +15,7 @@ import { supabaseBrowser } from "./supabase-browser";
 async function call<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!base) throw new Error("Brak NEXT_PUBLIC_SUPABASE_URL.");
-  if (typeof navigator !== "undefined" && !navigator.onLine) throw new Error(AI_OFFLINE_NOTE);
+  if (typeof navigator !== "undefined" && !navigator.onLine) throw new Error(path.startsWith("accounts/") ? AI_OFFLINE_NOTE : AI_NEEDS_NETWORK);
   const { data } = await supabaseBrowser().auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new Error("Sesja wygasła — zaloguj się ponownie.");
@@ -35,6 +35,8 @@ export const updateAiAccount = (accountId: string, patch: { key?: string; billin
   call<{ ok: true }>("accounts/update", { accountId, ...patch });
 export const deleteAiAccount = (accountId: string) => call<{ ok: true }>("accounts/delete", { accountId });
 export const testAiAccount = (accountId: string) => call<AiAccountTestResult>("accounts/test", { accountId });
+/** „✨ Rozbij na kroki”: szkic kroków od modelu (nic nie zapisuje). */
+export const askBreakdown = (request: AiBreakdownRequest) => call<AiBreakdownResult>("breakdown", request);
 
 type Row = Record<string, string | number | null>;
 

@@ -4,7 +4,7 @@
  * ani w lokalnej bazie; konto wraca synchronizacją (`ai_accounts`, tylko do odczytu). Konto podpięte na webie
  * widać tu bez ponownego wklejania klucza.
  */
-import { AI_OFFLINE_NOTE, parseAiAccount, type AiAccount, type AiAccountTestResult, type AiProvider } from '@taskplanner/core';
+import { AI_NEEDS_NETWORK, AI_OFFLINE_NOTE, parseAiAccount, type AiAccount, type AiAccountTestResult, type AiBreakdownRequest, type AiBreakdownResult, type AiProvider } from '@taskplanner/core';
 import type { SqlRow } from '@taskplanner/sync';
 
 import { sessionUser } from './config';
@@ -12,7 +12,8 @@ import { useLocalQuery } from './local-query';
 import { supabaseClient, syncNow } from './sync';
 
 async function call<T>(path: string, body: Record<string, unknown>): Promise<T> {
-  if (!sessionUser().online) throw new Error(AI_OFFLINE_NOTE);
+  const account = path.startsWith('accounts/');
+  if (!sessionUser().online) throw new Error(account ? AI_OFFLINE_NOTE : AI_NEEDS_NETWORK);
   const { data, error } = await supabaseClient().functions.invoke(`ai/${path}`, { body });
   if (error) {
     const context = (error as { context?: Response }).context;
@@ -20,7 +21,7 @@ async function call<T>(path: string, body: Record<string, unknown>): Promise<T> 
     throw new Error(reply?.error ?? error.message);
   }
   // Zmieniony wiersz konta wraca do lokalnej bazy od razu, nie dopiero przy następnej synchronizacji.
-  await syncNow().catch(() => undefined);
+  if (account) await syncNow().catch(() => undefined);
   return data as T;
 }
 
@@ -30,6 +31,8 @@ export const updateAiAccount = (accountId: string, patch: { key?: string; billin
   call<{ ok: true }>('accounts/update', { accountId, ...patch });
 export const deleteAiAccount = (accountId: string) => call<{ ok: true }>('accounts/delete', { accountId });
 export const testAiAccount = (accountId: string) => call<AiAccountTestResult>('accounts/test', { accountId });
+/** „✨ Rozbij na kroki”: szkic kroków od modelu (nic nie zapisuje). */
+export const askBreakdown = (request: AiBreakdownRequest) => call<AiBreakdownResult>('breakdown', request);
 
 /** Konto AI z lokalnej bazy (działa offline; `null` = nie podpięte). */
 export function useAiAccount(): AiAccount | null {
