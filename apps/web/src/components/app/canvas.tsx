@@ -73,6 +73,7 @@ import { useDependencies } from "@/lib/dependencies";
 import { useAppEnv } from "./app-env";
 import { CanvasArrangeButton } from "./canvas-arrange";
 import { CanvasExportButton } from "./canvas-export";
+import { CanvasHelpButton } from "./canvas-help";
 import { QuickAdd } from "./quick-add";
 import { TagColorPicker } from "./tag-chip";
 import { useTaskActions } from "./task-item";
@@ -923,14 +924,8 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
             );
           })}
         </div>
-        <span className="flex-1 lg:hidden" />
-        {/* Podstawa 0: podpowiedź wypełnia wolne miejsce i skraca się, zamiast zawijać pasek. */}
-        <span
-          className="hidden min-w-0 flex-[1_1_0] truncate text-right text-[var(--muted)] lg:block"
-          title="Dwuklik — nowa karteczka · uchwyt ● na karcie przeciągnięty na inną kartę — strzałka „blokuje” albo „wynika z” (klik w strzałkę + Delete usuwa) · Shift+przeciąganie — zaznaczanie ramką · spacja+przeciąganie — przesuwanie tablicy · Ctrl+kółko albo dwa palce — powiększenie"
-        >
-          Dwuklik — nowa · ● — strzałka · Shift — zaznaczanie · Spacja — przesuwanie · Ctrl+kółko — powiększenie
-        </span>
+        <CanvasHelpButton />
+        <span className="flex-1" />
         <div className="flex items-center overflow-hidden rounded-md border border-[var(--line)]" role="group" aria-label="Powiększenie">
           <button type="button" className="px-2 py-1 hover:bg-[var(--hover)]" onClick={() => zoomAt(1 / CANVAS_ZOOM.step)} aria-label="Pomniejsz" title="Pomniejsz (−)">
             −
