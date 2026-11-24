@@ -8,7 +8,7 @@ import {
   AI_NEEDS_NETWORK,
   aiAccountReady,
   aiBreakdownNote,
-  BREAKDOWN_MAX_HINT,
+  AI_HINT_MAX,
   breakdownDrafts,
   breakdownMinutes,
   breakdownOps,
@@ -20,12 +20,11 @@ import {
   shortDate,
   type AiAccount,
   type BreakdownDraft,
-  type Dependency,
   type LocalDate,
   type ViewTask,
 } from '@taskplanner/core';
 import { useNetworkState } from 'expo-network';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useTaskActions } from './actions';
@@ -34,7 +33,7 @@ import { pickPriority } from './task-menus';
 import { Button, Chip, P, Row, usePalette } from './ui';
 import { askBreakdown, useAiAccount } from '@/lib/ai';
 import type { AppData } from '@/lib/app-data';
-import { useLocalQuery } from '@/lib/local-query';
+import { useDependencies } from '@/lib/dependencies';
 import { localEngine } from '@/lib/sync';
 
 const DURATIONS = [5, 10, 15, 30, 45, 60, 90, 120, 180, 240, 480];
@@ -65,10 +64,7 @@ export function BreakdownField({ task, data, today }: Props) {
 function BreakdownForm({ task, data, today, account, online, onClose }: Props & { account: AiAccount; online: boolean; onClose: () => void }) {
   const p = usePalette();
   const { run, notify } = useTaskActions();
-  const rows = useLocalQuery(['task_dependencies'], (engine) =>
-    engine.db.all<{ id: string; predecessor_id: string; successor_id: string; lag_days: number }>('select id, predecessor_id, successor_id, lag_days from task_dependencies where deleted_at is null'),
-  );
-  const deps = useMemo((): Dependency[] => (rows ?? []).map((r) => ({ id: r.id, predecessorId: r.predecessor_id, successorId: r.successor_id, lagDays: Number(r.lag_days) || 0 })), [rows]);
+  const deps = useDependencies();
   const [hint, setHint] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,7 +118,7 @@ function BreakdownForm({ task, data, today, account, online, onClose }: Props & 
       <TextInput
         value={hint}
         onChangeText={setHint}
-        maxLength={BREAKDOWN_MAX_HINT}
+        maxLength={AI_HINT_MAX}
         placeholder={AI_BREAKDOWN.hint}
         placeholderTextColor={p.muted}
         accessibilityLabel="Wskazówka dla AI"

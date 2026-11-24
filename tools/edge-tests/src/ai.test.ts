@@ -5,8 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AiError } from '../../../packages/ai/src/index.ts';
 import type { AiBreakdownRequest } from '../../../packages/core/src/ai-breakdown.ts';
+import { AiDayPlanRequest } from '../../../packages/core/src/ai-day-plan.ts';
 import { aiClient, checkAiKey, chooseModel, modelProblem, testPatch } from '../../../supabase/functions/_shared/ai/accounts.ts';
 import { aiErrorStatus, runBreakdown } from '../../../supabase/functions/_shared/ai/breakdown.ts';
+import { runDayPlan } from '../../../supabase/functions/_shared/ai/day-plan.ts';
 
 const KEY = `AQ.${'k'.repeat(50)}`;
 const BASE = 'http://fake.test/gemini/v1beta';
@@ -96,6 +98,36 @@ describe('wybór modelu', () => {
   });
 });
 
+/** Kolejne odpowiedzi modelu; zwraca ciała zapytań. */
+const answers = (...texts: string[]) => {
+  const bodies: string[] = [];
+  globalThis.fetch = ((_url: string, init?: RequestInit) => {
+    bodies.push(String(init?.body));
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ candidates: [{ content: { parts: [{ text: texts.shift() }] }, finishReason: 'STOP' }] }) } as unknown as Response);
+  }) as typeof fetch;
+  return bodies;
+};
+const client = () => aiClient('gemini', KEY, 'gemini-3.5-flash-lite', { gemini: BASE });
+
+describe('runDayPlan („Ułóż z AI”)', () => {
+  const request = AiDayPlanRequest.parse({
+    accountId: '0190a000-0000-4000-8000-00000000000a',
+    date: '2026-11-24',
+    bufferMin: 10,
+    tasks: [{ n: 1, title: 'Oferta', durationMin: 60, priority: 1, dueDate: '2026-11-20', postponed: 0, after: [], notBefore: null, endBefore: null }],
+    free: [{ start: '09:00', end: '12:00' }],
+    hint: 'rano trudne rzeczy',
+  });
+
+  it('godziny z odpowiedzi bez zmyślonych numerów; zła odpowiedź = jedna naprawa', async () => {
+    const bodies = answers('[]', '{"blocks":[{"n":1,"start":"9:30"},{"n":7,"start":"10:00"}]}');
+    expect(await runDayPlan(client(), request)).toEqual({ blocks: [{ n: 1, start: '09:30' }], model: 'gemini-3.5-flash-lite' });
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toContain('rano trudne rzeczy');
+    expect(bodies[0]).toContain('09:00–12:00');
+  });
+});
+
 describe('runBreakdown („Rozbij na kroki”)', () => {
   const request: AiBreakdownRequest = {
     accountId: '0190a000-0000-4000-8000-00000000000a',
@@ -104,15 +136,6 @@ describe('runBreakdown („Rozbij na kroki”)', () => {
     subtasks: [{ title: 'Kartony', done: true }],
     hint: 'tylko wieczory',
   };
-  const answers = (...texts: string[]) => {
-    const bodies: string[] = [];
-    globalThis.fetch = ((_url: string, init?: RequestInit) => {
-      bodies.push(String(init?.body));
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ candidates: [{ content: { parts: [{ text: texts.shift() }] }, finishReason: 'STOP' }] }) } as unknown as Response);
-    }) as typeof fetch;
-    return bodies;
-  };
-  const client = () => aiClient('gemini', KEY, 'gemini-3.5-flash-lite', { gemini: BASE });
 
   it('kroki z odpowiedzi; w zapytaniu dane zadania i wskazówka, instrukcja systemowa osobno', async () => {
     const bodies = answers('{"steps":[{"title":"Zamów auto","durationMin":20,"offsetDays":1}]}');

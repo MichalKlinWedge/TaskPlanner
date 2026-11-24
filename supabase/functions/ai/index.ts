@@ -8,6 +8,8 @@
  *   POST accounts/test     (użytkownik) → {accountId} → „Sprawdź” = lista modeli na kluczu → {ok, models, model} | {ok: false, error, badKey}
  *   POST breakdown         (użytkownik) → {accountId, today, task, subtasks, hint} → „✨ Rozbij na kroki” → {steps, model};
  *                                          szkic — funkcja niczego nie zapisuje
+ *   POST day-plan          (użytkownik) → {accountId, date, bufferMin, tasks, free, hint} → „✨ Ułóż z AI” → {blocks, model};
+ *                                          propozycja godzin — sprawdza ją klient, funkcja niczego nie zapisuje
  *
  * Konto wraca do klientów zwykłą synchronizacją (`pull_changes`, `ai_accounts` tylko do odczytu, bez klucza).
  * Klucz nigdy nie wychodzi z funkcji: do Google jedzie nagłówkiem `x-goog-api-key` (`packages/ai`).
@@ -15,9 +17,11 @@
  */
 import { AiAccountCreate, AiAccountRef, AiAccountUpdate, type AiAccountStatus, type AiModelEntry, type AiProvider, aiKeyHint } from '../../../packages/core/src/ai.ts';
 import { AiBreakdownRequest } from '../../../packages/core/src/ai-breakdown.ts';
+import { AiDayPlanRequest } from '../../../packages/core/src/ai-day-plan.ts';
 import { AiError } from '../../../packages/ai/src/index.ts';
 import { aiClient, type AiEndpoints, checkAiKey, modelProblem, testPatch } from '../_shared/ai/accounts.ts';
 import { aiErrorStatus, runBreakdown } from '../_shared/ai/breakdown.ts';
+import { runDayPlan } from '../_shared/ai/day-plan.ts';
 import { admin, HttpError, json, optionalEnv, requireUser, route, serve } from '../_shared/runtime.ts';
 
 const FN = 'ai';
@@ -151,6 +155,12 @@ async function breakdown(req: Request): Promise<Response> {
   return json(await askOn(await ownAccount(user.id, input.accountId), (client) => runBreakdown(client, input)));
 }
 
+async function dayPlan(req: Request): Promise<Response> {
+  const user = await requireUser(req);
+  const input = parse(AiDayPlanRequest, await body(req, MAX_CONTEXT));
+  return json(await askOn(await ownAccount(user.id, input.accountId), (client) => runDayPlan(client, input)));
+}
+
 serve(async (req, url) => {
   const path = route(url, FN);
   if (req.method !== 'POST') throw new HttpError(405, 'Tylko POST');
@@ -159,5 +169,6 @@ serve(async (req, url) => {
   if (path === 'accounts/delete') return accountDelete(req);
   if (path === 'accounts/test') return accountTest(req);
   if (path === 'breakdown') return breakdown(req);
+  if (path === 'day-plan') return dayPlan(req);
   throw new HttpError(404, `Nieznana ścieżka ${path}`);
 });

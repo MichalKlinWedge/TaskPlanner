@@ -10,7 +10,7 @@ import {
   AI_NEEDS_NETWORK,
   aiAccountReady,
   aiBreakdownNote,
-  BREAKDOWN_MAX_HINT,
+  AI_HINT_MAX,
   breakdownDrafts,
   breakdownMinutes,
   breakdownOps,
@@ -24,24 +24,15 @@ import {
   type Priority,
   type ViewTask,
 } from "@taskplanner/core";
-import { useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent } from "react";
 
 import { askBreakdown, useAiAccount } from "@/lib/ai";
 import { useDependencies } from "@/lib/dependencies";
+import { useOnline } from "@/lib/use-online";
 
 import { useAppEnv } from "./app-env";
 import { useTaskActions } from "./task-item";
 import { Button, IconButton, Input, Notice, Select } from "./ui";
-
-const subscribeOnline = (notify: () => void) => {
-  window.addEventListener("online", notify);
-  window.addEventListener("offline", notify);
-  return () => {
-    window.removeEventListener("online", notify);
-    window.removeEventListener("offline", notify);
-  };
-};
-const useOnline = () => useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true);
 
 const PRIORITIES = [1, 2, 3, 4] as const satisfies readonly Priority[];
 const steps = (n: number) => plural(n, ["krok", "kroki", "kroków"]);
@@ -110,7 +101,7 @@ function BreakdownForm({ task, account, online, onClose }: { task: ViewTask; acc
         <Input
           autoFocus
           value={hint}
-          maxLength={BREAKDOWN_MAX_HINT}
+          maxLength={AI_HINT_MAX}
           onChange={(e) => setHint(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && void ask()}
           placeholder={AI_BREAKDOWN.hint}

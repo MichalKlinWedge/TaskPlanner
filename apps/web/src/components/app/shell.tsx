@@ -301,7 +301,7 @@ export function Shell({
     route.view === "inbox" ? (
       <InboxView {...props} />
     ) : route.view === "today" ? (
-      <TodayView {...props} aside={<DayPlan data={data} ctx={ctx} settings={settings} />} />
+      <TodayView {...props} aside={<DayPlan key={`${today}:${workspaceId ?? ""}`} data={data} ctx={ctx} settings={settings} />} />
     ) : route.view === "upcoming" ? (
       <UpcomingView {...props} />
     ) : route.view === "board" ? (

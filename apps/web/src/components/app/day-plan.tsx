@@ -4,15 +4,17 @@
  * „Plan dnia” obok „Dziś” (M9, M11): oś godzin z blokami zadań (z godziną) i spotkaniami z kalendarzy
  * zewnętrznych, wolne okna w godzinach pracy, linia „teraz”, wiersz „cały dzień” i lista konfliktów.
  * Wszystko z `core/time-blocking.ts` (`blocksForDay`, `conflicts`, `freeSlots`, `blockLanes`); układanie
- * bloków przeciąganiem — w kalendarzu (`#/calendar`).
+ * bloków przeciąganiem — w kalendarzu (`#/calendar`), automatyczne — „Ułóż dzień” (`day-planner.tsx`, szkic
+ * jako przerywane bloki do „Zastosuj”).
  */
-import { addDays, blockLanes, blocksForDay, conflictIds, conflicts, freeSlots, habitSlots, localDateTimeAt, plural, PRIORITY, zonedInstant, type Block, type ProfileSettings, type ViewContext } from "@taskplanner/core";
+import { addDays, blockLanes, blocksForDay, conflictIds, conflicts, DAY_PLANNER, freeSlots, habitSlots, isOpen, localDateTimeAt, plural, PRIORITY, withDraft, withoutBlock, zonedInstant, type Block, type ProfileSettings, type ViewContext } from "@taskplanner/core";
 import { useEffect, useMemo, useState } from "react";
 
 import type { AppData } from "@/lib/app-data";
 import { useCalendarEvents } from "@/lib/calendar-events";
 
 import { useAppEnv } from "./app-env";
+import { DayPlanner, type PlanPreview } from "./day-planner";
 import { navLinkClass } from "./ui";
 
 /** Pikseli na minutę osi (48 px na godzinę). */
@@ -45,13 +47,20 @@ export function DayPlan({ data, ctx, settings }: { data: AppData; ctx: ViewConte
     [data.tasks, data.habitCompletions, ctx.workspaceId, today],
   );
 
+  const taskById = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
+  const [preview, setPreview] = useState<PlanPreview | null>(null);
+  // Zadania zamknięte od ułożenia znikają ze szkicu.
+  const draft = useMemo(() => preview && { ...preview, blocks: preview.blocks.filter((b) => isOpen(taskById.get(b.taskId) ?? { status: "cancelled" })) }, [preview, taskById]);
+
   const plan = useMemo(() => {
     const day = blocksForDay(tasks, events.list, today, { timeZone, defaultDurationMin: settings.defaultDurationMin, habits });
     const list = conflicts(day.timed);
     return { day, list, hot: conflictIds(list), free: freeSlots(day, settings.workHours, { timeZone }), lanes: blockLanes(day.timed) };
   }, [tasks, habits, events.list, today, timeZone, settings.defaultDurationMin, settings.workHours]);
 
-  const { day } = plan;
+  const day = useMemo(() => (draft ? withDraft(plan.day, draft.blocks, taskById, timeZone) : plan.day), [draft, plan.day, taskById, timeZone]);
+  const lanes = useMemo(() => (draft ? blockLanes(day.timed) : plan.lanes), [draft, day.timed, plan.lanes]);
+  const drafted = useMemo(() => new Set(draft?.blocks.map((b) => b.taskId)), [draft]);
   // Oś: godziny pracy, poszerzone o bloki spoza nich (pełne godziny).
   const first = Math.min(toMin(settings.workHours.start), ...day.timed.map((b) => b.startMin));
   const last = Math.max(toMin(settings.workHours.end), ...day.timed.map((b) => b.endMin));
@@ -60,7 +69,6 @@ export function DayPlan({ data, ctx, settings }: { data: AppData; ctx: ViewConte
   const y = (min: number) => (Math.min(Math.max(min, from), to) - from) * PX;
   const hours = Array.from({ length: (to - from) / HOUR + 1 }, (_, i) => from + i * HOUR);
   const clock = (b: Pick<Block, "startAt">) => localDateTimeAt(b.startAt, timeZone).slice(11);
-  const taskById = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
 
   const open = (id: string) => {
     select(id);
@@ -68,14 +76,16 @@ export function DayPlan({ data, ctx, settings }: { data: AppData; ctx: ViewConte
   };
 
   return (
-    <aside className="mt-6 text-sm lg:sticky lg:top-0 lg:mt-0 lg:self-start" aria-label="Plan dnia" data-testid="day-plan">
+    <aside className="mt-6 text-sm lg:sticky lg:top-0 lg:mt-0 lg:max-h-[calc(100dvh-4rem)] lg:self-start lg:overflow-y-auto" aria-label="Plan dnia" data-testid="day-plan">
       <header className="mb-2 flex items-baseline gap-2">
         <h2 className="text-sm font-semibold">Plan dnia</h2>
-        <span className="text-xs text-[var(--muted)]">{plural(day.timed.filter((b) => !b.passive).length, ["blok", "bloki", "bloków"])}</span>
+        <span className="text-xs text-[var(--muted)]">{plural(plan.day.timed.filter((b) => !b.passive).length, ["blok", "bloki", "bloków"])}</span>
         <a href="#/calendar" className={`ml-auto ${navLinkClass}`}>
           Ułóż w kalendarzu →
         </a>
       </header>
+
+      <DayPlanner data={data} ctx={ctx} settings={settings} events={events.list} nowMin={nowMin} preview={draft} onPreview={setPreview} />
 
       {plan.list.length ? (
         <section className="mb-2 rounded-md border border-[var(--danger)]/40 bg-red-50 p-2 text-xs dark:bg-red-950/30" aria-label="Konflikty">
@@ -117,7 +127,7 @@ export function DayPlan({ data, ctx, settings }: { data: AppData; ctx: ViewConte
           <div key={s.startMin} className="absolute right-0 left-0 bg-green-500/10" style={{ top: y(s.startMin), height: y(s.endMin) - y(s.startMin) }} title="Wolne" />
         ))}
         {day.timed.map((b) => {
-          const lane = plan.lanes.get(`${b.kind}:${b.id}`) ?? { lane: 0, lanes: 1 };
+          const lane = lanes.get(`${b.kind}:${b.id}`) ?? { lane: 0, lanes: 1 };
           const task = b.kind === "task" ? taskById.get(b.id) : undefined;
           const source = b.kind === "event" ? events.info.get(b.id) : undefined;
           const hot = plan.hot.has(b.id) && !b.passive && !b.virtual;
@@ -138,6 +148,17 @@ export function DayPlan({ data, ctx, settings }: { data: AppData; ctx: ViewConte
                 {label}
               </a>
             );
+          if (b.kind === "task" && drafted.has(b.id))
+            return (
+              <div key={`draft:${b.id}`} className={`${cls} flex border-dashed !border-[var(--accent)] !bg-[var(--accent)]/10`} style={style} data-testid="plan-draft">
+                <button type="button" className="min-w-0 flex-1 truncate text-left" title={`${title}\nSzkic — zapisze się po „${DAY_PLANNER.apply}”`} onClick={() => open(b.id)}>
+                  {label}
+                </button>
+                <button type="button" className="shrink-0 px-0.5 opacity-70 hover:opacity-100" aria-label={`${DAY_PLANNER.remove}: ${b.title}`} title={DAY_PLANNER.remove} onClick={() => draft && setPreview(withoutBlock(draft, b.id))}>
+                  ✕
+                </button>
+              </div>
+            );
           return b.kind === "task" ? (
             <button key={`task:${b.id}`} type="button" className={cls} style={style} title={title} onClick={() => open(b.id)}>
               {hot ? "⚠ " : ""}
@@ -152,7 +173,7 @@ export function DayPlan({ data, ctx, settings }: { data: AppData; ctx: ViewConte
         })}
         {nowMin >= from && nowMin <= to ? <div className="pointer-events-none absolute right-0 -left-1 z-10 border-t-2 border-[var(--danger)]" style={{ top: y(nowMin) }} aria-label="Teraz" /> : null}
       </div>
-      {!day.timed.length ? <p className="mt-2 text-xs text-[var(--muted)]">Brak bloków z godziną — przeciągnij zadania na godziny w kalendarzu.</p> : null}
+      {!day.timed.length ? <p className="mt-2 text-xs text-[var(--muted)]">Brak bloków z godziną — „{DAY_PLANNER.button}” albo przeciągnij zadania na godziny w kalendarzu.</p> : null}
     </aside>
   );
 }

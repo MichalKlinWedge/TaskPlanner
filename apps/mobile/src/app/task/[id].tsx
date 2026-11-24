@@ -84,6 +84,7 @@ import { TaskRow } from '@/components/task-row';
 import { Button, usePalette } from '@/components/ui';
 import { listEditable, listLabel, useView, type AppData } from '@/lib/app-data';
 import { spentMinutes, useFocusData } from '@/lib/focus';
+import { useDependencies } from '@/lib/dependencies';
 import { useLocalQuery } from '@/lib/local-query';
 import { useSendableRules } from '@/lib/plugins';
 import { rememberRecent } from '@/lib/recent';
@@ -862,10 +863,7 @@ function TaskPicker({ data, candidates: all, onPick, onClose, label, verb, empty
 function DependenciesField({ task, data }: { task: ViewTask; data: AppData }) {
   const p = usePalette();
   const { run, notify } = useTaskActions();
-  const rows = useLocalQuery(['task_dependencies'], (engine) =>
-    engine.db.all<{ id: string; predecessor_id: string; successor_id: string; lag_days: number }>('select id, predecessor_id, successor_id, lag_days from task_dependencies where deleted_at is null'),
-  );
-  const deps = useMemo((): Dependency[] => (rows ?? []).map((r) => ({ id: r.id, predecessorId: r.predecessor_id, successorId: r.successor_id, lagDays: Number(r.lag_days) || 0 })), [rows]);
+  const deps = useDependencies();
   const links = useMemo(() => taskLinks(task.id, data.tasks, deps), [task.id, data.tasks, deps]);
   const [adding, setAdding] = useState<'predecessor' | 'successor' | null>(null);
   const [query, setQuery] = useState('');

@@ -3,6 +3,7 @@
  */
 import type { AiAccountStatus, AiProvider } from './ai.ts';
 import type { BackupTable } from './backup.ts';
+import type { UnplacedReason } from './day-planner.ts';
 import type { FocusPhase } from './focus.ts';
 import type { PluginEvent } from './plugins/events.ts';
 import type { IsoWeekday, ListKind, Priority, ProjectStatus, ReminderKind, TaskStatus } from './schemas/primitives.ts';
@@ -381,7 +382,7 @@ export const AI_ACCOUNT_STATUS: Record<AiAccountStatus, { label: string; tone: '
 
 /** Wstęp karty „Asystent AI”. */
 export const AI_INTRO =
-  'Funkcje ✨ (na razie „Rozbij na kroki” przy podzadaniach; ułożenie dnia i podsumowanie tygodnia w kolejnych wersjach) korzystają z Twojego własnego klucza AI — '
+  'Funkcje ✨ („Rozbij na kroki” przy podzadaniach i „Ułóż z AI” w „Planie dnia”; podsumowanie tygodnia w kolejnej wersji) korzystają z Twojego własnego klucza AI — '
   + 'aplikacja nie ma wspólnego klucza, a koszt i limity zapytań są po stronie Twojego projektu u dostawcy. Bez podpiętego konta '
   + 'wszystko inne działa jak dotąd.';
 
@@ -410,6 +411,36 @@ export const AI_BREAKDOWN = {
   blocked: 'Tych kroków nie da się już dodać — zadanie zmieniło się w międzyczasie.',
   after: 'po poprzednim',
 } as const;
+
+/** Ułożenie dnia („Plan dnia” w „Dziś” i w przeglądzie) — wspólne teksty weba i telefonu. */
+export const DAY_PLANNER = {
+  button: 'Ułóż dzień',
+  hint: 'Preferencja (opcjonalnie), np. „rano trudne rzeczy”',
+  ai: '✨ Ułóż z AI',
+  auto: 'Ułóż bez AI',
+  busy: 'AI układa dzień…',
+  buffer: 'Przerwa',
+  apply: 'Zastosuj',
+  discard: 'Odrzuć',
+  remove: 'Bez godziny',
+  nothing: 'Nie ma czego układać — brak zadań z terminem na ten dzień bez godziny i zaległych.',
+  dayOff: 'To dzień wolny od pracy — godziny i dni pracy zmienisz w Ustawieniach.',
+  noSlots: 'Brak wolnego okna w godzinach pracy.',
+  unplaced: 'Nie zmieściło się',
+  postpone: 'Przełóż na jutro',
+  postponeNext: 'Przełóż na następny dzień',
+  stale: 'Zadania zmieniły się w międzyczasie — ułóż jeszcze raz.',
+} as const;
+
+export const UNPLACED_REASON: Record<UnplacedReason, string> = {
+  no_slot: 'brak wolnego okna',
+  dependency: 'czeka na inne zadanie',
+  omitted: 'AI nie dało godziny',
+};
+
+/** Do kogo idą dane przy „Ułóż z AI”. */
+export const aiDayPlanNote = (provider: AiProvider): string =>
+  `Tytuły zadań, czasy, priorytety, terminy i wolne okna idą do ${AI_PROVIDER[provider].company} na Twoim kluczu; adresy e-mail są zasłaniane, wydarzenia z kalendarza nie wychodzą. Nic się nie zapisze bez „Zastosuj”.`;
 
 /** Do kogo idą dane przy „Rozbij na kroki”. */
 export const aiBreakdownNote = (provider: AiProvider): string =>

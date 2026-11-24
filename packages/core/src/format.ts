@@ -162,3 +162,10 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} kB`;
   return `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} MB`;
 }
+
+/** Pominięte serie (godzina zmieniłaby każde wystąpienie). */
+export const seriesNote = (count: number): string =>
+  `${plural(count, ['zadanie cykliczne', 'zadania cykliczne', 'zadań cyklicznych'])} bez zmian — godzina dotyczyłaby każdego wystąpienia.`;
+
+/** Godziny z odpowiedzi AI poprawione albo odrzucone przez `validateDayPlan`. */
+export const aiPlanFixedNote = (count: number): string => `${plural(count, ['propozycja AI była', 'propozycje AI były', 'propozycji AI było'])} poza wolnym oknem, w kolizji albo przed poprzednikiem — poprawione.`;

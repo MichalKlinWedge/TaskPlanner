@@ -13,6 +13,7 @@ import {
   habitSlots,
   zonedInstant,
   type Block,
+  type CalendarEventLike,
   type Conflict,
   type DayPlan,
   type FreeSlot,
@@ -30,6 +31,8 @@ export interface DayPlanModel {
   hot: Set<string>;
   free: FreeSlot[];
   lanes: Map<string, { lane: number; lanes: number }>;
+  /** Wydarzenia kalendarzy tego dnia (zajętość przy układaniu dnia). */
+  events: readonly CalendarEventLike[];
   info: Map<string, EventInfo>;
   tasks: Map<string, ViewTask>;
   /** Początek dnia (ms) — minuta „teraz” liczy się od niego. */
@@ -57,6 +60,7 @@ export function useDayPlan(data: AppData, date: LocalDate, workspaceId: string |
       hot: conflictIds(list),
       free: freeSlots(day, workHours, { timeZone }),
       lanes: blockLanes(day.timed),
+      events: events.list,
       info: events.info,
       tasks: byId,
       dayStart: zonedInstant(date, '00:00', timeZone).getTime(),

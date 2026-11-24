@@ -1,5 +1,6 @@
 export * from './ai.ts';
 export * from './ai-breakdown.ts';
+export * from './ai-day-plan.ts';
 export * from './app-update.ts';
 export * from './attachments.ts';
 export * from './canvas.ts';
@@ -10,6 +11,7 @@ export * from './collaborators.ts';
 export * from './comments.ts';
 export * from './commands.ts';
 export * from './dates.ts';
+export * from './day-planner.ts';
 export * from './dependencies.ts';
 export * from './errors.ts';
 export * from './focus.ts';

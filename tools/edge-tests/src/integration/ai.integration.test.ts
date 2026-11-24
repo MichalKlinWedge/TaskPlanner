@@ -195,6 +195,38 @@ describe('Edge Function ai — konto', () => {
     });
   });
 
+  describe('„Ułóż z AI”', () => {
+    const request = (over: Record<string, unknown> = {}) => ({
+      accountId,
+      date: '2026-11-24',
+      bufferMin: 10,
+      tasks: [
+        { n: 1, title: 'Oferta', durationMin: 60, priority: 1, dueDate: '2026-11-20', postponed: 0, after: [], notBefore: null, endBefore: null },
+        { n: 2, title: 'Notatka', durationMin: 30, priority: 4, dueDate: '2026-11-24', postponed: 2, after: [1], notBefore: '10:00', endBefore: null },
+      ],
+      free: [{ start: '09:00', end: '12:00' }],
+      hint: 'rano trudne rzeczy',
+      ...over,
+    });
+
+    it('propozycja godzin; zmyślony numer odpada, nic nie zapisane', async () => {
+      const before = sql(`select sync_version from public.sync_scopes where id = '${user.id}'`);
+      fake.gemini.answers.push(JSON.stringify({ blocks: [{ n: 1, start: '9:00' }, { n: 2, start: '10:10' }, { n: 5, start: '11:00' }] }));
+      const res = await call('day-plan', user, request());
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body).toMatchObject({ blocks: [{ n: 1, start: '09:00' }, { n: 2, start: '10:10' }] });
+      expect(fake.gemini.prompts.at(-1)!.text).toContain('rano trudne rzeczy');
+      expect(sql(`select sync_version from public.sync_scopes where id = '${user.id}'`)).toBe(before);
+    });
+
+    it('bez logowania 401, cudze konto 404, zły kontekst 400', async () => {
+      expect((await call('day-plan', null, request())).status).toBe(401);
+      expect((await call('day-plan', other, request())).status).toBe(404);
+      expect((await call('day-plan', user, request({ free: [] }))).status).toBe(400);
+      expect((await call('day-plan', user, request({ tasks: [] }))).status).toBe(400);
+    });
+  });
+
   it('„Odłącz”: klucz znika z Vault, wiersz z deleted_at wraca do klienta jako usunięcie', async () => {
     const before = (await user.client.rpc('pull_changes', { p_since: {} })).data.scopes[user.id].version as number;
     expect((await call('accounts/delete', user, { accountId })).status).toBe(200);

@@ -39,6 +39,8 @@ export interface DayTimelineProps {
   /** Minuta „teraz” (tylko w dzisiejszym dniu). */
   nowMin?: number | null;
   editable?: boolean;
+  /** Id zadań ze szkicu ułożenia dnia — bloki przerywane, jeszcze niezapisane. */
+  drafted?: ReadonlySet<string>;
   onPress: (block: Block) => void;
   onMove?: (task: ViewTask, startMin: number, durationMin: number) => void;
   onResize?: (task: ViewTask, startMin: number, endMin: number) => void;
@@ -78,10 +80,11 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
   const source = block.kind === 'event' ? props.info.get(block.id) : undefined;
   const lane = props.lanes.get(`${block.kind}:${block.id}`) ?? { lane: 0, lanes: 1 };
   const hot = props.hot.has(block.id) && !block.passive && !block.virtual;
+  const draft = block.kind === 'task' && !!props.drafted?.has(block.id);
   const startMin = Math.max(block.startMin, from);
   const endMin = Math.min(block.endMin, to);
   // Przesuwalne: zadanie (nie przyszłe wystąpienie serii), otwarte, mieszczące się w dniu.
-  const draggable = !!(props.editable && task && !block.virtual && !block.passive && block.startMin >= from && block.endMin <= to);
+  const draggable = !!(props.editable && task && !draft && !block.virtual && !block.passive && block.startMin >= from && block.endMin <= to);
 
   // Przesuwanie zmienia tylko `shift` (`translateY` — bez przeliczania układu); `top` stoi do zapisu.
   // Godzinę na żywo rysuje `BlockText` (`live` = 1 od chwytu do zapisu albo powrotu), więc blok
@@ -169,13 +172,13 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
       width: `${100 / lane.lanes}%` as const,
       borderLeftColor: color,
       backgroundColor: event ? `${color}26` : p.card,
-      borderColor: hot ? p.bad : p.border,
-      borderWidth: hot ? 2 : StyleSheet.hairlineWidth,
-      borderStyle: block.virtual ? ('dashed' as const) : ('solid' as const),
+      borderColor: hot ? p.bad : draft ? p.accent : p.border,
+      borderWidth: hot ? 2 : draft ? 1 : StyleSheet.hairlineWidth,
+      borderStyle: block.virtual || draft ? ('dashed' as const) : ('solid' as const),
       opacity: block.passive || block.virtual ? 0.6 : 1,
     },
   ];
-  const a11y = `${clock(block.startMin)}–${clock(block.endMin)} ${block.title}${hot ? ', konflikt' : ''}${source?.calendar ? `, ${source.calendar}` : ''}`;
+  const a11y = `${clock(block.startMin)}–${clock(block.endMin)} ${block.title}${hot ? ', konflikt' : ''}${draft ? ', szkic' : ''}${source?.calendar ? `, ${source.calendar}` : ''}`;
   const body = (
     <BlockText
       label={label}

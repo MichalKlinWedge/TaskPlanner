@@ -22,7 +22,8 @@ import { isOpen, type ViewTask } from './views.ts';
 export const BREAKDOWN_MAX_STEPS = 12;
 /** Ile opisu zadania idzie do dostawcy (znaki). */
 export const BREAKDOWN_MAX_DESCRIPTION = 2_000;
-export const BREAKDOWN_MAX_HINT = 500;
+/** Wskazówka / preferencja użytkownika w każdej funkcji ✨ (znaki). */
+export const AI_HINT_MAX = 500;
 const MAX_SUBTASKS = 50;
 const MAX_TITLE = 300;
 /** Najdalsza data kroku od dziś (dni). */
@@ -43,7 +44,7 @@ export const AiBreakdownRequest = z.object({
     durationMin: z.number().int().min(1).max(10_080).nullable(),
   }),
   subtasks: z.array(z.object({ title: z.string().max(MAX_TITLE), done: z.boolean() })).max(MAX_SUBTASKS),
-  hint: z.string().max(BREAKDOWN_MAX_HINT).nullable(),
+  hint: z.string().max(AI_HINT_MAX).nullable(),
 });
 export type AiBreakdownRequest = z.infer<typeof AiBreakdownRequest>;
 
@@ -78,7 +79,8 @@ export const maskEmails = (text: string): string => text.replace(/[^\s@<>()[\]"'
 
 /** Przycięcie bez rozcinania znaku spoza BMP (pół emoji). */
 const clip = (text: string, max: number): string => (text.length <= max ? text : text.slice(0, max).replace(/[\uD800-\uDBFF]$/, ''));
-const clean = (text: string | null | undefined, max: number): string | null => clip(maskEmails(text ?? '').trim(), max) || null;
+/** Tekst dla dostawcy AI: bez e-maili, przycięty; pusty = `null`. */
+export const cleanForAi = (text: string | null | undefined, max: number): string | null => clip(maskEmails(text ?? '').trim(), max) || null;
 
 /** Kontekst zadania z lokalnej bazy → zapytanie `ai/breakdown`. */
 export function breakdownRequest(
@@ -90,9 +92,9 @@ export function breakdownRequest(
     accountId,
     today,
     task: {
-      title: clean(task.title, MAX_TITLE) ?? '—',
-      description: clean(description, BREAKDOWN_MAX_DESCRIPTION),
-      parentTitle: clean(parent?.title, MAX_TITLE),
+      title: cleanForAi(task.title, MAX_TITLE) ?? '—',
+      description: cleanForAi(description, BREAKDOWN_MAX_DESCRIPTION),
+      parentTitle: cleanForAi(parent?.title, MAX_TITLE),
       startDate: task.startDate,
       dueDate: task.dueDate,
       durationMin: task.durationMin,
@@ -100,8 +102,8 @@ export function breakdownRequest(
     subtasks: children(tasks, task.id)
       .filter((t) => t.status !== 'cancelled')
       .slice(0, MAX_SUBTASKS)
-      .map((t) => ({ title: clean(t.title, MAX_TITLE) ?? '—', done: t.status === 'done' })),
-    hint: clean(hint, BREAKDOWN_MAX_HINT),
+      .map((t) => ({ title: cleanForAi(t.title, MAX_TITLE) ?? '—', done: t.status === 'done' })),
+    hint: cleanForAi(hint, AI_HINT_MAX),
   };
 }
 
