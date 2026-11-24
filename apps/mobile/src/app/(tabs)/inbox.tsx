@@ -31,7 +31,7 @@ export default function InboxScreen() {
       sections={[{ key: 'inbox', data: tasks.map((t) => row(t, { listName: workspaceId ? undefined : wsName.get(t.workspaceId) })) }]}
       header={
         <ScreenHeader subtitle={`${plural(tasks.length, TASKS)}${target && !workspaceId ? ` · nowe do „${wsName.get(target.workspaceId)}”` : ''}`}>
-          <FilterBar query={filter} onChange={setFilter} hide={['lists']} />
+          <FilterBar query={filter} onChange={setFilter} hide={['lists']} save />
         </ScreenHeader>
       }
       empty={data.loaded ? 'Inbox jest pusty.' : 'Wczytywanie…'}

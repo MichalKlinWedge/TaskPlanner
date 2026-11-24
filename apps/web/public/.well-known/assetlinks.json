@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "pl.taskplanner.app",
+      "sha256_cert_fingerprints": ["70:AB:4E:40:B4:FB:2C:D6:12:DB:C3:27:92:04:91:8A:63:19:EE:7A:98:7B:C5:56:9F:BC:87:B8:9E:B2:68:24"]
+    }
+  }
+]

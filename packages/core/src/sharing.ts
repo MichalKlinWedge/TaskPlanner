@@ -20,8 +20,11 @@ export const SCOPE_ROLE_HINT: Record<ShareRole, string> = {
   viewer: 'tylko czyta',
 };
 
-/** Parametr adresu z tokenem zaproszenia (`/?invite=<token>`). */
+/** Parametr adresu z tokenem zaproszenia (`/invite?invite=<token>`, starsze linki `/?invite=<token>`). */
 export const INVITE_PARAM = 'invite';
+
+/** Ścieżka linku zaproszenia: na telefonie otwiera aplikację (App Links), web przekierowuje ją na stronę główną. */
+export const INVITE_PATH = '/invite';
 
 export const WORKSPACE_SHARE_NOTE =
   'Zaprosić można osobę, która ma już konto w Task Plannerze albo jest na liście zaproszonych do aplikacji. Zobaczy zaproszenie po zalogowaniu; możesz też wysłać jej link. Przypomnienia o zadaniach dostaje tylko ten, kto je ustawił.';
@@ -34,7 +37,7 @@ export function shareEmail(input: string): string | null {
 
 /** Link zaproszenia do wysłania osobie zapraszanej. */
 export function inviteLink(origin: string, token: string): string {
-  return `${origin.replace(/\/+$/, '')}/?${INVITE_PARAM}=${encodeURIComponent(token)}`;
+  return `${origin.replace(/\/+$/, '')}${INVITE_PATH}?${INVITE_PARAM}=${encodeURIComponent(token)}`;
 }
 
 /** Token z adresu (`?invite=…`) albo `null`. */

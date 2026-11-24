@@ -1,10 +1,12 @@
 /**
  * Współdzielenie przestrzeni (v1.x) na telefonie: RPC z `*_v1x_workspace_sharing.sql` (wymagają sieci)
  * i wspólna lista zaproszeń do zalogowanego (`useScopeInvites` — jedno zapytanie na minutę dla wszystkich
- * ekranów z paskiem). Po przyjęciu / opuszczeniu przestrzeni `syncNow()` pobiera albo usuwa jej dane.
+ * ekranów z paskiem). Token z linku zaproszenia (`app/invite.tsx`, udostępniony tekst) czeka w pamięci na
+ * zalogowanie (`rememberInviteToken` → `acceptLinkInvite`). Po przyjęciu / opuszczeniu przestrzeni `syncNow()` pobiera albo usuwa jej dane.
  * Odpowiednik webowego `lib/sharing.ts`.
  */
-import type { ScopeRole, ShareRole } from '@taskplanner/core';
+import { isTransientError, type ScopeRole, type ShareRole } from '@taskplanner/core';
+import Storage from 'expo-sqlite/kv-store';
 import { useEffect, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 
@@ -84,6 +86,38 @@ export async function answerScopeInvite(invite: MyInvite, accept: boolean) {
   emit();
   if (accept) await syncNow().catch(() => undefined);
   void refreshScopeInvites(true);
+}
+
+const TOKEN_KEY = 'invite.token';
+let accepting: Promise<boolean> | null = null;
+
+/** Token z linku — do przyjęcia teraz albo po zalogowaniu. */
+export const rememberInviteToken = (token: string) => Storage.setItemSync(TOKEN_KEY, token);
+export const pendingInviteToken = (): string | null => Storage.getItemSync(TOKEN_KEY);
+
+/**
+ * Przyjmuje zapamiętane zaproszenie z linku; `false` = nie ma czego albo nikt nie jest zalogowany. Token znika
+ * po odpowiedzi serwera (jest jednorazowy); bez połączenia zostaje do następnej próby.
+ */
+export function acceptLinkInvite(): Promise<boolean> {
+  const token = pendingInviteToken();
+  // Trwające przyjmowanie (ekran linku i `InviteLink` naraz) — jedno zapytanie, token jest jednorazowy.
+  if (!accepting && (!token || !sessionUser().online)) return Promise.resolve(false);
+  accepting ??= (async () => {
+    try {
+      await call<string>('accept_scope_invite', { p_token: token });
+    } catch (error) {
+      if (!isTransientError(error)) Storage.removeItemSync(TOKEN_KEY);
+      throw error;
+    }
+    Storage.removeItemSync(TOKEN_KEY);
+    await syncNow().catch(() => undefined);
+    void refreshScopeInvites(true);
+    return true;
+  })().finally(() => {
+    accepting = null;
+  });
+  return accepting;
 }
 
 const subscribe = (listener: () => void) => {

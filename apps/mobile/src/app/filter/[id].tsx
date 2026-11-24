@@ -40,6 +40,7 @@ export default function FilterScreen() {
       <Stack.Screen options={{ title: filter.name }} />
       <FilterResults
         query={query}
+        quickAdd={{ listId: query.lists?.length === 1 ? query.lists[0] : undefined }}
         onChange={(next) => setDraft({ key, query: next })}
         header={
           <>

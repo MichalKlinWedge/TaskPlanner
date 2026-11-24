@@ -1,15 +1,17 @@
 /**
  * Formularz nawyku (Etap 8): nazwa, lista, jak często (codziennie / wybrane dni / co miesiąc w ustalony
- * dzień / N razy w tygodniu lub miesiącu), cel ilościowy, początek, pora i przypomnienia (przed porą / jednorazowe). Formularz ↔ pola —
+ * dzień / N razy w tygodniu lub miesiącu), cel ilościowy, początek, koniec, pora i przypomnienia (przed porą / jednorazowe). Formularz ↔ pola —
  * `habitDraft` / `habitSaveOps` z core (jak `HabitEditor` na webie). `?id=` — edycja.
  */
 import {
+  addDays,
   dayChip,
   habitDraft,
   habitFields,
   habitMonthly,
   habitSaveOps,
   LIST_KIND,
+  MAX_COUNT,
   pluralForm,
   previewDates,
   relativeDay,
@@ -24,6 +26,7 @@ import {
   type LocalDate,
   type LocalTime,
   type MonthlyBy,
+  type RecurrenceEnd,
   type WeekdayCode,
 } from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
@@ -31,7 +34,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
-import { pickDate, pickOption, pickTime } from '@/components/pickers';
+import { pickDate, pickNumber, pickOption, pickTime } from '@/components/pickers';
 import { Button, Chip, Field, usePalette } from '@/components/ui';
 import { lastSortKey, listLabel, targetInbox, useView } from '@/lib/app-data';
 import { useLocalQuery } from '@/lib/local-query';
@@ -98,6 +101,7 @@ export default function HabitFormScreen() {
   const [unit, setUnit] = useState(initial.unit ?? '');
   const [start, setStart] = useState(initial.start);
   const [time, setTime] = useState<LocalTime | null>(initial.time);
+  const [end, setEnd] = useState<RecurrenceEnd>(initial.end ?? { kind: 'never' });
   // Lista przypomnień: z bazy, dopóki użytkownik jej nie zmieni (zapis dopiero przy „Zapisz”).
   const [reminderList, setReminderList] = useState<HabitReminderDraft[] | null>(null);
   const reminders: HabitReminderDraft[] = reminderList ?? savedReminders ?? [];
@@ -143,6 +147,24 @@ export default function HabitFormScreen() {
     if (atTime) setReminderList([...reminders, { kind: 'absolute', atDate, atTime }]);
   };
 
+  // „Po N razach” (COUNT) nie łączy się z „N razy w okresie” (jak na webie).
+  const shownEnd: RecurrenceEnd = kind === 'goal' && end.kind === 'count' ? { kind: 'never' } : end;
+  const pickEnd = async () => {
+    const choice = await pickOption<RecurrenceEnd['kind']>('Koniec nawyku', [
+      { label: 'nigdy', value: 'never', selected: shownEnd.kind === 'never' },
+      { label: 'w dniu…', value: 'until', selected: shownEnd.kind === 'until' },
+      ...(kind === 'goal' ? [] : [{ label: 'po liczbie razy…', value: 'count' as const, selected: shownEnd.kind === 'count' }]),
+    ]);
+    if (choice === 'never') setEnd({ kind: 'never' });
+    else if (choice === 'until') {
+      const date = await pickDate({ title: 'Ostatni dzień nawyku', value: end.kind === 'until' ? end.date : addDays(start, 29), today, firstDayOfWeek: data.settings.firstDayOfWeek });
+      if (date) setEnd({ kind: 'until', date });
+    } else if (choice === 'count') {
+      const n = await pickNumber('Po ilu razach zakończyć', { value: end.kind === 'count' ? end.n : 30, min: 1, max: MAX_COUNT });
+      if (n) setEnd({ kind: 'count', n });
+    }
+  };
+
   const submit = async () => {
     try {
       const schedule: HabitDraft['schedule'] =
@@ -155,8 +177,7 @@ export default function HabitFormScreen() {
               : kind === 'custom' && initial.schedule.kind === 'custom'
                 ? initial.schedule
                 : { kind: 'daily' };
-      // `...initial` — pola draftu, których formularz nie edytuje, zostają (np. koniec reguły).
-      const draft: HabitDraft = { ...initial, schedule, start, target: quantity ? Number(target.replace(',', '.')) : null, unit: quantity ? unit : null, time };
+      const draft: HabitDraft = { schedule, start, end: shownEnd, target: quantity ? Number(target.replace(',', '.')) : null, unit: quantity ? unit : null, time };
       if (reminders.some((r) => r.kind === 'relative') && !draft.time) throw new Error('Przypomnienie przed porą nawyku wymaga pory — ustaw ją albo dodaj przypomnienie na dzień i godzinę.');
       const { taskId, ops } = habitSaveOps({
         id: task?.id,
@@ -331,6 +352,11 @@ export default function HabitFormScreen() {
           <Value label="Pora (opcjonalnie)" value={time ?? '—'} onPress={() => void pickTime({ title: 'Pora nawyku', value: time, allowNone: true }).then((t) => t !== undefined && setTime(t))} />
         </View>
       </View>
+      <Value
+        label="Koniec"
+        value={shownEnd.kind === 'until' ? `w dniu ${shortDate(shownEnd.date)}` : shownEnd.kind === 'count' ? `po ${shownEnd.n} ${pluralForm(shownEnd.n, ['razie', 'razach', 'razach'])}` : 'nigdy'}
+        onPress={() => void pickEnd()}
+      />
       <Text style={[styles.label, { color: p.fg }]}>Przypomnienia</Text>
       {reminders.map((r, i) => (
         <View key={r.id ?? `new-${i}`} style={styles.switchRow}>

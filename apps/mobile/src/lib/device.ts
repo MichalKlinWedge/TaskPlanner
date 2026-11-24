@@ -57,7 +57,7 @@ async function registerDevice() {
   await setPhoneReminders(true);
 }
 
-/** Rejestracja po synchronizacji i `onChange` po każdej zmianie urządzeń (przełącznik na webie). */
+/** Rejestracja po synchronizacji i `onChange` po każdej zmianie urządzeń (przełącznik na webie) i sesji przeglądów (powiadomienie o porze). */
 export function startDevice(onChange: () => void): () => void {
   let alive = true;
   let unwatch: (() => void) | undefined;
@@ -66,7 +66,7 @@ export function startDevice(onChange: () => void): () => void {
       .then((engine) => {
         if (!alive) return;
         unwatch?.();
-        unwatch = engine.watch(['devices'], onChange);
+        unwatch = engine.watch(['devices', 'review_sessions'], onChange);
       })
       .catch((error) => console.warn('urządzenie', error));
   };

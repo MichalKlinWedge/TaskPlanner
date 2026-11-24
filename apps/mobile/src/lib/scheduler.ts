@@ -7,7 +7,7 @@
  * Uruchamiane po zmianie danych (aplikacja na wierzchu), po akcji z powiadomienia i z zadania
  * w tle — także bez ekranu. Powiadomienia odłożone (`s_…`) i serie testowe PoC-4 (`poc4_…`) zostają.
  */
-import { MAX_SCHEDULED_REMINDERS, reminderBody, reminderFireTimes, toReminderRule, type LocalDate, type ReminderTask } from '@taskplanner/core';
+import { addDays, localDateAt, MAX_SCHEDULED_REMINDERS, reminderBody, reminderFireTimes, reviewFireTimes, toReminderRule, type LocalDate, type ReminderTask, type ReviewKind } from '@taskplanner/core';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
@@ -15,6 +15,7 @@ import { readJson, sessionUser, writeJson } from './config';
 import { loadTask, type AppData } from './app-data';
 import { phoneRemindersOn } from './device';
 import { headlessData } from './headless';
+import { dismissedReviews } from './review-nudge';
 import { localEngine } from './sync';
 
 /**
@@ -32,6 +33,14 @@ export const ACTION = { complete: 'complete', snooze: 'snooze10', tomorrow: 'tom
 /** Zaplanowane przez ten moduł; inne prefiksy (odłożone, PoC-4) nie są ruszane. */
 const PREFIX = 'r_';
 export const SNOOZE_PREFIX = 's_';
+/** Pora przeglądu (M16): `v_daily_2026-11-24`. */
+const REVIEW_PREFIX = 'v_';
+
+/** Dane powiadomienia o przeglądzie — dotknięcie otwiera przegląd. */
+export interface ReviewNotificationData extends Record<string, unknown> {
+  review: ReviewKind;
+  at: number;
+}
 
 /** Dane powiadomienia (także odłożonego). */
 export interface ReminderData extends Record<string, unknown> {
@@ -164,6 +173,7 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
       await Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined);
       removed++;
     }
+    await scheduleReviews(scheduled, on ? data : null, new Date(now));
     const result: ScheduleResult = { at: now, scheduled: wanted.size, added, removed, next: fires[0] ? new Date(fires[0].fireAt).getTime() : null, exact: exact.granted };
     writeJson(LAST_KEY, result);
     if (__DEV__) console.info('przypomnienia', given ? 'z danych ekranu' : 'z bazy', JSON.stringify(result));
@@ -173,6 +183,44 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
     writeJson(LAST_KEY, result);
     return result;
   }
+}
+
+/**
+ * Powiadomienia o porze przeglądu na 7 dni (dzień z ukończonym albo odłożonym „Nie dziś” przeglądem bez
+ * powiadomienia); `data = null` — wyłączone na tym telefonie.
+ */
+async function scheduleReviews(scheduled: Notifications.NotificationRequest[], data: AppData | null, now: Date) {
+  const existing = new Map(scheduled.filter((n) => n.identifier.startsWith(REVIEW_PREFIX)).map((n) => [n.identifier, n]));
+  const wanted = new Set<string>();
+  if (data && (data.settings.dailyReview.enabled || data.settings.weeklyReview.enabled)) {
+    const { timeZone } = data.settings;
+    const today = localDateAt(now, timeZone);
+    const engine = await localEngine();
+    const rows = await engine.db.all<{ kind: ReviewKind; finished_at: string }>(
+      'select kind, finished_at from review_sessions where deleted_at is null and finished_at is not null and finished_at >= ?',
+      [addDays(today, -2)],
+    );
+    const last: Partial<Record<ReviewKind, LocalDate>> = { ...dismissedReviews() };
+    for (const r of rows) if (localDateAt(r.finished_at, timeZone) === today) last[r.kind] = today;
+    for (const fire of reviewFireTimes(data.settings, now, { timeZone, last })) {
+      const id = `${REVIEW_PREFIX}${fire.kind}_${fire.date}`;
+      const at = fire.at.getTime();
+      wanted.add(id);
+      const old = existing.get(id);
+      if ((old?.content.data as Partial<ReviewNotificationData> | null | undefined)?.at === at) continue;
+      if (old) await Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined);
+      await Notifications.scheduleNotificationAsync({
+        identifier: id,
+        content: {
+          title: fire.kind === 'weekly' ? 'Pora na przegląd tygodnia' : 'Pora na przegląd dnia',
+          body: 'Kilka minut na uporządkowanie zadań.',
+          data: { review: fire.kind, at } satisfies ReviewNotificationData,
+        },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at, channelId: CHANNEL_ID },
+      });
+    }
+  }
+  for (const id of existing.keys()) if (!wanted.has(id)) await Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined);
 }
 
 /** Odłożenie powiadomienia o 10 min (stały identyfikator — powtórzona akcja go nie dubluje). */

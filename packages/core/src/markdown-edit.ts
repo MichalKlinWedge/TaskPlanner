@@ -177,5 +177,26 @@ export function markdownContinueList(text: string, pos: number): MarkdownTextEdi
   return { from: pos, to: pos, insert, selStart: pos + insert.length, selEnd: pos + insert.length };
 }
 
+/** Tekst po podmianie z `markdownEdit` / `markdownContinueList`. */
+export const applyMarkdownEdit = (text: string, edit: MarkdownTextEdit): string => text.slice(0, edit.from) + edit.insert + text.slice(edit.to);
+
+/**
+ * Enter w polu, które podaje tylko tekst przed i po zmianie (telefon: `onChangeText`): `next` = `prev` z jednym
+ * nowym wierszem wstawionym w kontynuowanej liście → tekst z kolejnym znacznikiem i kursor; inaczej `null`.
+ * `cursor` — ostatnio znane miejsce kursora (rozstrzyga, gdy obok są puste linie).
+ */
+export function markdownNewline(prev: string, next: string, cursor: number): { text: string; cursor: number } | null {
+  if (next.length !== prev.length + 1) return null;
+  const insertedAt = (i: number) => next[i] === '\n' && next.slice(0, i) === prev.slice(0, i) && next.slice(i + 1) === prev.slice(i);
+  let at = cursor;
+  if (!insertedAt(at)) {
+    at = 0;
+    while (at < prev.length && prev[at] === next[at]) at++;
+    if (!insertedAt(at)) return null;
+  }
+  const edit = markdownContinueList(prev, at);
+  return edit && { text: applyMarkdownEdit(prev, edit), cursor: edit.selStart };
+}
+
 /** Skrót klawiszowy (Ctrl/⌘ + litera) → przycisk formatowania. */
 export const MARKDOWN_SHORTCUTS: Readonly<Record<string, MarkdownAction>> = { b: 'bold', i: 'italic', k: 'link' };

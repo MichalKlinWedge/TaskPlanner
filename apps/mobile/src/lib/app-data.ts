@@ -52,6 +52,11 @@ export function listEditable(data: Pick<AppData, 'lists' | 'workspaces'>, listId
   return canEditList(data.workspaces.find((w) => w.id === list?.workspaceId)?.role, list?.guestAccess);
 }
 
+/** `listEditable` dla ekranu jednej listy. */
+export function useListEditable(listId: string | null | undefined): boolean {
+  return listEditable(useAppData(), listId);
+}
+
 export interface Tag {
   id: string;
   name: string;
@@ -84,6 +89,9 @@ export interface AppData {
   habitsDoneToday: Set<string>;
   /** Wpisy nawyków (id zadania → wpisy od najstarszego) — statystyki, blok „Dziś”, przypomnienia. */
   habitCompletions: Map<string, HabitCompletion[]>;
+  /** Uczestnicy zadań (id zadania → id współpracowników) i liczby załączników — znaczki wiersza. */
+  participants: ReadonlyMap<string, readonly string[]>;
+  attachmentCounts: ReadonlyMap<string, number>;
   settings: ProfileSettings;
   loaded: boolean;
 }
@@ -113,6 +121,8 @@ const EMPTY: AppData = {
   tasks: [],
   habitsDoneToday: new Set(),
   habitCompletions: new Map(),
+  participants: new Map(),
+  attachmentCounts: new Map(),
   settings: ProfileSettings.parse({}),
   loaded: false,
 };
@@ -156,7 +166,7 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
   const settings = await loadSettings(engine);
   const today = localDateAt(new Date(), settings.timeZone);
   const queried = Date.now();
-  const [workspaces, lists, tags, sharedTags, filters, collaborators, sharedPeople, entries, habits] = await Promise.all([
+  const [workspaces, lists, tags, sharedTags, filters, collaborators, sharedPeople, entries, habits, participants, attachments] = await Promise.all([
     db.all<SqlRow>('select w.id, w.name, w.color, w.sort_key, s.role, s.members from workspaces w left join _scopes s on s.id = w.id where w.deleted_at is null and w.archived_at is null'),
     db.all<SqlRow>('select id, scope_id, kind, name, color, sort_key, view_prefs, project_status, board_columns, guest_access, start_date, end_date from lists where deleted_at is null and archived_at is null'),
     db.all<SqlRow>('select id, name, color, sort_key, workspace_ids from tags where deleted_at is null'),
@@ -171,6 +181,8 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
       `select c.task_id, c.occurrence_date, c.kind, c.value from task_completions c join tasks t on t.id = c.task_id
         where c.deleted_at is null and t.kind = 'habit' and t.deleted_at is null order by c.occurrence_date`,
     ),
+    db.all<{ task_id: string; collaborator_id: string }>('select task_id, collaborator_id from task_participants where deleted_at is null order by rowid'),
+    db.all<{ task_id: string; n: number }>('select task_id, count(*) as n from attachments where deleted_at is null group by task_id'),
   ]);
   perfLog('dane widoków: zapytania', Date.now() - queried);
   const allLists = lists
@@ -229,6 +241,13 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
       else map.set(id, [entry]);
       return map;
     }, new Map<string, HabitCompletion[]>()),
+    participants: participants.reduce((map, r) => {
+      const list = map.get(r.task_id);
+      if (list) list.push(r.collaborator_id);
+      else map.set(r.task_id, [r.collaborator_id]);
+      return map;
+    }, new Map<string, string[]>()),
+    attachmentCounts: new Map(attachments.map((r) => [r.task_id, Number(r.n)])),
     settings,
     loaded: true,
   };
@@ -236,7 +255,7 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
 
 // ── Magazyn ─────────────────────────────────────────────────────────────────────────────────
 
-const WATCHED = ['workspaces', 'lists', 'tags', 'saved_filters', 'collaborators', 'scope_collaborators', 'scope_tags', 'tasks', 'task_tags', 'task_completions', 'profiles'];
+const WATCHED = ['workspaces', 'lists', 'tags', 'saved_filters', 'collaborators', 'scope_collaborators', 'scope_tags', 'tasks', 'task_tags', 'task_completions', 'task_participants', 'attachments', 'profiles'];
 
 let data: AppData = EMPTY;
 const listeners = new Set<() => void>();

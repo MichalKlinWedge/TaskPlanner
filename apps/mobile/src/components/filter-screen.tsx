@@ -11,11 +11,11 @@ import { rowMaker } from '@/lib/rows';
 
 import { FilterBar } from './filter-bar';
 import { ScreenHeader } from './sync-banner';
-import { TaskSections } from './task-list';
+import { TaskSections, type QuickAddParams } from './task-list';
 
 const TASKS = ['zadanie', 'zadania', 'zadań'] as const;
 
-export function FilterResults({ query, header, onChange }: { query: FilterQuery; header?: ReactNode; onChange?: (query: FilterQuery) => void }) {
+export function FilterResults({ query, header, onChange, save, quickAdd = null }: { query: FilterQuery; header?: ReactNode; onChange?: (query: FilterQuery) => void; save?: boolean; quickAdd?: QuickAddParams | null }) {
   const { data, today, ctx } = useView();
   const tasks = useMemo(() => sortTasks(selectFiltered(data.tasks, query, ctx), 'due'), [data.tasks, query, ctx]);
   const row = rowMaker(data, today);
@@ -31,11 +31,11 @@ export function FilterResults({ query, header, onChange }: { query: FilterQuery;
       header={
         <ScreenHeader subtitle={`${plural(tasks.length, TASKS)}${chips.length && !onChange ? ` · ${chips.map((c) => c.label).join(' · ')}` : ''}`}>
           {header}
-          {onChange ? <FilterBar query={query} onChange={onChange} /> : null}
+          {onChange ? <FilterBar query={query} onChange={onChange} save={save} /> : null}
         </ScreenHeader>
       }
       empty="Żadne zadanie nie pasuje."
-      quickAdd={null}
+      quickAdd={quickAdd}
     />
   );
 }

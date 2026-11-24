@@ -57,7 +57,7 @@ export default function TodayScreen() {
       header={
         <ScreenHeader subtitle={`${capitalized(dayLabel(today))} · ${plural(open, TASKS)}`}>
           <ReviewNudge />
-          <FilterBar query={filter} onChange={setFilter} />
+          <FilterBar query={filter} onChange={setFilter} save />
         </ScreenHeader>
       }
       empty={data.loaded ? 'Na dziś nic nie ma.' : 'Wczytywanie…'}

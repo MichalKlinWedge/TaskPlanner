@@ -4,7 +4,8 @@
  * zwinięty — wtedy w nagłówku liczba bloków, konflikty i najbliższy blok, żeby nie zasłaniać listy). Przesuwanie
  * bloków — w kalendarzu (`/calendar`); tu dotknięcie bloku otwiera zadanie albo nawyk, a „Ułóż dzień”
  * (`day-planner.tsx`) układa zadania w wolnych oknach (szkic jako przerywane bloki do „Zastosuj”). Chipy
- * „Dziś | Jutro” wybierają dzień rozwiniętego planu; zwinięty zawsze mówi o dzisiejszym.
+ * „Dziś | Jutro” wybierają dzień rozwiniętego planu; zwinięty zawsze mówi o dzisiejszym. Na końcu przeglądu
+ * dnia (`initial`) karta jest rozwinięta od razu, bez zapamiętywania.
  */
 import { addDays, blockLanes, DAY_PLANNER, isOpen, localDateTimeAt, plural, withDraft, type Block, type LocalDate } from '@taskplanner/core';
 import { router } from 'expo-router';
@@ -24,17 +25,17 @@ const OPEN_KEY = 'today.plan';
 /** Pikseli na godzinę (oś godzin pracy mieści się na ekranie). */
 const HOUR = 40;
 
-export function DayPlanCard({ data, today, workspaceId }: { data: AppData; today: LocalDate; workspaceId: string | null }) {
+export function DayPlanCard({ data, today, workspaceId, initial }: { data: AppData; today: LocalDate; workspaceId: string | null; initial?: LocalDate }) {
   const p = usePalette();
   const { notify } = useTaskActions();
-  const [open, setOpenState] = useState(() => Storage.getItemSync(OPEN_KEY) === '1');
+  const [open, setOpenState] = useState(() => !!initial || Storage.getItemSync(OPEN_KEY) === '1');
   const setOpen = (next: boolean) => {
-    Storage.setItemSync(OPEN_KEY, next ? '1' : '0');
+    if (!initial) Storage.setItemSync(OPEN_KEY, next ? '1' : '0');
     setOpenState(next);
   };
   const tomorrow = addDays(today, 1);
   // Wybór jako data: po północy wybrane „jutro” staje się „dziś”.
-  const [picked, setPicked] = useState<LocalDate | null>(null);
+  const [picked, setPicked] = useState<LocalDate | null>(initial ?? null);
   const date = open && picked === tomorrow ? tomorrow : today;
   const plan = useDayPlan(data, date, workspaceId, today);
   const nowMin = useNowMinute(plan.dayStart);
