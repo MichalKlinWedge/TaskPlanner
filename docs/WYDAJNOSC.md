@@ -274,3 +274,22 @@ Ta sama tablica z 478 strzałkami z `canvas-perf-setup.ts`: co druga karta „bl
 Uwagi:
 - Kryterium z projektu (przeciąganie bez gubienia klatek, p95 ≤ 33 ms) spełnione: p95 16,7 ms przy przeciąganiu karty i rysowaniu strzałki. Strzałka to `memo` z liczbami w propsach — przy ruchu karty przerysowują się tylko jej strzałki.
 - Wolniejsze niż bez strzałek: przełączenie widoku (100 → 220 ms) i upuszczenie (108 → 205 ms) — przeliczenie `canvasArrows` i naruszeń (`violations`) na wszystkich zadaniach przy każdej zmianie danych. Do zbadania, jeśli będzie przeszkadzać (np. naruszenia liczone tylko dla zależności z kartami na tablicy).
+
+### Menu „Ułóż” — 500 kart, 478 strzałek (24.11.2026)
+
+Ta sama tablica; krok 8 w `perf/canvas.spec.ts`. Obliczenie planu = `performance.measure` „tp-canvas-arrange” wokół core `canvasArrangePlan` (5 prób na sposób); podgląd = od fokusu pozycji menu do narysowania obrysów; zastosowanie = od kliknięcia „Według priorytetu” do narysowania kart i ramek (3 próby, każda cofnięta „Cofnij”).
+
+| Pomiar | Mediana | Max | Uwagi |
+|---|---|---|---|
+| Obliczenie: według koloru | 1 ms | 4 ms | 495 kart do przesunięcia |
+| Obliczenie: według priorytetu | 0 ms | 1 ms | 498 kart |
+| Obliczenie: według odpowiedzialnego / statusu / terminu | 1 ms | 1 ms | 492–500 kart |
+| Obliczenie: według strzałek | 2 ms | 2 ms | 500 kart, 478 krawędzi |
+| Obliczenie: zagęść | 1 ms | 1 ms | tablica już zwarta — 0 kart |
+| Podgląd (obliczenie + obrysy) | 12–20 ms | 34 ms | wszystkie sposoby |
+| „Według priorytetu” → karty i ramki narysowane | 679 ms | 720 ms | 498 zapisów `canvas_pos` + grupy w jednej paczce |
+
+Uwagi:
+- Kryterium z projektu (obliczenie przy 500 kartach < 50 ms) spełnione z dużym zapasem; w vitest (`canvas-arrange.test.ts`, Node) 0,5–4,5 ms.
+- Zastosowanie na całej tablicy trwa ~0,7 s — to zapis 500 wierszy lokalnie (jedna transakcja, outbox) i przerysowanie wszystkich kart, nie obliczenie. Zwykłe układanie kilkudziesięciu kart jest proporcjonalnie szybsze; do zbadania, jeśli będzie przeszkadzać.
+- Zrzut ułożonej tablicy: `tools/e2e/out/perf-canvas-arrange.png`.

@@ -17,6 +17,7 @@ import {
   CANVAS_STEP,
   CANVAS_ZOOM,
   canvasArrangeOps,
+  canvasArrangeSummary,
   canvasArrowHead,
   canvasArrows,
   canvasArrowSegment,
@@ -49,6 +50,7 @@ import {
   violations,
   withCompleted,
   zoomCanvasViewport,
+  type CanvasArrangePlan,
   type CanvasArrow,
   type CanvasArrowKind,
   type CanvasCell,
@@ -67,6 +69,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { listEditable, type AppData, type List, type Tag } from "@/lib/app-data";
 import { useDependencies } from "@/lib/dependencies";
 import { useAppEnv } from "./app-env";
+import { CanvasArrangeButton } from "./canvas-arrange";
 import { CanvasExportButton } from "./canvas-export";
 import { QuickAdd } from "./quick-add";
 import { TagColorPicker } from "./tag-chip";
@@ -274,6 +277,8 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   const [selectedArrow, setSelectedArrow] = useState<string | null>(null);
   const [linkMenu, setLinkMenu] = useState<{ fromId: string; toId: string; x: number; y: number } | null>(null);
   const [lastKind, setLastKind] = useState<CanvasLinkKind>("blocks");
+  // Podgląd menu „Ułóż”: plan pozycji, na którą wskazuje użytkownik (obrysy komórek docelowych i ramek).
+  const [arrangePreview, setArrangePreview] = useState<CanvasArrangePlan | null>(null);
   // Najnowsze dane dla obsługi wskaźnika (zmiany z synchronizacji w trakcie przeciągania).
   const latest = useRef({ layout, groups, view });
   useEffect(() => {
@@ -790,6 +795,11 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     return { tags: [...seen.values()].sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1)), plain };
   }, [layout, tagsById]);
 
+  const arrangeContext = useMemo(
+    () => ({ listId: list.id, groups, tags: tagsById, collaborators: data.collaborators, today: ctx.today, firstDayOfWeek: ctx.firstDayOfWeek, dependencies: deps }),
+    [list.id, groups, tagsById, data.collaborators, ctx.today, ctx.firstDayOfWeek, deps],
+  );
+
   const note = !canEdit ? READONLY_LIST_NOTE : !online ? "Karteczki wymagają połączenia — bez sieci tylko podgląd." : null;
 
   return (
@@ -802,6 +812,17 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
         <Button className="py-1 text-xs" disabled={!editable} onClick={groupAround} title={selected.size ? "Ramka wokół zaznaczonych karteczek" : "Nowa ramka na środku widoku"}>
           ▢ Grupuj
         </Button>
+        <CanvasArrangeButton
+          layout={layout}
+          context={arrangeContext}
+          selected={selected}
+          editable={editable}
+          onPreview={setArrangePreview}
+          onApply={(plan, label) => {
+            if (!plan.ops.length) return notify(`${label}: ${canvasArrangeSummary(plan)}.`);
+            void apply(plan.ops, `${label}: ${canvasArrangeSummary(plan)}`, plan.undo);
+          }}
+        />
         <div className="flex overflow-hidden rounded-md border border-[var(--line)]" role="radiogroup" aria-label="Zadania na karteczkach" data-testid="canvas-show">
           {(Object.keys(CANVAS_TASKS) as CanvasTasks[]).map((k) => (
             <button
@@ -911,6 +932,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
                 style={{ left: cell.col * CANVAS_STEP.x, top: cell.row * CANVAS_STEP.y, width: CANVAS_CARD.width, height: CANVAS_CARD.height }}
               />
             ))}
+            {arrangePreview && editable ? <ArrangePreview plan={arrangePreview} groups={groups} /> : null}
             <ArrowLayer layer="base" segments={segments} selected={arrowSel} interactive={editable} onArrowDown={onArrowDown} />
             {layout.placed.map((p) => {
               const offset = dragging?.has(p.task.id) ? cardDelta : groupDrag && groupMovesCard(p.cell) ? { x: groupDrag.dx / view.zoom, y: groupDrag.dy / view.zoom } : null;
@@ -1252,6 +1274,44 @@ const Card = memo(function Card({
     </div>
   );
 });
+
+// ── Podgląd „Ułóż” ────────────────────────────────────────────────────────────────────────────
+
+/** Obrysy komórek docelowych przesuwanych kart i ramek, które powstaną albo się przesuną (bez obsługi wskaźnika). */
+function ArrangePreview({ plan, groups }: { plan: CanvasArrangePlan; groups: readonly CanvasGroup[] }) {
+  const before = new Map(groups.map((g) => [g.id, g]));
+  const frames = plan.groups.filter((g) => {
+    const old = before.get(g.id);
+    return !old || old.col !== g.col || old.row !== g.row || old.w !== g.w || old.h !== g.h;
+  });
+  return (
+    <div className="pointer-events-none" data-canvas-arrange-preview>
+      {frames.map((g) => (
+        <div
+          key={`ag-${g.id}`}
+          className="absolute rounded-lg border-2 border-dashed border-[var(--accent)]"
+          style={{
+            left: g.col * CANVAS_STEP.x - GROUP_PAD,
+            top: g.row * CANVAS_STEP.y - GROUP_PAD,
+            width: g.w * CANVAS_STEP.x - CANVAS_CARD.gap + 2 * GROUP_PAD,
+            height: g.h * CANVAS_STEP.y - CANVAS_CARD.gap + 2 * GROUP_PAD,
+          }}
+          data-canvas-arrange-frame
+        >
+          <span className="absolute -top-[11px] left-2 rounded bg-[var(--accent)] px-1.5 text-[11px] leading-[18px] text-white">{g.name || "Grupa"}</span>
+        </div>
+      ))}
+      {plan.moves.map((m) => (
+        <div
+          key={`am-${m.id}`}
+          className="absolute rounded border-2 border-dashed border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_12%,transparent)]"
+          style={{ left: m.to.col * CANVAS_STEP.x, top: m.to.row * CANVAS_STEP.y, width: CANVAS_CARD.width, height: CANVAS_CARD.height }}
+          data-canvas-arrange-cell
+        />
+      ))}
+    </div>
+  );
+}
 
 // ── Strzałki ──────────────────────────────────────────────────────────────────────────────────
 

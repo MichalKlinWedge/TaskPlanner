@@ -1,6 +1,7 @@
 export * from './app-update.ts';
 export * from './attachments.ts';
 export * from './canvas.ts';
+export * from './canvas-arrange.ts';
 export * from './canvas-export.ts';
 export * from './backup.ts';
 export * from './collaborators.ts';

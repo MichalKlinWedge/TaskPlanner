@@ -2,7 +2,8 @@
  * Pomiar widoku „Karteczki” na 500 karteczkach jednej listy: otwarcie (pierwsza synchronizacja
  * i przełączenie widoku), płynność przeciągania karteczki, przesuwania tablicy i powiększania
  * (Ctrl+kółko), „Dopasuj”, upuszczenie → karteczka w nowej komórce, rysowanie strzałki z uchwytu
- * (na tablicy ok. 480 strzałek z `canvas-perf-setup.ts`). Czas liczony w stronie.
+ * (na tablicy ok. 480 strzałek z `canvas-perf-setup.ts`), menu „Ułóż” (obliczenie planu, podgląd, zastosowanie
+ * z „Cofnij”). Czas liczony w stronie.
  * Wynik: tabela w konsoli i `tools/e2e/out/perf-canvas.json`.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -133,6 +134,42 @@ test(`${CANVAS_PERF_CARDS} karteczek`, async ({ page }) => {
     drops.push(await page.evaluate(() => (window as unknown as { __drop: Promise<number> }).__drop));
   }
   record('Upuszczenie karteczki → nowa komórka', drops);
+
+  // 8. „Ułóż”: obliczenie planu (`performance.measure` „tp-canvas-arrange” w stronie) i podgląd po fokusie
+  // pozycji menu (obliczenie + narysowanie obrysów), potem „Według priorytetu” → ramki i karty narysowane
+  // w nowych komórkach i „Cofnij” (3 razy).
+  const lastArrange = `performance.getEntriesByName('tp-canvas-arrange').length > 0`;
+  await page.getByTestId('canvas-arrange').click();
+  for (const key of ['color', 'priority', 'assignee', 'status', 'due', 'arrows', 'compact']) {
+    const computes: number[] = [];
+    const previews: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      await page.evaluate(() => {
+        performance.clearMeasures('tp-canvas-arrange');
+        (document.activeElement as HTMLElement | null)?.blur();
+      });
+      previews.push(await timed(page, `performance.clearMeasures('tp-canvas-arrange'); document.querySelector('[data-testid=canvas-arrange-${key}]').focus();`, lastArrange));
+      computes.push(await page.evaluate(() => performance.getEntriesByName('tp-canvas-arrange').at(-1)!.duration));
+    }
+    const cells = await page.locator('[data-canvas-arrange-cell]').count();
+    record(`„Ułóż” ${key}: obliczenie planu`, computes, `${cells} kart do przesunięcia`);
+    record(`„Ułóż” ${key}: podgląd (obliczenie + obrysy)`, previews);
+  }
+  await page.keyboard.press('Escape');
+  const applies: number[] = [];
+  const priorityFrames = `[...document.querySelectorAll('[data-canvas-group]')].some((g) => g.textContent.includes('!1 Krytyczny'))`;
+  for (let i = 0; i < 3; i++) {
+    await page.getByTestId('canvas-arrange').click();
+    applies.push(await timed(page, `document.querySelector('[data-testid=canvas-arrange-priority]').click();`, priorityFrames));
+    // Zrzut ułożonej tablicy (cała w widoku) do obejrzenia: out/perf-canvas-arrange.png.
+    if (i === 0) {
+      await page.getByRole('button', { name: 'Dopasuj' }).click();
+      await page.getByTestId('canvas-board').screenshot({ path: fileURLToPath(new URL('../out/perf-canvas-arrange.png', import.meta.url)) });
+    }
+    await page.getByRole('status').getByRole('button', { name: 'Cofnij' }).click();
+    await page.waitForFunction(new Function(`return !(${priorityFrames});`) as () => boolean, undefined, { timeout: 20_000 });
+  }
+  record('„Ułóż według priorytetu” → karty i ramki narysowane', applies);
 
   console.table(results.map((r) => ({ pomiar: r.name, mediana: Math.round(median(r.samples)), max: Math.round(max(r.samples)), uwagi: r.note ?? '' })));
   const out = fileURLToPath(new URL('../out/', import.meta.url));

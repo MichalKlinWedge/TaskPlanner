@@ -70,7 +70,7 @@ export function nearestFreeCell(occupied: ReadonlySet<string>, target: Cell): Ce
  * w pierścieniu `r` ma odległość ≥ r, a najdalsza w pierścieniu r — r·√2, więc po pierwszym trafieniu
  * w pierścieniu r wystarczy przejrzeć pierścienie do ⌈r·√2⌉.
  */
-function nearestFreeOffset(free: (d: Cell) => boolean, origin: Cell = { col: 0, row: 0 }, maxRing = 500): Cell {
+export function nearestFreeOffset(free: (d: Cell) => boolean, origin: Cell = { col: 0, row: 0 }, maxRing = 500): Cell {
   let best: { d: Cell; dist: number } | null = null;
   let limit = maxRing;
   for (let r = 0; r <= limit; r++) {
@@ -199,7 +199,8 @@ export interface CanvasMove {
   delta: Cell;
 }
 
-const posOp = (id: string, cell: Cell | null): TaskOp => ({ table: 'tasks', id, patch: { canvas_pos: cell ? { col: cell.col, row: cell.row } : null } });
+/** Zapis komórki karty (`null` = pasek „Do ułożenia”). */
+export const canvasPosOp = (id: string, cell: Cell | null): TaskOp => ({ table: 'tasks', id, patch: { canvas_pos: cell ? { col: cell.col, row: cell.row } : null } });
 
 /**
  * Przesunięcie kart o `delta` jako jednego bloku (jedna karta, zaznaczenie, zawartość grupy). Gdy
@@ -223,8 +224,8 @@ export function canvasMoveOps(
     const to = { col: card.cell.col + used.col, row: card.cell.row + used.row };
     // Karta pokazana obok zapisanej komórki zapisuje swoją komórkę nawet bez ruchu (koniec kolizji).
     if (card.saved && sameCell(card.saved, to)) continue;
-    ops.push(posOp(card.id, to));
-    undo.push(posOp(card.id, card.saved));
+    ops.push(canvasPosOp(card.id, to));
+    undo.push(canvasPosOp(card.id, card.saved));
   }
   return { ops, undo, delta: used };
 }
@@ -232,13 +233,13 @@ export function canvasMoveOps(
 /** Karta z paska „Do ułożenia” (albo nowa) w komórce `target` — albo najbliższej wolnej. */
 export function canvasPlaceOps(layout: Pick<CanvasLayout<CanvasTask>, 'occupied'>, taskId: string, target: Cell): { ops: TaskOp[]; undo: TaskOp[]; cell: Cell } {
   const cell = nearestFreeCell(layout.occupied, target);
-  return { ops: [posOp(taskId, cell)], undo: [posOp(taskId, null)], cell };
+  return { ops: [canvasPosOp(taskId, cell)], undo: [canvasPosOp(taskId, null)], cell };
 }
 
 /** Karta z powrotem do paska „Do ułożenia”. */
 export const canvasUnplaceOps = (cards: readonly { id: string; saved: Cell | null }[]): { ops: TaskOp[]; undo: TaskOp[] } => ({
-  ops: cards.filter((c) => c.saved).map((c) => posOp(c.id, null)),
-  undo: cards.filter((c) => c.saved).map((c) => posOp(c.id, c.saved)),
+  ops: cards.filter((c) => c.saved).map((c) => canvasPosOp(c.id, null)),
+  undo: cards.filter((c) => c.saved).map((c) => canvasPosOp(c.id, c.saved)),
 });
 
 /**
@@ -259,8 +260,8 @@ export function canvasArrangeOps<T extends CanvasTask>(layout: CanvasLayout<T>, 
       i++;
     } while (occupied.has(cellKey(cell)));
     occupied.add(cellKey(cell));
-    ops.push(posOp(task.id, cell));
-    undo.push(posOp(task.id, null));
+    ops.push(canvasPosOp(task.id, cell));
+    undo.push(canvasPosOp(task.id, null));
   }
   return { ops, undo };
 }
@@ -284,7 +285,8 @@ export function canvasGroupsOf(raw: unknown): CanvasGroup[] {
 export const cellInGroup = (cell: Cell, group: Pick<CanvasGroup, 'col' | 'row' | 'w' | 'h'>): boolean =>
   cell.col >= group.col && cell.col < group.col + group.w && cell.row >= group.row && cell.row < group.row + group.h;
 
-const groupsOp = (listId: string, next: readonly CanvasGroup[]): TaskOp => ({
+/** Zapis całej listy grup (`null` = brak). */
+export const canvasGroupsOp = (listId: string, next: readonly CanvasGroup[]): TaskOp => ({
   table: 'lists',
   id: listId,
   patch: { canvas_groups: next.length ? next.map((g) => ({ id: g.id, name: g.name, color: g.color, col: g.col, row: g.row, w: g.w, h: g.h })) : null },
@@ -302,7 +304,7 @@ export function addCanvasGroupOps(
 ): { ops: TaskOp[]; undo: TaskOp[]; id: string } {
   const id = newId();
   const group: CanvasGroup = { id, name: groupName(name), color, col: rect.col, row: rect.row, w: Math.max(1, rect.w), h: Math.max(1, rect.h) };
-  return { ops: [groupsOp(listId, [...current, group])], undo: [groupsOp(listId, current)], id };
+  return { ops: [canvasGroupsOp(listId, [...current, group])], undo: [canvasGroupsOp(listId, current)], id };
 }
 
 /** Zmiana nazwy, koloru albo rozmiaru grupy (bez przesuwania kart). */
@@ -324,7 +326,7 @@ export function updateCanvasGroupOps(
         }
       : g,
   );
-  return { ops: [groupsOp(listId, next)], undo: [groupsOp(listId, current)] };
+  return { ops: [canvasGroupsOp(listId, next)], undo: [canvasGroupsOp(listId, current)] };
 }
 
 /**
@@ -350,7 +352,7 @@ export function moveCanvasGroupOps(
 /** Usunięcie grupy (karty zostają na miejscu). */
 export function removeCanvasGroupOps(listId: string, current: readonly CanvasGroup[], id: string): { ops: TaskOp[]; undo: TaskOp[] } {
   if (!current.some((g) => g.id === id)) return { ops: [], undo: [] };
-  return { ops: [groupsOp(listId, current.filter((g) => g.id !== id))], undo: [groupsOp(listId, current)] };
+  return { ops: [canvasGroupsOp(listId, current.filter((g) => g.id !== id))], undo: [canvasGroupsOp(listId, current)] };
 }
 
 // ── Strzałki ────────────────────────────────────────────────────────────────────────────────────

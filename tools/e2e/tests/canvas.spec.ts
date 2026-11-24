@@ -2,7 +2,8 @@
  * Widok „Karteczki” (v1.x): karteczka nie wchodzi na zajętą komórkę, karta z paska „Do ułożenia”
  * na tablicę, dwuklik dodaje karteczkę w komórce, kolejność tagów zmienia kolor, pełny ekran,
  * przełącznik „Tylko główne / Z podzadaniami”, eksport PNG / PDF (także offline), blokada edycji bez sieci,
- * strzałki („blokuje” = zależność, cykl odrzucony, „wynika z”, Delete i „Cofnij”). Dane listy z `global-setup.ts` (`canvasIds`).
+ * strzałki („blokuje” = zależność, cykl odrzucony, „wynika z”, Delete i „Cofnij”), menu „Ułóż” (podgląd,
+ * według priorytetu z ramkami, „Cofnij”, ponownie bez zmian, „Zagęść”, offline). Dane listy z `global-setup.ts` (`canvasIds`).
  */
 import { readFile } from 'node:fs/promises';
 
@@ -245,5 +246,83 @@ test('karteczki: strzałka „blokuje” = zależność na serwerze, cykl odrzuc
     await expect(arrow(ids.first, ids.second, 'blocks').locator('line')).toHaveCount(1);
     await context.setOffline(false);
     await expect(handle(ids.first)).toHaveCount(1);
+  });
+});
+
+test('karteczki: „Ułóż” — podgląd, według priorytetu z ramkami, „Cofnij”, ponownie bez zmian, zagęszczanie, offline', async ({ page, context, server }) => {
+  const ids = canvasIds(server.userId);
+  await openApp(page, `#/list/${ids.list}`);
+  const view = page.getByTestId('canvas-view');
+  const board = page.getByTestId('canvas-board');
+  const card = (id: string) => board.locator(`[data-canvas-card][data-task-id="${id}"]`);
+  const arrange = page.getByTestId('canvas-arrange');
+  const menu = page.getByTestId('canvas-arrange-menu');
+  const byPriority = page.getByTestId('canvas-arrange-priority');
+  const groupNames = async () => {
+    const { data, error } = await server.client.from('lists').select('canvas_groups').eq('id', ids.list).single();
+    if (error) throw new Error(error.message);
+    return ((data.canvas_groups ?? []) as { name: string }[]).map((g) => g.name);
+  };
+  const pos = async (title: string) => (await server.task(title))!.canvas_pos;
+  await expect(card(ids.first)).toBeVisible();
+  await view.getByRole('button', { name: 'Dopasuj' }).click();
+  const before = { first: await pos(E2E_CANVAS.first), second: await pos(E2E_CANVAS.second), groups: await groupNames() };
+  expect(before.groups).toContain('Ryzyka');
+
+  await test.step('najechanie na „Według priorytetu” pokazuje komórki docelowe i ramki, bez zapisu', async () => {
+    await arrange.click();
+    await expect(menu).toBeVisible();
+    await byPriority.hover();
+    await expect(board.locator('[data-canvas-arrange-cell]').first()).toBeVisible();
+    await expect(board.locator('[data-canvas-arrange-frame]').filter({ hasText: '!1 Krytyczny' })).toBeVisible();
+    await expect(byPriority).toContainText('ramki: +');
+    expect(await pos(E2E_CANVAS.first)).toEqual(before.first);
+  });
+
+  await test.step('klik: kolumny priorytetów z ramkami na serwerze; pusta już grupa „Ryzyka” znika', async () => {
+    await byPriority.click();
+    await expect(menu).toBeHidden();
+    await expect(board.locator('[data-canvas-arrange-cell]')).toHaveCount(0);
+    await expect(board.locator('[data-canvas-group]').filter({ hasText: '!1 Krytyczny' })).toBeVisible();
+    // `!1` (pierwsza karta) w pierwszej kolumnie, `!4` (druga) dalej w prawo, obie od tej samej górnej krawędzi.
+    await expect.poll(async () => (await groupNames()).sort()).toEqual(['!1 Krytyczny', '!4 Niski']);
+    const [first, second] = [await pos(E2E_CANVAS.first), await pos(E2E_CANVAS.second)];
+    expect(second!.col).toBeGreaterThan(first!.col);
+    expect(second!.row).toBe(first!.row);
+  });
+
+  await test.step('„Cofnij” przywraca komórki i grupy', async () => {
+    await page.getByRole('status').filter({ hasText: 'Według priorytetu' }).getByRole('button', { name: 'Cofnij' }).click();
+    await expect.poll(async () => (await groupNames()).sort()).toEqual([...before.groups].sort());
+    await expect.poll(() => pos(E2E_CANVAS.first)).toEqual(before.first);
+    expect(await pos(E2E_CANVAS.second)).toEqual(before.second);
+    await expect(board.locator('[data-canvas-group]').filter({ hasText: 'Ryzyka' })).toBeVisible();
+  });
+
+  await test.step('ułożenie jeszcze raz, potem ten sam sposób — nic do zmiany', async () => {
+    await arrange.click();
+    await byPriority.click();
+    await expect.poll(async () => (await groupNames()).sort()).toEqual(['!1 Krytyczny', '!4 Niski']);
+    await arrange.click();
+    await byPriority.hover();
+    await expect(byPriority).toContainText('nic do zmiany');
+    await expect(board.locator('[data-canvas-arrange-cell]')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+  });
+
+  await test.step('„Zagęść” na ułożonej tablicy nie ma czego skracać', async () => {
+    await arrange.click();
+    await page.getByTestId('canvas-arrange-compact').hover();
+    await expect(page.getByTestId('canvas-arrange-compact')).toContainText('nic do zmiany');
+    await page.keyboard.press('Escape');
+  });
+
+  await test.step('bez sieci menu „Ułóż” wyłączone', async () => {
+    await context.setOffline(true);
+    await expect(page.getByTestId('canvas-note')).toBeVisible();
+    await expect(arrange).toBeDisabled();
+    await context.setOffline(false);
+    await expect(arrange).toBeEnabled();
   });
 });

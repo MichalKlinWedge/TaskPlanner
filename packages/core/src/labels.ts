@@ -62,6 +62,15 @@ export const CANVAS_TASKS: Record<'top' | 'all', string> = {
   all: 'Z podzadaniami',
 };
 
+/** „Ułóż według …” w widoku „Karteczki” (`canvas-arrange.ts`), w kolejności menu. */
+export const CANVAS_ARRANGE_BY: Record<'color' | 'priority' | 'assignee' | 'status' | 'due', string> = {
+  color: 'Koloru (tagu)',
+  priority: 'Priorytetu',
+  assignee: 'Odpowiedzialnego',
+  status: 'Statusu',
+  due: 'Terminu',
+};
+
 /** Dodatkowe kolumny widoku listy, w kolejności wyświetlania. */
 export const LIST_COLUMN: Record<'assignee' | 'start' | 'due' | 'tags', string> = {
   assignee: 'Odpowiedzialny',
