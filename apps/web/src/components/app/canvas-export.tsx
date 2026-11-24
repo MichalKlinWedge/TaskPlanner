@@ -5,7 +5,7 @@
  * (core `canvasExportScene`, `lib/canvas-export.ts`), nie zrzut DOM; tylko odczyt lokalnych danych,
  * więc działa offline i dla gościa z podglądem. Opcje pamiętane na urządzeniu (`tp-canvas-export`).
  */
-import { exportFileName, plural, type CanvasExportPerson, type CanvasExportTask, type CanvasExportThemeName, type CanvasGroup, type CanvasPdfMode, type LocalDate, type PdfOrientation, type PdfPaper, type PlacedCard } from "@taskplanner/core";
+import { exportFileName, plural, type CanvasArrow, type CanvasExportPerson, type CanvasExportTask, type CanvasExportThemeName, type CanvasGroup, type CanvasPdfMode, type LocalDate, type PdfOrientation, type PdfPaper, type PlacedCard } from "@taskplanner/core";
 import { useEffect, useRef, useState } from "react";
 
 import { canvasPdf, canvasPng, exportScene } from "@/lib/canvas-export";
@@ -89,6 +89,7 @@ export function CanvasExportButton({
   people,
   subtasks,
   titles,
+  arrows,
   selected,
 }: {
   listName: string;
@@ -101,6 +102,8 @@ export function CanvasExportButton({
   subtasks: ReadonlyMap<string, { done: number; total: number }>;
   /** Tytuły zadań (id → tytuł) — „↑ rodzic” na karcie podzadania. */
   titles: ReadonlyMap<string, string>;
+  /** Strzałki między kartami (`canvasArrows`) — w pliku te, których oba końce są w eksporcie. */
+  arrows: readonly CanvasArrow[];
   /** Zaznaczone zadania (karty). */
   selected: ReadonlySet<string>;
 }) {
@@ -133,7 +136,7 @@ export function CanvasExportButton({
       const parentTitles = new Map(placed.flatMap((p) => (p.task.parentId ? [[p.task.id, titles.get(p.task.parentId) ?? ""] as const] : [])));
       const theme: CanvasExportThemeName = prefs.theme === "current" && document.documentElement.dataset.theme === "dark" ? "dark" : "light";
       const scene = await exportScene(
-        { listName, today, placed, trayCount, groups, tags, people, subtasks, parentTitles },
+        { listName, today, placed, trayCount, groups, tags, people, subtasks, parentTitles, arrows },
         { selection: scope === "selection" ? selected : null, legend: prefs.legend, theme },
       );
       const fileName = exportFileName(listName, today, format);

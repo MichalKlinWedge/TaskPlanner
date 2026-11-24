@@ -839,7 +839,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
             Dopasuj
           </button>
         </div>
-        <CanvasExportButton listName={list.name} today={ctx.today} placed={layout.placed} trayCount={layout.tray.length} groups={groups} tags={tagsById} people={people} subtasks={subtasks} titles={titles} selected={selected} />
+        <CanvasExportButton listName={list.name} today={ctx.today} placed={layout.placed} trayCount={layout.tray.length} groups={groups} tags={tagsById} people={people} subtasks={subtasks} titles={titles} arrows={links.arrows} selected={selected} />
         <Button className="py-1 text-xs" onClick={full ? exitFull : enterFull} title={full ? "Zamknij pełny ekran (Esc)" : "Karteczki na cały ekran"} data-testid="canvas-full">
           {full ? "✕ Zamknij pełny ekran" : "⛶ Pełny ekran"}
         </Button>
