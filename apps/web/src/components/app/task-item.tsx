@@ -158,6 +158,8 @@ export interface TaskItemProps {
   columns?: readonly ListColumn[];
   /** „+” przy tytule: dodanie podzadania (widok listy ustawia górne pole na to zadanie). */
   onAddSubtask?: () => void;
+  /** Przycisk „→ Jutro” po prawej (widok „Dziś”: zaległe i dzisiejsze); ukryty przy zadaniu tylko do podglądu. */
+  onTomorrow?: () => void;
   /** Tagi pokazywane w kolumnie „Tagi” (`view_prefs.columnTags`); `null` / brak = wszystkie. */
   columnTags?: ReadonlySet<string> | null;
   /** Szerokości kolumn ustawione w nagłówku (`useListWidths`); brak = domyślne. */
@@ -240,7 +242,7 @@ export function TaskColumnsHeader({ columns, widths = {}, onResize }: { columns:
   );
 }
 
-export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, columnTags, widths = {} }: TaskItemProps) {
+export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, onTomorrow, columnTags, widths = {} }: TaskItemProps) {
   const { toggle } = useTaskActions();
   const { openTask, selectedIds, select, data, trashed } = useAppEnv();
   const inTrash = trashed?.has(task.id) ?? false;
@@ -430,6 +432,18 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           )}
         </span>
       ))}
+      {onTomorrow && !readOnly ? (
+        <button
+          type="button"
+          aria-label={`Przesuń „${task.title}” na jutro`}
+          title="Przesuń na jutro"
+          onClick={onTomorrow}
+          className="mt-px shrink-0 rounded-md px-2 py-0.5 text-xs whitespace-nowrap text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
+          data-testid="task-tomorrow"
+        >
+          → Jutro
+        </button>
+      ) : null}
     </li>
   );
 }

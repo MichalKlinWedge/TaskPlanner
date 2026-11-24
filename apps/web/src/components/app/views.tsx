@@ -8,6 +8,7 @@
 import {
   addDays,
   buildTree,
+  bulkTaskOps,
   canAddSubtask,
   capitalized,
   COMPLETED_MODE,
@@ -44,6 +45,7 @@ import {
   type SortBy,
   type ViewContext,
   type ViewPrefs,
+  type ViewTask,
   READONLY_LIST_NOTE,
   listShareBadge,
   type ListShareBadge,
@@ -170,6 +172,11 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
   // Etap 8: nawyki dnia ze stanem odhaczenia, postępem i passą (kolejność jak w `selectToday`).
   const habits = useMemo(() => habitsForDay(view.habits, data.habitCompletions, ctx.today, ctx.today), [view.habits, data.habitCompletions, ctx.today]);
   const names = listNames(data);
+  const { run } = useTaskActions();
+  const toTomorrow = (task: ViewTask) => {
+    const { ops, undo } = bulkTaskOps([task], data.tasks, { kind: "tomorrow" }, { today: ctx.today, now: new Date(), timeZone: ctx.timeZone });
+    void run(ops, { text: `„${task.title}” → ${relativeDay(addDays(ctx.today, 1), ctx.today)}`, undo });
+  };
   const open = view.overdue.length + view.today.length;
   const empty = !open && !view.ongoing.length && !view.habits.length && !view.done.length;
   return (
@@ -191,12 +198,12 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
           <QuickAdd listId={targetInbox?.id} dueDate={ctx.today} placeholder="Dodaj zadanie na dziś" />
           {view.overdue.length ? (
             <Section title={VIEW_SECTION.overdue} count={view.overdue.length} tone="danger">
-              <Paged items={view.overdue}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />}</Paged>
+              <Paged items={view.overdue}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} />}</Paged>
             </Section>
           ) : null}
           {view.today.length ? (
             <Section title={VIEW_SECTION.today} count={view.today.length}>
-              <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />}</Paged>
+              <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} />}</Paged>
             </Section>
           ) : null}
           {view.ongoing.length ? (
