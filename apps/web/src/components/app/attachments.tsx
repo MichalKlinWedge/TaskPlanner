@@ -43,6 +43,10 @@ interface AttachmentsApi {
   discard: (id: string) => void;
   /** Adres do wyświetlenia: plik w kolejce (z IndexedDB) albo pobrany z Storage (pamięć podręczna). */
   objectUrl: (item: { id: string; storagePath: string | null; mime: string | null }) => Promise<string>;
+  /** Zawartość wysłanego pliku (eksport przestrzeni) — z pamięci podręcznej albo Storage, bez zapamiętywania. */
+  readFile: (storagePath: string) => Promise<Blob>;
+  /** Pliki z importu przestrzeni: id i ścieżki z planu importu, wysyłka w tle zwykłą kolejką. */
+  restoreFiles: (files: readonly { id: string; taskId: string; storagePath: string; name: string; mime: string; data: Blob }[]) => Promise<void>;
 }
 
 const Ctx = createContext<AttachmentsApi | null>(null);
@@ -57,13 +61,13 @@ export const useAttachments = (): AttachmentsApi => {
 const FILE_CACHE = "taskplanner-attachments";
 const cacheKey = (path: string) => `${location.origin}/__attachments/${encodeURIComponent(path)}`;
 
-async function storedFile(path: string): Promise<Blob> {
+async function storedFile(path: string, keep = true): Promise<Blob> {
   const cache = typeof caches !== "undefined" ? await caches.open(FILE_CACHE).catch(() => null) : null;
   const hit = await cache?.match(cacheKey(path));
   if (hit) return hit.blob();
   const { data, error } = await supabaseBrowser().storage.from("attachments").download(path);
   if (error || !data) throw new Error(navigator.onLine ? `Nie udało się pobrać pliku: ${error?.message ?? "brak danych"}` : "Plik nie był pobrany na tym urządzeniu — otworzy się po połączeniu.");
-  await cache?.put(cacheKey(path), new Response(data, { headers: { "content-type": data.type || "application/octet-stream" } })).catch(() => undefined);
+  if (keep) await cache?.put(cacheKey(path), new Response(data, { headers: { "content-type": data.type || "application/octet-stream" } })).catch(() => undefined);
   return data;
 }
 
@@ -188,6 +192,11 @@ export function AttachmentsProvider({ store, userId, children }: { store: TabSto
       const url = URL.createObjectURL(blob);
       urls.current.set(id, url);
       return url;
+    },
+    readFile: (storagePath) => storedFile(storagePath, false),
+    restoreFiles: async (files) => {
+      for (const { data, ...file } of files) await queue.enqueue({ ...file, size: data.size }, data);
+      void flush();
     },
   };
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;

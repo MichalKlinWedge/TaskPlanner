@@ -63,6 +63,7 @@ const NEEDS_NETWORK: { what: string; detail: string }[] = [
   },
   { what: "Asystent AI", detail: "podpinanie i zmiana konta AI, „Sprawdź” i wybór modelu oraz funkcje ✨ (zapytania idą do dostawcy przez serwer); konto podpięte na innym urządzeniu widać po synchronizacji." },
   { what: "Podgląd linków", detail: "tytuł strony z adresu — bez sieci adres zostaje tytułem zadania." },
+  { what: "Eksport i import przestrzeni", detail: "plik JSON z osobami, rolami i załącznikami (kopia konta bez plików załączników działa bez sieci)." },
   { what: "Nowa wersja aplikacji", detail: "wczytuje się przy pierwszym starcie z siecią." },
 ];
 

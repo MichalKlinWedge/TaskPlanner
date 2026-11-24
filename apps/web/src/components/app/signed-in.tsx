@@ -90,7 +90,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
         store={store}
         userId={userId}
         settings={parseSettings(settings)}
-        manage={<WorkspacesScreen store={store} />}
+        manage={<WorkspacesScreen store={store} email={email} />}
         settingsView={
           <>
             <h1 className="mb-4 text-xl font-semibold">Ustawienia</h1>

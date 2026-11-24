@@ -44,7 +44,7 @@ export async function planBackupImport(query: BackupQuery, backup: Backup, userI
 }
 
 /** Zapis planu porcjami; `onProgress` — zapisane / wszystkie zmiany. */
-export async function applyBackupPlan(mutateMany: BackupMutate, plan: BackupPlan, onProgress?: (done: number, total: number) => void): Promise<void> {
+export async function applyBackupPlan(mutateMany: BackupMutate, plan: Pick<BackupPlan, 'ops'>, onProgress?: (done: number, total: number) => void): Promise<void> {
   for (let i = 0; i < plan.ops.length; i += IMPORT_CHUNK) {
     await mutateMany(plan.ops.slice(i, i + IMPORT_CHUNK));
     onProgress?.(Math.min(i + IMPORT_CHUNK, plan.ops.length), plan.ops.length);
