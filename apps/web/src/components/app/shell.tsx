@@ -841,7 +841,9 @@ function Keyboard({
   openShortcuts: () => void;
   toggleSidebar: () => void;
 }) {
-  const { openTask, openTaskId } = useAppEnv();
+  const { openTask, openTaskId, data } = useAppEnv();
+  // Otwarte zadanie z kosza (podgląd) nie wchodzi do trybu skupienia.
+  const focusTaskId = selected.at(-1) ?? (data.tasks.some((t) => t.id === openTaskId) ? openTaskId : null);
   const focusOn = useFocus().settings.enabled;
   const bulk = useBulk(selected);
   const pendingG = useRef(0);
@@ -905,7 +907,7 @@ function Keyboard({
         "2": () => bulk({ kind: "priority", priority: 2 }, "Priorytet wysoki"),
         "3": () => bulk({ kind: "priority", priority: 3 }, "Priorytet średni"),
         "4": () => bulk({ kind: "priority", priority: 4 }, "Priorytet niski"),
-        ...(focusOn && { f: () => navigate(focusRoute(selected.at(-1) ?? openTaskId)) }),
+        ...(focusOn && { f: () => navigate(focusRoute(focusTaskId)) }),
       };
       const handler = handlers[key];
       // Enter bez zaznaczenia zostaje przyciskom i linkom.
@@ -915,7 +917,7 @@ function Keyboard({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [blocked, selected, setSelected, navigate, openQuick, openPalette, openShortcuts, toggleSidebar, openTask, openTaskId, bulk, focusOn]);
+  }, [blocked, selected, setSelected, navigate, openQuick, openPalette, openShortcuts, toggleSidebar, openTask, openTaskId, focusTaskId, bulk, focusOn]);
 
   return null;
 }

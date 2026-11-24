@@ -21,6 +21,11 @@ export const TASK_COLUMNS = `t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t
  */
 const TAG_ORDER = 'sort_key is null, sort_key, rowid';
 
+/** Kosz: zadania usunięte po `?` (ISO), z tagami i listą — wiersze dla core `toTrashedTask`, od ostatnio usuniętych. */
+export const TRASH_SQL = `select ${TASK_COLUMNS}, t.deleted_at, l.name as list_name, l.archived_at as list_archived_at, l.deleted_at as list_deleted_at,
+  (select group_concat(tag_id) from (select tt.tag_id from task_tags tt where tt.task_id = t.id and tt.deleted_at is null order by ${TAG_ORDER})) as tag_ids
+  from tasks t left join lists l on l.id = t.list_id where t.deleted_at is not null and t.deleted_at > ? order by t.deleted_at desc, t.sort_key`;
+
 /** Nieusunięte zadanie z id tagów (`TAG_ORDER`). Nowy obiekt tylko po zmianie zadania albo jego tagów. */
 export interface TaskEntry {
   readonly row: SqlRow;

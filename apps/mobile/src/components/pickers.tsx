@@ -1,7 +1,7 @@
 /**
  * Arkusze wyboru wywoływane z dowolnego miejsca (gest na wierszu, pasek zaznaczenia, szczegóły
  * zadania): `pickOption` — lista opcji, `pickMany` — kilka opcji z „Zastosuj”, `pickDate` — gotowe dni + kalendarz miesiąca, `pickTime` —
- * gotowe godziny + wpisanie. Jeden `<PickerHost />` w układzie głównym; Promise kończy się wyborem
+ * gotowe godziny + wpisanie, `pickNumber` — liczba z zakresu, `pickAmount` — gotowe liczby i „Inna…”. Jeden `<PickerHost />` w układzie głównym; Promise kończy się wyborem
  * albo `undefined` po zamknięciu. Własne arkusze zamiast natywnego wyboru daty — bez dodatkowego
  * modułu natywnego, a gotowe dni („Jutro”, „Za tydzień”) są o jedno dotknięcie.
  */
@@ -24,7 +24,8 @@ type Request =
   | { kind: 'option'; title: string; options: Option<unknown>[]; resolve: (value: unknown) => void }
   | { kind: 'many'; title: string; options: Option<unknown>[]; resolve: (value: unknown[] | undefined) => void }
   | { kind: 'date'; title: string; value: LocalDate | null; today: LocalDate; allowNone: boolean; firstDayOfWeek: number; resolve: (value: LocalDate | null | undefined) => void }
-  | { kind: 'time'; title: string; value: LocalTime | null; allowNone: boolean; resolve: (value: LocalTime | null | undefined) => void };
+  | { kind: 'time'; title: string; value: LocalTime | null; allowNone: boolean; resolve: (value: LocalTime | null | undefined) => void }
+  | { kind: 'number'; title: string; value: number | null; min: number; max: number; unit?: string; resolve: (value: number | undefined) => void };
 
 let current: Request | null = null;
 const listeners = new Set<() => void>();
@@ -55,6 +56,23 @@ export const pickDate = (opts: { title: string; value: LocalDate | null; today: 
 export const pickTime = (opts: { title: string; value: LocalTime | null; allowNone?: boolean }): Promise<LocalTime | null | undefined> =>
   open<LocalTime | null | undefined>({ kind: 'time', allowNone: false, ...opts });
 
+interface NumberRange {
+  value: number | null;
+  min: number;
+  max: number;
+  /** Jednostka obok pola (np. „min”). */
+  unit?: string;
+}
+
+/** Liczba całkowita z zakresu wpisana z klawiatury. */
+export const pickNumber = (title: string, range: NumberRange): Promise<number | undefined> => open<number | undefined>({ kind: 'number', title, ...range });
+
+/** Gotowe liczby i „Inna…” (`pickNumber`). */
+export async function pickAmount(title: string, options: Option<number>[], other: NumberRange): Promise<number | undefined> {
+  const choice = await pickOption<number | 'other'>(title, [...options, { label: 'Inna…', value: 'other', tone: 'accent' }]);
+  return choice === 'other' ? pickNumber(title, other) : choice;
+}
+
 const close = (value?: unknown) => {
   const r = current;
   set(null);
@@ -78,6 +96,7 @@ export function PickerHost() {
           {request.kind === 'option' ? <OptionList options={request.options} /> : null}
           {request.kind === 'date' ? <DatePicker key={`${request.title}:${request.value}`} request={request} /> : null}
           {request.kind === 'time' ? <TimePicker key={`${request.title}:${request.value}`} request={request} /> : null}
+          {request.kind === 'number' ? <NumberPicker key={`${request.title}:${request.value}`} request={request} /> : null}
         </Sheet>
       ) : null}
     </Modal>
@@ -271,6 +290,36 @@ function TimePicker({ request }: { request: Extract<Request, { kind: 'time' }> }
         />
         <Pill label="Ustaw" selected={!!valid} onPress={() => valid && close(valid)} />
       </View>
+    </View>
+  );
+}
+
+function NumberPicker({ request }: { request: Extract<Request, { kind: 'number' }> }) {
+  const p = usePalette();
+  const { min, max, unit } = request;
+  const [text, setText] = useState(request.value === null ? '' : String(request.value));
+  const value = /^-?\d+$/.test(text.trim()) ? Number(text.trim()) : null;
+  const valid = value !== null && value >= min && value <= max;
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={[styles.pills, { alignItems: 'center' }]}>
+        <TextInput
+          autoFocus
+          selectTextOnFocus
+          accessibilityLabel={request.title}
+          value={text}
+          onChangeText={setText}
+          keyboardType={min < 0 ? 'numbers-and-punctuation' : 'number-pad'}
+          maxLength={Math.max(String(min).length, String(max).length)}
+          onSubmitEditing={() => valid && close(value)}
+          style={[styles.timeInput, { color: p.fg, borderColor: valid || !text ? p.border : p.bad }]}
+        />
+        {unit ? <Text style={{ color: p.fg, fontSize: 15 }}>{unit}</Text> : null}
+        <Pill label="Ustaw" selected={valid} onPress={() => valid && close(value)} />
+      </View>
+      <Text style={{ color: !valid && text ? p.bad : p.muted, fontSize: 12 }}>
+        Od {min} do {max}.
+      </Text>
     </View>
   );
 }

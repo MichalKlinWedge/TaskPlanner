@@ -8,13 +8,13 @@
  * wartości współdzielone i trzy widoki animowane na wiersz) dochodzi dopiero po pierwszym
  * narysowaniu listy (`RowsInteractive` z `TaskSections`), a metadane to jeden `Text` z jednym zagnieżdżonym.
  */
-import { assigneeOf, collaboratorBadge, columnDate, describeRecurrence, isOpen, LIST_COLUMN, PRIORITY, relativeDay, type ListColumn, type LocalDate, type ViewTask } from '@taskplanner/core';
+import { assigneeOf, collaboratorBadge, columnDate, describeRecurrence, isOpen, LIST_COLUMN, needsDecision, PRIORITY, READONLY_LIST_NOTE, relativeDay, type ListColumn, type LocalDate, type ViewTask } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { createContext, memo, useContext, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Swipeable, { SwipeDirection, type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
-import { useAppData } from '@/lib/app-data';
+import { listEditable, useAppData } from '@/lib/app-data';
 
 import { useTaskActions } from './actions';
 import { rescheduleWithMenu } from './task-menus';
@@ -68,21 +68,34 @@ export function TaskColumnsHeader({ columns }: { columns: readonly ListColumn[] 
  */
 export const RowsInteractive = createContext(true);
 
+/** Przytrzymanie zaznacza tylko tam, gdzie jest pasek akcji (`TaskSections`); gdzie indziej dotknięcie zawsze otwiera zadanie. */
+export const RowsSelectable = createContext(false);
+
 export const TaskRow = memo(function TaskRow({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, tagNames, tagItems, columns }: TaskRowProps) {
   const tagBubbles = columns?.includes('tags') ? (tagItems ?? (tagNames ?? []).map((name) => ({ id: name, name, color: null }))) : [];
   const p = usePalette();
   const actions = useTaskActions();
-  const { toggle, selected, toggleSelected } = actions;
+  const { toggle, selected, toggleSelected, notify } = actions;
+  const data = useAppData();
   const swipe = useRef<SwipeableMethods>(null);
-  const isSelected = selected.has(task.id);
-  const selecting = selected.size > 0;
+  const selectable = useContext(RowsSelectable);
+  const isSelected = selectable && selected.has(task.id);
+  const selecting = selectable && selected.size > 0;
+  // Przestrzeń albo lista udostępniona do podglądu: zadanie da się otworzyć, ale nie zmienić.
+  const readOnly = !listEditable(data, task.listId);
   const closed = task.kind === 'habit' ? !!habitDone : !isOpen(task);
   const date = virtualDate ?? task.dueDate;
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
   const interactive = useContext(RowsInteractive);
-  const swipeable = !virtualDate && !selecting && interactive;
-  const assignee = assigneeOf(task.assigneeId, useAppData().collaborators);
+  const swipeable = !virtualDate && !selecting && interactive && !readOnly;
+  const assignee = assigneeOf(task.assigneeId, data.collaborators);
+  const attachments = data.attachmentCounts.get(task.id) ?? 0;
+  // Uczestnicy obok odpowiedzialnego — razem najwyżej 4 znaczki (jak na webie).
+  const participants = (data.participants.get(task.id) ?? [])
+    .filter((id) => id !== task.assigneeId)
+    .flatMap((id) => assigneeOf(id, data.collaborators) ?? [])
+    .slice(0, assignee ? 3 : 4);
 
   // Kolumna „Koniec” / „Odpowiedzialny” zastępuje to samo w szarym wierszu pod tytułem.
   const dueColumn = !!columns?.includes('due');
@@ -92,10 +105,13 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
     showDate && date && !dueColumn ? { text: relativeDay(date, today), bad: overdue } : null,
     task.dueTime && !dueColumn ? { text: task.dueTime } : null,
     task.recurrence ? { text: `↻ ${describeRecurrence(task.recurrence)}` } : null,
+    needsDecision(task) && !closed ? { text: `⇥ ${task.postponeCount}×` } : null,
     progress && progress.total > 0 ? { text: `☑ ${progress.done}/${progress.total}` } : null,
     task.status === 'in_progress' ? { text: 'w trakcie' } : task.status === 'waiting' ? { text: 'oczekuje' } : null,
+    attachments ? { text: `📎 ${attachments}` } : null,
     listName ? { text: listName } : null,
     assignee && !assigneeColumn ? { text: `👤 ${collaboratorBadge(assignee)}` } : null,
+    participants.length ? { text: `👥 ${participants.map(collaboratorBadge).join(' ')}` } : null,
     ...(columns?.includes('tags') ? [] : (tagNames ?? [])).map((t) => ({ text: `@${t}` })),
   ].filter(Boolean) as { text: string; bad?: boolean }[];
   // Wyróżniony (zaległy termin) jest zawsze pierwszy: jeden zagnieżdżony `Text` zamiast jednego na pozycję.
@@ -107,9 +123,11 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
       accessibilityRole="button"
       accessibilityLabel={task.title}
       accessibilityState={{ selected: isSelected }}
-      accessibilityHint={selecting ? 'Dotknij, żeby zaznaczyć albo odznaczyć' : 'Otwiera szczegóły; przesuń w prawo — ukończ, w lewo — termin; przytrzymaj — zaznacz'}
-      onPress={() => (selecting ? toggleSelected(task.id) : router.push({ pathname: '/task/[id]', params: { id: task.id } }))}
-      onLongPress={() => !virtualDate && toggleSelected(task.id)}
+      accessibilityHint={
+        selecting ? 'Dotknij, żeby zaznaczyć albo odznaczyć' : readOnly ? 'Otwiera szczegóły; tylko podgląd' : `Otwiera szczegóły; przesuń w prawo — ukończ, w lewo — termin${selectable ? '; przytrzymaj — zaznacz' : ''}`
+      }
+      onPress={() => (selecting ? (readOnly ? notify(READONLY_LIST_NOTE) : toggleSelected(task.id)) : router.push({ pathname: '/task/[id]', params: { id: task.id } }))}
+      onLongPress={selectable && !virtualDate ? () => (readOnly ? notify(READONLY_LIST_NOTE) : toggleSelected(task.id)) : undefined}
       delayLongPress={350}
       style={({ pressed }) => [
         styles.row,
@@ -132,11 +150,11 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
       ) : (
         <Pressable
           accessibilityRole="checkbox"
-          accessibilityState={{ checked: closed }}
+          accessibilityState={{ checked: closed, disabled: readOnly }}
           accessibilityLabel={closed ? `Przywróć „${task.title}”` : `Ukończ „${task.title}”`}
           hitSlop={12}
-          onPress={() => void toggle(task, { habitDone })}
-          style={[styles.check, { borderColor: color, backgroundColor: closed ? color : `${color}1A` }]}
+          onPress={() => (readOnly ? notify(READONLY_LIST_NOTE) : void toggle(task, { habitDone }))}
+          style={[styles.check, { borderColor: color, backgroundColor: closed ? color : `${color}1A`, opacity: readOnly ? 0.4 : 1 }]}
         >
           {closed ? <Text style={styles.tick}>✓</Text> : null}
         </Pressable>

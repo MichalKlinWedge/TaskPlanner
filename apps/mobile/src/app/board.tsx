@@ -357,7 +357,7 @@ export default function BoardScreen() {
         </Pressable>
         {by === 'status' ? <Text style={{ color: p.muted, fontSize: 12 }}>„Gotowe” z ostatnich 7 dni</Text> : null}
       </View>
-      <FilterBar query={filter} onChange={setFilter} hide={list ? ['lists'] : []} />
+      <FilterBar query={filter} onChange={setFilter} hide={list ? ['lists'] : []} save />
       <View style={styles.tabRow}>
         {pinned ? (
           <View style={[styles.pinned, { borderColor: p.border }]}>

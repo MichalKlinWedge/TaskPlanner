@@ -1,7 +1,8 @@
 /**
  * Tryb skupienia (Etap 7, M14) — ekran jak `#/focus` na webie: tarcza z pozostałym czasem (stoper —
- * upływ), etap i licznik serii, Pomodoro / stoper / pauza / pomiń / stop, zadanie z podzadaniami
- * i „spędzono / szac.”, wybór zadania (dziś i zaległe), długości etapów, „Ten tydzień”.
+ * upływ), etap i licznik serii, Pomodoro / stoper / pauza / pomiń / stop, zadanie z ukończeniem, opisem,
+ * podzadaniami i „spędzono / szac.”, wybór zadania (dziś i zaległe albo szukanie wśród otwartych), przełączenie
+ * trwającego timera na zadanie, z którego otwarto ekran, długości etapów, „Ten tydzień”.
  * Ekran nie gaśnie, póki etap biegnie (`expo-keep-awake`). Przejścia — `focusCommand`
  * (`lib/headless.ts`), powiadomienia i koniec etapu w tle — `lib/focus.ts`.
  */
@@ -13,22 +14,25 @@ import {
   formatMinutes,
   formatTimer,
   isoWeekday,
+  normalizeText,
   phaseMs,
   PRIORITY,
   selectToday,
   WEEKDAY,
   type IsoWeekday,
+  type ViewContext,
 } from '@taskplanner/core';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
+import { DescriptionField } from '@/components/description-field';
 import { pickOption } from '@/components/pickers';
 import { TaskRow } from '@/components/task-row';
 import { Button, Section, usePalette } from '@/components/ui';
-import { listLabel, useView } from '@/lib/app-data';
+import { listEditable, listLabel, useView, type AppData } from '@/lib/app-data';
 import { isTicking, spentMinutes, syncFocusNotifications, useFocusData } from '@/lib/focus';
 import { focusCommand, type FocusCommand } from '@/lib/headless';
 import { permissionState, requestNotificationPermission } from '@/lib/reminders';
@@ -61,11 +65,12 @@ export default function FocusScreen() {
   const params = useLocalSearchParams<{ task?: string }>();
   const { data, today, ctx } = useView();
   const focus = useFocusData();
-  const { notify } = useTaskActions();
+  const { notify, toggle } = useTaskActions();
   const { state, settings } = focus;
   const ticking = isTicking(state);
   const now = useNow(ticking);
   const [chosen, setChosen] = useState<string | null>(params.task ?? null);
+  const [picking, setPicking] = useState(false);
 
   // Ekran nie gaśnie, póki etap biegnie (tylko na tym ekranie).
   useEffect(() => {
@@ -95,13 +100,13 @@ export default function FocusScreen() {
   const fraction = total ? Math.min(1, elapsed / total) : 0;
   const color = state.phase === 'focus' || state.phase === 'stopwatch' ? p.accent : state.phase === 'idle' ? p.muted : p.ok;
 
-  const pickTask = () => {
-    const { overdue, today: due, ongoing } = selectToday(data.tasks, ctx, { completed: 'hidden' });
-    const candidates = [...overdue, ...due, ...ongoing].filter((t, i, all) => t.kind === 'task' && all.findIndex((x) => x.id === t.id) === i).slice(0, 40);
-    void pickOption<string>('Nad czym pracujesz?', [
-      { label: 'Bez zadania', value: '', selected: !chosen },
-      ...candidates.map((t) => ({ label: t.title, hint: listLabel(data, t.listId), value: t.id, selected: t.id === chosen })),
-    ]).then((id) => id !== undefined && setChosen(id || null));
+  // Ekran otwarty z innego zadania niż to, nad którym biegnie timer.
+  const wanted = state.phase !== 'idle' && chosen && chosen !== state.taskId ? data.tasks.find((t) => t.id === chosen) : undefined;
+  const editable = !!task && listEditable(data, task.listId);
+  const complete = async () => {
+    if (!task) return;
+    if (task.status !== 'done' && state.phase !== 'idle' && state.taskId === task.id) await run({ kind: 'stop' });
+    await toggle(task);
   };
 
   const setLength = (key: LengthKey, values: number[], label: string) =>
@@ -125,8 +130,16 @@ export default function FocusScreen() {
   const maxDay = Math.max(1, ...week.days.map((d) => d.minutes));
 
   return (
-    <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.body}>
+    <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Skupienie' }} />
+      {wanted ? (
+        <View style={[styles.other, { backgroundColor: p.selected }]}>
+          <Text style={{ color: p.fg, fontSize: 14 }}>
+            Timer działa {task ? `dla „${task.title}”` : 'bez zadania'}.
+          </Text>
+          <Button kind="secondary" title={`Przełącz na „${wanted.title}”`} onPress={() => void run({ kind: 'start', taskId: wanted.id, mode: state.phase === 'stopwatch' ? 'stopwatch' : 'pomodoro' })} />
+        </View>
+      ) : null}
       <View style={styles.dial}>
         <Text style={[styles.phase, { color }]}>
           {FOCUS_PHASE[state.phase === 'idle' ? 'focus' : state.phase]}
@@ -172,14 +185,27 @@ export default function FocusScreen() {
       <Section title="Zadanie">
         {task ? (
           <>
-            <Pressable accessibilityRole="link" onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })} style={styles.taskHead}>
-              <View style={[styles.dot, { backgroundColor: PRIORITY[task.priority].color }]} />
-              <Text style={{ color: p.fg, fontSize: 17, fontWeight: '600', flex: 1 }}>{task.title}</Text>
-            </Pressable>
+            <View style={styles.taskHead}>
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: task.status === 'done', disabled: !editable }}
+                accessibilityLabel={task.status === 'done' ? 'Przywróć zadanie' : 'Ukończ zadanie'}
+                disabled={!editable}
+                hitSlop={10}
+                onPress={() => void complete()}
+                style={[styles.check, { borderColor: PRIORITY[task.priority].color, backgroundColor: task.status === 'done' ? PRIORITY[task.priority].color : 'transparent', opacity: editable ? 1 : 0.4 }]}
+              >
+                {task.status === 'done' ? <Text style={styles.tick}>✓</Text> : null}
+              </Pressable>
+              <Pressable accessibilityRole="link" style={{ flex: 1 }} onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}>
+                <Text style={{ color: task.status === 'done' ? p.muted : p.fg, fontSize: 17, fontWeight: '600', textDecorationLine: task.status === 'done' ? 'line-through' : 'none' }}>{task.title}</Text>
+              </Pressable>
+            </View>
             <Text style={{ color: p.muted, fontSize: 13 }}>
               {listLabel(data, task.listId)} · spędzono {formatMinutes(spentMinutes(focus.entries, task.id, new Date(now)))}
               {task.durationMin ? ` / szac. ${formatMinutes(task.durationMin)}` : ''}
             </Text>
+            <DescriptionField key={task.id} taskId={task.id} readOnly={!editable} />
             {subtasks.length ? (
               <View style={{ marginHorizontal: -12 }}>
                 {subtasks.map((c) => (
@@ -191,7 +217,18 @@ export default function FocusScreen() {
         ) : (
           <Text style={{ color: p.muted }}>Bez zadania — czas liczy się ogólnie.</Text>
         )}
-        {state.phase === 'idle' ? <Button kind="secondary" title={task ? 'Zmień zadanie' : 'Wybierz zadanie'} onPress={pickTask} /> : null}
+        {state.phase !== 'idle' ? null : picking ? (
+          <TaskPicker
+            data={data}
+            ctx={ctx}
+            onPick={(id) => {
+              if (id !== undefined) setChosen(id);
+              setPicking(false);
+            }}
+          />
+        ) : (
+          <Button kind="secondary" title={task ? 'Zmień zadanie' : 'Wybierz zadanie'} onPress={() => setPicking(true)} />
+        )}
       </Section>
 
       <Section title="Długości etapów">
@@ -233,6 +270,48 @@ export default function FocusScreen() {
   );
 }
 
+/** Wybór zadania: zaległe, dzisiejsze i trwające, a po wpisaniu — wszystkie otwarte (bez polskich znaków). */
+function TaskPicker({ data, ctx, onPick }: { data: AppData; ctx: ViewContext; onPick: (id: string | null | undefined) => void }) {
+  const p = usePalette();
+  const [query, setQuery] = useState('');
+  const options = useMemo(() => {
+    const needle = normalizeText(query.trim());
+    if (needle) {
+      return data.tasks
+        .filter((t) => t.kind === 'task' && (t.status === 'todo' || t.status === 'in_progress') && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId) && normalizeText(t.title).includes(needle))
+        .slice(0, 12);
+    }
+    const { overdue, today, ongoing } = selectToday(data.tasks, ctx, { completed: 'hidden' });
+    return [...overdue, ...today, ...ongoing].filter((t, i, all) => t.kind === 'task' && all.findIndex((x) => x.id === t.id) === i).slice(0, 12);
+  }, [data.tasks, ctx, query]);
+  return (
+    <View style={{ gap: 4 }}>
+      <TextInput
+        value={query}
+        onChangeText={setQuery}
+        placeholder="Szukaj wśród otwartych zadań…"
+        placeholderTextColor={p.muted}
+        accessibilityLabel="Szukaj zadania"
+        style={[styles.search, { color: p.fg, borderColor: p.border }]}
+      />
+      {options.map((t) => (
+        <Pressable key={t.id} accessibilityRole="button" onPress={() => onPick(t.id)} style={[styles.option, { borderColor: p.border }]}>
+          <View style={[styles.dot, { backgroundColor: PRIORITY[t.priority].color }]} />
+          <Text style={{ color: p.fg, fontSize: 15, flex: 1 }} numberOfLines={1}>
+            {t.title}
+          </Text>
+          <Text style={{ color: p.muted, fontSize: 12 }} numberOfLines={1}>
+            {listLabel(data, t.listId)}
+          </Text>
+        </Pressable>
+      ))}
+      {!options.length ? <Text style={{ color: p.muted, fontSize: 13 }}>{query.trim() ? 'Nic nie pasuje.' : 'Na dziś nic — wyszukaj zadanie albo zacznij bez zadania.'}</Text> : null}
+      <Button kind="secondary" title="Bez zadania" onPress={() => onPick(null)} />
+      <Button kind="secondary" title="Anuluj" onPress={() => onPick(undefined)} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   body: { padding: 16, gap: 14, paddingBottom: 48 },
   dial: { alignItems: 'center', gap: 8, paddingVertical: 18 },
@@ -242,6 +321,11 @@ const styles = StyleSheet.create({
   buttons: { gap: 10 },
   taskHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dot: { width: 10, height: 10, borderRadius: 5 },
+  check: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  tick: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  other: { borderRadius: 10, padding: 10, gap: 8 },
+  search: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 15 },
+  option: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   lengths: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   length: { width: '48%', borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 },
   week: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', paddingTop: 6 },

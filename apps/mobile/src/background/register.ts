@@ -4,8 +4,11 @@
  */
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
+import { AppRegistry } from 'react-native';
 import { registerWidgetTaskHandler } from 'react-native-android-widget';
 
+import { ALARM_TASK } from '../lib/alarm';
+import { handleAlarmActions } from '../lib/alarm-actions';
 import { defineBackgroundSync } from '../lib/background-sync';
 import { handleResponse, NOTIFICATION_TASK } from '../lib/reminders';
 import { widgetTaskHandler } from '../widget/task-handler';
@@ -16,5 +19,6 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(NOTIFICATION_TASK,
   return Notifications.BackgroundNotificationTaskResult.NewData;
 });
 
+AppRegistry.registerHeadlessTask(ALARM_TASK, () => handleAlarmActions);
 registerWidgetTaskHandler(widgetTaskHandler);
 defineBackgroundSync();

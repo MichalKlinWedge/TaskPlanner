@@ -176,6 +176,21 @@ export async function localFile(item: { id: string; storagePath: string | null }
   return File.downloadFileAsync(data.signedUrl, cached, { idempotent: true });
 }
 
+/**
+ * Kopia pliku pod jego właściwą nazwą w pamięci podręcznej, do „Udostępnij” (plik w kolejce nazywa się jak id,
+ * pobrany — jak w Storage). Poprzednie kopie są usuwane.
+ */
+export async function shareableFile(item: { id: string; storagePath: string | null; name: string }): Promise<File> {
+  const file = await localFile(item);
+  const dir = new Directory(Paths.cache, 'share');
+  if (dir.exists) dir.delete();
+  dir.create({ intermediates: true });
+  const name = item.name.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').replace(/^\.+/, '').slice(0, 120) || 'plik';
+  const copy = new File(dir, name);
+  await file.copy(copy);
+  return copy;
+}
+
 /** Ścieżka `file://` już dostępnego pliku (miniatury bez pobierania). */
 export function localUri(item: { id: string; storagePath: string | null }): string | null {
   const queued = new File(pendingDir(sessionUser().id), item.id);

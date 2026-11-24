@@ -5,7 +5,7 @@
  */
 import { z } from 'zod';
 
-import { addDays, daysBetween, isoWeekday, localDateAt, localDateTimeAt } from './dates.ts';
+import { addDays, daysBetween, isoWeekday, localDateAt, localDateTimeAt, zonedInstant } from './dates.ts';
 import { habitDays, type DayState, type HabitCompletion } from './habits.ts';
 import type { ScheduleRecurrence } from './recurrence.ts';
 import { LocalDate, type ListKind, type LocalTime, type ProjectStatus } from './schemas/primitives.ts';
@@ -210,6 +210,30 @@ export function reviewsDue(schedule: ReviewSchedule, now: Date, { timeZone, last
   if (schedule.weeklyReview.enabled && isoWeekday(today) === schedule.weeklyReview.weekday && time >= schedule.weeklyReview.time && last.weekly !== today) due.push('weekly');
   if (schedule.dailyReview.enabled && time >= schedule.dailyReview.time && last.daily !== today) due.push('daily');
   return due;
+}
+
+export interface ReviewFire {
+  kind: ReviewKind;
+  date: LocalDate;
+  /** Chwila przypomnienia (pora z Ustawień w strefie użytkownika). */
+  at: Date;
+}
+
+/**
+ * Najbliższe przypomnienia o przeglądach (powiadomienia telefonu): po `now`, do `days` dni naprzód, bez dni
+ * z przypomnieniem albo skończoną sesją (`last`). Dzień i tydzień o tej samej porze = tylko tydzień.
+ */
+export function reviewFireTimes(schedule: ReviewSchedule, now: Date, { timeZone, last = {}, days = 7 }: { timeZone?: string; last?: Partial<Record<ReviewKind, LocalDate | null>>; days?: number }): ReviewFire[] {
+  const today = localDateTimeAt(now, timeZone).slice(0, 10) as LocalDate;
+  const { dailyReview: daily, weeklyReview: weekly } = schedule;
+  const fires: ReviewFire[] = [];
+  for (let i = 0; i < days; i++) {
+    const date = addDays(today, i);
+    const onWeekly = weekly.enabled && isoWeekday(date) === weekly.weekday;
+    if (onWeekly && last.weekly !== date) fires.push({ kind: 'weekly', date, at: zonedInstant(date, weekly.time, timeZone) });
+    if (daily.enabled && last.daily !== date && !(onWeekly && weekly.time === daily.time)) fires.push({ kind: 'daily', date, at: zonedInstant(date, daily.time, timeZone) });
+  }
+  return fires.filter((f) => f.at > now).sort((a, b) => a.at.getTime() - b.at.getTime());
 }
 
 export interface DailySummary {

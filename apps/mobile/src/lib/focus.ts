@@ -35,6 +35,7 @@ import { useSyncExternalStore } from 'react';
 
 import { parseSettings } from './app-data';
 import { readJson, writeJson } from './config';
+import { phoneRemindersOn } from './device';
 import { focusCommand, focusStamp, loadFocus, type FocusNow } from './headless';
 import { localEngine, mutateMany, onSessionChange } from './sync';
 
@@ -246,7 +247,9 @@ async function syncOnce(given?: FocusNow) {
   if (!(await Notifications.getPermissionsAsync()).granted) return;
   const { state, settings, userId, timeZone } = given ?? (await loadFocus());
   const title = await taskTitle(state.taskId);
-  const signature = JSON.stringify([focusStamp(state), state.taskId, title, settings, timeZone ?? null, FOCUS_END_CHANNEL]);
+  // Przypomnienia wyłączone na tym telefonie: zmiana etapu tylko podmienia powiadomienie, bez dźwięku.
+  const endChannel = (await phoneRemindersOn(await localEngine())) ? FOCUS_END_CHANNEL : FOCUS_CHANNEL;
+  const signature = JSON.stringify([focusStamp(state), state.taskId, title, settings, timeZone ?? null, endChannel]);
   if (readJson<string | null>(SYNC_KEY, null) === signature) return;
   await Notifications.cancelScheduledNotificationAsync(ONGOING_ID).catch(() => undefined);
   await Notifications.cancelScheduledNotificationAsync(BREAK_END_ID).catch(() => undefined);
@@ -272,19 +275,19 @@ async function syncOnce(given?: FocusNow) {
       const breakContent = focusContent(next, settings, title, end, timeZone);
       if (breakContent) {
         await Notifications.scheduleNotificationAsync(
-          request(ONGOING_ID, { ...breakContent, title: `Koniec pracy · ${breakContent.title}`, sticky: false }, focusStamp(next), FOCUS_END_CHANNEL, end.getTime()),
+          request(ONGOING_ID, { ...breakContent, title: `Koniec pracy · ${breakContent.title}`, sticky: false }, focusStamp(next), endChannel, end.getTime()),
         );
       }
       const breakEnd = phaseEndsAt(next, settings);
       if (breakEnd) {
         const ready = advanceFocus(next, breakEnd, { settings, newId }).state;
         const readyContent = focusContent(ready, settings, title, breakEnd, timeZone);
-        if (readyContent) await Notifications.scheduleNotificationAsync(request(BREAK_END_ID, readyContent, focusStamp(ready), FOCUS_END_CHANNEL, breakEnd.getTime()));
+        if (readyContent) await Notifications.scheduleNotificationAsync(request(BREAK_END_ID, readyContent, focusStamp(ready), endChannel, breakEnd.getTime()));
       }
     } else if (next.phase === 'ready') {
       // Koniec przerwy: alarm podmienia trwałe powiadomienie (inaczej zostałoby „przerwa do …”).
       const readyContent = focusContent(next, settings, title, end, timeZone);
-      if (readyContent) await Notifications.scheduleNotificationAsync(request(ONGOING_ID, readyContent, focusStamp(next), FOCUS_END_CHANNEL, end.getTime()));
+      if (readyContent) await Notifications.scheduleNotificationAsync(request(ONGOING_ID, readyContent, focusStamp(next), endChannel, end.getTime()));
     }
   }
   writeJson(SYNC_KEY, signature);

@@ -143,9 +143,9 @@ describe('GitLab (I3)', () => {
   const ctxFor = (net: NetDeps) => ({ config: { baseUrl: 'https://gitlab.example.com', project: 'g/p' }, secrets: { token: 'glpat-xxxxxxxx' }, net, now: () => NOW });
   const delivery = (
     events: PluginEvent[],
-    extra: { link?: { externalId: string; externalUrl: string | null } | null; retry?: boolean; comment?: { id: string; body: string }; status?: 'todo' | 'done' } = {},
+    extra: { link?: { externalId: string; externalUrl: string | null } | null; retry?: boolean; comment?: { id: string; body: string }; status?: 'todo' | 'done'; durationMin?: number } = {},
   ) => {
-    const task = { ...SAMPLE_TASK, status: extra.status ?? 'todo' };
+    const task = { ...SAMPLE_TASK, durationMin: extra.durationMin ?? null, status: extra.status ?? 'todo' };
     const payload = pluginPayload({ id: 'd-1', events, sentAt: NOW.toISOString(), rule: { id: 'r', name: 'GitLab' }, task, appUrl: 'https://app', comment: extra.comment });
     const fields = renderActionFields(PLUGINS.gitlab, { labels: 'task-planner, {{tags}}' }, task, { event: events[0]!, url: payload.task.url });
     return { id: 'd-1', payload, fields, link: extra.link ?? null, retry: extra.retry ?? false };
@@ -189,6 +189,27 @@ describe('GitLab (I3)', () => {
     await gitlab.deliver(ctxFor(net), delivery(['task.due_changed', 'task.tagged'], { link }));
     expect(net.calls.every((c) => c.init.method === 'PUT' && c.url.endsWith('/projects/7/issues/12'))).toBe(true);
     expect([body(net, 0), body(net, 1), body(net, 2)]).toEqual([{ state_event: 'close' }, { state_event: 'reopen' }, { due_date: SAMPLE_TASK.dueDate, labels: 'task-planner,zgłoś' }]);
+  });
+
+  it('szacowany czas: po utworzeniu i przy ponownym „Wyślij do…” osobnym wywołaniem; inne zdarzenia go nie ruszają', async () => {
+    const path = (c: Call) => `${c.init.method} ${new URL(c.url).pathname}`;
+    const net = fakeNet([json(issue(12), 201), json({ time_estimate: 5400 }), json(issue(12)), json({ time_estimate: 5400 }), json(issue(12))]);
+    expect(await gitlab.deliver(ctxFor(net), delivery(['task.created'], { durationMin: 90 }))).toEqual({ ok: true, externalId: '7:12', externalUrl: 'https://gitlab.example.com/g/p/-/issues/12', httpStatus: 200 });
+    expect(path(net.calls[1]!)).toBe('POST /api/v4/projects/7/issues/12/time_estimate');
+    expect(body(net, 1)).toEqual({ duration: '1h30m' });
+    expect(body(net, 0)).not.toHaveProperty('estimate');
+    const link = { externalId: '7:12', externalUrl: null };
+    await gitlab.deliver(ctxFor(net), delivery(['task.sent'], { link, durationMin: 90 }));
+    expect(net.calls.slice(2, 4).map(path)).toEqual(['PUT /api/v4/projects/7/issues/12', 'POST /api/v4/projects/7/issues/12/time_estimate']);
+    await gitlab.deliver(ctxFor(net), delivery(['task.completed'], { link, durationMin: 90, status: 'done' }));
+    expect(net.calls).toHaveLength(5);
+  });
+
+  it('szacowany czas: odmowa (403) nie psuje wysyłki — uwaga; błąd przejściowy ponawia, zły token wyłącza', async () => {
+    const run = (reply: Response) => gitlab.deliver(ctxFor(fakeNet([json(issue(12), 201), reply])), delivery(['task.created'], { durationMin: 30 }));
+    expect(await run(json({ message: '403 Forbidden' }, 403))).toMatchObject({ ok: true, externalId: '7:12', httpStatus: 201, note: expect.stringMatching(/^Nie ustawiono szacowanego czasu: .*403/) });
+    expect(await run(json({}, 503))).toMatchObject({ ok: false, retryable: true });
+    expect(await run(json({ message: '401 Unauthorized' }, 401))).toMatchObject({ ok: false, disable: true });
   });
 
   it('powiązane issue usunięte w GitLabie (404) → nowe issue', async () => {
@@ -236,7 +257,7 @@ describe('GitLab — przypisani (I3)', () => {
   const ctxFor = (net: NetDeps) => ({ config: { baseUrl: 'https://gitlab.example.com', project: 'g/p' }, secrets: { token: 'glpat-xxxxxxxx' }, net, now: () => NOW });
   const delivery = (events: PluginEvent[], assignees: string, link: { externalId: string; externalUrl: string | null } | null = null) => {
     const payload = pluginPayload({ id: 'd-2', events, sentAt: NOW.toISOString(), rule: { id: 'r', name: 'GitLab' }, task: SAMPLE_TASK, appUrl: 'https://app' });
-    const fields = renderActionFields(PLUGINS.gitlab, { assignees }, SAMPLE_TASK, { event: events[0]!, url: payload.task.url });
+    const fields = renderActionFields(PLUGINS.gitlab, { assignees, estimate: '0' }, SAMPLE_TASK, { event: events[0]!, url: payload.task.url });
     return { id: 'd-2', payload, fields, link, retry: false };
   };
 

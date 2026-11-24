@@ -82,6 +82,18 @@ Części „telefon — z MVP-3” z `PLAN_ETAPOWY.md` w `apps/mobile`: edytor p
 1. Na górze „Dziś” zwijany „Plan dnia”: oś godzin pracy (poszerzona o bloki spoza nich), bloki, konflikty, „Ułóż w kalendarzu ›” → widok dnia. Stan zwinięcia zostaje po ponownym uruchomieniu.
 2. Offline (serwer odcięty): przesunięcie bloku w kalendarzu → widać od razu w „Planie dnia”; po przywróceniu serwera zmiana na webie.
 
+## E14. Alarm na cały ekran (M8)
+
+Przed testem: Konto i synchronizacja → „Przypomnienia i praca w tle” → „Alarm na cały ekran”; nie powinno być ostrzeżenia o pełnym ekranie.
+
+1. „Wypróbuj (za 10 s)” i zablokowanie telefonu → ekran się zapala, plansza nad blokadą z zegarem, tytułem, opisem i trzema przyciskami; dźwięk budzika i wibracja. Klawisz głośności wycisza, plansza zostaje.
+2. Zadanie z opisem i przypomnieniem za 2 min, aplikacja zamknięta, telefon zablokowany → plansza o czasie. „Zakończ” → zadanie ukończone na serwerze bez otwierania aplikacji (także offline — po powrocie sieci).
+3. „Czekaj 5 min” (zmienić w ustawieniach) → plansza znika i wraca po 5 min z „Odłożone · termin …”; drugie „Czekaj” działa tak samo. Ukończenie zadania na webie w trakcie czekania → po synchronizacji alarm nie przychodzi.
+4. „Edytuj” na zablokowanym telefonie → cisza, odblokowanie, ekran zadania. Anulowany PIN → alarm zostaje.
+5. Telefon w użyciu (inna aplikacja) → plakietka z tymi samymi przyciskami; otwarty Task Planner → plansza od razu.
+6. Bez odpowiedzi 2 min → cisza, ciche powiadomienie z przyciskami. Restart telefonu → zaplanowane alarmy dalej przychodzą.
+7. Cykliczne: „Zakończ” → wpis `done`; powrót na „Powiadomienie na belce” → kolejne przypomnienie zwykłym powiadomieniem, bez duplikatu.
+
 ## Wyniki
 
 | Scenariusz | Data | Wynik | Uwagi |

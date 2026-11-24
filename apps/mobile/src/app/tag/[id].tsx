@@ -32,6 +32,8 @@ export default function TagScreen() {
       <Stack.Screen options={{ title: tag ? `@${tag.name}` : 'Tag' }} />
       <FilterResults
         query={query}
+        save
+        quickAdd={tag ? { tag: tag.name } : null}
         onChange={setQuery}
         header={
           tag?.shared ? (

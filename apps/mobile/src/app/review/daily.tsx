@@ -3,7 +3,7 @@
  * w lewo = Jutro, w górę = Dziś, w dół = Kiedyś; przyciski dla wszystkich sześciu decyzji
  * (z „Wybierz datę” i „Usuń”), „Pomiń” / „Wstecz”, „Cofnij” w dymku. Kolejka ustalona na starcie
  * (`dailyReviewQueue`), decyzje przez `bulkTaskOps` (jak na webie); na końcu podsumowanie
- * (`dailySummary`) i plan jutra.
+ * (`dailySummary`) i plan jutra z osią dnia („Ułóż dzień”).
  */
 import {
   addDays,
@@ -24,6 +24,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { DayPlanCard } from '@/components/day-plan';
 import { pickDate } from '@/components/pickers';
 import { DecisionButtons, useDecide, useReviewSession, type LogEntry, type ReviewKindKey } from '@/components/review';
 import { TaskRow } from '@/components/task-row';
@@ -167,7 +168,7 @@ export default function DailyReviewScreen() {
 function DailyDone({ log, total, started }: { log: LogEntry[]; total: number; started: number }) {
   const [seconds] = useState(() => Math.round((Date.now() - started) / 1000));
   const p = usePalette();
-  const { data, today, ctx } = useView();
+  const { data, today, ctx, workspaceId } = useView();
   const stats = reviewStats(log, ctx);
   const summary = dailySummary(data.tasks, ctx);
   // Przegląd rano → plan na dziś, po południu i wieczorem → na jutro (przełącznik pod listą).
@@ -200,6 +201,9 @@ function DailyDone({ log, total, started }: { log: LogEntry[]; total: number; st
           <Text style={{ color: p.accent, marginTop: 6 }}>Pokaż plan na {onToday ? 'jutro' : 'dziś'}</Text>
         </Pressable>
       </Section>
+      <View style={{ marginHorizontal: -12 }}>
+        <DayPlanCard key={onToday ? 'today' : 'tomorrow'} data={data} today={today} workspaceId={workspaceId} initial={onToday ? today : addDays(today, 1)} />
+      </View>
       <Button title="Gotowe" onPress={() => router.back()} />
     </ScrollView>
   );

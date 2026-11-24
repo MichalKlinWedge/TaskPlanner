@@ -17,6 +17,7 @@ import {
   dropTaskOps,
   endSeriesOps,
   moveTaskOps,
+  nudgeTaskOps,
   openDescendants,
   parentCandidates,
   quickAddTaskOps,
@@ -428,6 +429,39 @@ describe('dropTaskOps', () => {
     expect(dropTaskOps(tasks, 'a', 'c3', 'after')).toBeNull();
     // b (1 poziom) obok c3 → dokładnie 4 poziomy — dozwolone.
     expect(dropTaskOps(tasks, 'b', 'c3', 'after')![0]!.patch).toMatchObject({ parent_id: 'c2' });
+  });
+});
+
+describe('nudgeTaskOps', () => {
+  const t = (id: string, parentId: string | null, sortKey: string) => ({ id, parentId, listId: 'L', sortKey, kind: 'task' as const, status: 'todo' as const });
+  const tasks = [t('a', null, 'k1'), t('a1', 'a', 'k1'), t('a2', 'a', 'k2'), t('b', null, 'k2'), t('c', null, 'k3'), t('c1', 'c', 'k1'), t('c2', 'c1', 'k1'), t('c3', 'c2', 'k1')];
+  const all = ['a', 'a1', 'a2', 'b', 'c', 'c1', 'c2', 'c3'];
+
+  it('wyżej / niżej wśród widocznego rodzeństwa; na skraju null', () => {
+    expect((nudgeTaskOps(tasks, all, 'b', 'up')![0]!.patch.sort_key as string) < 'k1').toBe(true);
+    expect((nudgeTaskOps(tasks, all, 'b', 'down')![0]!.patch.sort_key as string) > 'k3').toBe(true);
+    expect(nudgeTaskOps(tasks, all, 'a', 'up')).toBeNull();
+    expect(nudgeTaskOps(tasks, all, 'c', 'down')).toBeNull();
+    // „b” ukryte (ukończone) — sąsiadem „c” jest „a”.
+    expect((nudgeTaskOps(tasks, all.filter((id) => id !== 'b'), 'c', 'up')![0]!.patch.sort_key as string) < 'k1').toBe(true);
+    expect(nudgeTaskOps(tasks, all, 'brak', 'up')).toBeNull();
+  });
+
+  it('w głąb: na koniec podzadań poprzedniego; poziom wyżej: za rodzica', () => {
+    const into = nudgeTaskOps(tasks, all, 'b', 'in')!;
+    expect(into[0]!.patch).toMatchObject({ parent_id: 'a' });
+    expect((into[0]!.patch.sort_key as string) > 'k2').toBe(true);
+    expect(nudgeTaskOps(tasks, all, 'a', 'in')).toBeNull();
+    const out = nudgeTaskOps(tasks, all, 'a1', 'out')!;
+    expect(out[0]!.patch).toMatchObject({ parent_id: null });
+    expect(out[0]!.patch.sort_key as string).toSatisfy((k: string) => k > 'k1' && k < 'k2');
+    expect(nudgeTaskOps(tasks, all, 'b', 'out')).toBeNull();
+  });
+
+  it('w głąb zadania bez podzadań; ponad 4 poziomy — null', () => {
+    expect(nudgeTaskOps([t('x', null, 'k1'), t('y', null, 'k2')], ['x', 'y'], 'y', 'in')![0]!.patch).toMatchObject({ parent_id: 'x' });
+    const deep = [t('x', null, 'k1'), t('y', null, 'k2'), t('y1', 'y', 'k1'), t('y2', 'y1', 'k1'), t('y3', 'y2', 'k1')];
+    expect(nudgeTaskOps(deep, deep.map((d) => d.id), 'y', 'in')).toBeNull();
   });
 });
 

@@ -2,6 +2,7 @@
  * Etykiety wartości ze schematów (SPECYFIKACJA §7.9). Aplikacje nie definiują własnych.
  */
 import type { AiAccountStatus, AiProvider } from './ai.ts';
+import type { ReminderMode } from './alarms.ts';
 import type { BackupTable } from './backup.ts';
 import type { UnplacedReason } from './day-planner.ts';
 import type { FocusPhase } from './focus.ts';
@@ -252,6 +253,12 @@ export const FOCUS_PHASE: Record<FocusPhase, string> = {
   ready: 'Przerwa skończona',
   stopwatch: 'Stoper',
 };
+
+/** Sposób przypominania na telefonie (ustawienie urządzenia). */
+export const REMINDER_MODE = {
+  banner: 'Powiadomienie na belce',
+  alarm: 'Alarm na cały ekran',
+} as const satisfies Record<ReminderMode, string>;
 
 /** Decyzje przeglądu (M16) z klawiszami 1–6 na webie. */
 export const REVIEW_ACTION = {
