@@ -381,7 +381,7 @@ export const AI_ACCOUNT_STATUS: Record<AiAccountStatus, { label: string; tone: '
 
 /** Wstęp karty „Asystent AI”. */
 export const AI_INTRO =
-  'Funkcje ✨ (rozbijanie zadania na kroki, ułożenie dnia, podsumowanie tygodnia) korzystają z Twojego własnego klucza AI — '
+  'Funkcje ✨ (na razie „Rozbij na kroki” przy podzadaniach; ułożenie dnia i podsumowanie tygodnia w kolejnych wersjach) korzystają z Twojego własnego klucza AI — '
   + 'aplikacja nie ma wspólnego klucza, a koszt i limity zapytań są po stronie Twojego projektu u dostawcy. Bez podpiętego konta '
   + 'wszystko inne działa jak dotąd.';
 
@@ -395,3 +395,22 @@ export const aiDataNote = (provider: AiProvider): string =>
 
 /** Zmiany konta AI wymagają serwera. */
 export const AI_OFFLINE_NOTE = 'Konto AI zmienia się tylko online.';
+
+/** Przycisk ✨ bez sieci. */
+export const AI_NEEDS_NETWORK = 'Wymaga połączenia z internetem.';
+
+/** „✨ Rozbij na kroki” (panel zadania na webie, ekran zadania na telefonie). */
+export const AI_BREAKDOWN = {
+  button: '✨ Rozbij na kroki',
+  hint: 'Wskazówka (opcjonalnie), np. „mam tylko wieczory”',
+  ask: 'Zaproponuj kroki',
+  again: 'Zaproponuj ponownie',
+  busy: 'AI przygotowuje kroki…',
+  empty: 'AI nie zaproponowało nic nowego — wszystkie kroki są już wśród podzadań. Dopisz wskazówkę i spróbuj ponownie.',
+  blocked: 'Tych kroków nie da się już dodać — zadanie zmieniło się w międzyczasie.',
+  after: 'po poprzednim',
+} as const;
+
+/** Do kogo idą dane przy „Rozbij na kroki”. */
+export const aiBreakdownNote = (provider: AiProvider): string =>
+  `Tytuł, opis (do 2000 znaków), daty, czas i tytuły podzadań idą do ${AI_PROVIDER[provider].company} na Twoim kluczu; adresy e-mail są zasłaniane. Nic się nie zapisze bez „Dodaj”.`;

@@ -72,6 +72,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { confirm, useTaskActions } from '@/components/actions';
+import { BreakdownField } from '@/components/ai-breakdown';
 import { AttachmentsField } from '@/components/attachments-field';
 import { MarkdownView } from '@/components/markdown-view';
 import { PanelSection } from '@/components/panel-section';
@@ -316,6 +317,7 @@ export default function TaskScreen() {
             <>
               <QuickAddField parent={{ id: task.id, listId: task.listId }} placeholder="Dodaj podzadanie" />
               <AttachSubtask key={`sub:${task.id}`} task={task} data={data} />
+              <BreakdownField key={`ai:${task.id}`} task={task} data={data} today={today} />
             </>
           ) : (
             <Text style={{ color: p.muted, fontSize: 12 }}>Najwyżej 4 poziomy zadań — tu nie można dodać kolejnego.</Text>

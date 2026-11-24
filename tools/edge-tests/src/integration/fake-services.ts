@@ -151,6 +151,9 @@ export class FakeServices {
       { name: 'models/gemini-embedding-001', displayName: 'Gemini Embedding', supportedGenerationMethods: ['embedContent'] },
     ],
     requests: [] as { method: string; path: string; search: string; key: string | null }[],
+    /** Treści zapytań `generateContent` i kolejne odpowiedzi modelu (bez wpisu — `{"ok":true}`). */
+    prompts: [] as { model: string; system: string; text: string }[],
+    answers: [] as string[],
     status: null as number | null,
   };
 
@@ -325,7 +328,7 @@ export class FakeServices {
     return send(res, 200, issue);
   }
 
-  private geminiApi(req: IncomingMessage, res: ServerResponse, path: string, url: URL) {
+  private geminiApi(req: IncomingMessage, res: ServerResponse, path: string, url: URL, body: Buffer) {
     const g = this.gemini;
     const header = req.headers['x-goog-api-key'];
     const key = typeof header === 'string' ? header : null;
@@ -346,7 +349,9 @@ export class FakeServices {
     const ask = /^\/models\/([^/:]+):generateContent$/.exec(path);
     if (req.method === 'POST' && ask) {
       if (!g.models.some((m) => m.name === `models/${ask[1]}`)) return send(res, 404, { error: { code: 404, message: `models/${ask[1]} is not found for API version v1beta`, status: 'NOT_FOUND' } });
-      return send(res, 200, { candidates: [{ content: { parts: [{ text: '{"ok":true}' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 3 } });
+      const asked = JSON.parse(body.toString('utf8')) as { systemInstruction?: { parts: { text: string }[] }; contents: { parts: { text?: string }[] }[] };
+      g.prompts.push({ model: ask[1]!, system: asked.systemInstruction?.parts[0]?.text ?? '', text: asked.contents[0]?.parts.map((p) => p.text ?? '').join('') ?? '' });
+      return send(res, 200, { candidates: [{ content: { parts: [{ text: g.answers.shift() ?? '{"ok":true}' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 3 } });
     }
     return send(res, 404, { error: { code: 404, message: 'nie ma', status: 'NOT_FOUND' } });
   }
@@ -364,7 +369,7 @@ export class FakeServices {
       return send(res, reply.status, reply.body ?? { ok: reply.status < 300 }, { ...(reply.location && { location: reply.location }), ...reply.headers });
     }
 
-    if (path.startsWith('/gemini/v1beta/')) return this.geminiApi(req, res, path.slice('/gemini/v1beta'.length), url);
+    if (path.startsWith('/gemini/v1beta/')) return this.geminiApi(req, res, path.slice('/gemini/v1beta'.length), url, body);
 
     if (path.startsWith('/gitlab/api/v4/')) return this.gitlabApi(req, res, path.slice('/gitlab/api/v4'.length), url, body);
 

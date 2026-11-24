@@ -123,6 +123,78 @@ describe('Edge Function ai — konto', () => {
     expect(fake.gemini.requests.every((r) => !r.search.includes('key='))).toBe(true);
   });
 
+  describe('„Rozbij na kroki”', () => {
+    const request = (over: Record<string, unknown> = {}) => ({
+      accountId,
+      today: '2026-11-24',
+      task: { title: 'Przeprowadzka', description: 'dwa pokoje', parentTitle: null, startDate: null, dueDate: '2026-12-01', durationMin: 600 },
+      subtasks: [{ title: 'Kartony', done: false }],
+      hint: 'tylko wieczory',
+      ...over,
+    });
+    const good = JSON.stringify({ steps: [{ title: 'Zamów auto', durationMin: 20, offsetDays: 1 }, { title: 'Spakuj kuchnię', afterPrevious: true }] });
+
+    it('szkic kroków wybranym modelem; nic nie zapisane, klucz tylko w nagłówku', async () => {
+      const before = sql(`select sync_version from public.sync_scopes where id = '${user.id}'`);
+      fake.gemini.answers.push(good);
+      const res = await call('breakdown', user, request());
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body).toEqual({
+        steps: [
+          { title: 'Zamów auto', durationMin: 20, offsetDays: 1, priority: null, afterPrevious: false },
+          { title: 'Spakuj kuchnię', durationMin: null, offsetDays: null, priority: null, afterPrevious: true },
+        ],
+        model: 'gemini-3.8-flash',
+      });
+      const prompt = fake.gemini.prompts.at(-1)!;
+      expect(prompt.model).toBe('gemini-3.8-flash');
+      expect(prompt.text).toContain('tylko wieczory');
+      expect(prompt.system).toContain('JSON');
+      expect(sql(`select sync_version from public.sync_scopes where id = '${user.id}'`)).toBe(before);
+      expect(fake.gemini.requests.every((r) => r.search.includes('key=') === false)).toBe(true);
+    });
+
+    it('odpowiedź niezgodna ze schematem: jedna naprawa, potem 502', async () => {
+      fake.gemini.answers.push('{"steps":[]}', good);
+      expect((await call('breakdown', user, request())).status).toBe(200);
+      expect(fake.gemini.prompts.at(-1)!.text).toContain('nie przeszła walidacji');
+      fake.gemini.answers.push('{}', '{}');
+      const res = await call('breakdown', user, request());
+      expect(res.status).toBe(502);
+      expect(res.body.error).toContain('schematem');
+    });
+
+    it('bez logowania 401, cudze konto 404, zły kontekst 400, za duży 413', async () => {
+      expect((await call('breakdown', null, request())).status).toBe(401);
+      expect((await call('breakdown', other, request())).status).toBe(404);
+      expect((await call('breakdown', user, request({ today: 'jutro' }))).status).toBe(400);
+      expect((await call('breakdown', user, request({ hint: 'x'.repeat(70_000) }))).status).toBe(413);
+    });
+
+    it('przeciążenie 503 nie psuje konta; odrzucony klucz → 422 i stan error; niesprawdzone konto → 409', async () => {
+      fake.gemini.status = 503;
+      try {
+        expect((await call('breakdown', user, request())).status).toBe(503);
+      } finally {
+        fake.gemini.status = null;
+      }
+      expect((await row()).status).toBe('active');
+
+      const key = fake.gemini.key;
+      fake.gemini.key = `AQ.${'n'.repeat(50)}`;
+      try {
+        const res = await call('breakdown', user, request());
+        expect(res.status).toBe(422);
+        expect(res.body.error).toContain('Nieprawidłowy klucz');
+      } finally {
+        fake.gemini.key = key;
+      }
+      expect(await row()).toMatchObject({ status: 'error', model: 'gemini-3.8-flash' });
+      expect((await call('breakdown', user, request())).status).toBe(409);
+      expect((await call('accounts/test', user, { accountId })).body.ok).toBe(true);
+    });
+  });
+
   it('„Odłącz”: klucz znika z Vault, wiersz z deleted_at wraca do klienta jako usunięcie', async () => {
     const before = (await user.client.rpc('pull_changes', { p_since: {} })).data.scopes[user.id].version as number;
     expect((await call('accounts/delete', user, { accountId })).status).toBe(200);

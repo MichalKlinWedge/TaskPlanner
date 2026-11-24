@@ -24,6 +24,8 @@ export const DB_NAME = 'taskplanner.db';
 
 /** Limit czasu żądania do Supabase (poza Storage — pliki mogą iść długo). */
 const FETCH_TIMEOUT_MS = 30_000;
+/** Funkcje ✨ (`ai/…`): odpowiedź modelu z naprawą i modelem zastępczym; limit funkcji to 150 s. */
+const AI_TIMEOUT_MS = 140_000;
 
 /**
  * `fetch` z limitem czasu: bez niego jedno zawieszone połączenie (otwarte gniazdo bez odpowiedzi,
@@ -37,10 +39,12 @@ const fetchWithTimeout: typeof fetch = (input, init) => {
   const outer = init?.signal;
   if (outer?.aborted) controller.abort();
   else outer?.addEventListener('abort', () => controller.abort(), { once: true });
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  // Funkcje ✨ czekają na model dostawcy (z naprawą odpowiedzi i modelem zastępczym).
+  const timeoutMs = url.includes('/functions/v1/ai/') ? AI_TIMEOUT_MS : FETCH_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(input, { ...init, signal: controller.signal })
     .catch((error: unknown) => {
-      if (controller.signal.aborted && !outer?.aborted) throw new Error(`Serwer nie odpowiedział w ${FETCH_TIMEOUT_MS / 1000} s (timeout)`); // „timeout” — `isTransientError`, nie do dziennika błędów
+      if (controller.signal.aborted && !outer?.aborted) throw new Error(`Serwer nie odpowiedział w ${timeoutMs / 1000} s (timeout)`); // „timeout” — `isTransientError`, nie do dziennika błędów
       throw error;
     })
     .finally(() => clearTimeout(timer));
