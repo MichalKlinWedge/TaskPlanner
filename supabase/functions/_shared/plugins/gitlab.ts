@@ -5,6 +5,7 @@
  * Bez powiązania: `POST /projects/:id/issues` (znacznik id wysyłki w opisie; ponowienie najpierw szuka issue
  * z tym znacznikiem — GitLab nie ma `Idempotency-Key`), potem zamknięcie ukończonego / notatka z komentarza.
  * Przypisani: nazwy użytkowników z reguły → `assignee_ids` (`GET /users?username=`, tylko gdy potrzebne).
+ * Szacowany czas: `POST …/time_estimate` po zapisie issue; odmowa (np. rola Guest) nie psuje wysyłki — uwaga w historii.
  * Z powiązaniem (`plugin_links`): `PUT /projects/:id/issues/:iid` + `POST …/notes`; issue usunięte w GitLabie
  * (404) → nowe issue. Ochrona SSRF jak w webhooku (tylko `https`, publiczne IP, bez przekierowań).
  * Odpowiedź: 401 / 403 = połączenie wyłączone (zły token, brak uprawnień), 429 / 5xx / sieć / 10 s = ponowienie,
@@ -129,6 +130,7 @@ const isFailure = (value: unknown): value is Failure => typeof value === 'object
 async function applyChange(ctx: RuntimeContext, issue: Issue, change: GitlabChange, assignees: Assignees, status?: number): Promise<DeliveryResult | 'missing'> {
   let url = issue.url;
   let httpStatus = status;
+  let warning: string | undefined;
   if (Object.keys(change.put).length) {
     const put = await withAssigneeIds(change.put, assignees);
     if (isFailure(put)) return put;
@@ -137,12 +139,21 @@ async function applyChange(ctx: RuntimeContext, issue: Issue, change: GitlabChan
     url = asIssue(r.data)?.url ?? url;
     httpStatus = r.status;
   }
+  if (change.estimate) {
+    const r = await api(ctx, 'POST', `${issuePath(issue)}/time_estimate`, { duration: change.estimate });
+    if (!r.ok) {
+      if (r.status === 404) return 'missing';
+      // Issue jest już zapisane: zły token i błędy przejściowe jak zwykle, odmowa samej estymaty — tylko uwaga.
+      if (r.status === 401 || r.failure.retryable) return r.failure;
+      warning = `Nie ustawiono szacowanego czasu: ${r.failure.error}`;
+    } else httpStatus = r.status;
+  }
   if (change.note) {
     const r = await api(ctx, 'POST', `${issuePath(issue)}/notes`, { body: change.note });
     if (!r.ok) return r.status === 404 ? 'missing' : r.failure;
     httpStatus = r.status;
   }
-  return { ok: true, externalId: gitlabExternalId(issue.projectId, issue.iid), externalUrl: url ?? undefined, httpStatus };
+  return { ok: true, externalId: gitlabExternalId(issue.projectId, issue.iid), externalUrl: url ?? undefined, httpStatus, ...(warning && { note: warning }) };
 }
 
 /** Issue utworzone przez wcześniejszą próbę tej wysyłki (znacznik id w opisie). */

@@ -34,6 +34,7 @@ export function SyncIndicator() {
   let line: string;
   let tone: 'ok' | 'bad' | 'muted' = 'muted';
   if (!user.online) line = `Tryb offline bez konta · ${pending ? `${plural(pending, CHANGES)} tylko na telefonie` : 'dane tylko na telefonie'}`;
+  else if (status.offline) line = 'Offline';
   else if (status.syncing && status.firstSync && status.pull && !status.pull.done) line = `Pierwsza synchronizacja: pobrano ${plural(status.pull.page, PAGES)}…`;
   else if (status.syncing) line = status.firstSync ? 'Pierwsza synchronizacja…' : 'Synchronizacja…';
   else if (status.error) {

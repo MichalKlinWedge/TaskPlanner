@@ -4,18 +4,20 @@
  * w kropce nagłówka i w „Ustawieniach”.
  */
 import { plural } from '@taskplanner/core';
+import { SYNCED_TABLES } from '@taskplanner/sync';
 import { router } from 'expo-router';
 import type React from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { sessionUser } from '@/lib/config';
-import { useSyncStatus } from '@/lib/local-query';
+import { useLocalQuery, useSyncStatus } from '@/lib/local-query';
 
 import { UpdateBanner } from './app-update';
 import { ScopeInvitesBanner } from './sharing';
 import { usePalette } from './ui';
 
 const PAGES = ['strona', 'strony', 'stron'] as const;
+const WAITING = ['zmiana czeka', 'zmiany czekają', 'zmian czeka'] as const;
 
 export function SyncBanner() {
   const p = usePalette();
@@ -28,6 +30,7 @@ export function SyncBanner() {
     text = 'Sesja wygasła — zaloguj się ponownie w Ustawieniach. Dane i zmiany na telefonie zostają.';
     bad = true;
   }  else if (status.syncing && status.firstSync) text = status.pull && !status.pull.done ? `Pierwsza synchronizacja: pobrano ${plural(status.pull.page, PAGES)}…` : 'Pierwsza synchronizacja…';
+  else if (status.offline) return <OfflineBanner />;
   else if (status.error) {
     text = `Synchronizacja: ${status.error}. Zmiany czekają na telefonie.`;
     bad = true;
@@ -38,6 +41,17 @@ export function SyncBanner() {
       <Text style={{ color: bad ? p.bad : p.fg, fontSize: 13 }} numberOfLines={3}>
         {text}
       </Text>
+    </Pressable>
+  );
+}
+
+/** „Offline — N zmian czeka” (M20); liczba z kolejki, odświeżana po każdej zmianie. */
+function OfflineBanner() {
+  const p = usePalette();
+  const pending = useLocalQuery([...SYNCED_TABLES], (engine) => engine.pendingCount()) ?? 0;
+  return (
+    <Pressable accessibilityRole="button" onPress={() => router.push('/settings')} style={[styles.box, { backgroundColor: p.selected }]}>
+      <Text style={{ color: p.fg, fontSize: 13 }}>{pending ? `Offline — ${plural(pending, WAITING)}` : 'Offline — zmiany zapisują się na telefonie'}</Text>
     </Pressable>
   );
 }

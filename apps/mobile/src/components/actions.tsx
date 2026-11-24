@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppData } from '@/lib/app-data';
 import { applyOps } from '@/lib/headless';
 import { perfStart } from '@/lib/perf';
-import { mutate } from '@/lib/sync';
+import { mutate, onRejectedOps } from '@/lib/sync';
 
 import { usePalette } from './ui';
 
@@ -54,6 +54,15 @@ export const confirm = (title: string, message: string, ok = 'Tak', cancel = 'Ni
     ], { cancelable: true, onDismiss: () => resolve(false) }),
   );
 
+/** Pytanie z dwiema odpowiedziami i „Anuluj”; `null` = anulowano albo zamknięto okno. */
+export const choose = <T,>(title: string, message: string, options: [{ label: string; value: T }, { label: string; value: T }]): Promise<T | null> =>
+  new Promise((resolve) =>
+    Alert.alert(title, message, [
+      { text: 'Anuluj', style: 'cancel', onPress: () => resolve(null) },
+      ...options.map((o) => ({ text: o.label, onPress: () => resolve(o.value) })),
+    ], { cancelable: true, onDismiss: () => resolve(null) }),
+  );
+
 const TASKS = ['zadanie', 'zadania', 'zadań'] as const;
 const BULK_TEXT: Record<BulkAction['kind'], string> = {
   complete: 'Ukończono',
@@ -93,6 +102,8 @@ export function TaskActionsProvider({ children }: { children: ReactNode }) {
 
 
   const show = useCallback((text: string, undo?: TaskOp[]) => setToast({ id: ++next.current, text, undo }), []);
+  // Zmiana odrzucona przez serwer jest już cofnięta lokalnie — bez dymku znikałaby bez słowa.
+  useEffect(() => onRejectedOps((messages) => show(`Serwer odrzucił zmianę — cofnięto ją: ${messages.join('; ')}`)), [show]);
   const fail = useCallback((e: unknown) => show(e instanceof Error ? e.message : String(e)), [show]);
 
   const toggle = useCallback(
@@ -151,7 +162,7 @@ export function TaskActionsProvider({ children }: { children: ReactNode }) {
       return s;
     });
   }, []);
-  const setSelected = useCallback((ids: readonly string[]) => setSelectedState(new Set(ids)), []);
+  const setSelected = useCallback((ids: readonly string[]) => setSelectedState((current) => (ids.length || current.size ? new Set(ids) : current)), []);
 
   const bulk = useCallback(
     async (action: BulkAction) => {
@@ -183,7 +194,7 @@ export function TaskActionsProvider({ children }: { children: ReactNode }) {
       {toast ? (
         <View pointerEvents="box-none" style={[styles.toastWrap, { bottom: insets.bottom + 150 }]}>
           <View accessibilityRole="alert" style={[styles.toast, { backgroundColor: p.fg }]}>
-            <Text style={[styles.toastText, { color: p.bg }]} numberOfLines={2}>
+            <Text style={[styles.toastText, { color: p.bg }]} numberOfLines={4}>
               {toast.text}
             </Text>
             {toast.undo ? (

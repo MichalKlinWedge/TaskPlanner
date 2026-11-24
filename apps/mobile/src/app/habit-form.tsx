@@ -1,24 +1,32 @@
 /**
  * Formularz nawyku (Etap 8): nazwa, lista, jak często (codziennie / wybrane dni / co miesiąc w ustalony
- * dzień / N razy w tygodniu lub miesiącu), cel ilościowy, początek, pora i przypomnienie o tej porze. Formularz ↔ pola —
+ * dzień / N razy w tygodniu lub miesiącu), cel ilościowy, początek, koniec, pora i przypomnienia (przed porą / jednorazowe). Formularz ↔ pola —
  * `habitDraft` / `habitSaveOps` z core (jak `HabitEditor` na webie). `?id=` — edycja.
  */
 import {
+  addDays,
   dayChip,
   habitDraft,
   habitFields,
   habitMonthly,
   habitSaveOps,
   LIST_KIND,
+  MAX_COUNT,
   pluralForm,
   previewDates,
+  relativeDay,
+  REMINDER_PRESETS,
+  reminderOffset,
   shortDate,
   WEEKDAY,
   WEEKDAY_CODES,
   type HabitDraft,
+  type HabitReminderDraft,
   type IsoWeekday,
+  type LocalDate,
   type LocalTime,
   type MonthlyBy,
+  type RecurrenceEnd,
   type WeekdayCode,
 } from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
@@ -26,7 +34,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
-import { pickDate, pickOption, pickTime } from '@/components/pickers';
+import { pickDate, pickNumber, pickOption, pickTime } from '@/components/pickers';
 import { Button, Chip, Field, usePalette } from '@/components/ui';
 import { lastSortKey, listLabel, targetInbox, useView } from '@/lib/app-data';
 import { useLocalQuery } from '@/lib/local-query';
@@ -41,6 +49,9 @@ const MONTHLY_BY: [MonthlyBy, string][] = [
 ];
 const NTH: [number, string][] = [[1, 'pierwszy'], [2, 'drugi'], [3, 'trzeci'], [4, 'czwarty'], [-1, 'ostatni']];
 const weekdayName = (d: WeekdayCode) => WEEKDAY[(WEEKDAY_CODES.indexOf(d) + 1) as IsoWeekday].label;
+
+const reminderLabel = (r: HabitReminderDraft, today: LocalDate): string =>
+  r.kind === 'relative' ? (r.offsetMin === 0 ? 'o porze zadania' : `${reminderOffset(r.offsetMin)} porą zadania`) : `jednorazowo: ${relativeDay(r.atDate, today)}, ${r.atTime}`;
 
 function Value({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
   const p = usePalette();
@@ -60,8 +71,23 @@ export default function HabitFormScreen() {
   const { data, today, workspaceId } = useView();
   const { run } = useTaskActions();
   const task = id ? (data.tasks.find((t) => t.id === id && t.kind === 'habit') ?? null) : null;
-  const reminderIds =
-    useLocalQuery(['reminders'], async (engine) => (id ? (await engine.db.all<{ id: string }>('select id from reminders where task_id = ? and deleted_at is null', [id])).map((r) => r.id) : []), [id]) ?? [];
+  const savedReminders = useLocalQuery(
+    ['reminders'],
+    async (engine) =>
+      (id
+        ? await engine.db.all<{ id: string; kind: string; offset_min: number | null; at_date: string | null; at_time: string | null }>(
+            'select id, kind, offset_min, at_date, at_time from reminders where task_id = ? and deleted_at is null order by kind desc, offset_min, at_date, at_time',
+            [id],
+          )
+        : []
+      ).map(
+        (r): HabitReminderDraft & { id: string } =>
+          r.kind === 'absolute'
+            ? { id: r.id, kind: 'absolute', atDate: String(r.at_date) as LocalDate, atTime: String(r.at_time).slice(0, 5) as LocalTime }
+            : { id: r.id, kind: 'relative', offsetMin: Number(r.offset_min) },
+      ),
+    [id],
+  );
   const initial = useMemo(() => habitDraft(task, today), [task, today]);
   const [title, setTitle] = useState(task?.title ?? '');
   const [listId, setListId] = useState(task?.listId ?? targetInbox(data, workspaceId)?.id ?? data.lists[0]?.id ?? '');
@@ -75,8 +101,10 @@ export default function HabitFormScreen() {
   const [unit, setUnit] = useState(initial.unit ?? '');
   const [start, setStart] = useState(initial.start);
   const [time, setTime] = useState<LocalTime | null>(initial.time);
-  const [remindChoice, setRemind] = useState<boolean | null>(null);
-  const remind = remindChoice ?? (task ? reminderIds.length > 0 : false);
+  const [end, setEnd] = useState<RecurrenceEnd>(initial.end ?? { kind: 'never' });
+  // Lista przypomnień: z bazy, dopóki użytkownik jej nie zmieni (zapis dopiero przy „Zapisz”).
+  const [reminderList, setReminderList] = useState<HabitReminderDraft[] | null>(null);
+  const reminders: HabitReminderDraft[] = reminderList ?? savedReminders ?? [];
   const [error, setError] = useState<string | null>(null);
 
   if (id && !task) {
@@ -105,6 +133,38 @@ export default function HabitFormScreen() {
     }
   })();
 
+  const addReminder = async () => {
+    const offsets = REMINDER_PRESETS.filter((m) => m < 1440 && !reminders.some((r) => r.kind === 'relative' && r.offsetMin === m));
+    const choice = await pickOption<number | 'abs'>('Przypomnienie', [
+      ...(time ? offsets.map((m) => ({ label: reminderLabel({ kind: 'relative', offsetMin: m }, today), value: m })) : []),
+      { label: 'Jednorazowo: dzień i godzina…', value: 'abs' as const, ...(!time && { hint: 'Przypomnienia przed porą zadania — po ustawieniu pory' }) },
+    ]);
+    if (choice === undefined) return;
+    if (choice !== 'abs') return setReminderList([...reminders, { kind: 'relative', offsetMin: choice }]);
+    const atDate = await pickDate({ title: 'Dzień przypomnienia', value: start > today ? start : today, today, firstDayOfWeek: data.settings.firstDayOfWeek });
+    if (!atDate) return;
+    const atTime = await pickTime({ title: 'Godzina przypomnienia', value: time ?? '09:00' });
+    if (atTime) setReminderList([...reminders, { kind: 'absolute', atDate, atTime }]);
+  };
+
+  // „Po N razach” (COUNT) nie łączy się z „N razy w okresie” (jak na webie).
+  const shownEnd: RecurrenceEnd = kind === 'goal' && end.kind === 'count' ? { kind: 'never' } : end;
+  const pickEnd = async () => {
+    const choice = await pickOption<RecurrenceEnd['kind']>('Koniec powtarzania', [
+      { label: 'nigdy', value: 'never', selected: shownEnd.kind === 'never' },
+      { label: 'w dniu…', value: 'until', selected: shownEnd.kind === 'until' },
+      ...(kind === 'goal' ? [] : [{ label: 'po liczbie razy…', value: 'count' as const, selected: shownEnd.kind === 'count' }]),
+    ]);
+    if (choice === 'never') setEnd({ kind: 'never' });
+    else if (choice === 'until') {
+      const date = await pickDate({ title: 'Ostatni dzień', value: end.kind === 'until' ? end.date : addDays(start, 29), today, firstDayOfWeek: data.settings.firstDayOfWeek });
+      if (date) setEnd({ kind: 'until', date });
+    } else if (choice === 'count') {
+      const n = await pickNumber('Po ilu razach zakończyć', { value: end.kind === 'count' ? end.n : 30, min: 1, max: MAX_COUNT });
+      if (n) setEnd({ kind: 'count', n });
+    }
+  };
+
   const submit = async () => {
     try {
       const schedule: HabitDraft['schedule'] =
@@ -117,12 +177,20 @@ export default function HabitFormScreen() {
               : kind === 'custom' && initial.schedule.kind === 'custom'
                 ? initial.schedule
                 : { kind: 'daily' };
-      // `...initial` — pola draftu, których formularz nie edytuje, zostają (np. koniec reguły).
-      const draft: HabitDraft = { ...initial, schedule, start, target: quantity ? Number(target.replace(',', '.')) : null, unit: quantity ? unit : null, time };
-      if (remind && !draft.time) throw new Error('Przypomnienie wymaga pory.');
-      const { taskId, ops } = habitSaveOps({ id: task?.id, title, listId, draft, remind, reminderIds, lastSortKey: lastSortKey(data, listId), now: new Date() });
+      const draft: HabitDraft = { schedule, start, end: shownEnd, target: quantity ? Number(target.replace(',', '.')) : null, unit: quantity ? unit : null, time };
+      if (reminders.some((r) => r.kind === 'relative') && !draft.time) throw new Error('Przypomnienie przed porą zadania wymaga pory — ustaw ją albo dodaj przypomnienie na dzień i godzinę.');
+      const { taskId, ops } = habitSaveOps({
+        id: task?.id,
+        title,
+        listId,
+        draft,
+        reminders,
+        reminderIds: (savedReminders ?? []).map((r) => r.id),
+        lastSortKey: lastSortKey(data, listId),
+        now: new Date(),
+      });
       await run(ops, { text: task ? `Zapisano „${title.trim()}”` : `Dodano cykliczne „${title.trim()}”` });
-      if (remind && !(await permissionState()).notifications) await requestNotificationPermission();
+      if (reminders.length && !(await permissionState()).notifications) await requestNotificationPermission();
       if (task) router.back();
       else router.replace({ pathname: '/habit/[id]', params: { id: taskId } });
     } catch (e) {
@@ -284,11 +352,28 @@ export default function HabitFormScreen() {
           <Value label="Pora (opcjonalnie)" value={time ?? '—'} onPress={() => void pickTime({ title: 'Pora zadania', value: time, allowNone: true }).then((t) => t !== undefined && setTime(t))} />
         </View>
       </View>
-      <View style={styles.switchRow}>
-        <Text style={{ color: p.fg, fontSize: 15, flex: 1 }}>Przypomnij o tej porze</Text>
-        <Switch value={remind} onValueChange={setRemind} />
+      <Value
+        label="Koniec"
+        value={shownEnd.kind === 'until' ? `w dniu ${shortDate(shownEnd.date)}` : shownEnd.kind === 'count' ? `po ${shownEnd.n} ${pluralForm(shownEnd.n, ['razie', 'razach', 'razach'])}` : 'nigdy'}
+        onPress={() => void pickEnd()}
+      />
+      <Text style={[styles.label, { color: p.fg }]}>Przypomnienia</Text>
+      {reminders.map((r, i) => (
+        <View key={r.id ?? `new-${i}`} style={styles.switchRow}>
+          <Text style={{ color: p.fg, fontSize: 15, flex: 1 }}>🔔 {reminderLabel(r, today)}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Usuń przypomnienie" hitSlop={10} onPress={() => setReminderList(reminders.filter((_, j) => j !== i))}>
+            <Text style={{ color: p.muted, fontSize: 18 }}>×</Text>
+          </Pressable>
+        </View>
+      ))}
+      <View style={styles.wrap}>
+        <Chip label="+ Dodaj przypomnienie" onPress={() => void addReminder()} />
       </View>
-      {remind ? <Text style={{ color: p.muted, fontSize: 12 }}>Powiadomienie przychodzi w zaplanowane dni, chyba że już odhaczone; ma przycisk „Zrobione”.</Text> : null}
+      {reminders.length ? (
+        <Text style={{ color: p.muted, fontSize: 12 }}>
+          Przed porą — w każdy zaplanowany dzień, chyba że już odhaczone; jednorazowe — raz, w wybranym dniu. Powiadomienie ma przycisk „Zrobione”.
+        </Text>
+      ) : null}
       {error ? (
         <Text accessibilityRole="alert" style={{ color: p.bad }}>
           {error}

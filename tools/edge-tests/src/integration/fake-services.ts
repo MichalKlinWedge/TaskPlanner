@@ -73,6 +73,8 @@ export interface FakeIssue {
   labels: string[];
   due_date: string | null;
   assignee_ids: number[];
+  /** Szacowany czas, jak przysłany (`1h30m`). */
+  estimate: string | null;
   state: 'opened' | 'closed';
   web_url: string;
   notes: string[];
@@ -286,7 +288,7 @@ export class FakeServices {
     if (g.status) return send(res, g.status, { message: `${g.status} wymuszone` });
     const body = raw.length ? (JSON.parse(raw.toString('utf8')) as Record<string, unknown>) : {};
     if (path === '/users') return send(res, 200, g.users.filter((u) => u.username === url.searchParams.get('username')));
-    const m = /^\/projects\/([^/]+)(\/issues(?:\/(\d+)(\/notes)?)?)?$/.exec(path);
+    const m = /^\/projects\/([^/]+)(\/issues(?:\/(\d+)(\/notes|\/time_estimate)?)?)?$/.exec(path);
     const ref = m ? decodeURIComponent(m[1]!) : '';
     if (!m || (ref !== g.path && ref !== String(g.projectId))) return send(res, 404, { message: '404 Project Not Found' });
     if (!m[2]) return send(res, 200, { id: g.projectId, path_with_namespace: g.path, web_url: `https://gitlab.test/${g.path}` });
@@ -305,6 +307,7 @@ export class FakeServices {
         labels: String(body.labels ?? '').split(',').filter(Boolean),
         due_date: (body.due_date as string | undefined) ?? null,
         assignee_ids: (body.assignee_ids as number[] | undefined) ?? [],
+        estimate: null,
         state: 'opened',
         web_url: `https://gitlab.test/${g.path}/-/issues/${iid}`,
         notes: [],
@@ -314,6 +317,10 @@ export class FakeServices {
     }
     const issue = g.issues.find((i) => i.iid === Number(m[3]));
     if (!issue) return send(res, 404, { message: '404 Not found' });
+    if (m[4] === '/time_estimate') {
+      issue.estimate = String(body.duration ?? '');
+      return send(res, 200, { human_time_estimate: issue.estimate });
+    }
     if (m[4]) {
       issue.notes.push(String(body.body ?? ''));
       return send(res, 201, { id: issue.notes.length, body: body.body });

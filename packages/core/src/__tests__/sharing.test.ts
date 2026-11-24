@@ -26,7 +26,7 @@ describe('współdzielenie przestrzeni', () => {
 
   it('link zaproszenia i token z adresu', () => {
     const link = inviteLink('https://app.example/', 'abc123def456ghi789jkl012');
-    expect(link).toBe('https://app.example/?invite=abc123def456ghi789jkl012');
+    expect(link).toBe('https://app.example/invite?invite=abc123def456ghi789jkl012');
     expect(inviteTokenFrom(link)).toBe('abc123def456ghi789jkl012');
     expect(inviteTokenFrom('https://app.example/?invite=krotki')).toBeNull();
     expect(inviteTokenFrom('https://app.example/?invite=<script>alert(1)</script>xxxxxxxx')).toBeNull();

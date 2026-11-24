@@ -778,3 +778,28 @@ export function dropTaskOps(
   if (patch.list_id) ops.push(...descendants(tasks, draggedId).map((d): TaskOp => ({ table: 'tasks', id: d.id, patch: { list_id: target.listId } })));
   return ops;
 }
+
+/** Krok w drzewie listy bez przeciągania (telefon): wyżej / niżej wśród rodzeństwa, w głąb poprzedniego, poziom wyżej. */
+export type TaskNudge = 'up' | 'down' | 'in' | 'out';
+
+/**
+ * Przesunięcie zadania o krok — reguły jak `dropTaskOps`. `visible` — wiersze w kolejności na ekranie
+ * (ukryte ukończone się nie liczą). `null` = w tym kierunku się nie da (skraj, 4 poziomy).
+ */
+export function nudgeTaskOps(tasks: readonly SubtaskTask[], visible: readonly string[], id: string, move: TaskNudge): TaskOp[] | null {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const task = byId.get(id);
+  if (!task) return null;
+  if (move === 'out') return task.parentId ? dropTaskOps(tasks, id, task.parentId, 'after') : null;
+  const siblings = visible.filter((v) => byId.get(v)?.parentId === task.parentId);
+  const at = siblings.indexOf(id);
+  if (at < 0) return null;
+  if (move === 'down') return siblings[at + 1] ? dropTaskOps(tasks, id, siblings[at + 1]!, 'after') : null;
+  const previous = siblings[at - 1];
+  if (!previous) return null;
+  if (move === 'up') return dropTaskOps(tasks, id, previous, 'before');
+  // W głąb: na koniec podzadań poprzedniego (też ukrytych), w jego liście.
+  const children = tasks.filter((t) => t.parentId === previous).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : a.id < b.id ? -1 : 1));
+  const last = children.at(-1);
+  return last ? dropTaskOps(tasks, id, last.id, 'after') : (reparentTaskOps(tasks, id, previous)?.ops ?? null);
+}

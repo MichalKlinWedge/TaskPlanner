@@ -1,25 +1,29 @@
 /**
  * Okno szybkiego dodawania (przycisk „+”, skrót aplikacji z ekranu głównego, widżet, `taskplanner://quick-add`).
- * Parametry: `listId`, `dueDate`, `parentId` (podzadanie), `text` (początkowy tekst), `voice=1`
+ * Parametry: `listId`, `dueDate`, `parentId` (podzadanie), `tag` (dokładany do zadania), `text` (początkowy tekst), `voice=1`
  * (mikrofon z widżetu: podpowiedź dyktowania — mikrofon jest na klawiaturze, która otwiera się od razu).
  */
+import { relativeDay, type LocalDate } from '@taskplanner/core';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { QuickAddField } from '@/components/quick-add-field';
 import { usePalette } from '@/components/ui';
-import { listLabel, useAppData } from '@/lib/app-data';
+import { listLabel, useView } from '@/lib/app-data';
 
 export default function QuickAddScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
-  const data = useAppData();
-  const params = useLocalSearchParams<{ listId?: string; dueDate?: string; parentId?: string; text?: string; voice?: string }>();
+  const { data, today } = useView();
+  const params = useLocalSearchParams<{ listId?: string; dueDate?: string; parentId?: string; tag?: string; text?: string; voice?: string }>();
   const voice = params.voice === '1';
   const [more, setMore] = useState(false);
   const parentTask = params.parentId ? data.tasks.find((t) => t.id === params.parentId) : undefined;
+  const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(params.dueDate ?? '') ? (params.dueDate as LocalDate) : null;
+  const defaults = useMemo(() => (params.tag ? { tagNames: [params.tag] } : undefined), [params.tag]);
+  const context = [params.tag ? `@${params.tag}` : '', dueDate ? relativeDay(dueDate, today) : ''].filter(Boolean).join(' · ');
   const parent = parentTask ? { id: parentTask.id, listId: parentTask.listId } : undefined;
   const close = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
@@ -28,6 +32,7 @@ export default function QuickAddScreen() {
       <View style={styles.head}>
         <Text style={[styles.title, { color: p.fg }]} numberOfLines={1}>
           {parentTask ? `Podzadanie: ${parentTask.title}` : params.listId ? `Dodaj do: ${listLabel(data, params.listId)}` : 'Nowe zadanie'}
+          {context ? ` · ${context}` : ''}
         </Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Zamknij" hitSlop={10} onPress={close}>
           <Text style={{ color: p.muted, fontSize: 18 }}>✕</Text>
@@ -37,7 +42,8 @@ export default function QuickAddScreen() {
         <QuickAddField
           autoFocus
           listId={params.listId}
-          dueDate={(params.dueDate as never) ?? null}
+          dueDate={dueDate}
+          defaults={defaults}
           parent={parent}
           initialText={params.text ?? ''}
           submitLabel="Dodaj"

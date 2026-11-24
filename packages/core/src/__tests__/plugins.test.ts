@@ -21,6 +21,7 @@ import {
   gitlabCreate,
   gitlabExternalId,
   gitlabDueDate,
+  gitlabEstimate,
   gitlabLabels,
   gitlabUsernames,
   gitlabMarker,
@@ -405,14 +406,27 @@ describe('podgląd reguły', () => {
 
   it('GitLab: puste pola = domyślne (tytuł zadania, opis z linkiem), żądanie = treść nowego issue', () => {
     const preview = rulePreview({ rule: { id: CONN, name: 'Issue', trigger: { kind: 'manual' } }, def: PLUGINS.gitlab, action: { labels: 'zgłoszenie, {{tags}}' }, task, appUrl: 'https://x.test' });
-    expect(preview.fields).toEqual({ title: 'Ekspres "przecieka"', description: `\n\n---\n[Zadanie w Task Plannerze](https://x.test/?task=${TASK})`, labels: 'zgłoszenie, zgłoś', dueDate: '2026-11-24', assignees: '' });
+    expect(preview.fields).toEqual({ title: 'Ekspres "przecieka"', description: `\n\n---\n[Zadanie w Task Plannerze](https://x.test/?task=${TASK})`, labels: 'zgłoszenie, zgłoś', dueDate: '2026-11-24', estimate: '', assignees: '' });
     expect(preview.request.body).toEqual({
       title: 'Ekspres "przecieka"',
       description: `---\n[Zadanie w Task Plannerze](https://x.test/?task=${TASK})\n\n${gitlabMarker(preview.payload.id)}`,
       labels: 'zgłoszenie,zgłoś',
       due_date: '2026-11-24',
       assignees: [],
+      estimate: '',
     });
+  });
+
+  it('GitLab: szacowany czas = „Czas (min)” zadania albo stała wartość; {{time}} (godzina) odrzucone przy zapisie', () => {
+    const estimate = (durationMin: number | null, action: Record<string, string> = {}) =>
+      (rulePreview({ rule: { id: CONN, name: 'Issue', trigger: { kind: 'manual' } }, def: PLUGINS.gitlab, action, task: { ...task, durationMin }, appUrl: 'https://x.test' }).request.body as { estimate: string }).estimate;
+    expect([estimate(90), estimate(45), estimate(480), estimate(null)]).toEqual(['1h30m', '45m', '8h', '']);
+    expect([estimate(90, { estimate: '2h' }), estimate(90, { estimate: '0' }), estimate(null, { estimate: '30' })]).toEqual(['2h', '', '30m']);
+    expect([gitlabEstimate(' 1D 2h 30m '), gitlabEstimate('14:00'), gitlabEstimate('1.5h'), gitlabEstimate(undefined)]).toEqual(['1d2h30m', '', '', '']);
+    const ok = (value: string) => PLUGINS.gitlab.actionSchema.safeParse({ estimate: value }).success;
+    expect(['', '{{duration}}', '{{ duration }}', '90', '0', '1h 30m', '2d'].map(ok)).toEqual(Array(7).fill(true));
+    expect(['{{time}}', '{{title}}', 'długo', '14:00'].map(ok)).toEqual(Array(4).fill(false));
+    expect(PLUGINS.gitlab.actionSchema.safeParse({ estimate: '{{time}}' }).error?.issues[0]?.message).toContain('{{duration}}');
   });
 
   it('GitLab: termin issue z szablonu albo stała data; zła wartość = bez terminu; walidacja przy zapisie', () => {
@@ -428,7 +442,7 @@ describe('podgląd reguły', () => {
 });
 
 describe('GitLab — plan zmian powiązanego issue', () => {
-  const issue = { title: 'T', description: 'D', labels: 'a,b', due_date: '2026-11-24', assignees: ['jan'] };
+  const issue = { title: 'T', description: 'D', labels: 'a,b', due_date: '2026-11-24', assignees: ['jan'], estimate: '' };
   const task = pluginPayload({ id: 'd', events: ['task.sent'], sentAt: 'x', rule: null, task: SAMPLE_TASK, appUrl: 'https://app' }).task;
 
   it('zdarzenia → pola PUT; „Wyślij do…” = pełna aktualizacja ze stanem zadania', () => {
@@ -437,6 +451,8 @@ describe('GitLab — plan zmian powiązanego issue', () => {
     expect(gitlabChange(['task.moved', 'task.created'], task, issue)).toEqual({ put: {} });
     expect(gitlabChange(['task.untagged'], task, { ...issue, labels: '' })).toEqual({ put: {} });
     expect(gitlabChange(['task.sent'], { ...task, status: 'done' }, issue)).toEqual({ put: { title: 'T', description: 'D', due_date: '2026-11-24', labels: 'a,b', assignees: ['jan'], state_event: 'close' } });
+    expect(gitlabChange(['task.sent'], task, { ...issue, estimate: '1h' }).estimate).toBe('1h');
+    expect(gitlabChange(['task.due_changed'], task, { ...issue, estimate: '1h' })).not.toHaveProperty('estimate');
     expect(gitlabChange(['task.assigned'], task, issue)).toEqual({ put: { assignees: ['jan'] } });
     expect(gitlabChange(['task.assigned'], task, { ...issue, assignees: [] })).toEqual({ put: {} });
     expect(gitlabChange(['task.commented'], task, issue, { body: 'Hej' }).note).toBe(`Hej\n\n— komentarz w [Task Plannerze](${task.url})`);
@@ -445,6 +461,7 @@ describe('GitLab — plan zmian powiązanego issue', () => {
   it('bez issue: same zmiany stanu nic nie zakładają; reszta zakłada', () => {
     expect(gitlabCreate(['task.deleted', 'task.untagged'], task, issue)).toBeNull();
     expect(gitlabCreate(['task.created'], task, issue)).toEqual({ create: issue, after: { put: {} } });
+    expect(gitlabCreate(['task.created'], task, { ...issue, estimate: '1h' })?.after).toEqual({ put: {}, estimate: '1h' });
   });
 
   it('etykiety, projekt, id obiektu', () => {

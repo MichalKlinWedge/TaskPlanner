@@ -2,21 +2,26 @@
  * Sekcja „Załączniki” na ekranie zadania (Etap 10, jak `AttachmentsField` na webie): zdjęcie z aparatu,
  * obrazy z galerii, dowolne pliki i linki. Pliki idą przez kolejkę (`lib/files.ts`) — offline czekają
  * z dopiskiem „czeka na sieć”. Podgląd: obrazy w aplikacji (pełny ekran), PDF i reszta w aplikacji
- * systemowej (`File.preview` → `ACTION_VIEW`).
+ * systemowej (`File.preview` → `ACTION_VIEW`). Przytrzymanie kafelka i przyciski podglądu: „Udostępnij”
+ * (systemowy arkusz — też zapis do plików) i „Otwórz w innej aplikacji”.
  */
 import { attachmentView, fileProblem, formatBytes, linkAttachmentOp, parseHttpUrl, plural, AttachmentPreview, type NewFile } from '@taskplanner/core';
 import type { PendingFile, SqlRow } from '@taskplanner/sync';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import * as Sharing from 'expo-sharing';
 import { useEffect, useState } from 'react';
 import { Image, Linking, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { sessionUser } from '@/lib/config';
-import { addFile, discardFile, localFile, localUri, retryFile, usePendingFiles } from '@/lib/files';
+import { addFile, discardFile, localFile, localUri, retryFile, shareableFile, usePendingFiles } from '@/lib/files';
 import { useLocalQuery, useSyncStatus } from '@/lib/local-query';
 
 import { useTaskActions } from './actions';
 import { PanelSection } from './panel-section';
+import { pickOption, type Option } from './pickers';
 import { usePalette } from './ui';
 
 interface Attachment {
@@ -73,6 +78,7 @@ function photoName(mime?: string) {
 }
 
 type Shown = { id: string; storagePath: string | null; name: string; mime: string | null };
+const pendingItem = (f: PendingFile): Shown => ({ id: f.id, storagePath: null, name: f.name, mime: f.mime });
 
 /** `readOnly` — przestrzeń udostępniona do podglądu: tylko otwieranie, bez dodawania i usuwania. */
 export function AttachmentsField({ taskId, readOnly = false }: { taskId: string; readOnly?: boolean }) {
@@ -82,7 +88,8 @@ export function AttachmentsField({ taskId, readOnly = false }: { taskId: string;
   const waiting = usePendingFiles().filter((f) => f.taskId === taskId && !items.some((i) => i.id === f.id));
   const [linking, setLinking] = useState(false);
   const [url, setUrl] = useState('');
-  const [image, setImage] = useState<string | null>(null);
+  const [image, setImage] = useState<{ uri: string; item: Shown } | null>(null);
+  const insets = useSafeAreaInsets();
   const sync = useSyncStatus();
   const offline = !sessionUser().online || !!sync.error;
 
@@ -133,11 +140,38 @@ export function AttachmentsField({ taskId, readOnly = false }: { taskId: string;
   const open = async (item: Shown) => {
     try {
       const file = await localFile(item);
-      if (attachmentView(item.mime) === 'image') setImage(file.uri);
+      if (attachmentView(item.mime) === 'image') setImage({ uri: file.uri, item });
       else await file.preview({ mimeType: item.mime ?? undefined, title: item.name });
     } catch (error) {
       notify(error instanceof Error ? error.message : String(error));
     }
+  };
+  const share = async (item: Shown) => {
+    try {
+      const file = await shareableFile(item);
+      await Sharing.shareAsync(file.uri, { mimeType: item.mime ?? undefined, dialogTitle: item.name });
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const openElsewhere = async (item: Shown) => {
+    try {
+      const file = await localFile(item);
+      await file.preview({ mimeType: item.mime ?? undefined, title: item.name });
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const menu = async (item: Shown, onRemove?: () => void) => {
+    const options: Option<'open' | 'share' | 'remove'>[] = [
+      { label: 'Otwórz', value: 'open' },
+      { label: 'Udostępnij / zapisz…', value: 'share' },
+      ...(onRemove ? [{ label: 'Usuń', value: 'remove' as const, tone: 'bad' as const }] : []),
+    ];
+    const choice = await pickOption(item.name, options);
+    if (choice === 'open') await open(item);
+    else if (choice === 'share') await share(item);
+    else if (choice === 'remove') onRemove?.();
   };
 
   const links = items.filter((a) => a.kind === 'link');
@@ -191,20 +225,27 @@ export function AttachmentsField({ taskId, readOnly = false }: { taskId: string;
       {files.length || waiting.length ? (
         <View style={styles.grid}>
           {files.map((a) => (
-            <Tile key={a.id} item={a} subtitle={a.size !== null ? formatBytes(a.size) : ''} onOpen={() => void open(a)} onRemove={readOnly ? undefined : () => remove(a)} />
+            <Tile key={a.id} item={a} subtitle={a.size !== null ? formatBytes(a.size) : ''} onOpen={() => void open(a)} onMenu={() => void menu(a, readOnly ? undefined : () => remove(a))} />
           ))}
           {waiting.map((f) => (
-            <PendingTile key={f.id} file={f} offline={offline} onOpen={() => void open({ id: f.id, storagePath: null, name: f.name, mime: f.mime })} />
+            <PendingTile key={f.id} file={f} offline={offline} onOpen={() => void open(pendingItem(f))} onMenu={() => void menu(pendingItem(f))} />
           ))}
         </View>
       ) : null}
 
-      {!count && !linking ? <Text style={{ color: p.muted, fontSize: 12 }}>Zdjęcie, plik do 25 MB albo link. Przytrzymaj, żeby usunąć.</Text> : null}
+      {!count && !linking ? <Text style={{ color: p.muted, fontSize: 12 }}>Zdjęcie, plik do 25 MB albo link. Przytrzymaj, żeby udostępnić albo usunąć.</Text> : null}
 
       <Modal visible={!!image} transparent animationType="fade" onRequestClose={() => setImage(null)}>
         <Pressable accessibilityLabel="Zamknij podgląd" style={styles.viewer} onPress={() => setImage(null)}>
-          {image ? <Image source={{ uri: image }} style={styles.full} resizeMode="contain" /> : null}
+          {image ? <Image source={{ uri: image.uri }} style={styles.full} resizeMode="contain" /> : null}
         </Pressable>
+        {image ? (
+          <View style={[styles.viewerBar, { paddingBottom: insets.bottom + 12 }]}>
+            <ViewerButton label="Udostępnij / zapisz" onPress={() => void share(image.item)} />
+            <ViewerButton label="Otwórz w…" onPress={() => void openElsewhere(image.item)} />
+            <ViewerButton label="Zamknij" onPress={() => setImage(null)} />
+          </View>
+        ) : null}
       </Modal>
     </PanelSection>
   );
@@ -221,6 +262,14 @@ function Action({ label, onPress, primary, disabled }: { label: string; onPress:
       style={({ pressed }) => [styles.action, { borderColor: primary ? p.accent : p.border, backgroundColor: primary ? p.accent : 'transparent', opacity: disabled ? 0.4 : pressed ? 0.6 : 1 }]}
     >
       <Text style={{ color: primary ? '#fff' : p.fg, fontSize: 13, fontWeight: '600' }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function ViewerButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.viewerButton, { opacity: pressed ? 0.6 : 1 }]}>
+      <Text style={styles.viewerText}>{label}</Text>
     </Pressable>
   );
 }
@@ -244,10 +293,10 @@ function Thumb({ item }: { item: { id: string; storagePath: string | null; mime:
   return <Text style={styles.icon}>{kind === 'pdf' ? '📄' : kind === 'image' ? '🖼' : '📦'}</Text>;
 }
 
-function Tile({ item, subtitle, onOpen, onRemove }: { item: Attachment; subtitle: string; onOpen: () => void; onRemove?: () => void }) {
+function Tile({ item, subtitle, onOpen, onMenu }: { item: Attachment; subtitle: string; onOpen: () => void; onMenu: () => void }) {
   const p = usePalette();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz „${item.name}”`} onPress={onOpen} onLongPress={onRemove} style={[styles.tile, { borderColor: p.border }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz „${item.name}”`} onPress={onOpen} onLongPress={onMenu} style={[styles.tile, { borderColor: p.border }]}>
       <Thumb item={item} />
       <Text style={{ color: p.fg, fontSize: 12 }} numberOfLines={1}>
         {item.name}
@@ -257,10 +306,10 @@ function Tile({ item, subtitle, onOpen, onRemove }: { item: Attachment; subtitle
   );
 }
 
-function PendingTile({ file, offline, onOpen }: { file: PendingFile; offline: boolean; onOpen: () => void }) {
+function PendingTile({ file, offline, onOpen, onMenu }: { file: PendingFile; offline: boolean; onOpen: () => void; onMenu: () => void }) {
   const p = usePalette();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz „${file.name}”`} onPress={onOpen} style={[styles.tile, styles.pending, { borderColor: p.border }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz „${file.name}”`} onPress={onOpen} onLongPress={onMenu} style={[styles.tile, styles.pending, { borderColor: p.border }]}>
       <Thumb item={{ id: file.id, storagePath: null, mime: file.mime }} />
       <Text style={{ color: p.fg, fontSize: 12 }} numberOfLines={1}>
         {file.name}
@@ -296,4 +345,7 @@ const styles = StyleSheet.create({
   failed: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   viewer: { flex: 1, backgroundColor: '#000000ee', justifyContent: 'center' },
   full: { width: '100%', height: '100%' },
+  viewerBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, paddingTop: 12 },
+  viewerButton: { borderWidth: 1, borderColor: '#ffffff88', backgroundColor: '#00000088', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9 },
+  viewerText: { color: '#fff', fontSize: 14, fontWeight: '600' },
 });

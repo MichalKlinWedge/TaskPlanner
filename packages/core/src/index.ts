@@ -2,6 +2,7 @@ export * from './ai.ts';
 export * from './ai-breakdown.ts';
 export * from './ai-day-plan.ts';
 export * from './ai-week-summary.ts';
+export * from './alarms.ts';
 export * from './app-update.ts';
 export * from './attachments.ts';
 export * from './canvas.ts';

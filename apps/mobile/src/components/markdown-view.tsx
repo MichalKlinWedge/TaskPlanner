@@ -3,10 +3,10 @@
  * przeglądarka; pole `[ ]` w liście można odhaczyć w podglądzie (`onToggleCheckbox` z numerem linii).
  */
 import type { MdBlock, MdSpan } from '@taskplanner/core';
-import { parseMarkdown } from '@taskplanner/core';
+import { parseMarkdown, spansText } from '@taskplanner/core';
 import * as Linking from 'expo-linking';
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, type TextStyle } from 'react-native';
 
 import { usePalette } from './ui';
 
@@ -30,6 +30,28 @@ function Spans({ spans, style }: { spans: readonly MdSpan[]; style?: TextStyle }
         </Text>
       ))}
     </Text>
+  );
+}
+
+/** Tabela GFM: szerokość kolumny z najdłuższej komórki (do limitu — dalej zawijanie), szersza niż ekran przewija się w poziomie. */
+function Table({ block }: { block: Extract<MdBlock, { kind: 'table' }> }) {
+  const p = usePalette();
+  const lines = [block.header, ...block.rows];
+  const widths = block.header.map((_, c) => Math.min(220, Math.max(56, 20 + 8 * Math.max(...lines.map((row) => spansText(row[c]!).length)))));
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <View style={[styles.table, { borderColor: p.border }]}>
+        {lines.map((row, r) => (
+          <View key={r} style={[styles.tableRow, { borderColor: p.border, backgroundColor: r ? 'transparent' : p.selected }]}>
+            {row.map((cell, c) => (
+              <View key={c} style={[styles.tableCell, { width: widths[c], borderColor: p.border }]}>
+                <Spans spans={cell} style={{ fontSize: 14, textAlign: block.align[c] ?? 'left', ...(!r && { fontWeight: '700' as const }) }} />
+              </View>
+            ))}
+          </View>
+        ))}
+      </View>
+    </ScrollView>
   );
 }
 
@@ -58,6 +80,8 @@ export function MarkdownView({ source, onToggleCheckbox }: { source: string; onT
                 {b.text}
               </Text>
             );
+          case 'table':
+            return <Table key={i} block={b} />;
           case 'rule':
             return <View key={i} style={{ height: StyleSheet.hairlineWidth, backgroundColor: p.border, marginVertical: 4 }} />;
           case 'list':
@@ -102,6 +126,9 @@ const styles = StyleSheet.create({
   code: { fontFamily: 'monospace', fontSize: 13 },
   quote: { borderLeftWidth: 3, paddingLeft: 10 },
   pre: { fontFamily: 'monospace', fontSize: 13, padding: 8, borderRadius: 6 },
+  table: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 6, overflow: 'hidden' },
+  tableRow: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
+  tableCell: { paddingHorizontal: 8, paddingVertical: 5, borderRightWidth: StyleSheet.hairlineWidth },
   item: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   box: { width: 18, height: 18, borderRadius: 4, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   tick: { color: '#fff', fontSize: 11, fontWeight: '700' },

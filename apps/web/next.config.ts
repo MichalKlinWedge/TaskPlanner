@@ -10,6 +10,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }] }];
   },
+  // Link zaproszenia do przestrzeni (`INVITE_PATH` w core): na telefonie otwiera aplikację (App Links,
+  // `public/.well-known/assetlinks.json`), w przeglądarce — stronę główną z tym samym `?invite=<token>`.
+  async redirects() {
+    return [{ source: "/invite", destination: "/", permanent: false }];
+  },
   turbopack: {
     rules: {
       "*.css": {

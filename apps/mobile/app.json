@@ -2,19 +2,27 @@
   "expo": {
     "name": "Task Planner",
     "slug": "taskplanner",
-    "version": "0.1.26",
+    "version": "0.1.27",
     "orientation": "portrait",
     "scheme": "taskplanner",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/images/icon.png",
     "android": {
       "package": "pl.taskplanner.app",
-      "versionCode": 27,
+      "versionCode": 28,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.USE_EXACT_ALARM",
         "android.permission.REQUEST_INSTALL_PACKAGES"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [{ "scheme": "https", "host": "task-planner-omega-indol.vercel.app", "path": "/invite" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",

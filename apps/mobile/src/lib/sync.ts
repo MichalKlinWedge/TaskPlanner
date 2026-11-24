@@ -91,6 +91,8 @@ export interface SyncStatus {
   pullPerf: PullPerf | null;
   /** Konto jest, ale sesji Supabase już nie ma (`checkAuth`) — synchronizacja czeka na ponowne logowanie; dane lokalne zostają. */
   authLost: boolean;
+  /** Telefon bez sieci — zmiany czekają w kolejce. */
+  offline: boolean;
 }
 
 /** Suma stron jednego pobrania: `fetchMs` = `pull_changes` (sieć + serwer + JSON), `writeMs` = transakcja w expo-sqlite. */
@@ -114,9 +116,9 @@ const statusListeners = new Set<Listener>();
 const lastAtKey = (userId: string) => `sync.lastAt.${userId}`;
 const PULL_PERF_KEY = 'sync.pullPerf';
 
-function initialStatus(): SyncStatus {
+function initialStatus(offline = false): SyncStatus {
   const lastAt = Number(Storage.getItemSync(lastAtKey(sessionUser().id))) || null;
-  return { syncing: false, lastAt, error: null, pull: null, firstSync: lastAt === null, pullPerf: readJson<PullPerf | null>(PULL_PERF_KEY, null), authLost: false };
+  return { syncing: false, lastAt, error: null, pull: null, firstSync: lastAt === null, pullPerf: readJson<PullPerf | null>(PULL_PERF_KEY, null), authLost: false, offline };
 }
 
 /** Bieżące pobranie (strony jednej synchronizacji); zapisywane od 100 wierszy. */
@@ -187,7 +189,7 @@ export function onSessionChange(listener: Listener): () => void {
 }
 
 export function notifySessionChange() {
-  status = initialStatus();
+  status = initialStatus(status.offline);
   statusListeners.forEach((l) => l());
   sessionListeners.forEach((l) => l());
 }
@@ -201,6 +203,14 @@ const syncedListeners = new Set<Listener>();
 export function onSynced(listener: Listener): () => void {
   syncedListeners.add(listener);
   return () => syncedListeners.delete(listener);
+}
+
+/** Zmiany odrzucone przez serwer (już cofnięte lokalnie): dymek z powodem — bez niego znikałyby bez słowa. */
+const rejectedListeners = new Set<(messages: string[]) => void>();
+
+export function onRejectedOps(listener: (messages: string[]) => void): () => void {
+  rejectedListeners.add(listener);
+  return () => rejectedListeners.delete(listener);
 }
 
 // ── Silnik ──────────────────────────────────────────────────────────────────────────────────
@@ -254,6 +264,8 @@ export function localEngine(): Promise<SyncEngine> {
           setStatus({ error: `odrzucone: ${rejected.map((r) => r.code).join(', ')}` });
           // Jak na webie: każdy kod osobno, bez danych zadań.
           for (const op of rejected) reportError('rejected', { code: op.code, message: op.message });
+          const messages = [...new Set(rejected.map((op) => `${op.message} (${op.code})`))];
+          rejectedListeners.forEach((l) => l(messages));
         },
         onPullProgress: (pull) => {
           recordPullPage(pull);
@@ -307,7 +319,24 @@ export async function syncNow(): Promise<number> {
   return Date.now() - start;
 }
 
+/**
+ * Ile zmian z telefonu nie dotarło jeszcze na serwer — po próbie wysłania (wylogowanie czyści lokalne
+ * dane, więc niewysłane by przepadły). Bez sieci albo sesji zostaje liczba z kolejki.
+ */
+export async function unsentChanges(): Promise<number> {
+  const engine = await localEngine();
+  const left = await engine.pendingCount();
+  if (!left || !sessionUser().online || !serverConfig() || !(await checkAuth())) return left;
+  await engine.sync().catch(() => undefined);
+  return engine.pendingCount();
+}
+
 let wakeups: { remove(): void }[] = [];
+
+function setOffline(state: Network.NetworkState) {
+  const offline = state.isConnected === false || state.isInternetReachable === false;
+  if (status.offline !== offline) setStatus({ offline });
+}
 
 /** Realtime + pierwsze pobranie + budzenie po powrocie sieci i aplikacji (tylko na ekranie, nie w zadaniu w tle). */
 export async function startOnlineSync() {
@@ -317,12 +346,14 @@ export async function startOnlineSync() {
   engine.start();
   engine.requestSync(0);
   if (!wakeups.length) {
+    void Network.getNetworkStateAsync().then(setOffline, () => undefined);
     const wake = async () => {
       if (!sessionUser().online || status.authLost) return;
       (await localEngine()).requestSync(0);
     };
     wakeups = [
       Network.addNetworkStateListener((state) => {
+        setOffline(state);
         if (state.isConnected && state.isInternetReachable !== false) void wake();
       }),
       AppState.addEventListener('change', (next) => {

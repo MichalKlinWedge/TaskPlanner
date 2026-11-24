@@ -356,8 +356,9 @@ async function settle(deps: EngineDeps, d: DeliveryRow, result: DeliveryResult, 
     return 'skipped';
   }
   if (result.ok) {
-    // `extra.error` = uwaga z kroku „po wysyłce” (wysyłka i tak udana).
-    await finish(deps, d.id, { error: null, ...extra, status: 'sent', sent_at: now.toISOString(), http_status: result.httpStatus ?? null, external_id: result.externalId ?? null, external_url: result.externalUrl ?? null });
+    // Uwaga pluginu i z kroku „po wysyłce” (`extra.error`) — wysyłka i tak udana.
+    const notes = [result.note, extra.error].filter((n) => typeof n === 'string').join(' · ').slice(0, 1000);
+    await finish(deps, d.id, { ...extra, error: notes || null, status: 'sent', sent_at: now.toISOString(), http_status: result.httpStatus ?? null, external_id: result.externalId ?? null, external_url: result.externalUrl ?? null });
     if (connectionId) await deps.db.from('plugin_connections').update({ last_used_at: now.toISOString() }).eq('id', connectionId);
     return 'sent';
   }
