@@ -6,11 +6,14 @@
  *
  * Uruchamiane po zmianie danych (aplikacja na wierzchu), po akcji z powiadomienia i z zadania
  * w tle — także bez ekranu. Powiadomienia odłożone (`s_…`) i serie testowe PoC-4 (`poc4_…`) zostają.
+ *
+ * W trybie alarmu (`lib/alarm.ts`) te same chwile idą do modułu `task-alarm` zamiast do powiadomień.
  */
-import { addDays, localDateAt, MAX_SCHEDULED_REMINDERS, reminderBody, reminderFireTimes, reviewFireTimes, toReminderRule, type LocalDate, type ReminderTask, type ReviewKind } from '@taskplanner/core';
+import { addDays, alarmEntry, localDateAt, MAX_SCHEDULED_REMINDERS, reminderBody, reminderFireTimes, reviewFireTimes, toReminderRule, type LocalDate, type ReminderFire, type ReminderTask, type ReviewKind } from '@taskplanner/core';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
+import { alarmSnooze, reminderMode, syncAlarms } from './alarm';
 import { readJson, sessionUser, writeJson } from './config';
 import { loadTask, type AppData } from './app-data';
 import { phoneRemindersOn } from './device';
@@ -137,7 +140,11 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
     const wanted = new Set<string>();
     let added = 0;
     let removed = 0;
-    for (const fire of fires) {
+    const alarmMode = reminderMode() === 'alarm';
+    const alarms = syncAlarms(alarmMode ? await alarmEntries(fires, byId, timeZone) : [], byId, data.habitCompletions, on);
+    added += alarms.added;
+    removed += alarms.removed;
+    for (const fire of alarmMode ? [] : fires) {
       const task = byId.get(fire.taskId)!;
       const id = identifier(fire.key);
       wanted.add(id);
@@ -174,7 +181,7 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
       removed++;
     }
     await scheduleReviews(scheduled, on ? data : null, new Date(now));
-    const result: ScheduleResult = { at: now, scheduled: wanted.size, added, removed, next: fires[0] ? new Date(fires[0].fireAt).getTime() : null, exact: exact.granted };
+    const result: ScheduleResult = { at: now, scheduled: fires.length, added, removed, next: fires[0] ? new Date(fires[0].fireAt).getTime() : null, exact: exact.granted };
     writeJson(LAST_KEY, result);
     if (__DEV__) console.info('przypomnienia', given ? 'z danych ekranu' : 'z bazy', JSON.stringify(result));
     return result;
@@ -183,6 +190,18 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
     writeJson(LAST_KEY, result);
     return result;
   }
+}
+
+/** Wpisy alarmów z opisami zadań (opisów nie ma w danych widoków). */
+async function alarmEntries(fires: readonly ReminderFire[], byId: ReadonlyMap<string, ReminderTask>, timeZone: string | undefined) {
+  const ids = [...new Set(fires.map((f) => f.taskId))];
+  const engine = await localEngine();
+  const rows = ids.length
+    ? await engine.db.all<{ id: string; description_md: string | null }>(`select id, description_md from tasks where id in (${ids.map(() => '?').join(',')})`, ids)
+    : [];
+  const descriptions = new Map(rows.map((r) => [r.id, r.description_md]));
+  const snoozeMin = alarmSnooze();
+  return fires.map((fire) => alarmEntry(identifier(fire.key), byId.get(fire.taskId)!, fire, { description: descriptions.get(fire.taskId), snoozeMin, timeZone }));
 }
 
 /**

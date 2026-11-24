@@ -12,6 +12,7 @@ import { TaskActionsProvider, useTaskActions } from '@/components/actions';
 import { PickerHost } from '@/components/pickers';
 import { Button, usePalette } from '@/components/ui';
 
+import { handleAlarmActions } from '@/lib/alarm-actions';
 import { onAppData, type AppData } from '@/lib/app-data';
 import { registerBackgroundSync } from '@/lib/background-sync';
 import { sessionUser } from '@/lib/config';
@@ -160,7 +161,7 @@ function BackgroundWork() {
     });
     const sub = AppState.addEventListener('change', (next) => {
       // Uprawnienia mogły się zmienić w ustawieniach systemu.
-      if (next === 'active') void scheduleReminders();
+      if (next === 'active') void handleAlarmActions().then(() => scheduleReminders());
       else if (pending) run(pending.data);
     });
     return () => {
@@ -177,7 +178,7 @@ function useAppStart() {
     let alive = true;
     let stopFocus: (() => void) | undefined;
     const ready = setupNotifications().catch((error) => console.warn('powiadomienia', error));
-    void ready.then(() => scheduleReminders());
+    void ready.then(handleAlarmActions).then(() => scheduleReminders());
     // Timer skupienia (po kanałach powiadomień): powiadomienia, koniec etapu w chwili końca, porzucone wpisy.
     void ready.then(() => {
       if (alive) stopFocus = startFocusWork(() => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined));
