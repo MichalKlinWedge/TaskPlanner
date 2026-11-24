@@ -2,7 +2,7 @@
  * Przestrzenie i listy (M2) na lokalnej bazie: odczyt do ekranu „Przestrzenie i listy” i zapisy
  * przez `mutate` (wiersz + outbox). Kolejność = `sort_key` z `keyBetween` / `reorderPatches`.
  */
-import { inboxId, keyBetween, reorderPatches, uuidv7, type GuestAccess, type ListKind, type ProjectStatus, type ScopeRole } from '@taskplanner/core';
+import { inboxId, keyBetween, listKindPatch, reorderPatches, uuidv7, type GuestAccess, type ListKind, type ProjectStatus, type ScopeRole } from '@taskplanner/core';
 import type { SqlRow, SyncEngine } from '@taskplanner/sync';
 
 import { localEngine, mutate } from './sync';
@@ -104,8 +104,7 @@ export async function updateList(
   if (list.kind === 'inbox' && (patch.name !== undefined || patch.kind !== undefined)) throw new Error('Inbox ma stałą nazwę i rodzaj.');
   const out: Record<string, unknown> = { ...patch };
   if (patch.name !== undefined) out.name = patch.name.trim();
-  if (patch.kind === 'list') Object.assign(out, { project_status: null, start_date: null, end_date: null });
-  if (patch.kind === 'project' && !list.project_status) out.project_status = 'active';
+  if (patch.kind) Object.assign(out, listKindPatch({ kind: list.kind, projectStatus: list.project_status }, patch.kind));
   await mutate('lists', list.id, out);
 }
 

@@ -20,7 +20,8 @@
  *
  * Nawyk (Etap 8): powiadomienie ma akcję „Zrobione”. SW nie ma dostępu do lokalnej bazy (SQLite w
  * workerze karty-lidera), więc przekazuje odhaczenie otwartej karcie (`habit-done`) albo otwiera nową
- * (`/?habitDone=<id>&date=<dzień>`) — zapis robi aplikacja (`habitEntryOps`).
+ * (`/?habitDone=<id>&date=<dzień>`) — zapis robi aplikacja (`habitEntryOps`). Zadanie tak samo ma „Ukończ”
+ * i „Odłóż 10 min” (`reminder-action` / `/?reminderAction=…`, `components/app/reminder-actions.tsx`).
  */
 const VERSION = 'v3';
 const SHELL = `tp-shell-${VERSION}`;
@@ -142,8 +143,15 @@ self.addEventListener('push', (event) => {
         body: data.body || '',
         tag: data.key,
         icon: '/icons/icon-192.png',
-        data: { url: data.url || '/', taskId: data.taskId, habit: Boolean(data.habit), date: data.date },
-        actions: data.habit ? [{ action: 'habit-done', title: 'Zrobione' }] : [],
+        data: { url: data.url || '/', taskId: data.taskId, key: data.key, habit: Boolean(data.habit), date: data.date },
+        actions: data.habit
+          ? [{ action: 'habit-done', title: 'Zrobione' }]
+          : data.taskId && data.key
+            ? [
+                { action: 'done', title: 'Ukończ' },
+                { action: 'snooze', title: 'Odłóż 10 min' },
+              ]
+            : [],
       });
       for (const client of windows) {
         client.postMessage({ type: 'reminder', title: data.title, body: data.body, taskId: data.taskId });
@@ -154,7 +162,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const { url = '/', taskId, habit, date } = event.notification.data || {};
+  const { url = '/', taskId, key, habit, date } = event.notification.data || {};
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
@@ -162,6 +170,11 @@ self.addEventListener('notificationclick', (event) => {
       if (event.action === 'habit-done' && habit && taskId && date) {
         if (open) return open.postMessage({ type: 'habit-done', taskId, date });
         return void (await self.clients.openWindow(`/?habitDone=${encodeURIComponent(taskId)}&date=${encodeURIComponent(date)}#/today`));
+      }
+      if ((event.action === 'done' || event.action === 'snooze') && taskId && key) {
+        if (open) return open.postMessage({ type: 'reminder-action', action: event.action, taskId, key });
+        const params = new URLSearchParams({ reminderAction: event.action, reminderTask: taskId, reminderKey: key });
+        return void (await self.clients.openWindow(`/?${params}#/today`));
       }
       if (open) {
         await open.focus();

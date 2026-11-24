@@ -6,24 +6,29 @@
  * „Przenieś do…”, „Wybierz datę…”, „Przełącz przestrzeń”) i pamięć ostatnio używanych.
  */
 import {
+  applyFilter,
   buildSearchIndex,
   COMMANDS,
   commandSearchItems,
+  isEmptyFilter,
   LIST_KIND,
   LIST_SHORTCUTS,
   PLUGIN_SEND_NOTE,
   PRIORITY,
   search,
   taskSearchItem,
+  type FilterQuery,
   type Priority,
   type SearchItem,
   type SearchKind,
 } from "@taskplanner/core";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { useLocalQuery } from "@/lib/local-store";
 import { usePlugins } from "@/lib/plugins";
 
 import { useAppEnv } from "./app-env";
+import { FilterBar } from "./filter-bar";
 import { useFocus } from "./focus";
 import { inputClass } from "./ui";
 
@@ -122,6 +127,9 @@ function highlighted(title: string, ranges: [number, number][]): ReactNode {
   return out;
 }
 
+/** Liczba ustawionych warunków filtra. */
+const conditions = (query: FilterQuery) => Object.values(query).filter((v) => v !== undefined).length;
+
 const PLACEHOLDER: Record<PaletteMode, string> = {
   priority: "Priorytet zaznaczonych — 1–4 albo strzałki",
   move: "Przenieś zaznaczone do… (nazwa listy)",
@@ -138,7 +146,26 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
   const available = useAvailable();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  // Filtr zawęża wyniki do pasujących zadań; trwa do zamknięcia okna.
+  const [filter, setFilter] = useState<FilterQuery>({});
+  const filtered = !isEmptyFilter(filter);
+  const searching = mode === "all" || mode === "search";
+  // Opisy tylko w otwartym oknie (dane widoków ich nie trzymają).
+  const { rows: descriptionRows } = useLocalQuery<{ id: string; d: string }>(
+    searching ? store : null,
+    "select id, description_md as d from tasks where deleted_at is null and description_md is not null and description_md <> ''",
+    [],
+    ["tasks"],
+  );
+  const descriptions = useMemo(() => new Map(descriptionRows.map((r) => [r.id, r.d])), [descriptionRows]);
   const list = useRef<HTMLUListElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  // Esc także wtedy, gdy fokus jest na chipach filtra albo zniknął razem z przyciskiem („Wyczyść”).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const names = useMemo(() => new Map(data.workspaces.map((w) => [w.id, w.name])), [data.workspaces]);
   const listName = useMemo(() => new Map(data.lists.map((l) => [l.id, l.kind === "inbox" ? `Inbox (${names.get(l.workspaceId)})` : l.name])), [data.lists, names]);
@@ -146,15 +173,20 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
 
   // Indeks budowany raz na otwarcie okna (normalizacja nie powtarza się przy każdym znaku).
   const index = useMemo(() => {
-    if (mode !== "all" && mode !== "search") return null;
-    const items: SearchItem[] = data.tasks.map((t) => taskSearchItem(t, { listName: listName.get(t.listId), tagNames: t.tagIds.map((id) => tagName.get(id) ?? "") }));
-    for (const l of data.lists) if (l.kind !== "inbox") items.push({ id: `list:${l.id}`, kind: "list", title: l.name, listName: names.get(l.workspaceId) });
+    if (!searching) return null;
+    // Z filtrem tylko pasujące zadania — listy, tagi, filtry i polecenia nie mają tych warunków.
+    const tasks = filtered ? applyFilter(data.tasks, filter, today) : data.tasks;
+    const items: SearchItem[] = tasks.map((t) =>
+      taskSearchItem(t, { description: descriptions.get(t.id), listName: listName.get(t.listId), tagNames: t.tagIds.map((id) => tagName.get(id) ?? "") }),
+    );
+    if (filtered) return buildSearchIndex(items);
+    for (const l of data.lists) if (l.kind !== "inbox") items.push({ id: `list:${l.id}`, kind: "list", title: l.name, listName: names.get(l.workspaceId), keywords: [LIST_KIND[l.kind]] });
     for (const w of data.workspaces) items.push({ id: `workspace:${w.id}`, kind: "workspace", title: w.name });
     for (const t of data.tags) items.push({ id: `tag:${t.id}`, kind: "tag", title: t.name, keywords: ["tag"] });
     for (const f of data.savedFilters) items.push({ id: `filter:${f.id}`, kind: "filter", title: f.name, keywords: ["filtr"] });
     if (mode === "all") items.push(...commandSearchItems(selectedIds.size).filter((c) => available(c.id)));
     return buildSearchIndex(items);
-  }, [mode, data.tasks, data.lists, data.workspaces, data.tags, data.savedFilters, listName, tagName, names, selectedIds.size, available]);
+  }, [mode, searching, filtered, filter, today, descriptions, data.tasks, data.lists, data.workspaces, data.tags, data.savedFilters, listName, tagName, names, selectedIds.size, available]);
 
   const options: Option[] = useMemo(() => {
     if (mode === "priority") {
@@ -229,6 +261,7 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
         ) : (
           <>
             <input
+              ref={input}
               autoFocus
               value={query}
               onChange={(e) => {
@@ -259,6 +292,19 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
               aria-activedescendant={options[current] ? `palette-${current}` : undefined}
               className="w-full rounded-t-xl border-b border-[var(--line)] bg-transparent px-4 py-3 text-base outline-none"
             />
+            {searching ? (
+              <div className="px-4 pt-2">
+                <FilterBar
+                  query={filter}
+                  onChange={(next) => {
+                    setFilter(next);
+                    setActive(0);
+                    // Usunięty chip zabiera fokus — pisanie dalej trafia w pole.
+                    if (conditions(next) < conditions(filter)) input.current?.focus();
+                  }}
+                />
+              </div>
+            ) : null}
             <ul ref={list} id="palette-results" role="listbox" className="overflow-y-auto p-1">
               {options.map((o, i) => (
                 <li
@@ -276,7 +322,7 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
                 </li>
               ))}
               {!options.length ? (
-                <li className="px-3 py-6 text-center text-sm text-[var(--muted)]">{query ? "Nic nie znaleziono." : mode === "all" || mode === "search" ? "Zacznij pisać — ostatnio używane pojawią się tutaj." : mode === "send" ? "Brak reguł — dodaj je w Ustawieniach → „Integracje”." : "Brak pozycji."}</li>
+                <li className="px-3 py-6 text-center text-sm text-[var(--muted)]">{query ? (filtered ? "Żadne pasujące do filtra zadanie tego nie zawiera." : "Nic nie znaleziono.") : mode === "all" || mode === "search" ? "Zacznij pisać — ostatnio używane pojawią się tutaj." : mode === "send" ? "Brak reguł — dodaj je w Ustawieniach → „Integracje”." : "Brak pozycji."}</li>
               ) : null}
             </ul>
             {mode === "all" ? (

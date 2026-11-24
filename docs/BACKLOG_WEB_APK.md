@@ -6,24 +6,24 @@ Stan kodu: 24.11.2026, commit `73e5983` (gałąź `claude/selfhost-docs`; kod ap
 
 - **Rdzeń jest w parytecie**: pola zadania, powtarzanie, filtry i ich warunki, sortowanie / grupowanie / kolumny, kosz, nawyki (liczenie), przeglądy (kolejka i decyzje), udostępnianie przestrzeni, szablony, asystent AI, parser szybkiego dodawania (pełna lista w § „Sprawdzone, bez różnic”).
 - **P1 zrobione w kodzie 24.11.2026 (A-01…A-05, razem z nimi A-07), czekają na wydanie APK i próbę na urządzeniu.** **P2 dla APK zrobione w kodzie tego samego dnia (A-06, A-08…A-25, R-03, R-04 i telefonowa część R-01).** Było w P1: ryzyko utraty danych albo mylące zachowanie na telefonie: opis gubi się po „Wstecz” (A-01), wylogowanie wyrzuca niewysłane zmiany (A-02), wyłączenie przypomnienia w nawyku kasuje wszystkie, także dodane na webie (A-03), ustawień profilu nie da się zmienić po kreatorze (A-04), telefon nie jest w „urządzeniach” i dubluje przypomnienia z przeglądarką (A-05).
-- **W drugą stronę** web jest uboższy m.in. o: status projektu i rodzaj listy (W-01, W-02), szukanie w opisach (W-03), odhaczanie pól w podglądzie opisu (W-04), filtry w kalendarzu / nawykach / koszu / przeglądzie (W-05), tagi w zwykłym wierszu (W-06).
+- **P2 dla webu zrobione w kodzie 24.11.2026 (W-01…W-03, W-05…W-08, R-01, R-02), czeka na wdrożenie webu.** Z P2 zostaje W-04 (odhaczanie pól w podglądzie opisu).
 - **Celowe** (nie do nadrabiania): Karteczki, edycja osi czasu, kalendarz tygodnia i miesiąca bez przeciągania, historia zmian, konfiguracja integracji — § „Różnice celowe”.
 - **Baza:** żadna pozycja nie wymaga migracji. Prawie wszystkie pozycje „A” wymagają nowego APK (bez OTA, D17), pozycje „W” tylko wdrożenia webu.
 
 | | P1 | P2 | P3 | razem |
 |---|---|---|---|---|
 | A — do nadrobienia w APK | 0 (5 zrobionych) | 0 (20 zrobionych) | 27 | 27 |
-| W — do nadrobienia na webie | 0 | 8 | 16 | 24 |
-| R — działa inaczej, do ujednolicenia | 0 | 2 (2 zrobione; R-01 zostaje web) | 12 | 14 |
+| W — do nadrobienia na webie | 0 | 1 (7 zrobionych) | 16 | 17 |
+| R — działa inaczej, do ujednolicenia | 0 | 0 (4 zrobione) | 12 | 12 |
 
 ### Proponowana kolejność
 
 1. **Wydać APK z tym, co już jest w kodzie** (§ „W kodzie, jeszcze nie w APK”) razem z krokiem 2.
 2. ~~**Ochrona danych na telefonie** — A-01, A-02, A-03~~ (zrobione w kodzie).
-3. **Ustawienia i przypomnienia** — ~~A-04, A-05, A-07~~ (zrobione w kodzie), ~~A-06~~ (zrobione w kodzie), ~~R-01~~ na telefonie (zostaje web).
+3. **Ustawienia i przypomnienia** — ~~A-04, A-05, A-07~~ (zrobione w kodzie), ~~A-06~~ (zrobione w kodzie), ~~R-01~~.
 4. ~~**Czytelność współdzielenia i synchronizacji na telefonie** — A-08, A-09, A-10, A-11, A-21~~ (zrobione w kodzie; link zaproszenia wymaga też wdrożenia webu).
 5. ~~**Codzienna wygoda na telefonie** — A-12…A-20, A-22…A-25~~ (zrobione w kodzie).
-6. **Szybkie poprawki webu** — W-01…W-08 (same S poza W-05; można robić równolegle, bez APK).
+6. **Szybkie poprawki webu** — ~~W-01…W-03, W-05…W-08~~ (zrobione w kodzie), W-04.
 7. Reszta P3 przy okazji prac w danym pliku.
 
 ## Jak czytać
@@ -110,14 +110,14 @@ Stan kodu: 24.11.2026, commit `73e5983` (gałąź `claude/selfhost-docs`; kod ap
 
 | ID | Obszar | Web | APK | Co zrobić | Dowód | Dlaczego | Szac. | Mig. / APK |
 |---|---|---|---|---|---|---|---|---|
-| W-01 | Projekt — status | Przy tworzeniu `active`, potem tylko odczyt w przeglądzie; nie widać i nie da się zmienić | Aktywny / wstrzymany / zakończony | Wybór w „Przestrzenie i listy” i w nagłówku projektu (`PROJECT_STATUS`) | `M/app/workspace/[id].tsx:60,104-110`; `W/workspaces-screen.tsx:158`, `W/review.tsx:411`; `PROJECT_STATUS` grep W = 0 | Specyfikacja M2; bez tego wstrzymany projekt wraca w przeglądzie tygodnia | S | — / web |
-| W-02 | Lista — rodzaj, usunięcie, kolor | Rodzaj tylko przy tworzeniu; pustą można tylko zarchiwizować; kolor dopiero po utworzeniu | Zmiana lista ↔ projekt, „Usuń pustą listę”, kolor przy tworzeniu | Te same operacje w `workspaces-screen.tsx` | `M/app/workspace/[id].tsx:98-122,167`, `M/lib/workspaces.ts:102-122`; `W/workspaces-screen.tsx:150-160,287` | Pomyłki rodzaju nie da się naprawić na webie | S | — / web |
-| W-03 | Szukanie w opisach | Paleta nie przekazuje opisu do indeksu | Szuka też w opisie; rodzaj listy jako słowo kluczowe | `description` w `taskSearchItem` (zapytanie jak na telefonie), `keywords` listy | `M/app/search.tsx:28-43`; `W/command-palette.tsx:150-151` | Specyfikacja M17 (tytuł, opis, tagi, lista) | S | — / web |
+| W-01 ✅ | Projekt — status | Przy tworzeniu `active`, potem tylko odczyt w przeglądzie; nie widać i nie da się zmienić | Aktywny / wstrzymany / zakończony | Wybór w „Przestrzenie i listy” i w nagłówku projektu (`PROJECT_STATUS`) | `M/app/workspace/[id].tsx:60,104-110`; `W/workspaces-screen.tsx:158`, `W/review.tsx:411`; `PROJECT_STATUS` grep W = 0 | Specyfikacja M2; bez tego wstrzymany projekt wraca w przeglądzie tygodnia | S | — / web |
+| W-02 ✅ | Lista — rodzaj, usunięcie, kolor | Rodzaj tylko przy tworzeniu; pustą można tylko zarchiwizować; kolor dopiero po utworzeniu | Zmiana lista ↔ projekt, „Usuń pustą listę”, kolor przy tworzeniu | Te same operacje w `workspaces-screen.tsx` | `M/app/workspace/[id].tsx:98-122,167`, `M/lib/workspaces.ts:102-122`; `W/workspaces-screen.tsx:150-160,287` | Pomyłki rodzaju nie da się naprawić na webie | S | — / web |
+| W-03 ✅ | Szukanie w opisach | Paleta nie przekazuje opisu do indeksu | Szuka też w opisie; rodzaj listy jako słowo kluczowe | `description` w `taskSearchItem` (zapytanie jak na telefonie), `keywords` listy | `M/app/search.tsx:28-43`; `W/command-palette.tsx:150-151` | Specyfikacja M17 (tytuł, opis, tagi, lista) | S | — / web |
 | W-04 | Opis — pola `[ ]` | Podgląd tylko do odczytu, klik w pole niczego nie zapisuje | Odhaczanie w podglądzie | `toggleMarkdownCheckbox` przez `onReadOnlyChecked` TipTapa | `M/app/task/[id].tsx` `MarkdownView onToggleCheckbox`; `W/task-panel.tsx:1179-1185`, `WL/editor.ts:14` | Lista zadań w opisie bez sensu w podglądzie | S | — / web |
-| W-05 | Chipy filtra | Tylko Inbox, Dziś, Nadchodzące, lista, tablica, tag, filtr | Także kosz, kalendarz, nawyki, przegląd tygodnia, wyniki szukania | `FilterBar` w tych widokach | `M/app/trash.tsx:57`, `calendar.tsx:155`, `habits.tsx:45`, `review/weekly.tsx:289`, `search.tsx:80`; `W/shell.tsx:286` (`filterable`) | Specyfikacja M4 „chipy w każdym widoku” | M | — / web |
-| W-06 | Wiersz zadania — tagi | Tylko w kolumnie „Tagi” listy | Tagi w każdym wierszu | `TAG_CHIP` w meta wiersza, gdy nie ma kolumny | `M/components/task-row.tsx`, `M/lib/rows.ts:17`; `W/task-item.tsx:264,324-347` | W Dziś / Inbox nie widać kontekstu | S | — / web |
-| W-07 | Web Push — akcje | Zadanie bez akcji (`actions: []`); nawyk ma „Zrobione” | „Ukończ”, „Odłóż 10 min”, „Jutro” bez otwierania aplikacji | „Ukończ” / „Odłóż” w `sw.js` jak `habit-done` (wiadomość do karty albo `/?…`) | `M/lib/reminders.ts:114-118`; `apps/web/public/sw.js` (`actions: data.habit ? … : []`) | Telefon jest głównym kanałem, web pomocniczym | M | — / web |
-| W-08 | Karta na tablicy | Bez osoby, statusu i kółka ukończenia | Osoba, status, kółko, gest terminu | Znaczek osoby i kółko na karcie | `M/app/board.tsx:465-471`, `M/components/task-row.tsx`; `W/board.tsx:61-94` | Na tablicy zespołowej nie widać, czyje zadanie | S | — / web |
+| W-05 ✅ | Chipy filtra | Tylko Inbox, Dziś, Nadchodzące, lista, tablica, tag, filtr | Także kosz, kalendarz, nawyki, przegląd tygodnia, wyniki szukania | `FilterBar` w tych widokach | `M/app/trash.tsx:57`, `calendar.tsx:155`, `habits.tsx:45`, `review/weekly.tsx:289`, `search.tsx:80`; `W/shell.tsx:286` (`filterable`) | Specyfikacja M4 „chipy w każdym widoku” | M | — / web |
+| W-06 ✅ | Wiersz zadania — tagi | Tylko w kolumnie „Tagi” listy | Tagi w każdym wierszu | `TAG_CHIP` w meta wiersza, gdy nie ma kolumny | `M/components/task-row.tsx`, `M/lib/rows.ts:17`; `W/task-item.tsx:264,324-347` | W Dziś / Inbox nie widać kontekstu | S | — / web |
+| W-07 ✅ | Web Push — akcje | Zadanie bez akcji (`actions: []`); nawyk ma „Zrobione” | „Ukończ”, „Odłóż 10 min”, „Jutro” bez otwierania aplikacji | „Ukończ” / „Odłóż” w `sw.js` jak `habit-done` (wiadomość do karty albo `/?…`) | `M/lib/reminders.ts:114-118`; `apps/web/public/sw.js` (`actions: data.habit ? … : []`) | Telefon jest głównym kanałem, web pomocniczym | M | — / web |
+| W-08 ✅ | Karta na tablicy | Bez osoby, statusu i kółka ukończenia | Osoba, status, kółko, gest terminu | Znaczek osoby i kółko na karcie | `M/app/board.tsx:465-471`, `M/components/task-row.tsx`; `W/board.tsx:61-94` | Na tablicy zespołowej nie widać, czyje zadanie | S | — / web |
 
 ### P3
 
@@ -144,8 +144,8 @@ Stan kodu: 24.11.2026, commit `73e5983` (gałąź `claude/selfhost-docs`; kod ap
 
 | ID | Obszar | Web | APK | Co zrobić | Dowód | Priorytet — dlaczego | Szac. | Mig. / APK |
 |---|---|---|---|---|---|---|---|---|
-| R-01 ✅ telefon | Zakres wylogowania | `signOut()` bez `scope` | `signOut()` bez `scope` | `scope: 'local'` po obu stronach: domyślny zakres supabase-js to `global`, więc wylogowanie na jednym urządzeniu kończy sesję na wszystkich | `W/signed-in.tsx:225`, `M/lib/auth.ts:149-150`; `@supabase/auth-js` `signOut(options = { scope: 'global' })` | P2 — telefon traci sesję po wylogowaniu webu; skutek do sprawdzenia | S | — / APK + web |
-| R-02 | Filtr zmieniony na innym urządzeniu | Trzyma stary szkic, „Zapisz zmiany” może nadpisać nowszy | Odrzuca szkic i bierze nową wersję | Web jak telefon (klucz z `query`) | `W/filter-views.tsx:163-165`; `M/app/filter/[id].tsx:22-35` | P2 — możliwe nadpisanie; do sprawdzenia | S | — / web |
+| R-01 ✅ | Zakres wylogowania | `signOut()` bez `scope` | `signOut()` bez `scope` | `scope: 'local'` po obu stronach: domyślny zakres supabase-js to `global`, więc wylogowanie na jednym urządzeniu kończy sesję na wszystkich | `W/signed-in.tsx:225`, `M/lib/auth.ts:149-150`; `@supabase/auth-js` `signOut(options = { scope: 'global' })` | P2 — telefon traci sesję po wylogowaniu webu; skutek do sprawdzenia | S | — / APK + web |
+| R-02 ✅ | Filtr zmieniony na innym urządzeniu | Trzyma stary szkic, „Zapisz zmiany” może nadpisać nowszy | Odrzuca szkic i bierze nową wersję | Web jak telefon (klucz z `query`) | `W/filter-views.tsx:163-165`; `M/app/filter/[id].tsx:22-35` | P2 — możliwe nadpisanie; do sprawdzenia | S | — / web |
 | R-03 ✅ | Wklejenie wielu linii | Pyta przy wklejeniu; „nie” = złączony tekst do edycji | Pyta przy dodaniu; „Jedno” (też zamknięcie okna) od razu zapisuje jedno zadanie | Telefon: zamknięcie = anuluj | `W/quick-add.tsx:130-140`; `M/components/quick-add-field.tsx:123-133`, `M/components/actions.tsx:54` | P2 — przypadkowy zapis | S | — / APK |
 | R-04 ✅ | Pierwszy dzień tygodnia | Tylko poniedziałek / niedziela | Kreator: dowolny z 7 | Ten sam zestaw (pon. / niedz.) | `W/profile-form.tsx` (Select 1/7); `M/app/onboarding.tsx:92-96` | P2 — wartość z telefonu nie ma opcji na webie | S | — / APK |
 | R-05 | Zwinięte projekty osi | W profilu, synchronizowane | Stan lokalny do wyjścia z ekranu | Odczyt / zapis `settings.timeline.collapsed` | `W/timeline.tsx:269-273,427-430`; `M/app/timeline.tsx:76` | P3 | S | — / APK |
@@ -202,8 +202,8 @@ Stan kodu: 24.11.2026, commit `73e5983` (gałąź `claude/selfhost-docs`; kod ap
 
 1. Dźwięk przypomnień na urządzeniu — kanały `reminders-sound` / `focus-end-sound` z 0.1.17 (kod: `M/lib/reminders.ts`, `M/lib/scheduler.ts`).
 2. A-05 na urządzeniu: wiersz telefonu na webie po synchronizacji, wyłączenie z weba kasuje alarmy po pobraniu zmiany, brak dubla z Web Push; A-07: zmiana motywu bez restartu ekranu; szukanie strefy w „Profilu” (czy Hermes ma `Intl.supportedValuesOf`).
-3. Wylogowanie na webie nadal kończy sesję telefonu (R-01 — część web).
-4. Nadpisanie filtra (R-02). Na telefonie z P2: powiadomienie o przeglądzie i dotknięcie go (A-06), `adb shell pm get-app-links pl.taskplanner.app` = `verified` po instalacji APK z Actions (A-11; APK z kluczem debug nie przejdzie weryfikacji), kursor po przycisku formatowania i Enter w liście na klawiaturze Samsunga (A-14), „Udostępnij” obrazu i pliku z kolejki (A-23), przyciski ↑ ↓ ⇥ ⇤ (A-12).
+3. Po wdrożeniu webu: „Ukończ” i „Odłóż 10 min” w prawdziwym powiadomieniu Chrome przy zamkniętej karcie (W-07; test E2E wywołuje handlery Service Workera, nie klika systemowego przycisku); „Odłóż” na webie to jednorazowe przypomnienie (`reminders`), więc po synchronizacji zadzwoni też telefon.
+4. Na telefonie z P2: powiadomienie o przeglądzie i dotknięcie go (A-06), `adb shell pm get-app-links pl.taskplanner.app` = `verified` po instalacji APK z Actions (A-11; APK z kluczem debug nie przejdzie weryfikacji), kursor po przycisku formatowania i Enter w liście na klawiaturze Samsunga (A-14), „Udostępnij” obrazu i pliku z kolejki (A-23), przyciski ↑ ↓ ⇥ ⇤ (A-12).
 5. Odrzucenie nazwy filtra dłuższej niż 60 znaków (A-48).
 6. Nawyk otwarty jako zwykłe zadanie na telefonie (wyszukiwarka → `/task/[id]`): brak sekcji „Nawyk” z linkiem, którą ma web (`W/task-panel.tsx:290-296`; `M/app/task/[id].tsx`). Szukaj nie odfiltrowuje nawyków (`M/app/search.tsx`).
 7. Web: pole „Dni miesiąca” w edytorze powtarzania przelicza tekst przy każdym znaku — przecinek może znikać (`W/recurrence-editor.tsx:138-156`; telefon ma bufor, `M/components/recurrence-editor.tsx:97,175`).

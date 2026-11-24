@@ -9,6 +9,7 @@
 import {
   addDays,
   addHabitValue,
+  applyFilter,
   canEditHabitDay,
   dayChip,
   deleteTaskOps,
@@ -29,6 +30,7 @@ import {
   habitYearRange,
   previewDates,
   WEEKDAY_CODES,
+  isEmptyFilter,
   isOpen,
   MAX_COUNT,
   MONTH_SHORT,
@@ -43,6 +45,7 @@ import {
   toHabit,
   WEEKDAY,
   type DayState,
+  type FilterQuery,
   type Habit,
   type HabitCompletion,
   type HabitDayStatus,
@@ -67,6 +70,7 @@ import { useLocalQuery } from "@/lib/local-store";
 import { useRoute, type Route } from "@/lib/route";
 
 import { lastSortKey, useAppEnv } from "./app-env";
+import { FilterBar, type Field as FilterField } from "./filter-bar";
 import { useTaskActions } from "./task-item";
 import { Button, Card, Field, Input, navLinkClass, Select } from "./ui";
 
@@ -235,10 +239,16 @@ export function HabitTodayItem({ item }: { item: HabitForDay }) {
 
 // ── Lista „Cykliczne” ───────────────────────────────────────────────────────────────────────────
 
+/** Cykliczne nie mają tagów, priorytetu, statusu ani terminu. */
+const HIDDEN_FILTERS: readonly FilterField[] = ["tags", "priorities", "statuses", "due", "hasTime"];
+
 export function HabitsView({ data, ctx, targetInbox, navigate }: { data: AppData; ctx: ViewContext; targetInbox: List | undefined; navigate: (route: Route) => void }) {
   const [adding, setAdding] = useState(false);
-  const habits = useMemo(() => data.tasks.filter((t) => t.kind === "habit" && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId)).sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1)), [data.tasks, ctx.workspaceId]);
-  const today = useMemo(() => habitsForDay(data.tasks, data.habitCompletions, ctx.today, ctx.today, ctx.workspaceId), [data.tasks, data.habitCompletions, ctx.today, ctx.workspaceId]);
+  const [filter, setFilter] = useState<FilterQuery>({});
+  const filtered = !isEmptyFilter(filter);
+  const tasks = useMemo(() => (isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, ctx.today)), [data.tasks, filter, ctx.today]);
+  const habits = useMemo(() => tasks.filter((t) => t.kind === "habit" && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId)).sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1)), [tasks, ctx.workspaceId]);
+  const today = useMemo(() => habitsForDay(tasks, data.habitCompletions, ctx.today, ctx.today, ctx.workspaceId), [tasks, data.habitCompletions, ctx.today, ctx.workspaceId]);
   const open = habits.filter(isOpen);
   const closed = habits.filter((t) => !isOpen(t));
   const left = today.filter((h) => !h.settled).length;
@@ -248,7 +258,7 @@ export function HabitsView({ data, ctx, targetInbox, navigate }: { data: AppData
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold">Cykliczne</h1>
           <p className="text-sm text-[var(--muted)]">
-            {open.length ? `${plural(today.length, ["cykliczne", "cykliczne", "cyklicznych"])} na dziś · ${left ? `${left} do zrobienia` : "wszystko zrobione"}` : "Codzienne i tygodniowe zadania cykliczne z passą i statystykami"}
+            {open.length || filtered ? `${plural(today.length, ["cykliczne", "cykliczne", "cyklicznych"])} na dziś · ${left ? `${left} do zrobienia` : "wszystko zrobione"}` : "Codzienne i tygodniowe zadania cykliczne z passą i statystykami"}
           </p>
         </div>
         <Button kind="primary" onClick={() => setAdding((a) => !a)} aria-expanded={adding}>
@@ -260,12 +270,15 @@ export function HabitsView({ data, ctx, targetInbox, navigate }: { data: AppData
           <HabitEditor task={null} defaultListId={targetInbox?.id} onDone={(id) => (setAdding(false), id ? navigate({ view: "habit", id }) : undefined)} />
         </Card>
       ) : null}
+      <FilterBar query={filter} onChange={setFilter} hide={HIDDEN_FILTERS} />
       {open.length ? (
         <ul className="divide-y divide-[var(--line)]">
           {open.map((t) => (
             <HabitRow key={t.id} task={t} data={data} today={ctx.today} navigate={navigate} />
           ))}
         </ul>
+      ) : filtered ? (
+        <p className="py-6 text-center text-sm text-[var(--muted)]">Żadne otwarte zadanie cykliczne nie pasuje do filtra.</p>
       ) : !adding ? (
         <p className="py-6 text-center text-sm text-[var(--muted)]">Nie masz jeszcze zadań cyklicznych. Dodaj pierwsze — np. „Woda 8 szklanek” albo „Siłownia 3 razy w tygodniu”.</p>
       ) : null}
