@@ -7,7 +7,8 @@
  * w opisie — ponowienie po zerwanym połączeniu znajduje już utworzone issue zamiast robić drugie), kolejne
  * zmieniają to samo issue: ukończenie / kosz → zamknięcie, przywrócenie → otwarcie, termin → `due_date`,
  * tagi → etykiety, odpowiedzialny → przypisani (`assignees`), komentarz → notatka, ponowne „Wyślij do…” →
- * tytuł, opis, etykiety, przypisani, termin i stan.
+ * tytuł, opis, etykiety, przypisani, termin, szacowany czas i stan. Szacowany czas (`time_estimate`) to osobne
+ * wywołanie API: przy nowym issue i przy ponownym „Wyślij do…”.
  */
 import type { PluginEvent } from './events.ts';
 import type { PluginPayload } from './payload.ts';
@@ -38,6 +39,20 @@ export const gitlabDueDate = (text: string | undefined): string | null => {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) ? value : null;
 };
 
+/**
+ * Szacowany czas issue (Estimate) z pola akcji (już wypełnionego): liczba = minuty (`90` → `1h30m`), zapis GitLaba
+ * (`1h 30m`, `2d`) bez zmian. Puste, `0` i nieczytelne = `''` — estymata zostaje taka, jaka jest w GitLabie.
+ */
+export const gitlabEstimate = (text: string | undefined): string => {
+  const value = (text ?? '').trim().toLowerCase();
+  if (/^\d{1,6}$/.test(value)) {
+    const minutes = Number(value);
+    const [h, m] = [Math.floor(minutes / 60), minutes % 60];
+    return `${h ? `${h}h` : ''}${m ? `${m}m` : ''}`;
+  }
+  return /^(\d+(mo|w|d|h|m)\s*)+$/.test(value) ? value.replace(/\s+/g, '') : '';
+};
+
 export interface GitlabIssueBody {
   title: string;
   description: string;
@@ -45,6 +60,8 @@ export interface GitlabIssueBody {
   due_date: string | null;
   /** Nazwy użytkowników do przypisania — Edge Function zamienia je na `assignee_ids` (puste = bez zmian). */
   assignees: string[];
+  /** Szacowany czas — Edge Function ustawia go po zapisie issue (`POST …/time_estimate`); puste = bez zmian. */
+  estimate: string;
 }
 
 type PayloadTask = PluginPayload['task'];
@@ -59,12 +76,14 @@ export function gitlabIssueBody(fields: Readonly<Record<string, string>>, task: 
     labels: gitlabLabels(fields.labels ?? ''),
     due_date: gitlabDueDate(fields.dueDate),
     assignees: gitlabUsernames(fields.assignees ?? ''),
+    estimate: gitlabEstimate(fields.estimate),
   };
 }
 
-/** Zmiany powiązanego issue: pola `PUT /issues/:iid` (puste = bez zmian) i notatka. */
+/** Zmiany powiązanego issue: pola `PUT /issues/:iid` (puste = bez zmian), szacowany czas i notatka. */
 export interface GitlabChange {
   put: Partial<Pick<GitlabIssueBody, 'title' | 'description' | 'labels' | 'due_date' | 'assignees'>> & { state_event?: 'close' | 'reopen' };
+  estimate?: string;
   note?: string;
 }
 
@@ -91,14 +110,14 @@ export function gitlabChange(events: readonly PluginEvent[], task: PayloadTask, 
   if ((has('task.tagged') || has('task.untagged')) && issue.labels) put.labels = issue.labels;
   // Tak samo osoby: puste pole nie zdejmuje przypisania zrobionego w GitLabie.
   if (has('task.assigned') && issue.assignees.length) put.assignees = issue.assignees;
-  return { put, ...(has('task.commented') && comment && { note: gitlabNote(comment, task) }) };
+  return { put, ...(has('task.sent') && issue.estimate && { estimate: issue.estimate }), ...(has('task.commented') && comment && { note: gitlabNote(comment, task) }) };
 }
 
 /** Zdarzenia, po których nie ma sensu zakładać issue, gdy jeszcze go nie ma (tylko zmiana stanu / etykiet). */
 const CHANGE_ONLY: ReadonlySet<PluginEvent> = new Set(['task.deleted', 'task.reopened', 'task.restored', 'task.untagged']);
 
 /**
- * Brak powiązanego issue: treść nowego i zmiany zaraz po utworzeniu (zamknięcie ukończonego, notatka z komentarza)
+ * Brak powiązanego issue: treść nowego i zmiany zaraz po utworzeniu (zamknięcie ukończonego, szacowany czas, notatka z komentarza)
  * albo `null` — same zdarzenia „zmiany” (kosz, przywrócenie, zdjęty tag) nie zakładają issue.
  */
 export function gitlabCreate(
@@ -110,7 +129,7 @@ export function gitlabCreate(
   if (events.every((e) => CHANGE_ONLY.has(e))) return null;
   return {
     create: issue,
-    after: { put: closed(task.status) ? { state_event: 'close' } : {}, ...(events.includes('task.commented') && comment && { note: gitlabNote(comment, task) }) },
+    after: { put: closed(task.status) ? { state_event: 'close' } : {}, ...(issue.estimate && { estimate: issue.estimate }), ...(events.includes('task.commented') && comment && { note: gitlabNote(comment, task) }) },
   };
 }
 
