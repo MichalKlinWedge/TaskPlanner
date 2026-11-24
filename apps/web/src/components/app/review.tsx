@@ -291,7 +291,6 @@ function DailyDone({ ctx, settings, log, total, onExit, navigate }: { ctx: ViewC
   // Przegląd rano → plan na dziś, po południu i wieczorem → na jutro; przełącznik obok.
   const [day, setDay] = useState<"today" | "tomorrow">(() => (localDateTimeAt(new Date(), ctx.timeZone).slice(11) < "12:00" ? "today" : "tomorrow"));
   const planDate = day === "today" ? ctx.today : tomorrow;
-  const planCtx = useMemo(() => ({ ...ctx, today: planDate }), [ctx, planDate]);
   const planTasks = day === "today" ? summary.today : summary.tomorrow;
   return (
     <Frame title="Przegląd dnia — gotowe" kind="daily" onExit={onExit} navigate={navigate}>
@@ -336,7 +335,7 @@ function DailyDone({ ctx, settings, log, total, onExit, navigate }: { ctx: ViewC
             <p className="text-sm text-[var(--muted)]">{day === "today" ? "Na dziś nic więcej zaplanowanego." : "Na jutro nic zaplanowanego."}</p>
           )}
         </div>
-        <DayPlan key={planDate} data={data} ctx={planCtx} settings={settings} />
+        <DayPlan key={planDate} data={data} ctx={ctx} date={planDate} settings={settings} />
       </section>
       <div>
         <Button kind="primary" onClick={onExit}>

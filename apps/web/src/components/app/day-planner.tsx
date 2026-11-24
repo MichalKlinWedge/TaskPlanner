@@ -31,6 +31,7 @@ import {
   UNPLACED_REASON,
   type CalendarEventLike,
   type DayPlanDraft,
+  type LocalDate,
   type ProfileSettings,
   type ViewContext,
 } from "@taskplanner/core";
@@ -66,6 +67,8 @@ function storedBuffer(): number {
 interface Props {
   data: AppData;
   ctx: ViewContext;
+  /** Układany dzień. */
+  date: LocalDate;
   settings: ProfileSettings;
   events: readonly CalendarEventLike[];
   /** Minuta „teraz” układanego dnia. */
@@ -74,8 +77,8 @@ interface Props {
   onPreview: (preview: PlanPreview | null) => void;
 }
 
-export function DayPlanner({ data, ctx, settings, events, nowMin, preview, onPreview }: Props) {
-  const { store, today, openTask, select } = useAppEnv();
+export function DayPlanner({ data, ctx, date, settings, events, nowMin, preview, onPreview }: Props) {
+  const { store, openTask, select } = useAppEnv();
   const { run, notify } = useTaskActions();
   const deps = useDependencies(store);
   const account = useAiAccount(store);
@@ -84,8 +87,7 @@ export function DayPlanner({ data, ctx, settings, events, nowMin, preview, onPre
   const [hint, setHint] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const date = ctx.today;
-  const { timeZone } = ctx;
+  const { today, timeZone } = ctx;
 
   /** Dane układania: zajętość liczy się ze wszystkich przestrzeni, zadania — z bieżącej. */
   const input = (bufferMin: number) => {

@@ -415,6 +415,9 @@ export const AI_BREAKDOWN = {
 /** Ułożenie dnia („Plan dnia” w „Dziś” i w przeglądzie) — wspólne teksty weba i telefonu. */
 export const DAY_PLANNER = {
   button: 'Ułóż dzień',
+  days: 'Plan na',
+  today: 'Dziś',
+  tomorrow: 'Jutro',
   hint: 'Preferencja (opcjonalnie), np. „rano trudne rzeczy”',
   ai: '✨ Ułóż z AI',
   auto: 'Ułóż bez AI',
