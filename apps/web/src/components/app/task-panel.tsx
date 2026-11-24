@@ -95,6 +95,7 @@ import { BreakdownField } from "./ai-breakdown";
 import { AppEnvProvider, useAppEnv } from "./app-env";
 import { AttachmentsField } from "./attachments";
 import { TaskTimeField } from "./focus";
+import { PurgeButton } from "./purge-button";
 import { QuickAdd } from "./quick-add";
 import { RecurrenceEditor } from "./recurrence-editor";
 import { TAG_CHIP, TagColorPicker, tagChipStyle } from "./tag-chip";
@@ -188,7 +189,7 @@ function TrashedTaskPanel({ taskId }: { taskId: string }) {
 function TrashBar({ preview, readOnly }: { preview: TrashPreview<TrashedTask>; readOnly: boolean }) {
   const { today, timeZone } = useAppEnv();
   const { run } = useTaskActions();
-  const { task, root, parent, count, restore, restoreAlone } = preview;
+  const { task, root, parent, count, inside, restore, restoreAlone } = preview;
   return (
     <div className="mb-2 flex flex-col gap-2 rounded-md bg-[var(--hover)] px-2 py-2 text-xs text-[var(--muted)]" data-testid="task-trashed">
       <p>
@@ -209,8 +210,9 @@ function TrashBar({ preview, readOnly }: { preview: TrashPreview<TrashedTask>; r
             Przywróć tylko to
           </Button>
         ) : null}
+        <PurgeButton task={task} inside={inside} />
       </div>
-      {readOnly ? <p>Lista jest udostępniona Ci tylko do podglądu — zadania nie da się przywrócić.</p> : null}
+      {readOnly ? <p>Lista jest udostępniona Ci tylko do podglądu — zadania nie da się przywrócić ani usunąć.</p> : null}
     </div>
   );
 }

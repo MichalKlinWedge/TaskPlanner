@@ -61,6 +61,7 @@ import { CanvasView } from "./canvas";
 import { DayDnd, DayDrop, DraggableTaskItem, SortableTaskItem, SortableTaskList } from "./dnd";
 import { TaskExportButton } from "./export";
 import { HabitTodayItem } from "./habits";
+import { PurgeButton } from "./purge-button";
 import { QuickAdd } from "./quick-add";
 import { TaskColumnsHeader, TaskItem, useTaskActions } from "./task-item";
 import { SaveTemplateButton } from "./templates";
@@ -602,6 +603,7 @@ export function TrashView({ data, store }: { data: AppData; store: TabStore }) {
                 <Button disabled={!listEditable(data, t.listId)} onClick={() => void run(trashPreview(trashed, t.id, alive)?.restore ?? [], { text: `Przywrócono „${t.title}”` })}>
                   Przywróć
                 </Button>
+                <PurgeButton task={t} inside={inside} />
               </li>
             );
           })}

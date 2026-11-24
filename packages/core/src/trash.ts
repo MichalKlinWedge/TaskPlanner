@@ -5,6 +5,8 @@
  * może być pusty albo niepełny — wtedy rodzica lub podzadania po prostu nie ma na liście.
  * Tagi, komentarze, załączniki itd. nie są usuwane razem z zadaniem (zostają bez `deleted_at`).
  */
+import { isTransientError } from './errors.ts';
+import { plural } from './format.ts';
 import { descendants, restoreTaskOps, sameDeletion, toViewTask, TRASH_DAYS, type LocalTaskRow, type TaskOp } from './tasks.ts';
 import type { ViewTask } from './views.ts';
 
@@ -66,6 +68,8 @@ export interface TrashPreview<T> {
   children: T[];
   /** Ile podzadań wróci razem z `root`. */
   count: number;
+  /** Ile podzadań usunięto razem z `task` (znikną z nim przy definitywnym usunięciu). */
+  inside: number;
   /** Przywrócenie `root` z całą grupą. */
   restore: TaskOp[];
   /** Podzadanie: przywrócenie tylko jego (z własnymi podzadaniami) jako zadania głównego listy; `null` dla `root`. */
@@ -89,7 +93,27 @@ export function trashPreview<T extends Trashed & Pick<ViewTask, 'sortKey'>>(tras
       .filter((t) => t.parentId === id && sameDeletion(t.deletedAt, task.deletedAt))
       .sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : a.id < b.id ? -1 : 1)),
     count: trashedWith(trashed, root.id).length,
+    inside: trashedWith(trashed, id).length,
     restore: restoreTaskOps(trashed, root.id, { parentAlive: !root.parentId || alive.has(root.parentId) }),
     restoreAlone: parent ? restoreTaskOps(trashed, id, { parentAlive: false }) : null,
   };
+}
+
+/** Pytanie przed definitywnym usunięciem zadania; `inside` = podzadania usunięte razem z nim, `shared` = przestrzeń z innymi osobami. */
+export function purgeQuestion(title: string, inside: number, shared = false): { title: string; text: string } {
+  return {
+    title: `Usunąć na stałe „${title}”?`,
+    text:
+      `Zadanie${inside ? ` z ${plural(inside, ['podzadaniem', 'podzadaniami', 'podzadaniami'])}` : ''}, komentarze, załączniki, przypomnienia i zapisany czas znikną z serwera i wszystkich urządzeń` +
+      `${shared ? ', także u innych osób w tej przestrzeni' : ''}. Tego nie da się cofnąć.`,
+  };
+}
+
+/** Dlaczego definitywne usunięcie się nie udało (błąd `purgeTasks` z `packages/sync`). */
+export function purgeErrorText(error: unknown): string {
+  const code = error && typeof error === 'object' && 'code' in error ? String((error as { code: unknown }).code) : '';
+  if (code === 'TP007') return 'Na serwerze tego zadania nie ma w koszu — przywrócono je na innym urządzeniu albo usunięcie czeka jeszcze na wysłanie.';
+  if (code === 'TP003') return 'Lista jest udostępniona Ci tylko do podglądu — zadania nie da się usunąć.';
+  if (isTransientError(error)) return 'Brak połączenia z serwerem. Definitywne usunięcie wymaga sieci.';
+  return `Nie udało się usunąć zadania na stałe: ${error instanceof Error ? error.message : String(error)}`;
 }

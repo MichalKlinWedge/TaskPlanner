@@ -145,12 +145,6 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "calendars"
       referencedColumns: ["id"]
-    },{
-      foreignKeyName: "calendar_task_links_task_id_fkey"
-      columns: ["task_id"]
-isOneToOne: false
-      referencedRelation: "tasks"
-      referencedColumns: ["id"]
     }
                   ]
                 },"calendar_task_runs": {
@@ -491,6 +485,40 @@ isOneToOne: false
                   Relationships: [
                     {
       foreignKeyName: "project_templates_scope_id_fkey"
+      columns: ["scope_id"]
+isOneToOne: false
+      referencedRelation: "sync_scopes"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"purged_files": {
+                  Row: {
+                    "path": string,"purged_at": string,"purged_by": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "path": string,"purged_at"?: string,"purged_by": string
+                  }
+                  Update: {
+                    "path"?: string,"purged_at"?: string,"purged_by"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"purged_tasks": {
+                  Row: {
+                    "id": string,"purged_at": string,"purged_by": string | null,"row_version": number,"scope_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "id": string,"purged_at"?: string,"purged_by"?: string | null,"row_version": number,"scope_id": string
+                  }
+                  Update: {
+                    "id"?: string,"purged_at"?: string,"purged_by"?: string | null,"row_version"?: number,"scope_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "purged_tasks_scope_id_fkey"
       columns: ["scope_id"]
 isOneToOne: false
       referencedRelation: "sync_scopes"
@@ -1003,6 +1031,9 @@ isOneToOne: false
 "caller_email":
 { Args: Record<PropertyKey, never>; Returns: string
                            },
+"can_purge_file":
+{ Args: { "p_name": string }; Returns: boolean
+                           },
 "can_read_attachment":
 { Args: { "p_name": string }; Returns: boolean
                            },
@@ -1205,6 +1236,9 @@ isOneToOne: false
                            },
 "pulled_readonly_tables":
 { Args: Record<PropertyKey, never>; Returns: (string)[]
+                           },
+"purge_tasks":
+{ Args: { "p_ids": (string)[] }; Returns: Json
                            },
 "push_changes":
 { Args: { "p_ops": Json }; Returns: Json

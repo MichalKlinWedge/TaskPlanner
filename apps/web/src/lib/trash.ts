@@ -2,11 +2,13 @@
 
 /** Zadania w koszu (ostatnie 30 dni) z lokalnej bazy — widok „Kosz” i podgląd zadania z kosza w panelu. */
 import { toTrashedTask, trashSince, type TrashedTask } from "@taskplanner/core";
-import { TRASH_SQL, type TabStore } from "@taskplanner/sync";
+import { purgeTasks, TRASH_SQL, type TabStore } from "@taskplanner/sync";
 import { useMemo, useState } from "react";
 
 import type { AppData } from "./app-data";
+import { reportError } from "./error-log";
 import { useLocalQuery } from "./local-store";
+import { supabaseBrowser } from "./supabase-browser";
 
 type Row = Record<string, string | number | null>;
 
@@ -18,3 +20,7 @@ export function useTrash(store: TabStore, data: Pick<AppData, "tasks">): { tasks
   const alive = useMemo(() => new Set(data.tasks.map((t) => t.id)), [data.tasks]);
   return { tasks, alive, loaded: ms !== null };
 }
+
+/** Definitywne usunięcie zadania z kosza (z podzadaniami usuniętymi naraz) — tylko z siecią, bez cofnięcia. */
+export const purgeFromTrash = (store: TabStore, id: string): Promise<number> =>
+  purgeTasks(supabaseBrowser(), [id], { sync: () => store.sync(), onError: (e) => reportError("sync", e, { op: "purge_tasks" }) });

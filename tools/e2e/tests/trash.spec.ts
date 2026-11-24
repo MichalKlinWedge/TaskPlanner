@@ -82,3 +82,76 @@ test('szczegóły zadania z kosza: podgląd, podzadanie, przywrócenie; nowe urz
   expect(data?.parent_id).toBeNull();
   expect(await server.task(title)).toBeNull();
 });
+
+test('definitywne usunięcie: potwierdzenie, z listy i z panelu, znika z serwera i innych urządzeń', async ({ page, server, browser }) => {
+  await openApp(page, '#/inbox');
+  const add = async (title: string) => {
+    await page.keyboard.press('q');
+    const input = page.getByRole('dialog', { name: 'Szybkie dodawanie' }).getByRole('textbox');
+    await input.fill(title);
+    await input.press('Enter');
+    return server.waitForTask(title);
+  };
+  const [first, second] = [unique('Na zawsze z listy'), unique('Na zawsze z panelu')];
+  const step = unique('Krok na zawsze');
+  const ids = [(await add(first)).id];
+  await add(second);
+  const panel = page.getByRole('complementary', { name: 'Zadanie', exact: true });
+
+  await taskRow(page, first).getByText(first).click();
+  await panel.getByPlaceholder('Dodaj podzadanie').fill(step);
+  await panel.getByPlaceholder('Dodaj podzadanie').press('Enter');
+  ids.push((await server.waitForTask(step)).id);
+
+  // Drugie urządzenie ma już te zadania, gdy trafiają do kosza.
+  const other = await browser.newContext({ storageState: '.auth/e2e.json' });
+  const second2 = await other.newPage();
+  await openApp(second2, '#/inbox');
+  await expect(taskRow(second2, first)).toBeVisible();
+
+  await panel.getByRole('button', { name: 'Przenieś do kosza' }).click();
+  await taskRow(page, second).getByText(second).click();
+  await panel.getByRole('button', { name: 'Przenieś do kosza' }).click();
+  await expect.poll(() => server.task(second)).toBeNull();
+  await page.getByRole('link', { name: 'Kosz', exact: true }).click();
+  const row = (p: typeof page, title: string) => p.locator('main [data-card]').filter({ hasText: title });
+  await second2.getByRole('link', { name: 'Kosz', exact: true }).click();
+  await expect(row(second2, first)).toBeVisible();
+
+  // Anulowanie niczego nie zmienia.
+  let question = '';
+  page.once('dialog', (d) => {
+    question = d.message();
+    void d.dismiss();
+  });
+  await row(page, first).getByRole('button', { name: 'Usuń na stałe' }).click();
+  expect(question).toContain(`Usunąć na stałe „${first}”?`);
+  expect(question).toContain('z 1 podzadaniem');
+  expect(question).toContain('Tego nie da się cofnąć');
+  await expect(row(page, first)).toBeVisible();
+
+  // Bez sieci: komunikat, zadanie zostaje.
+  await page.context().setOffline(true);
+  page.once('dialog', (d) => void d.accept());
+  await row(page, first).getByRole('button', { name: 'Usuń na stałe' }).click();
+  await expect(page.getByText('Definitywne usunięcie wymaga sieci')).toBeVisible();
+  await expect(row(page, first)).toBeVisible();
+  await page.context().setOffline(false);
+
+  // Z listy: zadanie z podzadaniem znika z bazy i z drugiego urządzenia.
+  page.once('dialog', (d) => void d.accept());
+  await row(page, first).getByRole('button', { name: 'Usuń na stałe' }).click();
+  await expect(page.getByText(`Usunięto na stałe „${first}”`)).toBeVisible();
+  await expect(row(page, first)).toHaveCount(0);
+  await expect(row(second2, first)).toHaveCount(0);
+  expect((await server.client.from('tasks').select('id').in('id', ids)).data).toEqual([]);
+  await other.close();
+
+  // Z panelu: podgląd się zamyka.
+  await row(page, second).getByText(second).click();
+  await expect(panel.getByTestId('task-trashed')).toBeVisible();
+  page.once('dialog', (d) => void d.accept());
+  await panel.getByRole('button', { name: 'Usuń na stałe' }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(row(page, second)).toHaveCount(0);
+});

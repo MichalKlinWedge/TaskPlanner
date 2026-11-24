@@ -10,6 +10,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
 import { FilterBar } from '@/components/filter-bar';
+import { PurgeButton } from '@/components/purge-button';
 import { Button, P, usePalette } from '@/components/ui';
 import { listEditable, listLabel, useView } from '@/lib/app-data';
 import { useTrash } from '@/lib/trash';
@@ -54,7 +55,10 @@ export default function TrashScreen() {
                 {inside ? ` · z ${plural(inside, ['podzadaniem', 'podzadaniami', 'podzadaniami'])}` : ''}
               </Text>
             </Pressable>
-            <Button kind="secondary" title="Przywróć" disabled={!listEditable(data, t.listId)} onPress={() => void run(trashPreview(trashed, t.id, alive)?.restore ?? [], { text: `Przywrócono „${t.title}”` })} />
+            <View style={styles.buttons}>
+              <Button kind="secondary" title="Przywróć" disabled={!listEditable(data, t.listId)} onPress={() => void run(trashPreview(trashed, t.id, alive)?.restore ?? [], { text: `Przywrócono „${t.title}”` })} />
+              <PurgeButton kind="secondary" task={t} inside={inside} />
+            </View>
           </View>
         );
       }}
@@ -63,5 +67,6 @@ export default function TrashScreen() {
 }
 
 const styles = StyleSheet.create({
+  buttons: { gap: 6 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
 });

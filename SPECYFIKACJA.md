@@ -183,7 +183,7 @@ Oznaczenia: **[W]** web, **[A]** Android, **[W+A]** oba.
 - Ukończenie rodzica z nieukończonymi podzadaniami → pytanie „Ukończyć też podzadania?” (domyślnie tak).
 - Status: `todo` (Do zrobienia), `in_progress` (W trakcie), `waiting` (Oczekuje), `done` (Gotowe), `cancelled` (Anulowane). Lista statusów jest stała w v1.0 (D6).
 - Operacje grupowe na zaznaczonych zadaniach [W] (Shift/Ctrl + klik, klawiatura) i [A] (długie przytrzymanie): przenieś, termin, priorytet, tag, ukończ, usuń.
-- Usunięcie = kosz (`deleted_at`), przywracanie przez 30 dni; potem trwałe usunięcie (§6).
+- Usunięcie = kosz (`deleted_at`), przywracanie przez 30 dni; potem trwałe usunięcie (§6). Z kosza można też usunąć zadanie na stałe od razu (z potwierdzeniem, tylko z siecią, bez cofnięcia).
 - Historia zmian zadania (z `activity_log`) [W].
 
 ### M4. Tagi, filtry, inteligentne listy

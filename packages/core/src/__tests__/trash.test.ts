@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { toTrashedTask, trashedWith, trashListLabel, trashPreview, trashRoots, trashSince, type TrashedTask } from '../trash.ts';
+import { purgeErrorText, purgeQuestion, toTrashedTask, trashedWith, trashListLabel, trashPreview, trashRoots, trashSince, type TrashedTask } from '../trash.ts';
 
 const AT = '2026-11-20T10:00:00.000Z';
 /** Ten sam moment w zapisie serwera (po synchronizacji). */
@@ -81,14 +81,14 @@ describe('kosz', () => {
 
   it('podgląd głównego: podzadania w kolejności ręcznej, przywrócenie całej grupy', () => {
     const p = trashPreview(trashed, 'a', alive)!;
-    expect([p.root.id, p.parent, p.children.map((t) => t.id), p.count]).toEqual(['a', null, ['b', 'c'], 3]);
+    expect([p.root.id, p.parent, p.children.map((t) => t.id), p.count, p.inside]).toEqual(['a', null, ['b', 'c'], 3, 3]);
     expect(p.restore).toEqual([back('a'), back('c'), back('b'), back('d')]);
     expect(p.restoreAlone).toBeNull();
   });
 
   it('podgląd podzadania: z grupą albo samo (jako zadanie główne, ze swoimi podzadaniami)', () => {
     const b = trashPreview(trashed, 'b', alive)!;
-    expect([b.root.id, b.parent?.id, b.children.map((t) => t.id)]).toEqual(['a', 'a', ['d']]);
+    expect([b.root.id, b.parent?.id, b.children.map((t) => t.id), b.count, b.inside]).toEqual(['a', 'a', ['d'], 3, 1]);
     expect(b.restore).toEqual(trashPreview(trashed, 'a', alive)!.restore);
     expect(b.restoreAlone).toEqual([back('b', { parent_id: null }), back('d')]);
     expect(trashPreview(trashed, 'd', alive)).toMatchObject({ root: { id: 'a' }, parent: { id: 'b' }, children: [] });
@@ -106,6 +106,20 @@ describe('kosz', () => {
 
   it('pętla rodziców w uszkodzonych danych nie zawiesza podglądu', () => {
     expect(trashPreview([task('x', 'y', AT), task('y', 'x', AT)], 'x', alive)?.task.id).toBe('x');
+  });
+
+  it('definitywne usunięcie: pytanie i powód niepowodzenia', () => {
+    expect(purgeQuestion('A', 0)).toEqual({
+      title: 'Usunąć na stałe „A”?',
+      text: 'Zadanie, komentarze, załączniki, przypomnienia i zapisany czas znikną z serwera i wszystkich urządzeń. Tego nie da się cofnąć.',
+    });
+    expect(purgeQuestion('A', 1, true).text).toContain('Zadanie z 1 podzadaniem, komentarze');
+    expect(purgeQuestion('A', 3, true).text).toContain('z 3 podzadaniami');
+    expect(purgeQuestion('A', 1, true).text).toContain('także u innych osób w tej przestrzeni');
+    expect(purgeErrorText(Object.assign(new Error('x'), { code: 'TP007' }))).toContain('nie ma w koszu');
+    expect(purgeErrorText(Object.assign(new Error('x'), { code: 'TP003' }))).toContain('tylko do podglądu');
+    expect(purgeErrorText(new TypeError('Failed to fetch'))).toContain('wymaga sieci');
+    expect(purgeErrorText(new Error('dziwne'))).toBe('Nie udało się usunąć zadania na stałe: dziwne');
   });
 
   it('granica kosza: 30 dni', () => {

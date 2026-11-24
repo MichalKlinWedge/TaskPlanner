@@ -80,6 +80,7 @@ import { BreakdownField } from '@/components/ai-breakdown';
 import { AttachmentsField } from '@/components/attachments-field';
 import { DescriptionField } from '@/components/description-field';
 import { LockedSections, PanelSection } from '@/components/panel-section';
+import { PurgeButton } from '@/components/purge-button';
 import { pickAmount, pickDate, pickOption, pickTime } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
 import { RecurrenceEditor } from '@/components/recurrence-editor';
@@ -360,7 +361,7 @@ export default function TaskScreen() {
 function TrashBar({ preview, readOnly, today, timeZone }: { preview: TrashPreview<TrashedTask>; readOnly: boolean; today: LocalDate; timeZone?: string }) {
   const p = usePalette();
   const { run } = useTaskActions();
-  const { task, root, parent, restore, restoreAlone } = preview;
+  const { task, root, parent, inside, restore, restoreAlone } = preview;
   return (
     <View style={[styles.trash, { backgroundColor: p.selected }]}>
       <Text style={{ color: p.muted, fontSize: 13 }}>
@@ -371,7 +372,8 @@ function TrashBar({ preview, readOnly, today, timeZone }: { preview: TrashPrevie
       {restoreAlone ? (
         <Button kind="secondary" title="Przywróć tylko to" disabled={readOnly} onPress={() => void run(restoreAlone, { text: `Przywrócono „${task.title}” jako zadanie główne` })} />
       ) : null}
-      {readOnly ? <Text style={{ color: p.muted, fontSize: 12 }}>Lista jest udostępniona Ci tylko do podglądu — zadania nie da się przywrócić.</Text> : null}
+      <PurgeButton task={task} inside={inside} onPurged={() => (router.canGoBack() ? router.back() : router.replace('/trash'))} />
+      {readOnly ? <Text style={{ color: p.muted, fontSize: 12 }}>Lista jest udostępniona Ci tylko do podglądu — zadania nie da się przywrócić ani usunąć.</Text> : null}
     </View>
   );
 }
