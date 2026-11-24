@@ -305,6 +305,7 @@ export function FocusIndicator({ navigate, compact }: { navigate: (route: Route)
 /** „Spędzono 1 h 20 min / szac. 2 h”, start skupienia i ręczny wpis. */
 export function TaskTimeField({ task }: { task: ViewTask }) {
   const api = useFocus();
+  const { trashed } = useAppEnv();
   const { run } = useTaskActions();
   const [adding, setAdding] = useState(false);
   const [minutes, setMinutes] = useState("30");
@@ -326,7 +327,7 @@ export function TaskTimeField({ task }: { task: ViewTask }) {
         </span>
         {active ? <span className="rounded bg-[var(--accent)]/10 px-1.5 text-xs">⏱ {FOCUS_PHASE[api.state.phase]} {api.state.phase === "ready" ? "" : dial(api)}</span> : null}
         <span className="ml-auto flex gap-1">
-          {api.settings.enabled ? (
+          {api.settings.enabled && !trashed?.has(task.id) ? (
             <a href={`#/focus/${task.id}`} className="rounded-md border border-[var(--line)] px-2 py-0.5 text-xs hover:bg-[var(--hover)]">
               ▶ Skup się
             </a>

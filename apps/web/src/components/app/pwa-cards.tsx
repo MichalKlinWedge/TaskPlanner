@@ -63,7 +63,9 @@ const NEEDS_NETWORK: { what: string; detail: string }[] = [
     detail: "dodawanie i zmiana połączeń, „Wyślij próbne” i historia wysyłek; „Wyślij do…” bez sieci czeka i wychodzi z serwera po synchronizacji, reguły zapisują się lokalnie.",
   },
   { what: "Asystent AI", detail: "podpinanie i zmiana konta AI, „Sprawdź” i wybór modelu oraz funkcje ✨ (zapytania idą do dostawcy przez serwer); konto podpięte na innym urządzeniu widać po synchronizacji." },
+  { what: "Usunięcie na stałe", detail: "definitywne usuwanie zadań z kosza (przenoszenie do kosza i przywracanie działa bez sieci)." },
   { what: "Podgląd linków", detail: "tytuł strony z adresu — bez sieci adres zostaje tytułem zadania." },
+  { what: "Eksport i import przestrzeni", detail: "plik JSON z osobami, rolami i załącznikami (kopia konta bez plików załączników działa bez sieci)." },
   { what: "Nowa wersja aplikacji", detail: "wczytuje się przy pierwszym starcie z siecią." },
 ];
 

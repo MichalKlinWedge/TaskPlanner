@@ -10,6 +10,7 @@ import { ProjectStatusSelect } from "./project-status";
 import { SharingPanel } from "./sharing";
 import { TemplatePicker, TemplatesCard, useCreateFromTemplate, useProjectTemplates, type TemplateChoice } from "./templates";
 import { Button, Card, IconButton, Input, Notice, Select } from "./ui";
+import { WorkspaceExportButton, WorkspaceImportCard } from "./workspace-transfer";
 
 interface WorkspaceRow extends Record<string, string | number | null> {
   id: string;
@@ -46,7 +47,7 @@ type NewListKind = Exclude<ListKind, "inbox">;
 const byKey = <T extends { sort_key: string; id: string }>(a: T, b: T) => (a.sort_key < b.sort_key ? -1 : a.sort_key > b.sort_key ? 1 : a.id < b.id ? -1 : 1);
 
 /** Przestrzenie i listy (MVP-1): tworzenie, nazwa, kolor, kolejność, archiwizacja; osoby i udostępnianie (v1.x). */
-export function WorkspacesScreen({ store }: { store: TabStore }) {
+export function WorkspacesScreen({ store, email }: { store: TabStore; email: string | null }) {
   const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { rows: workspaces } = useLocalQuery<WorkspaceRow>(
@@ -109,6 +110,7 @@ export function WorkspacesScreen({ store }: { store: TabStore }) {
         <WorkspaceCard
           key={workspace.id}
           store={store}
+          email={email}
           workspace={workspace}
           lists={lists.filter((l) => l.scope_id === workspace.id)}
           showArchived={showArchived}
@@ -119,6 +121,7 @@ export function WorkspacesScreen({ store }: { store: TabStore }) {
         />
       ))}
       <AddForm placeholder="Nowa przestrzeń, np. „Remont”" button="Dodaj przestrzeń" onAdd={(name) => void addWorkspace(name)} />
+      <WorkspaceImportCard email={email} />
       <TemplatesCard store={store} />
     </div>
   );
@@ -126,6 +129,7 @@ export function WorkspacesScreen({ store }: { store: TabStore }) {
 
 function WorkspaceCard({
   store,
+  email,
   workspace,
   lists,
   showArchived,
@@ -135,6 +139,7 @@ function WorkspaceCard({
   run,
 }: {
   store: TabStore;
+  email: string | null;
   workspace: WorkspaceRow;
   lists: ListRow[];
   showArchived: boolean;
@@ -145,6 +150,7 @@ function WorkspaceCard({
 }) {
   const archived = Boolean(workspace.archived_at);
   const [people, setPeople] = useState(false);
+  const [transfer, setTransfer] = useState<{ tone: "error" | "ok" | "info"; text: string } | null>(null);
   // Podgląd tylko czyta; archiwizacja zmienia przestrzeń wszystkim członkom — tylko właściciel.
   const editable = canEditScope(workspace.role);
   const owner = workspace.role === null || workspace.role === "owner";
@@ -213,12 +219,18 @@ function WorkspaceCard({
         <Button kind="ghost" aria-expanded={people} onClick={() => setPeople((p) => !p)}>
           {owner ? "Udostępnij" : "Osoby"}
         </Button>
+        <WorkspaceExportButton workspaceId={workspace.id} name={workspace.name} email={email} onMessage={setTransfer} />
         {owner ? (
           <Button kind="ghost" onClick={() => void update({ archived_at: archived ? null : new Date().toISOString() })}>
             {archived ? "Przywróć" : "Archiwizuj"}
           </Button>
         ) : null}
       </div>
+      {transfer ? (
+        <div className="mt-3" data-testid="workspace-export-message">
+          <Notice tone={transfer.tone}>{transfer.text}</Notice>
+        </div>
+      ) : null}
       {people ? (
         <SharingPanel
           store={store}

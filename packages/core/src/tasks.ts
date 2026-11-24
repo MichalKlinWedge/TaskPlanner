@@ -597,6 +597,9 @@ export function deleteTaskOps(tasks: readonly TreeTask[], id: string, now: Date 
   return [id, ...descendants(tasks, id).map((d) => d.id)].map((taskId) => ({ table: 'tasks', id: taskId, patch: { deleted_at: at } }));
 }
 
+/** Usunięte razem: ten sam moment (lokalnie `…000Z`, po powrocie z serwera `…+00:00`). */
+export const sameDeletion = (a: string | null, b: string | null): boolean => a === b || (a !== null && b !== null && Date.parse(a) === Date.parse(b));
+
 /** Z kosza: zadanie i podzadania usunięte razem z nim; rodzic wciąż w koszu → zadanie główne. */
 export function restoreTaskOps(
   trashed: readonly (TreeTask & { deletedAt: string | null })[],
@@ -608,7 +611,7 @@ export function restoreTaskOps(
   return [
     { table: 'tasks', id, patch: task.parentId && !parentAlive ? { deleted_at: null, parent_id: null } : { deleted_at: null } },
     ...descendants(trashed, id)
-      .filter((d) => d.deletedAt === task.deletedAt)
+      .filter((d) => sameDeletion(d.deletedAt, task.deletedAt))
       .map((d): TaskOp => ({ table: 'tasks', id: d.id, patch: { deleted_at: null } })),
   ];
 }

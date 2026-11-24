@@ -7,10 +7,18 @@
  * treści (np. historia nie pobiera się, dopóki jej nie rozwiniesz).
  */
 import { TASK_SECTION_ICON } from "@taskplanner/core";
-import type { HTMLAttributes, ReactNode } from "react";
+import { createContext, useContext, type HTMLAttributes, type ReactNode } from "react";
 
 import { useAppEnv } from "./app-env";
 import { useTaskActions } from "./task-item";
+
+/**
+ * Sekcje tylko do odczytu (przestrzeń / lista do podglądu, zadanie w koszu): `fieldset disabled` obejmuje treść
+ * sekcji, a nie nagłówek — zwiniętą sekcję da się rozwinąć także w podglądzie.
+ */
+const LockedContext = createContext(false);
+export const LockedSections = LockedContext.Provider;
+export const useSectionsLocked = () => useContext(LockedContext);
 
 /** Czy sekcja jest zwinięta + przełącznik (zapis do profilu). */
 export function useSectionCollapsed(id: string, defaultCollapsed = false): [boolean, () => void] {
@@ -47,6 +55,7 @@ export function PanelSection({
   children: ReactNode;
 } & Omit<HTMLAttributes<HTMLElement>, "title">) {
   const [collapsed, toggle] = useSectionCollapsed(id, defaultCollapsed);
+  const locked = useSectionsLocked();
   const bodyId = `panel-section-${id}`;
   return (
     <section className={`mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] shadow-sm ${className}`} aria-label={title} data-section={id} {...rest}>
@@ -74,7 +83,13 @@ export function PanelSection({
       </div>
       {collapsed ? null : (
         <div id={bodyId} className="@container border-t border-[var(--line)] px-3 pt-3 pb-3">
-          {children}
+          {locked ? (
+            <fieldset disabled className="m-0 min-w-0 border-0 p-0">
+              {children}
+            </fieldset>
+          ) : (
+            children
+          )}
         </div>
       )}
     </section>
