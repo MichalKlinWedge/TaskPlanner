@@ -11,6 +11,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useTheme } from "@/lib/theme";
 
 import { AccountCard } from "./account-card";
+import { AiCard } from "./ai-card";
 import { BackupCard } from "./backup-card";
 import { CalendarsCard } from "./calendars-card";
 import { CaptureCard } from "./capture-card";
@@ -106,6 +107,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
             <RemindersCard store={store} userId={userId} />
             <CalendarsCard store={store} timeZone={parseSettings(settings).timeZone} />
             <PluginsCard store={store} userId={userId} />
+            <AiCard store={store} />
             <BackupCard store={store} userId={userId} timeZone={parseSettings(settings).timeZone} />
             <CaptureCard />
             <InstallCard />

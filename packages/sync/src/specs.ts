@@ -153,7 +153,7 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
  * Tabele, które przychodzą w `pull_changes`, ale klient ich nie pisze (zapis: Edge Functions).
  * Lokalnie bez `field_clock` i outboxu; usunięcie (nagrobek / `deleted_at`) kasuje wiersz.
  */
-export const READONLY_TABLES = ['calendar_accounts', 'calendars', 'calendar_events', 'scope_collaborators', 'scope_tags', 'plugin_connections'] as const;
+export const READONLY_TABLES = ['calendar_accounts', 'calendars', 'calendar_events', 'scope_collaborators', 'scope_tags', 'plugin_connections', 'ai_accounts'] as const;
 export type ReadonlyTable = (typeof READONLY_TABLES)[number];
 
 const readonlyColumns = <T extends ReadonlyTable>() => <const C extends readonly (keyof Tables<T> & string)[]>(cols: C) => cols;
@@ -187,6 +187,13 @@ export const READONLY: { [T in ReadonlyTable]: { columns: readonly string[]; boo
   /** Połączenia pluginów (M21) bez sekretów — pisze Edge Function `plugins`. */
   plugin_connections: {
     columns: readonlyColumns<'plugin_connections'>()(['plugin', 'label', 'config', 'status', 'last_error', 'last_used_at', 'created_at', 'updated_at', 'row_version']),
+    bool: [],
+  },
+  /** Konto AI użytkownika (v1.x) bez klucza — pisze Edge Function `ai`, klucz tylko w Vault. */
+  ai_accounts: {
+    columns: readonlyColumns<'ai_accounts'>()([
+      'provider', 'model', 'models', 'key_hint', 'status', 'last_error', 'verified_at', 'billing_confirmed_at', 'created_at', 'updated_at', 'row_version',
+    ]),
     bool: [],
   },
 };

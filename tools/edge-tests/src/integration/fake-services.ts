@@ -3,7 +3,8 @@
  * `http://host.docker.internal:54590` (`.env.test`): Google OAuth + Calendar API v3 (calendarList,
  * events.list z `syncToken` i stronicowaniem, watch, channels.stop; Etap 12: calendars.insert, events
  * insert/get/patch/delete z `If-Match` → 412, zajęty id → 409, usunięte → 410), plik ICS z ETag, usługa Web Push,
- * odbiorca webhooków pluginów (`/hooks/<nazwa>`, M21), GitLab REST API v4 pod `/gitlab/api/v4/…` (plugin I3).
+ * odbiorca webhooków pluginów (`/hooks/<nazwa>`, M21), GitLab REST API v4 pod `/gitlab/api/v4/…` (plugin I3),
+ * Gemini API pod `/gemini/v1beta/…` (asystent AI: klucz w `x-goog-api-key`, zły klucz → 400 `INVALID_ARGUMENT`).
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 
@@ -133,6 +134,23 @@ export class FakeServices {
     users: [{ id: 501, username: 'jan.kowalski' }],
     issues: [] as FakeIssue[],
     requests: [] as { method: string; path: string }[],
+    status: null as number | null,
+  };
+
+  /**
+   * Gemini (asystent AI, v1.x): klucz `gemini.key` (format nowych auth keys, zmyślony) w nagłówku `x-goog-api-key`;
+   * inny klucz → 400 `INVALID_ARGUMENT` „API key not valid” jak u Google; klucz w adresie (`?key=`) → 400 i wpis
+   * w `requests` (test pilnuje, że go tam nie ma); `status` — wymuszona odpowiedź (np. 503 przeciążenie).
+   */
+  gemini = {
+    key: `AQ.${'FakeGeminiKey0'.repeat(3)}fakeGemi`,
+    models: [
+      { name: 'models/gemini-3.8-flash', displayName: 'Gemini 3.8 Flash', supportedGenerationMethods: ['generateContent', 'countTokens'] },
+      { name: 'models/gemini-3.5-flash-lite', displayName: 'Gemini 3.5 Flash-Lite', supportedGenerationMethods: ['generateContent', 'countTokens'] },
+      { name: 'models/gemini-3.5-flash-lite-preview', displayName: 'Gemini 3.5 Flash-Lite Preview', supportedGenerationMethods: ['generateContent'] },
+      { name: 'models/gemini-embedding-001', displayName: 'Gemini Embedding', supportedGenerationMethods: ['embedContent'] },
+    ],
+    requests: [] as { method: string; path: string; search: string; key: string | null }[],
     status: null as number | null,
   };
 
@@ -307,6 +325,32 @@ export class FakeServices {
     return send(res, 200, issue);
   }
 
+  private geminiApi(req: IncomingMessage, res: ServerResponse, path: string, url: URL) {
+    const g = this.gemini;
+    const header = req.headers['x-goog-api-key'];
+    const key = typeof header === 'string' ? header : null;
+    g.requests.push({ method: req.method ?? '', path, search: url.search, key });
+    if (url.searchParams.has('key')) return send(res, 400, { error: { code: 400, message: 'Klucz w adresie — fałszywy Gemini go nie przyjmuje.', status: 'INVALID_ARGUMENT' } });
+    if (key !== g.key) {
+      return send(res, 400, {
+        error: {
+          code: 400,
+          message: 'API key not valid. Please pass a valid API key.',
+          status: 'INVALID_ARGUMENT',
+          details: [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'API_KEY_INVALID', domain: 'googleapis.com' }],
+        },
+      });
+    }
+    if (g.status) return send(res, g.status, { error: { code: g.status, message: 'This model is currently experiencing high demand.', status: 'UNAVAILABLE' } });
+    if (req.method === 'GET' && path === '/models') return send(res, 200, { models: g.models });
+    const ask = /^\/models\/([^/:]+):generateContent$/.exec(path);
+    if (req.method === 'POST' && ask) {
+      if (!g.models.some((m) => m.name === `models/${ask[1]}`)) return send(res, 404, { error: { code: 404, message: `models/${ask[1]} is not found for API version v1beta`, status: 'NOT_FOUND' } });
+      return send(res, 200, { candidates: [{ content: { parts: [{ text: '{"ok":true}' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 3 } });
+    }
+    return send(res, 404, { error: { code: 404, message: 'nie ma', status: 'NOT_FOUND' } });
+  }
+
   private async handle(req: IncomingMessage, res: ServerResponse) {
     const url = new URL(req.url!, `http://localhost:${FAKE_PORT}`);
     const path = url.pathname;
@@ -319,6 +363,8 @@ export class FakeServices {
       this.hooks.push({ name, method: req.method ?? '', headers: req.headers, body: body.toString('utf8'), status: reply.status, at: Date.now() });
       return send(res, reply.status, reply.body ?? { ok: reply.status < 300 }, { ...(reply.location && { location: reply.location }), ...reply.headers });
     }
+
+    if (path.startsWith('/gemini/v1beta/')) return this.geminiApi(req, res, path.slice('/gemini/v1beta'.length), url);
 
     if (path.startsWith('/gitlab/api/v4/')) return this.gitlabApi(req, res, path.slice('/gitlab/api/v4'.length), url, body);
 

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "typecheck:deno": "cd ../../supabase/functions && npx --yes deno@2.9.6 check --no-lock --config deno.json calendar-sync/index.ts inbound-email/index.ts link-preview/index.ts reminders-push/index.ts account-delete/index.ts plugins/index.ts",
+    "typecheck:deno": "cd ../../supabase/functions && npx --yes deno@2.9.6 check --no-lock --config deno.json calendar-sync/index.ts inbound-email/index.ts link-preview/index.ts reminders-push/index.ts account-delete/index.ts plugins/index.ts ai/index.ts",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "setup": "node src/setup.ts",
