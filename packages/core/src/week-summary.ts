@@ -2,7 +2,7 @@
  * Podsumowanie tygodnia (v1.x) — krok przeglądu tygodnia. Wszystkie liczby liczy kod, z lokalnych danych,
  * więc krok działa też offline i bez konta AI; opis słowny (`ai-week-summary.ts`) tylko wstawia te same fakty.
  *
- * Tydzień = ostatnie 7 dni do dziś włącznie (jak krok „Nawyki tygodnia”), obciążenie = następne 7 dni od jutra.
+ * Tydzień = ostatnie 7 dni do dziś włącznie (jak krok „Cykliczne w tygodniu”), obciążenie = następne 7 dni od jutra.
  */
 import { addDays, isoWeekday, localDateAt } from './dates.ts';
 import { focusWeek, type TimeEntryRecord } from './focus.ts';
@@ -206,7 +206,7 @@ export function weekFactTexts(facts: WeekFacts, names: { list: (id: string) => s
   if (facts.pomodoros) main.push({ key: 'pomodoro', label: 'Pomodoro', value: String(facts.pomodoros), text: `${facts.pomodoros} Pomodoro` });
   if (facts.habitsPossible) {
     const value = `${facts.habitsDone} z ${facts.habitsPossible}`;
-    main.push({ key: 'nawyki', label: 'Nawyki', value, text: `nawyki wykonane ${value}` });
+    main.push({ key: 'nawyki', label: 'Cykliczne', value, text: `zadania cykliczne wykonane ${value}` });
   }
   main.push({ key: 'przyszlosc', label: 'Następne 7 dni', value: String(next.items), text: `${plural(next.items, TASKS)} na najbliższy tydzień` });
   if (next.minutes) {

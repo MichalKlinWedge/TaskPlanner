@@ -396,7 +396,7 @@ export function Shell({
     { route: { view: "board" }, icon: "▦", label: "Tablica" },
     { route: { view: "calendar" }, icon: "🗓", label: "Kalendarz" },
     { route: { view: "timeline" }, icon: "📊", label: "Oś czasu" },
-    { route: { view: "habits" }, icon: "🌱", label: "Nawyki", count: counts.habits || undefined },
+    { route: { view: "habits" }, icon: "🌱", label: "Cykliczne", count: counts.habits || undefined },
   ];
   const bottomNav: NavEntry[] = [
     { route: { view: "manage" }, icon: "🗂️", label: "Przestrzenie i listy" },

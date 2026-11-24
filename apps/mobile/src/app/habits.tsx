@@ -1,6 +1,6 @@
 /**
- * „Nawyki” (Etap 8): otwarte nawyki bieżącej przestrzeni z opisem, passą, regularnością 30 dni
- * i paskiem 8 dni (uzupełnianie wstecz), zakończone osobno, „+ Nowy nawyk”. Chipy filtra (lista,
+ * „Cykliczne” (Etap 8): otwarte nawyki bieżącej przestrzeni z opisem, passą, regularnością 30 dni
+ * i paskiem 8 dni (uzupełnianie wstecz), zakończone osobno, „+ Nowe cykliczne”. Chipy filtra (lista,
  * godzina — reszta warunków nie dotyczy nawyków) trwają do opuszczenia ekranu, nie są zapisywane.
  */
 import { applyFilter, describeHabit, habitsForDay, habitStats, isEmptyFilter, isOpen, plural, toHabit, type FilterQuery } from '@taskplanner/core';
@@ -34,12 +34,12 @@ export default function HabitsScreen() {
   const left = forToday.filter((h) => !h.settled).length;
   const filtered = !isEmptyFilter(filter);
   const subtitle = open.length || filtered
-    ? `${plural(forToday.length, ['nawyk', 'nawyki', 'nawyków'])} na dziś · ${left ? `${left} do zrobienia` : 'wszystko zrobione'}`
-    : 'Codzienne i tygodniowe nawyki z passą i statystykami';
+    ? `${plural(forToday.length, ['cykliczne', 'cykliczne', 'cyklicznych'])} na dziś · ${left ? `${left} do zrobienia` : 'wszystko zrobione'}`
+    : 'Codzienne i tygodniowe zadania cykliczne z passą i statystykami';
 
   return (
     <View style={{ flex: 1, backgroundColor: p.bg }}>
-      <Stack.Screen options={{ title: 'Nawyki' }} />
+      <Stack.Screen options={{ title: 'Cykliczne' }} />
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
         <ScreenHeader subtitle={subtitle}>
           <FilterBar query={filter} onChange={setFilter} hide={HIDDEN} />
@@ -62,9 +62,9 @@ export default function HabitsScreen() {
             </View>
           );
         })}
-        {!open.length && filtered ? <Text style={[styles.empty, { color: p.muted }]}>Żaden otwarty nawyk nie pasuje do filtra.</Text> : null}
+        {!open.length && filtered ? <Text style={[styles.empty, { color: p.muted }]}>Żadne otwarte zadanie cykliczne nie pasuje do filtra.</Text> : null}
         {!open.length && !filtered && data.loaded ? (
-          <Text style={[styles.empty, { color: p.muted }]}>Nie masz jeszcze nawyków. Dodaj pierwszy — np. „Woda 8 szklanek” albo „Siłownia 3 razy w tygodniu”.</Text>
+          <Text style={[styles.empty, { color: p.muted }]}>Nie masz jeszcze zadań cyklicznych. Dodaj pierwsze — np. „Woda 8 szklanek” albo „Siłownia 3 razy w tygodniu”.</Text>
         ) : null}
         {closed.length ? (
           <View style={{ marginTop: 18 }}>
@@ -78,7 +78,7 @@ export default function HabitsScreen() {
         ) : null}
         <Text style={[styles.hint, { color: p.muted }]}>Dotknij dnia: zrobione → dzień wolny → wyczyść (do 7 dni wstecz).</Text>
       </ScrollView>
-      <Fab label="Nowy nawyk" bottom={16 + insets.bottom} onPress={() => router.push('/habit-form')} />
+      <Fab label="Nowe cykliczne" bottom={16 + insets.bottom} onPress={() => router.push('/habit-form')} />
     </View>
   );
 }

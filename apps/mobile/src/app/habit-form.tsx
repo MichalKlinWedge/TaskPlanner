@@ -51,7 +51,7 @@ const NTH: [number, string][] = [[1, 'pierwszy'], [2, 'drugi'], [3, 'trzeci'], [
 const weekdayName = (d: WeekdayCode) => WEEKDAY[(WEEKDAY_CODES.indexOf(d) + 1) as IsoWeekday].label;
 
 const reminderLabel = (r: HabitReminderDraft, today: LocalDate): string =>
-  r.kind === 'relative' ? (r.offsetMin === 0 ? 'o porze nawyku' : `${reminderOffset(r.offsetMin)} porą nawyku`) : `jednorazowo: ${relativeDay(r.atDate, today)}, ${r.atTime}`;
+  r.kind === 'relative' ? (r.offsetMin === 0 ? 'o porze zadania' : `${reminderOffset(r.offsetMin)} porą zadania`) : `jednorazowo: ${relativeDay(r.atDate, today)}, ${r.atTime}`;
 
 function Value({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
   const p = usePalette();
@@ -110,7 +110,7 @@ export default function HabitFormScreen() {
   if (id && !task) {
     return (
       <View style={{ flex: 1, padding: 16, backgroundColor: p.bg }}>
-        <Text style={{ color: p.muted }}>{data.loaded ? 'Tego nawyku już nie ma.' : 'Wczytywanie…'}</Text>
+        <Text style={{ color: p.muted }}>{data.loaded ? 'Tego zadania cyklicznego już nie ma.' : 'Wczytywanie…'}</Text>
       </View>
     );
   }
@@ -135,9 +135,9 @@ export default function HabitFormScreen() {
 
   const addReminder = async () => {
     const offsets = REMINDER_PRESETS.filter((m) => m < 1440 && !reminders.some((r) => r.kind === 'relative' && r.offsetMin === m));
-    const choice = await pickOption<number | 'abs'>('Przypomnienie nawyku', [
+    const choice = await pickOption<number | 'abs'>('Przypomnienie', [
       ...(time ? offsets.map((m) => ({ label: reminderLabel({ kind: 'relative', offsetMin: m }, today), value: m })) : []),
-      { label: 'Jednorazowo: dzień i godzina…', value: 'abs' as const, ...(!time && { hint: 'Przypomnienia przed porą nawyku — po ustawieniu pory' }) },
+      { label: 'Jednorazowo: dzień i godzina…', value: 'abs' as const, ...(!time && { hint: 'Przypomnienia przed porą zadania — po ustawieniu pory' }) },
     ]);
     if (choice === undefined) return;
     if (choice !== 'abs') return setReminderList([...reminders, { kind: 'relative', offsetMin: choice }]);
@@ -150,14 +150,14 @@ export default function HabitFormScreen() {
   // „Po N razach” (COUNT) nie łączy się z „N razy w okresie” (jak na webie).
   const shownEnd: RecurrenceEnd = kind === 'goal' && end.kind === 'count' ? { kind: 'never' } : end;
   const pickEnd = async () => {
-    const choice = await pickOption<RecurrenceEnd['kind']>('Koniec nawyku', [
+    const choice = await pickOption<RecurrenceEnd['kind']>('Koniec powtarzania', [
       { label: 'nigdy', value: 'never', selected: shownEnd.kind === 'never' },
       { label: 'w dniu…', value: 'until', selected: shownEnd.kind === 'until' },
       ...(kind === 'goal' ? [] : [{ label: 'po liczbie razy…', value: 'count' as const, selected: shownEnd.kind === 'count' }]),
     ]);
     if (choice === 'never') setEnd({ kind: 'never' });
     else if (choice === 'until') {
-      const date = await pickDate({ title: 'Ostatni dzień nawyku', value: end.kind === 'until' ? end.date : addDays(start, 29), today, firstDayOfWeek: data.settings.firstDayOfWeek });
+      const date = await pickDate({ title: 'Ostatni dzień', value: end.kind === 'until' ? end.date : addDays(start, 29), today, firstDayOfWeek: data.settings.firstDayOfWeek });
       if (date) setEnd({ kind: 'until', date });
     } else if (choice === 'count') {
       const n = await pickNumber('Po ilu razach zakończyć', { value: end.kind === 'count' ? end.n : 30, min: 1, max: MAX_COUNT });
@@ -178,7 +178,7 @@ export default function HabitFormScreen() {
                 ? initial.schedule
                 : { kind: 'daily' };
       const draft: HabitDraft = { schedule, start, end: shownEnd, target: quantity ? Number(target.replace(',', '.')) : null, unit: quantity ? unit : null, time };
-      if (reminders.some((r) => r.kind === 'relative') && !draft.time) throw new Error('Przypomnienie przed porą nawyku wymaga pory — ustaw ją albo dodaj przypomnienie na dzień i godzinę.');
+      if (reminders.some((r) => r.kind === 'relative') && !draft.time) throw new Error('Przypomnienie przed porą zadania wymaga pory — ustaw ją albo dodaj przypomnienie na dzień i godzinę.');
       const { taskId, ops } = habitSaveOps({
         id: task?.id,
         title,
@@ -189,7 +189,7 @@ export default function HabitFormScreen() {
         lastSortKey: lastSortKey(data, listId),
         now: new Date(),
       });
-      await run(ops, { text: task ? `Zapisano „${title.trim()}”` : `Dodano nawyk „${title.trim()}”` });
+      await run(ops, { text: task ? `Zapisano „${title.trim()}”` : `Dodano cykliczne „${title.trim()}”` });
       if (reminders.length && !(await permissionState()).notifications) await requestNotificationPermission();
       if (task) router.back();
       else router.replace({ pathname: '/habit/[id]', params: { id: taskId } });
@@ -202,14 +202,14 @@ export default function HabitFormScreen() {
 
   return (
     <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-      <Stack.Screen options={{ title: task ? 'Edycja nawyku' : 'Nowy nawyk' }} />
+      <Stack.Screen options={{ title: task ? 'Edycja cyklicznego' : 'Nowe cykliczne' }} />
       <Field label="Nazwa" value={title} onChangeText={setTitle} placeholder="np. Woda, Spacer 30 min" autoFocus={!task} maxLength={500} />
       <Value
         label="Lista"
         value={list ? listLabel(data, list.id) : '—'}
         onPress={() =>
           void pickOption<string>(
-            'Lista nawyku',
+            'Lista zadania',
             data.lists.map((l) => ({ label: listLabel(data, l.id), hint: `${data.workspaces.find((w) => w.id === l.workspaceId)?.name ?? ''} · ${LIST_KIND[l.kind]}`, value: l.id, selected: l.id === listId })),
           ).then((v) => v && setListId(v))
         }
@@ -346,10 +346,10 @@ export default function HabitFormScreen() {
 
       <View style={styles.line}>
         <View style={{ flex: 1 }}>
-          <Value label="Początek" value={shortDate(start)} onPress={() => void pickDate({ title: 'Początek nawyku', value: start, today }).then((d) => d && setStart(d))} />
+          <Value label="Początek" value={shortDate(start)} onPress={() => void pickDate({ title: 'Początek', value: start, today }).then((d) => d && setStart(d))} />
         </View>
         <View style={{ flex: 1 }}>
-          <Value label="Pora (opcjonalnie)" value={time ?? '—'} onPress={() => void pickTime({ title: 'Pora nawyku', value: time, allowNone: true }).then((t) => t !== undefined && setTime(t))} />
+          <Value label="Pora (opcjonalnie)" value={time ?? '—'} onPress={() => void pickTime({ title: 'Pora zadania', value: time, allowNone: true }).then((t) => t !== undefined && setTime(t))} />
         </View>
       </View>
       <Value
@@ -371,7 +371,7 @@ export default function HabitFormScreen() {
       </View>
       {reminders.length ? (
         <Text style={{ color: p.muted, fontSize: 12 }}>
-          Przed porą — w każdy dzień nawyku, chyba że już odhaczony; jednorazowe — raz, w wybranym dniu. Powiadomienie ma przycisk „Zrobione”.
+          Przed porą — w każdy zaplanowany dzień, chyba że już odhaczone; jednorazowe — raz, w wybranym dniu. Powiadomienie ma przycisk „Zrobione”.
         </Text>
       ) : null}
       {error ? (
@@ -379,7 +379,7 @@ export default function HabitFormScreen() {
           {error}
         </Text>
       ) : null}
-      <Button title={task ? 'Zapisz' : 'Dodaj nawyk'} onPress={() => void submit()} />
+      <Button title={task ? 'Zapisz' : 'Dodaj cykliczne'} onPress={() => void submit()} />
     </ScrollView>
   );
 }

@@ -228,7 +228,7 @@ function InviteLink() {
   return null;
 }
 
-/** Dotknięcie powiadomienia (nie przycisku): timer → ekran skupienia, nawyk → „Nawyki”, zadanie → szczegóły. */
+/** Dotknięcie powiadomienia (nie przycisku): timer → ekran skupienia, nawyk → „Cykliczne”, zadanie → szczegóły. */
 function NotificationTap() {
   const response = Notifications.useLastNotificationResponse();
   const handled = useRef<string | null>(null);
@@ -265,9 +265,9 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'Task Planner' }} />
             <Stack.Screen name="task/[id]" options={{ title: 'Zadanie' }} />
             <Stack.Screen name="focus" options={{ title: 'Skupienie' }} />
-            <Stack.Screen name="habits" options={{ title: 'Nawyki' }} />
-            <Stack.Screen name="habit/[id]" options={{ title: 'Nawyk' }} />
-            <Stack.Screen name="habit-form" options={{ title: 'Nawyk' }} />
+            <Stack.Screen name="habits" options={{ title: 'Cykliczne' }} />
+            <Stack.Screen name="habit/[id]" options={{ title: 'Cykliczne' }} />
+            <Stack.Screen name="habit-form" options={{ title: 'Cykliczne' }} />
             <Stack.Screen name="board" options={{ title: 'Tablica' }} />
             <Stack.Screen name="calendar" options={{ title: 'Kalendarz' }} />
             <Stack.Screen name="review/daily" options={{ title: 'Przegląd dnia' }} />

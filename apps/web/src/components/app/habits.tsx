@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Nawyki (M15, Etap 8): lista „Nawyki” (`#/habits`) z paskiem 8 dni do uzupełniania wstecz, ekran
+ * Nawyki (M15, Etap 8): lista „Cykliczne” (`#/habits`) z paskiem 8 dni do uzupełniania wstecz, ekran
  * nawyku ze statystykami (`#/habit/<id>`: passy, regularność 7/30/90 dni, wykres tygodniowy, mapa
  * cieplna roku), formularz nawyku, wiersz w bloku „Dziś” i odhaczanie z powiadomienia. Wszystkie
  * reguły i liczby liczy `@taskplanner/core` (`habits.ts`); tu jest tylko układ.
@@ -233,7 +233,7 @@ export function HabitTodayItem({ item }: { item: HabitForDay }) {
   );
 }
 
-// ── Lista „Nawyki” ───────────────────────────────────────────────────────────────────────────
+// ── Lista „Cykliczne” ───────────────────────────────────────────────────────────────────────────
 
 export function HabitsView({ data, ctx, targetInbox, navigate }: { data: AppData; ctx: ViewContext; targetInbox: List | undefined; navigate: (route: Route) => void }) {
   const [adding, setAdding] = useState(false);
@@ -246,13 +246,13 @@ export function HabitsView({ data, ctx, targetInbox, navigate }: { data: AppData
     <>
       <header className="tp-view-header mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold">Nawyki</h1>
+          <h1 className="text-xl font-semibold">Cykliczne</h1>
           <p className="text-sm text-[var(--muted)]">
-            {open.length ? `${plural(today.length, ["nawyk", "nawyki", "nawyków"])} na dziś · ${left ? `${left} do zrobienia` : "wszystko zrobione"}` : "Codzienne i tygodniowe nawyki z passą i statystykami"}
+            {open.length ? `${plural(today.length, ["cykliczne", "cykliczne", "cyklicznych"])} na dziś · ${left ? `${left} do zrobienia` : "wszystko zrobione"}` : "Codzienne i tygodniowe zadania cykliczne z passą i statystykami"}
           </p>
         </div>
         <Button kind="primary" onClick={() => setAdding((a) => !a)} aria-expanded={adding}>
-          + Nowy nawyk
+          + Nowe cykliczne
         </Button>
       </header>
       {adding ? (
@@ -267,7 +267,7 @@ export function HabitsView({ data, ctx, targetInbox, navigate }: { data: AppData
           ))}
         </ul>
       ) : !adding ? (
-        <p className="py-6 text-center text-sm text-[var(--muted)]">Nie masz jeszcze nawyków. Dodaj pierwszy — np. „Woda 8 szklanek” albo „Siłownia 3 razy w tygodniu”.</p>
+        <p className="py-6 text-center text-sm text-[var(--muted)]">Nie masz jeszcze zadań cyklicznych. Dodaj pierwsze — np. „Woda 8 szklanek” albo „Siłownia 3 razy w tygodniu”.</p>
       ) : null}
       {closed.length ? (
         <section className="mt-6">
@@ -327,9 +327,9 @@ export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: App
   if (!task || !habit || !stats || !year) {
     return (
       <p className="py-6 text-sm text-[var(--muted)]">
-        Tego nawyku nie ma (usunięty albo w zarchiwizowanej liście).{" "}
+        Tego zadania cyklicznego nie ma (usunięte albo w zarchiwizowanej liście).{" "}
         <button type="button" className="text-[var(--accent)] hover:underline" onClick={() => navigate({ view: "habits" })}>
-          Wróć do nawyków
+          Wróć do cyklicznych
         </button>
       </p>
     );
@@ -342,7 +342,7 @@ export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: App
       undo: [{ table: "tasks", id: task.id, patch: { status: task.status, completed_at: task.completedAt } }],
     });
   const remove = () => {
-    if (!window.confirm(`Przenieść nawyk „${task.title}” do kosza? Historia zostaje i wróci razem z nim.`)) return;
+    if (!window.confirm(`Przenieść zadanie cykliczne „${task.title}” do kosza? Historia zostaje i wróci razem z nim.`)) return;
     void run(deleteTaskOps(data.tasks, task.id, new Date()), { text: `„${task.title}” w koszu` });
     navigate({ view: "habits" });
   };
@@ -351,7 +351,7 @@ export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: App
     <>
       <nav className="mb-2">
         <button type="button" className={navLinkClass} onClick={() => navigate({ view: "habits" })}>
-          ← Nawyki
+          ← Cykliczne
         </button>
       </nav>
       <header className="mb-4 flex flex-wrap items-end gap-x-4 gap-y-2">
@@ -654,7 +654,7 @@ export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | 
       const end: RecurrenceEnd =
         endKind === "until" ? { kind: "until", date: endDate as LocalDate } : endKind === "count" && kind !== "goal" ? { kind: "count", n: Number(endCount) } : { kind: "never" };
       const draft: HabitDraft = { schedule, start, end, target: quantity ? Number(target.replace(",", ".")) : null, unit: quantity ? unit : null, time: (time || null) as LocalTime | null };
-      if (reminders.some((r) => r.kind === "relative") && !draft.time) throw new Error("Przypomnienie przed porą nawyku wymaga pory — ustaw ją albo dodaj przypomnienie na dzień i godzinę.");
+      if (reminders.some((r) => r.kind === "relative") && !draft.time) throw new Error("Przypomnienie przed porą zadania wymaga pory — ustaw ją albo dodaj przypomnienie na dzień i godzinę.");
       const { taskId, ops } = habitSaveOps({
         id: task?.id,
         title,
@@ -665,7 +665,7 @@ export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | 
         lastSortKey: lastSortKey(data, listId),
         now: new Date(),
       });
-      void run(ops, { text: task ? `Zapisano „${title.trim()}”` : `Dodano nawyk „${title.trim()}”` });
+      void run(ops, { text: task ? `Zapisano „${title.trim()}”` : `Dodano cykliczne „${title.trim()}”` });
       onDone(task ? undefined : taskId);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -799,7 +799,7 @@ export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | 
         </Field>
         <Field label="Koniec">
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={endKind === "count" && kind === "goal" ? "never" : endKind} onChange={(e) => setEndKind(e.target.value as RecurrenceEnd["kind"])} aria-label="Koniec nawyku">
+            <Select value={endKind === "count" && kind === "goal" ? "never" : endKind} onChange={(e) => setEndKind(e.target.value as RecurrenceEnd["kind"])} aria-label="Koniec powtarzania">
               <option value="never">nigdy</option>
               <option value="until">w dniu…</option>
               {kind !== "goal" ? <option value="count">po liczbie razy…</option> : null}
@@ -822,7 +822,7 @@ export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | 
       ) : null}
       <div className="flex gap-2">
         <Button kind="primary" type="submit">
-          {task ? "Zapisz" : "Dodaj nawyk"}
+          {task ? "Zapisz" : "Dodaj cykliczne"}
         </Button>
         <Button kind="ghost" onClick={() => onDone()}>
           Anuluj
@@ -838,7 +838,7 @@ function HabitRemindersField({ reminders, onChange, start, hasTime }: { reminder
   const [choice, setChoice] = useState("");
   const [at, setAt] = useState({ date: start > today ? start : today, time: "09:00" });
   const label = (r: HabitReminderDraft) =>
-    r.kind === "relative" ? (r.offsetMin === 0 ? "o porze nawyku" : `${reminderOffset(r.offsetMin)} porą nawyku`) : `jednorazowo: ${relativeDay(r.atDate, today)}, ${r.atTime}`;
+    r.kind === "relative" ? (r.offsetMin === 0 ? "o porze zadania" : `${reminderOffset(r.offsetMin)} porą zadania`) : `jednorazowo: ${relativeDay(r.atDate, today)}, ${r.atTime}`;
   const offsets = REMINDER_PRESETS.filter((m) => m < 1440 && !reminders.some((r) => r.kind === "relative" && r.offsetMin === m));
 
   return (
@@ -872,7 +872,7 @@ function HabitRemindersField({ reminders, onChange, start, hasTime }: { reminder
           <option value="">+ Dodaj przypomnienie…</option>
           {offsets.map((m) => (
             <option key={m} value={`rel:${m}`} disabled={!hasTime}>
-              {m === 0 ? "o porze nawyku" : `${reminderOffset(m)} porą nawyku`}
+              {m === 0 ? "o porze zadania" : `${reminderOffset(m)} porą zadania`}
               {hasTime ? "" : " (ustaw porę)"}
             </option>
           ))}
@@ -896,7 +896,7 @@ function HabitRemindersField({ reminders, onChange, start, hasTime }: { reminder
       </div>
       {reminders.length ? (
         <p className="text-xs text-[var(--muted)]">
-          Przed porą — w każdy dzień nawyku, chyba że już odhaczony; jednorazowe — raz, w wybranym dniu. Powiadomienie ma przycisk „Zrobione”. Powiadomienia przeglądarki włączysz w Ustawieniach.
+          Przed porą — w każdy zaplanowany dzień, chyba że już odhaczone; jednorazowe — raz, w wybranym dniu. Powiadomienie ma przycisk „Zrobione”. Powiadomienia przeglądarki włączysz w Ustawieniach.
         </p>
       ) : null}
     </fieldset>

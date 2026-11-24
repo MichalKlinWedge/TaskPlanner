@@ -134,10 +134,10 @@ describe('planPushes — nawyki (Etap 8)', () => {
   // 7:30 w Warszawie = 6:30 UTC.
   const HABIT_AT = '2026-11-19T06:30:00.000Z';
 
-  it('o porze nawyku, z akcją „Zrobione” w treści; dzień zaliczony — bez wysyłki, częściowo — z wysyłką', () => {
+  it('o porze zadania, z akcją „Zrobione” w treści; dzień zaliczony — bez wysyłki, częściowo — z wysyłką', () => {
     const plan = planPushes({ devices: [device('d1')], reminders: [habitReminder], profiles }, { now: HABIT_AT });
     expect(plan.map((p) => [p.fireKey, p.fireAt])).toEqual([['hr:2026-11-19', HABIT_AT]]);
-    expect(plan[0]!.payload).toEqual({ key: 'hr:2026-11-19', title: 'Woda', body: 'Nawyk na dziś · cel 8 szklanek', url: '/?task=h1', taskId: 'h1', habit: true, date: '2026-11-19' });
+    expect(plan[0]!.payload).toEqual({ key: 'hr:2026-11-19', title: 'Woda', body: 'Cykliczne na dziś · cel 8 szklanek', url: '/?task=h1', taskId: 'h1', habit: true, date: '2026-11-19' });
     const done = [{ task_id: 'h1', occurrence_date: '2026-11-19', kind: 'done', value: 8 }];
     expect(planPushes({ devices: [device('d1')], reminders: [habitReminder], profiles, completions: done }, { now: HABIT_AT })).toHaveLength(0);
     const partial = [{ task_id: 'h1', occurrence_date: '2026-11-19', kind: 'done', value: 3 }];

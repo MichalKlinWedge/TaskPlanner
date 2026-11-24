@@ -46,7 +46,7 @@ const STEPS = [
   { id: 'projects', title: 'Projekty bez następnego kroku' },
   { id: 'waiting', title: 'Oczekuje > 7 dni' },
   { id: 'upcoming', title: 'Nadchodzący tydzień' },
-  { id: 'habits', title: 'Nawyki tygodnia' },
+  { id: 'habits', title: 'Cykliczne w tygodniu' },
   { id: 'summary', title: WEEK_SUMMARY.step },
 ] as const;
 type Step = (typeof STEPS)[number]['id'];
@@ -270,7 +270,7 @@ export default function WeeklyReviewScreen() {
             <Text style={{ color: p.muted, fontSize: 12, width: 28, textAlign: 'right' }}>{days.filter((d) => d.state === 'done').length}/7</Text>
           </View>
         ))
-      : empty('Brak nawyków.');
+      : empty('Brak zadań cyklicznych.');
   }
 
   return (

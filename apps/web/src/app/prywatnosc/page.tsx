@@ -38,7 +38,7 @@ export default function PrivacyPage() {
             <code>profile</code>). Z profilu Google zapisujemy tylko adres e-mail i nazwę.
           </li>
           <li>
-            <strong>Treści, które wpisujesz:</strong> przestrzenie, listy, zadania i ich opisy, tagi, przypomnienia, nawyki, wpisy czasu pracy, zapisane
+            <strong>Treści, które wpisujesz:</strong> przestrzenie, listy, zadania i ich opisy, tagi, przypomnienia, zadania cykliczne, wpisy czasu pracy, zapisane
             filtry i ustawienia (strefa czasowa, godziny pracy), komentarze i nazwy osób wskazanych w zadaniach, a także pliki dodane jako załączniki
             (do 250 MB na konto).
           </li>

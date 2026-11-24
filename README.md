@@ -1,6 +1,6 @@
 # Task Planner
 
-Osobisty system zadań codziennych. Na laptopie (web, PWA) służy do planowania: listy, kanban, kalendarz z time-blockingiem, oś czasu z zależnościami, przeglądy dnia i tygodnia. Na telefonie (Android) służy do wykonania: szybkie dodawanie, „Dziś”, przypomnienia, tryb skupienia, nawyki, widżety.
+Osobisty system zadań codziennych. Na laptopie (web, PWA) służy do planowania: listy, kanban, kalendarz z time-blockingiem, oś czasu z zależnościami, przeglądy dnia i tygodnia. Na telefonie (Android) służy do wykonania: szybkie dodawanie, „Dziś”, przypomnienia, tryb skupienia, zadania cykliczne, widżety.
 
 Oba klienty są **local-first**: czytają i piszą lokalną bazę SQLite, działają w pełni offline, a synchronizacja z Supabase idzie w tle. Konflikty rozstrzyga last-writer-wins per pole na zegarach HLC.
 

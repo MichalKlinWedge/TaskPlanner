@@ -288,7 +288,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
         <PeopleField key={`people:${task.id}`} task={task} />
 
         {task.kind === "habit" ? (
-          <Block title="Nawyk">
+          <Block id="Nawyk" title="Cykliczne">
             <a href={`#/habit/${task.id}`} className={`self-start ${navLinkClass}`}>
               Statystyki, harmonogram i cel →
             </a>

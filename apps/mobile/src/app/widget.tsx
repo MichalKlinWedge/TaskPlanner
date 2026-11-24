@@ -17,7 +17,7 @@ import { TODAY_WIDGET } from '@/widget/today-widget';
 const PIN = [
   { name: TODAY_WIDGET, title: 'Dziś', label: 'Task Planner — Dziś' },
   { name: QUICK_ADD_WIDGET, title: 'Szybkie dodawanie', label: 'Task Planner — Szybkie dodawanie' },
-  { name: HABITS_WIDGET, title: 'Nawyki', label: 'Task Planner — Nawyki' },
+  { name: HABITS_WIDGET, title: 'Cykliczne', label: 'Task Planner — Cykliczne' },
 ];
 
 export default function Today() {
