@@ -238,6 +238,8 @@ export interface QuickAddScope {
   newId?: () => string;
   /** Podzadanie: lista rodzica, wskazanie listy we wpisie jest pomijane. */
   parent?: { id: string; listId: string };
+  /** Opis zadania (Markdown, np. wycinek strony z zakładki); pusty = bez opisu. */
+  description?: string | null;
 }
 
 export interface QuickAddOps {
@@ -290,6 +292,7 @@ export function quickAddTaskOps(result: QuickAddResult, text: string, scope: Qui
       sort_key: keyBetween(scope.lastSortKey(scope.parent?.id ?? listId)),
       source: { kind: 'quick_add', text: text.slice(0, 1000) },
       postpone_count: 0,
+      ...(scope.description?.trim() ? { description_md: scope.description.trim() } : {}),
     },
   });
 

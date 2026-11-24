@@ -4,7 +4,7 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, tagsForWorkspace, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
+import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, tagsForWorkspace, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type ViewContext, type WebClip } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -12,6 +12,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { useAppData, useToday, type List, type Workspace } from "@/lib/app-data";
 import { GOOGLE_RETURN_PARAM } from "@/lib/calendars";
 import { DEFAULT_ROUTE, routeHash, useRoute, type Route } from "@/lib/route";
+import { dropClip, pendingClip } from "@/lib/web-clip";
 
 import { AppEnvProvider, useAppEnv, visibleTaskIds } from "./app-env";
 import { Board } from "./board";
@@ -121,8 +122,9 @@ export function Shell({
       window.removeEventListener("keydown", onKey, true);
     };
   }, [peek]);
-  // Etap 10: udostępnienie (Web Share Target) i zakładka: `/?share_title=…&share_text=…&share_url=…`.
-  const [shared, setShared] = useState(() => (typeof window !== "undefined" ? readShare(new URLSearchParams(window.location.search)) : null));
+  // Etap 10: udostępnienie (Web Share Target) i starsza zakładka: `/?share_title=…&share_text=…&share_url=…`;
+  // nowa zakładka: wycinek z `/#share?…` (zdjęty z adresu w `lib/web-clip.ts`).
+  const [shared, setShared] = useState(() => (typeof window !== "undefined" ? (sharedClip(pendingClip()) ?? readShare(new URLSearchParams(window.location.search))) : null));
   // Skrót „Szybkie dodawanie” z ikony aplikacji: `/?quick=1`.
   const [quickOpen, setQuickOpen] = useState(() => typeof window !== "undefined" && (new URLSearchParams(window.location.search).has("quick") || shared !== null));
   useEffect(() => {
@@ -557,9 +559,10 @@ export function Shell({
           onClose={() => {
             setQuickOpen(false);
             setShared(null);
+            dropClip();
           }}
           {...quickDefaults}
-          {...(shared && { initialText: shared.text, link: shared.url ? { url: shared.url, shared: true } : undefined, placeholder: "Zadanie z udostępnionego linku" })}
+          {...(shared && { initialText: shared.text, link: shared.url ? { url: shared.url, shared: true } : undefined, clip: shared.clip, placeholder: "Zadanie z udostępnionego linku" })}
         />
         {palette ? (
           <PaletteHost
@@ -770,7 +773,17 @@ const focusRoute = (taskId: string | null | undefined): Route => (taskId ? { vie
 /** Parametry udostępnienia (manifest `share_target`, zakładka w „Ustawieniach”). */
 export const SHARE_PARAMS = ["share_title", "share_text", "share_url"] as const;
 
-function readShare(params: URLSearchParams): { text: string; url: string | null } | null {
+interface Shared {
+  text: string;
+  url: string | null;
+  clip?: WebClip;
+}
+
+function sharedClip(clip: WebClip | null): Shared | null {
+  return clip && { ...sharedText({ title: clip.title, url: clip.url }), clip };
+}
+
+function readShare(params: URLSearchParams): Shared | null {
   if (!SHARE_PARAMS.some((p) => params.get(p))) return null;
   const result = sharedText({ title: params.get("share_title"), text: params.get("share_text"), url: params.get("share_url") });
   return result.text ? result : null;

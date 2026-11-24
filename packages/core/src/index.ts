@@ -1,5 +1,6 @@
 export * from './ai.ts';
 export * from './ai-breakdown.ts';
+export * from './ai-clip.ts';
 export * from './ai-day-plan.ts';
 export * from './ai-week-summary.ts';
 export * from './app-update.ts';
@@ -44,6 +45,7 @@ export * from './templates.ts';
 export * from './time-blocking.ts';
 export * from './timeline.ts';
 export * from './views.ts';
+export * from './web-clip.ts';
 export * from './week-summary.ts';
 export * from './widgets.ts';
 export * from './xlsx.ts';
