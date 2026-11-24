@@ -4,12 +4,27 @@
  * listę prostych operacji (`rect` / `polygon` / `line` / `circle` / `text`) we współrzędnych pliku
  * przy 100 % — web tylko je wykonuje na `<canvas>` 2D. Kolory liczone jak `color-mix(in srgb, …)`
  * w CSS widoku (`mixHex`), tytuł dopasowany tą samą funkcją `fitTitle` i tym samym polem co na
- * ekranie. Strzałki między kartami dojdą jako kolejne operacje `line` / `polygon`.
+ * ekranie. Strzałki między kartami (`canvasArrows`) — te same odcinki (`canvasArrowSegment`) i style
+ * co w widoku: `line` / `polygon` / `circle` pod kartami.
  *
  * `canvasRasterScale` dobiera skalę obrazu w limicie płótna przeglądarki, `canvasPdfPages` dzieli
  * plan na strony PDF (jedna strona dopasowana albo kilka stron w stałej skali, cięcie po siatce).
  */
-import { CANVAS_CARD, CANVAS_DEFAULT_COLOR, CANVAS_FRAME, CANVAS_STEP, canvasColorTag, cellInGroup, fitTitle, type PlacedCard } from './canvas.ts';
+import {
+  CANVAS_CARD,
+  CANVAS_DEFAULT_COLOR,
+  CANVAS_FRAME,
+  CANVAS_STEP,
+  canvasArrowHead,
+  canvasArrowSegment,
+  canvasCardRect,
+  canvasColorTag,
+  cellInGroup,
+  fitTitle,
+  type CanvasArrow,
+  type CanvasArrowKind,
+  type PlacedCard,
+} from './canvas.ts';
 import { collaboratorBadge } from './collaborators.ts';
 import { dayMonth, plural } from './format.ts';
 import { PRIORITY } from './labels.ts';
@@ -57,6 +72,8 @@ export interface CanvasExportTheme {
   text: string;
   muted: string;
   line: string;
+  /** Naruszona kolejność („blokuje” na czerwono, `--danger`). */
+  danger: string;
   /** Znaczek odpowiedzialnego (pełny) i uczestnika (obrys). */
   assignee: string;
   assigneeText: string;
@@ -72,6 +89,7 @@ export const CANVAS_EXPORT_THEMES: Record<CanvasExportThemeName, CanvasExportThe
     text: '#18181b',
     muted: '#71717a',
     line: '#e4e4e7',
+    danger: '#dc2626',
     assignee: '#0284c7',
     assigneeText: '#ffffff',
     participant: '#0284c7',
@@ -83,6 +101,7 @@ export const CANVAS_EXPORT_THEMES: Record<CanvasExportThemeName, CanvasExportThe
     text: '#f4f4f5',
     muted: '#a1a1aa',
     line: '#27272a',
+    danger: '#f87171',
     assignee: '#0ea5e9',
     assigneeText: '#ffffff',
     participant: '#38bdf8',
@@ -154,7 +173,12 @@ export interface CanvasExportInput {
   subtasks?: ReadonlyMap<string, { done: number; total: number }>;
   /** Tytuł rodzica karty-podzadania (tryb „Z podzadaniami”). */
   parentTitles?: ReadonlyMap<string, string>;
+  /** Strzałki między kartami (`canvasArrows(…).arrows`); rysowane te, których oba końce są w pliku. */
+  arrows?: readonly CanvasArrow[];
 }
+
+/** Opis strzałek w legendzie. */
+const ARROW_LEGEND: Record<CanvasArrowKind, string> = { blocks: 'blokuje', derived: 'wynika z', parent: 'podzadanie' };
 
 export interface CanvasExportOptions {
   measure: CanvasMeasure;
@@ -231,7 +255,10 @@ export function canvasExportScene(input: CanvasExportInput, options: CanvasExpor
   const contentW = Math.ceil(Math.max(boardW, titleWidth, measure(subtitle, 13, 400), MIN_WIDTH - 2 * MARGIN));
 
   // Legenda: kolorowe tagi kart w kolejności tagów + „bez kolorowego tagu”.
-  const legendItems: { color: string; label: string }[] = [];
+  const placedIds = new Map(placed.map((p) => [p.task.id, p]));
+  const arrows = (input.arrows ?? []).filter((a) => placedIds.has(a.fromId) && placedIds.has(a.toId));
+  type LegendItem = { color: string; label: string; arrow?: CanvasArrowKind };
+  const legendItems: LegendItem[] = [];
   if (options.legend ?? true) {
     const seen = new Map<string, CanvasExportTag>();
     let plain = 0;
@@ -242,10 +269,15 @@ export function canvasExportScene(input: CanvasExportInput, options: CanvasExpor
     }
     for (const tag of [...seen.values()].sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0))) legendItems.push({ color: tag.color!, label: `@${tag.name}` });
     if (plain && seen.size) legendItems.push({ color: CANVAS_DEFAULT_COLOR, label: 'bez kolorowego tagu' });
+    // Rodzaje strzałek obecne w pliku (próbka linii zamiast kwadratu koloru).
+    for (const kind of ['blocks', 'derived', 'parent'] as const) {
+      if (arrows.some((a) => a.kind === kind)) legendItems.push({ color: theme.muted, label: ARROW_LEGEND[kind], arrow: kind });
+    }
   }
-  const legendRows: { x: number; item: { color: string; label: string }; width: number }[][] = [];
+  const SAMPLE = 26;
+  const legendRows: { x: number; item: LegendItem; width: number }[][] = [];
   for (const item of legendItems) {
-    const width = 14 + measure(item.label, 12, 400);
+    const width = (item.arrow ? SAMPLE + 4 : 14) + measure(item.label, 12, 400);
     const row = legendRows.at(-1);
     const end = row?.length ? row.at(-1)!.x + row.at(-1)!.width + 16 : 0;
     if (row && end + width <= contentW) row.push({ x: end, item, width });
@@ -284,13 +316,20 @@ export function canvasExportScene(input: CanvasExportInput, options: CanvasExpor
     ops.push({ kind: 'text', x: tabX + 7, y: tabY + groupTab / 2, text: label, size: 11, weight: 500, color: theme.text });
   }
 
+  // Strzałki między grupami a kartami (jak warstwa SVG w widoku).
+  for (const arrow of arrows) {
+    const seg = canvasArrowSegment(canvasCardRect(placedIds.get(arrow.fromId)!.cell), canvasCardRect(placedIds.get(arrow.toId)!.cell), arrow.offset);
+    if (seg) arrowOps(ops, arrow.kind, arrow.violated ? theme.danger : theme.muted, { x1: seg.x1 + ox, y1: seg.y1 + oy, x2: seg.x2 + ox, y2: seg.y2 + oy });
+  }
+
   for (const p of placed) cardOps(ops, p, ox + p.cell.col * CANVAS_STEP.x, oy + p.cell.row * CANVAS_STEP.y, input, theme, measure);
 
   legendRows.forEach((row, i) => {
     const cy = legendTop + i * LEGEND_ROW + LEGEND_ROW / 2;
     for (const { x, item } of row) {
-      ops.push({ kind: 'rect', x: MARGIN + x, y: cy - 5, w: 10, h: 10, radius: 2, fill: item.color });
-      ops.push({ kind: 'text', x: MARGIN + x + 14, y: cy, text: item.label, size: 12, weight: 400, color: theme.text });
+      if (item.arrow) arrowOps(ops, item.arrow, item.color, { x1: MARGIN + x, y1: cy, x2: MARGIN + x + SAMPLE, y2: cy });
+      else ops.push({ kind: 'rect', x: MARGIN + x, y: cy - 5, w: 10, h: 10, radius: 2, fill: item.color });
+      ops.push({ kind: 'text', x: MARGIN + x + (item.arrow ? SAMPLE + 4 : 14), y: cy, text: item.label, size: 12, weight: 400, color: theme.text });
     }
   });
 
@@ -302,6 +341,28 @@ export function canvasExportScene(input: CanvasExportInput, options: CanvasExpor
     grid: { x: ox - CANVAS_CARD.gap / 2, y: oy - CANVAS_CARD.gap / 2, stepX: CANVAS_STEP.x, stepY: CANVAS_STEP.y },
     cards: placed.length,
   };
+}
+
+/**
+ * Strzałka jak w widoku: „blokuje” — ciągła 2 px z pełnym grotem (linia kończy się u podstawy grotu),
+ * „wynika z” — przerywana 1,5 px z otwartym grotem, rodzic → podzadanie — kropkowana z kropką przy rodzicu.
+ */
+function arrowOps(ops: CanvasDrawOp[], kind: CanvasArrowKind, color: string, seg: { x1: number; y1: number; x2: number; y2: number }) {
+  if (kind === 'parent') {
+    ops.push({ kind: 'line', points: [[seg.x1, seg.y1], [seg.x2, seg.y2]], stroke: color, lineWidth: 1.25, dash: [2, 4], alpha: 0.7 });
+    ops.push({ kind: 'circle', x: seg.x1, y: seg.y1, r: 3, fill: color, alpha: 0.7 });
+    return;
+  }
+  const head = canvasArrowHead(seg, kind === 'blocks' ? 10 : 9, kind === 'blocks' ? 8 : 9);
+  if (kind === 'blocks') {
+    const len = Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1) || 1;
+    const end: CanvasPoint = [seg.x2 - ((seg.x2 - seg.x1) / len) * 8, seg.y2 - ((seg.y2 - seg.y1) / len) * 8];
+    ops.push({ kind: 'line', points: [[seg.x1, seg.y1], end], stroke: color, lineWidth: 2 });
+    ops.push({ kind: 'polygon', points: head, fill: color });
+  } else {
+    ops.push({ kind: 'line', points: [[seg.x1, seg.y1], [seg.x2, seg.y2]], stroke: color, lineWidth: 1.5, dash: [6, 4] });
+    ops.push({ kind: 'line', points: head, stroke: color, lineWidth: 1.5 });
+  }
 }
 
 /** Jedna karta: przód z zagiętym rogiem, ramka priorytetu, tytuł, pasek z podzadaniami i osobami. */

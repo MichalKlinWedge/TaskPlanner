@@ -237,6 +237,14 @@ test('karteczki: strzałka „blokuje” = zależność na serwerze, cykl odrzuc
     await expect(arrow(ids.second, ids.first, 'derived')).toHaveCount(1);
   });
 
+  await test.step('eksport PNG ze strzałkami na tablicy (treść sceny sprawdza core `canvas-export.test.ts`)', async () => {
+    await page.getByTestId('canvas-export').click();
+    const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('canvas-export-png').click()]);
+    const bytes = await readFile((await download.path())!);
+    expect([...bytes.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+    expect(bytes.length).toBeGreaterThan(5000);
+  });
+
   await test.step('bez sieci: bez uchwytów i bez zaznaczania strzałek', async () => {
     await context.setOffline(true);
     await expect(page.getByTestId('canvas-note')).toBeVisible();

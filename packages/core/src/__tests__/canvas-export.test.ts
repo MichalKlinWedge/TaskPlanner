@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CANVAS_CARD, CANVAS_DEFAULT_COLOR, CANVAS_STEP, canvasLayout, fitTitle } from '../canvas.ts';
+import { CANVAS_CARD, CANVAS_DEFAULT_COLOR, CANVAS_STEP, canvasArrows, canvasLayout, fitTitle } from '../canvas.ts';
 import {
   CANVAS_EXPORT_THEMES,
   CANVAS_PDF,
@@ -58,6 +58,36 @@ describe('mixHex', () => {
 });
 
 describe('canvasExportScene', () => {
+  it('strzałki: pod kartami, styl wg rodzaju, naruszenie na czerwono, tylko z obu końcami w pliku; legenda rodzajów', () => {
+    const tasks = [task('a', 0, 0), task('b', 1, 0, { derivedFrom: ['a'] } as Partial<CanvasExportTask>), task('c', 0, 1, { parentId: 'a' }), task('d', null)];
+    const deps = [
+      { id: 'd1', predecessorId: 'a', successorId: 'b', lagDays: 0 },
+      { id: 'd2', predecessorId: 'c', successorId: 'b', lagDays: 0 },
+      { id: 'd3', predecessorId: 'a', successorId: 'd', lagDays: 0 },
+    ];
+    const all = tasks.map((t) => ({ ...t, derivedFrom: (t as { derivedFrom?: string[] }).derivedFrom ?? null }));
+    const { arrows } = canvasArrows(new Set(['a', 'b', 'c']), all, deps, new Set(['d2']));
+    const scene = canvasExportScene(input(tasks, { arrows }), { measure });
+    const lines = scene.ops.flatMap((o, i) => (o.kind === 'line' ? [{ o, i }] : []));
+    const firstCard = scene.ops.findIndex((o) => o.kind === 'polygon' && o.shadow === 'card');
+    // „blokuje” a → b: ciągła 2 px + pełny grot; c → b naruszona — kolor `danger`.
+    // (Próbka „blokuje” w legendzie leży za kartami — liczą się tylko linie przed pierwszą kartą.)
+    const solid = lines.filter(({ o, i }) => i < firstCard && o.lineWidth === 2 && !o.dash && o.points.length === 2);
+    expect(solid.map(({ o }) => o.stroke).sort()).toEqual([CANVAS_EXPORT_THEMES.light.danger, CANVAS_EXPORT_THEMES.light.muted].sort());
+    // „wynika z” — przerywana, rodzic → podzadanie — kropkowana z kropką.
+    expect(lines.some(({ o, i }) => i < firstCard && o.dash?.join() === '6,4')).toBe(true);
+    expect(lines.some(({ o, i }) => i < firstCard && o.dash?.join() === '2,4')).toBe(true);
+    expect(scene.ops.some((o, i) => i < firstCard && o.kind === 'circle' && o.r === 3)).toBe(true);
+    // Legenda: trzy rodzaje strzałek.
+    expect(texts(scene.ops).map((t) => t.text)).toEqual(expect.arrayContaining(['blokuje', 'wynika z', 'podzadanie']));
+    // Zaznaczenie tylko „a” i „c”: zostaje linia rodzic → podzadanie, strzałek do „b” nie ma.
+    const part = canvasExportScene(input(tasks, { arrows }), { measure, selection: new Set(['a', 'c']) });
+    const partCard = part.ops.findIndex((o) => o.kind === 'polygon' && o.shadow === 'card');
+    expect(part.ops.some((o, i) => i < partCard && o.kind === 'line' && o.lineWidth === 2 && !o.dash)).toBe(false);
+    expect(texts(part.ops).map((t) => t.text)).not.toContain('blokuje');
+    expect(texts(part.ops).map((t) => t.text)).toContain('podzadanie');
+  });
+
   it('karty w komórkach względem lewego górnego rogu tablicy, kolor z pierwszego kolorowego tagu', () => {
     const tasks = [task('a', 0, 0, { tagIds: ['t-none', 't-red', 't-blue'] }), task('b', 2, 1), task('c', null)];
     const scene = canvasExportScene(input(tasks), { measure });
