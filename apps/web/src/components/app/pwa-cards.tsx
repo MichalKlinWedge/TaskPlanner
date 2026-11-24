@@ -10,6 +10,7 @@ import { installState, promptInstall, subscribeInstall } from "@/lib/install";
 import { useStoreStatus } from "@/lib/local-store";
 import { checkOfflineCache, offlineStatus, subscribeOffline, type OfflineCheck } from "@/lib/service-worker";
 
+import { CollapsibleCard } from "./collapsible-card";
 import { Button, Card } from "./ui";
 
 const SHORTCUTS = "Szybkie dodawanie, Dziś, Kalendarz";
@@ -68,6 +69,14 @@ const NEEDS_NETWORK: { what: string; detail: string }[] = [
 
 /** Stan pracy bez sieci w tej przeglądarce (M20): baza, trwała pamięć, Service Worker, pliki. */
 export function OfflineCard() {
+  return (
+    <CollapsibleCard id="offline" title="Praca bez sieci w tej przeglądarce">
+      <OfflineStatus />
+    </CollapsibleCard>
+  );
+}
+
+function OfflineStatus() {
   const store = useStoreStatus();
   const offline = useSyncExternalStore(subscribeOffline, offlineStatus, offlineStatus);
   const sw = { active: "gotowa — aplikacja wystartuje bez sieci", installing: "w trakcie przygotowania (odśwież stronę)", unsupported: "niedostępna w tej przeglądarce", dev: "wyłączona w trybie deweloperskim" }[offline.serviceWorker];
@@ -81,8 +90,7 @@ export function OfflineCard() {
   }, [offline.serviceWorker, runCheck]);
 
   return (
-    <Card className="mt-4">
-      <h2 className="mb-2 text-sm font-semibold">Praca bez sieci w tej przeglądarce</h2>
+    <>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         <dt className="text-[var(--muted)]">Lokalna baza</dt>
         <dd>{store.storage}</dd>
@@ -117,6 +125,6 @@ export function OfflineCard() {
       <p className="mt-2 text-xs text-[var(--muted)]">
         Widoki (Dziś, Nadchodzące, listy, tablica, kalendarz, oś czasu, cykliczne, skupienie, przeglądy), szybkie dodawanie, edycja, kosz i ustawienia pracują na lokalnej bazie.
       </p>
-    </Card>
+    </>
   );
 }
