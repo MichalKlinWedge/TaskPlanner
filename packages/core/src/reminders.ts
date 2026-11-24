@@ -167,7 +167,7 @@ export function reminderBody(
   const at = new Date(now).getTime();
   if (task.kind === 'habit') {
     const target = task.habit?.target;
-    return { title: task.title, body: target === undefined ? 'Nawyk na dziś — odhacz, gdy zrobisz' : `Nawyk na dziś · cel ${target}${task.habit?.unit ? ` ${task.habit.unit}` : ''}` };
+    return { title: task.title, body: target === undefined ? 'Cykliczne na dziś — odhacz, gdy zrobisz' : `Cykliczne na dziś · cel ${target}${task.habit?.unit ? ` ${task.habit.unit}` : ''}` };
   }
   if (!fire.occurrenceDate || !fire.dueAt) return { title: task.title, body: 'Przypomnienie' };
   const due = new Date(fire.dueAt).getTime();

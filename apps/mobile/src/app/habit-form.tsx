@@ -82,7 +82,7 @@ export default function HabitFormScreen() {
   if (id && !task) {
     return (
       <View style={{ flex: 1, padding: 16, backgroundColor: p.bg }}>
-        <Text style={{ color: p.muted }}>{data.loaded ? 'Tego nawyku już nie ma.' : 'Wczytywanie…'}</Text>
+        <Text style={{ color: p.muted }}>{data.loaded ? 'Tego zadania cyklicznego już nie ma.' : 'Wczytywanie…'}</Text>
       </View>
     );
   }
@@ -121,7 +121,7 @@ export default function HabitFormScreen() {
       const draft: HabitDraft = { ...initial, schedule, start, target: quantity ? Number(target.replace(',', '.')) : null, unit: quantity ? unit : null, time };
       if (remind && !draft.time) throw new Error('Przypomnienie wymaga pory.');
       const { taskId, ops } = habitSaveOps({ id: task?.id, title, listId, draft, remind, reminderIds, lastSortKey: lastSortKey(data, listId), now: new Date() });
-      await run(ops, { text: task ? `Zapisano „${title.trim()}”` : `Dodano nawyk „${title.trim()}”` });
+      await run(ops, { text: task ? `Zapisano „${title.trim()}”` : `Dodano cykliczne „${title.trim()}”` });
       if (remind && !(await permissionState()).notifications) await requestNotificationPermission();
       if (task) router.back();
       else router.replace({ pathname: '/habit/[id]', params: { id: taskId } });
@@ -134,14 +134,14 @@ export default function HabitFormScreen() {
 
   return (
     <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-      <Stack.Screen options={{ title: task ? 'Edycja nawyku' : 'Nowy nawyk' }} />
+      <Stack.Screen options={{ title: task ? 'Edycja cyklicznego' : 'Nowe cykliczne' }} />
       <Field label="Nazwa" value={title} onChangeText={setTitle} placeholder="np. Woda, Spacer 30 min" autoFocus={!task} maxLength={500} />
       <Value
         label="Lista"
         value={list ? listLabel(data, list.id) : '—'}
         onPress={() =>
           void pickOption<string>(
-            'Lista nawyku',
+            'Lista zadania',
             data.lists.map((l) => ({ label: listLabel(data, l.id), hint: `${data.workspaces.find((w) => w.id === l.workspaceId)?.name ?? ''} · ${LIST_KIND[l.kind]}`, value: l.id, selected: l.id === listId })),
           ).then((v) => v && setListId(v))
         }
@@ -278,23 +278,23 @@ export default function HabitFormScreen() {
 
       <View style={styles.line}>
         <View style={{ flex: 1 }}>
-          <Value label="Początek" value={shortDate(start)} onPress={() => void pickDate({ title: 'Początek nawyku', value: start, today }).then((d) => d && setStart(d))} />
+          <Value label="Początek" value={shortDate(start)} onPress={() => void pickDate({ title: 'Początek', value: start, today }).then((d) => d && setStart(d))} />
         </View>
         <View style={{ flex: 1 }}>
-          <Value label="Pora (opcjonalnie)" value={time ?? '—'} onPress={() => void pickTime({ title: 'Pora nawyku', value: time, allowNone: true }).then((t) => t !== undefined && setTime(t))} />
+          <Value label="Pora (opcjonalnie)" value={time ?? '—'} onPress={() => void pickTime({ title: 'Pora zadania', value: time, allowNone: true }).then((t) => t !== undefined && setTime(t))} />
         </View>
       </View>
       <View style={styles.switchRow}>
         <Text style={{ color: p.fg, fontSize: 15, flex: 1 }}>Przypomnij o tej porze</Text>
         <Switch value={remind} onValueChange={setRemind} />
       </View>
-      {remind ? <Text style={{ color: p.muted, fontSize: 12 }}>Powiadomienie przychodzi w dni nawyku, chyba że już odhaczony; ma przycisk „Zrobione”.</Text> : null}
+      {remind ? <Text style={{ color: p.muted, fontSize: 12 }}>Powiadomienie przychodzi w zaplanowane dni, chyba że już odhaczone; ma przycisk „Zrobione”.</Text> : null}
       {error ? (
         <Text accessibilityRole="alert" style={{ color: p.bad }}>
           {error}
         </Text>
       ) : null}
-      <Button title={task ? 'Zapisz' : 'Dodaj nawyk'} onPress={() => void submit()} />
+      <Button title={task ? 'Zapisz' : 'Dodaj cykliczne'} onPress={() => void submit()} />
     </ScrollView>
   );
 }

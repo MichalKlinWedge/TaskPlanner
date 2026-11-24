@@ -372,7 +372,7 @@ const STEPS = [
   { id: "projects", title: "Projekty bez następnego kroku" },
   { id: "waiting", title: "Oczekuje > 7 dni" },
   { id: "upcoming", title: "Nadchodzący tydzień" },
-  { id: "habits", title: "Nawyki tygodnia" },
+  { id: "habits", title: "Cykliczne w tygodniu" },
   { id: "summary", title: WEEK_SUMMARY.step },
 ] as const;
 type Step = (typeof STEPS)[number]["id"];
@@ -682,7 +682,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
             </tbody>
           </table>
         ) : (
-          empty("Brak nawyków.")
+          empty("Brak zadań cyklicznych.")
         )}
         {review.needsDecision.length && (step === "overdue" || step === "inbox") ? (
           <p className="text-xs text-[var(--muted)]">{plural(review.needsDecision.length, ["zadanie przesuwane", "zadania przesuwane", "zadań przesuwanych"])} 3 razy lub więcej — oznaczone na żółto.</p>

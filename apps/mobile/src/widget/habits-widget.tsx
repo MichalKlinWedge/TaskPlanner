@@ -28,9 +28,9 @@ const EMPTY: HabitsWidgetModel = { date: '', items: [], open: 0 };
 function HabitsWidgetView({ model, palette, updatedAt, error }: { model: HabitsWidgetModel; palette: Palette; updatedAt: string; error?: string }) {
   return (
     <FlexWidget style={{ height: 'match_parent', width: 'match_parent', backgroundColor: palette.bg, borderRadius: 16, padding: 12, flexDirection: 'column' }}>
-      <WidgetHeader title={`Nawyki · ${model.open}`} updatedAt={updatedAt} uri={APP_URI.today} palette={palette} />
+      <WidgetHeader title={`Cykliczne · ${model.open}`} updatedAt={updatedAt} uri={APP_URI.today} palette={palette} />
       {error ? <WidgetError error={error} palette={palette} /> : null}
-      {model.items.length === 0 && !error ? <TextWidget text="Brak nawyków na dziś." style={{ fontSize: 13, color: palette.muted }} /> : null}
+      {model.items.length === 0 && !error ? <TextWidget text="Brak zadań cyklicznych na dziś." style={{ fontSize: 13, color: palette.muted }} /> : null}
       <ListWidget style={{ height: 'match_parent', width: 'match_parent' }}>
         {model.items.map((h) => (
           <FlexWidget key={h.id} style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }}>

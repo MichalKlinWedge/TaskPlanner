@@ -89,12 +89,12 @@ export default function BrowseScreen() {
 
       <Group title="Planowanie">
         <Item title="Kalendarz" hint="Dzień z przeciąganiem bloków, tydzień, miesiąc" href="/calendar" />
-        <Item title="Nawyki" hint="Passa, regularność, historia" href="/habits" />
+        <Item title="Cykliczne" hint="Passa, regularność, historia" href="/habits" />
         {data.settings.focus.enabled ? <Item title="Skupienie" hint="Pomodoro i stoper, czas pracy" href="/focus" /> : null}
         <Item title="Tablica" hint="Kanban bieżącej przestrzeni" href="/board" />
         <Item title="Oś czasu" hint="Projekty i zadania na osi dni, tygodni, miesięcy" href="/timeline" />
         <Item title="Przegląd dnia" hint="Zaległe i dzisiejsze — gesty na karcie" href="/review/daily" />
-        <Item title="Przegląd tygodnia" hint="Inbox, projekty, oczekujące, tydzień, nawyki" href="/review/weekly" />
+        <Item title="Przegląd tygodnia" hint="Inbox, projekty, oczekujące, tydzień, cykliczne" href="/review/weekly" />
       </Group>
 
       {workspaces.map((w) => (

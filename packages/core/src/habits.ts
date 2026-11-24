@@ -236,7 +236,7 @@ export interface HabitEntryOptions {
  */
 export function habitEntryOps(habit: Habit, taskId: string, date: LocalDate, entry: HabitEntry, { now, today, previous = null }: HabitEntryOptions): { ops: TaskOp[]; undo: TaskOp[] } {
   if (date > today) throw new Error('Nie można odhaczyć dnia, który jeszcze nie nadszedł.');
-  if (date < habit.recurrence.anchor) throw new Error('Ten dzień jest przed początkiem nawyku.');
+  if (date < habit.recurrence.anchor) throw new Error('Ten dzień jest przed początkiem zadania cyklicznego.');
   if (date < addDays(today, -HABIT_BACKFILL_DAYS)) throw new Error(`Można uzupełnić najwyżej ${HABIT_BACKFILL_DAYS} dni wstecz.`);
   const at = new Date(now).toISOString();
   const id = completionId(taskId, date);
@@ -432,7 +432,7 @@ export interface HabitSlot {
 /**
  * Nawyki z porą (`habit.time`) w dniach `[from, to)`: dni według reguły (od początku do końca nawyku)
  * oraz dni z wpisem spoza reguły. Bez nawyków zakończonych i bez celu „N razy w okresie” (dni nie są
- * ustalone — zostają w bloku „Nawyki”).
+ * ustalone — zostają w bloku „Cykliczne”).
  */
 export function habitSlots(
   tasks: readonly Pick<ViewTask, 'id' | 'title' | 'kind' | 'status' | 'recurrence' | 'habit'>[],
@@ -618,7 +618,7 @@ export interface HabitSaveInput {
   title: string;
   listId: string;
   draft: HabitDraft;
-  /** Przypomnienie o porze nawyku (względne, 0 min przed); ignorowane, gdy jest `reminders`. */
+  /** Przypomnienie o porze zadania (względne, 0 min przed); ignorowane, gdy jest `reminders`. */
   remind?: boolean;
   /** Obecne przypomnienia nawyku — przy wyłączeniu usuwane, przy włączeniu nie dublowane. */
   reminderIds?: readonly string[];
@@ -636,7 +636,7 @@ export interface HabitSaveInput {
 /** Zapis formularza nawyku jako operacje `mutate`: zadanie `kind = 'habit'` i przypomnienie. */
 export function habitSaveOps(input: HabitSaveInput): { taskId: string; ops: TaskOp[] } {
   const title = input.title.trim();
-  if (!title) throw new Error('Nawyk musi mieć nazwę.');
+  if (!title) throw new Error('Zadanie cykliczne musi mieć nazwę.');
   const newId = input.newId ?? (() => uuidv7());
   const fields = habitFields(input.draft);
   const taskId = input.id ?? newId();

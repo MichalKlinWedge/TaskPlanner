@@ -115,7 +115,7 @@ export function OfflineCard() {
         ))}
       </ul>
       <p className="mt-2 text-xs text-[var(--muted)]">
-        Widoki (Dziś, Nadchodzące, listy, tablica, kalendarz, oś czasu, nawyki, skupienie, przeglądy), szybkie dodawanie, edycja, kosz i ustawienia pracują na lokalnej bazie.
+        Widoki (Dziś, Nadchodzące, listy, tablica, kalendarz, oś czasu, cykliczne, skupienie, przeglądy), szybkie dodawanie, edycja, kosz i ustawienia pracują na lokalnej bazie.
       </p>
     </Card>
   );

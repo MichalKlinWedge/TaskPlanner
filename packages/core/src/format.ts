@@ -165,7 +165,7 @@ export function formatBytes(bytes: number): string {
 
 /** Pominięte serie (godzina zmieniłaby każde wystąpienie). */
 export const seriesNote = (count: number): string =>
-  `${plural(count, ['zadanie cykliczne', 'zadania cykliczne', 'zadań cyklicznych'])} bez zmian — godzina dotyczyłaby każdego wystąpienia.`;
+  `${plural(count, ['zadanie z powtarzaniem', 'zadania z powtarzaniem', 'zadań z powtarzaniem'])} bez zmian — godzina dotyczyłaby każdego wystąpienia.`;
 
 /** Godziny z odpowiedzi AI poprawione albo odrzucone przez `validateDayPlan`. */
 export const aiPlanFixedNote = (count: number): string => `${plural(count, ['propozycja AI była', 'propozycje AI były', 'propozycji AI było'])} poza wolnym oknem, w kolizji albo przed poprzednikiem — poprawione.`;

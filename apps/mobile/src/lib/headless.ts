@@ -202,7 +202,7 @@ export const setTaskDoneById = (id: string, done: boolean, occurrence?: LocalDat
   done ? completeTaskById(id, occurrence) : withTask(id, async (task) => (task.kind === 'task' && task.status === 'done' ? [{ table: 'tasks', id, patch: reopenTaskPatch() }] : null));
 
 /**
- * Wpis dnia nawyku z widżetu „Nawyki” (zrobione, wyczyszczenie albo wartość po „+1” — `habitEntryOps`
+ * Wpis dnia nawyku z widżetu „Cykliczne” (zrobione, wyczyszczenie albo wartość po „+1” — `habitEntryOps`
  * z core, id deterministyczne). Tylko dla dziś: kliknięcie w widżet narysowany przed północą
  * odświeża go zamiast zmieniać wczorajszy dzień. Wpis taki jak żądany (powtórzona obsługa) — bez zapisu.
  */

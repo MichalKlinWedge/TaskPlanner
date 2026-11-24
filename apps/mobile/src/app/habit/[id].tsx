@@ -52,8 +52,8 @@ export default function HabitScreen() {
   if (!task || !habit) {
     return (
       <View style={{ flex: 1, padding: 16, backgroundColor: p.bg }}>
-        <Stack.Screen options={{ title: 'Nawyk' }} />
-        <Text style={{ color: p.muted }}>{data.loaded ? 'Tego nawyku nie ma (usunięty albo w zarchiwizowanej liście).' : 'Wczytywanie…'}</Text>
+        <Stack.Screen options={{ title: 'Cykliczne' }} />
+        <Text style={{ color: p.muted }}>{data.loaded ? 'Tego zadania cyklicznego nie ma (usunięte albo w zarchiwizowanej liście).' : 'Wczytywanie…'}</Text>
       </View>
     );
   }
@@ -74,7 +74,7 @@ export default function HabitScreen() {
       undo: [{ table: 'tasks', id: task.id, patch: { status: task.status, completed_at: task.completedAt } }],
     });
   const remove = async () => {
-    if (!(await confirm(`Przenieść „${task.title}” do kosza?`, 'Historia zostaje i wróci razem z nawykiem.', 'Do kosza', 'Anuluj'))) return;
+    if (!(await confirm(`Przenieść „${task.title}” do kosza?`, 'Historia zostaje i wróci razem z zadaniem.', 'Do kosza', 'Anuluj'))) return;
     const ops = deleteTaskOps(data.tasks, task.id, new Date());
     void run(ops, { text: `„${task.title}” w koszu`, undo: ops.map((op) => ({ ...op, patch: { deleted_at: null } })) });
     router.back();

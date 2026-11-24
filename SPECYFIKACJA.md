@@ -59,7 +59,7 @@ Status: **v0.2 po bramce decyzyjnej (19.11.2026)** — wszystkie PoC zakończone
 | Oś czasu (Gantt) i zależności | SHOULD | Etap 6 | M12 |
 | Szybkie dodawanie z językiem naturalnym (PL) | MUST | MVP-2 | M13 |
 | Tryb skupienia + Pomodoro + licznik czasu | SHOULD | Etap 7 | M14 |
-| Nawyki (passy, statystyki) | SHOULD | Etap 8 | M15 |
+| Cykliczne — nawyki (passy, statystyki) | SHOULD | Etap 8 | M15 |
 | Przegląd dnia / tygodnia | SHOULD | Etap 9 | M16 |
 | Wyszukiwarka i paleta poleceń | MUST | MVP-2 | M17 |
 | Kalendarze zewnętrzne — odczyt | MUST | Etap 5 | M18 |
@@ -228,7 +228,7 @@ Oznaczenia: **[W]** web, **[A]** Android, **[W+A]** oba.
 ### M9. Widok listy
 Widoki stałe w pasku bocznym [W+A]:
 - **Inbox** — zadania z list `inbox` (bieżącej przestrzeni lub wszystkich). Licznik w pasku bocznym i na widżecie.
-- **Dziś** — sekcje: Zaległe, Dziś (z godziną: według godziny; bez godziny: kolejność ręczna), Trwające (zakres `start_date`–`due_date` obejmuje dziś), Nawyki na dziś. Obok [W]: pasek „Plan dnia” z wydarzeniami kalendarza i blokami zadań.
+- **Dziś** — sekcje: Zaległe, Dziś (z godziną: według godziny; bez godziny: kolejność ręczna), Trwające (zakres `start_date`–`due_date` obejmuje dziś), Cykliczne na dziś. Obok [W]: pasek „Plan dnia” z wydarzeniami kalendarza i blokami zadań.
 - **Nadchodzące** — kolejne 14 dni pogrupowane po dniu (z wirtualnymi wystąpieniami cyklicznych), przeciąganie między dniami zmienia `due_date`; dalej „Później” po tygodniach.
 - **Projekt / lista** — drzewo zadań z podzadaniami (zwijanie), postęp, sortowanie ręczne / priorytet / termin / data dodania.
 - **Tag, zapisany filtr** — wynik filtra.
@@ -271,8 +271,8 @@ Widoki stałe w pasku bocznym [W+A]:
 - Stan timera = znaczniki czasu, nie odliczanie w pamięci: zamknięcie karty/aplikacji nie gubi czasu. [A] trwałe powiadomienie z pozostałym czasem i przyciskami Pauza/Stop, ekran nie gaśnie (`expo-keep-awake`).
 - Jeden aktywny timer na użytkownika — widoczny na drugim urządzeniu po synchronizacji.
 
-### M15. Nawyki
-- Nawyk = zadanie o `kind = 'habit'` z regułą cykliczności (codziennie, w wybrane dni, N razy w tygodniu/miesiącu) i opcjonalnym celem ilościowym (np. 8 szklanek). Sekcja „Nawyki” [W+A] i blok w „Dziś”.
+### M15. Cykliczne (nawyki)
+- Nawyk = zadanie o `kind = 'habit'` z regułą cykliczności (codziennie, w wybrane dni, N razy w tygodniu/miesiącu) i opcjonalnym celem ilościowym (np. 8 szklanek). W aplikacji nazwa „Cykliczne” (od 24.11.2026; zwykła seria to „zadanie z powtarzaniem”). Sekcja „Cykliczne” [W+A] i blok w „Dziś”.
 - Odhaczenie dnia = wpis `task_completions` (z wartością dla celu ilościowego); można uzupełnić wstecz (ostatnie 7 dni) i oznaczyć dzień wolny (`skipped` — nie przerywa passy).
 - Statystyki: bieżąca i najdłuższa passa, regularność 7/30/90 dni, mapa cieplna roku, wykres tygodniowy. Liczone w `core/habits.ts` (§7.5).
 - Przypomnienie o nawyku (godzina) i odhaczanie z powiadomienia i widżetu.
@@ -307,7 +307,7 @@ Widoki stałe w pasku bocznym [W+A]:
 ### M20. Offline, PWA, widżety
 - **Offline**: wszystkie funkcje poza: odświeżeniem kalendarzy zewnętrznych, przyjęciem maila (przychodzi po synchronizacji), podglądem linków, pobraniem niezbuforowanych załączników. Wskaźnik stanu: „Offline — N zmian czeka”.
 - **PWA**: manifest z ikonami i skrótami (Szybkie dodawanie, Dziś, Kalendarz), Service Worker z powłoką aplikacji, `navigator.storage.persist()` (ochrona lokalnej bazy przed wyczyszczeniem), instalacja na pulpicie (Chrome/Edge).
-- **Widżety Android** (Etap 11): „Dziś” (lista do 10 zadań, odhaczanie bez otwierania aplikacji), „Szybkie dodawanie” (przycisk + mikrofon klawiatury), „Nawyki” (dzisiejsze nawyki do odhaczenia). Dane z lokalnej bazy; odświeżanie po zmianie danych i co 30 min. Skróty aplikacji (long-press ikony): Dodaj zadanie, Dziś, Tryb skupienia.
+- **Widżety Android** (Etap 11): „Dziś” (lista do 10 zadań, odhaczanie bez otwierania aplikacji), „Szybkie dodawanie” (przycisk + mikrofon klawiatury), „Cykliczne” (dzisiejsze nawyki do odhaczenia). Dane z lokalnej bazy; odświeżanie po zmianie danych i co 30 min. Skróty aplikacji (long-press ikony): Dodaj zadanie, Dziś, Tryb skupienia.
 - **Pulpit**: zainstalowana PWA + skróty. Natywny widżet pulpitu i globalny skrót klawiszowy — v1.x (Tauri, D11).
 
 ### M21. Integracje wychodzące (pluginy) — v1.x [W], [A] tylko wyzwalacz ręczny
@@ -508,7 +508,7 @@ Scenariusze na lokalnym Supabase z trzema klientami (2 × Node, 1 × przeglądar
 - „Dziś” liczone według strefy urządzenia (dzień zmienia się o północy lokalnej; po północy widok odświeża się sam).
 - Zrobione w `core/views.ts` (18.11.2026): `selectToday`, `selectUpcoming`, `selectInbox`, `FilterQuery` + `applyFilter`/`matchesFilter`, `sortTasks`, `groupTasks`, `buildTree`/`flattenTree`/`progress`, `withCompleted`; wejście = `ViewTask` (camelCase, z `tagIds`). Ustalenia:
   - w dniu najpierw zadania z godziną (według godziny), potem bez godziny (kolejność ręczna); zaległe od najstarszego terminu, potem priorytet,
-  - „Nadchodzące” zaczyna się od dziś (zaległe tylko w „Dziś”); wirtualne wystąpienia serii od dnia po późniejszej z dat: bieżący termin, dziś — zgodnie z `nextDue`; seria „po ukończeniu” nie ma wirtualnych wystąpień; nawyki są tylko w sekcji „Nawyki na dziś”,
+  - „Nadchodzące” zaczyna się od dziś (zaległe tylko w „Dziś”); wirtualne wystąpienia serii od dnia po późniejszej z dat: bieżący termin, dziś — zgodnie z `nextDue`; seria „po ukończeniu” nie ma wirtualnych wystąpień; nawyki są tylko w sekcji „Cykliczne na dziś”,
   - dzień ukończenia = data lokalna `completed_at` w strefie z ustawień (`localDateAt`),
   - postęp rodzica nie liczy anulowanych podzadań; podzadanie bez rodzica na wejściu jest korzeniem,
   - filtr zapisany ma daty względne (`{ offsetDays: 0 }` = dzień oglądania), więc „termin ≤ dziś” działa także jutro.

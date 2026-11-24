@@ -114,7 +114,7 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
 
   const tasks = useMemo(() => data.tasks.filter((t) => t.kind === "task" && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId)), [data.tasks, ctx.workspaceId]);
   const byId = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
-  // Nawyki z porą — bloki do odczytu (odhacza się je w „Dziś” / „Nawyki”); klik otwiera nawyk.
+  // Nawyki z porą — bloki do odczytu (odhacza się je w „Dziś” / „Cykliczne”); klik otwiera nawyk.
   const habits = useMemo(
     () => (range ? habitSlots(data.tasks.filter((t) => !ctx.workspaceId || t.workspaceId === ctx.workspaceId), data.habitCompletions, range.from, range.to, ctx.today) : []),
     [data.tasks, data.habitCompletions, range, ctx.workspaceId, ctx.today],
@@ -141,7 +141,7 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
         durationEditable: e.kind === "task" && !e.virtual && !e.passive && !e.allDay,
         borderColor: e.conflict ? "var(--danger)" : color,
         classNames: [`tp-${e.kind}`, e.passive ? "tp-passive" : "", e.virtual ? "tp-virtual" : "", e.conflict ? "tp-conflict" : ""].filter(Boolean),
-        extendedProps: { taskId: e.kind === "task" ? e.id : null, habitId: e.kind === "habit" ? e.id : null, conflict: e.conflict, hint: source ? [source.calendar, source.location].filter(Boolean).join(" · ") : e.kind === "habit" ? "Nawyk" : null },
+        extendedProps: { taskId: e.kind === "task" ? e.id : null, habitId: e.kind === "habit" ? e.id : null, conflict: e.conflict, hint: source ? [source.calendar, source.location].filter(Boolean).join(" · ") : e.kind === "habit" ? "Cykliczne" : null },
       };
     });
     // Wolne okna w godzinach pracy — tylko w widoku dnia (M11).
