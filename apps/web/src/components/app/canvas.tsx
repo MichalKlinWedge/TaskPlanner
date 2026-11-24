@@ -810,11 +810,14 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   }
   const linkDraft = drag?.kind === "link" ? drag : null;
   const draftSeg = (() => {
-    if (!linkDraft) return null;
-    const from = rectOf(linkDraft.fromId);
+    // Szkic zostaje też przy otwartym menu rodzaju — strzałka jeszcze nie jest dodana.
+    const pending = linkDraft ?? (linkMenu && editable ? { ...linkMenu, overId: linkMenu.toId } : null);
+    if (!pending) return null;
+    const from = rectOf(pending.fromId);
     if (!from) return null;
-    const target = linkDraft.overId ? rectOf(linkDraft.overId) : null;
-    return target ? canvasArrowSegment(from, target) : canvasArrowSegment(from, { x: linkDraft.x, y: linkDraft.y, w: 0, h: 0 }, 0, 0);
+    const target = pending.overId ? rectOf(pending.overId) : null;
+    if (target || !linkDraft) return target ? canvasArrowSegment(from, target) : null;
+    return canvasArrowSegment(from, { x: linkDraft.x, y: linkDraft.y, w: 0, h: 0 }, 0, 0);
   })();
   const selectedSeg = arrowSel ? segments.find((s) => s.arrow.key === arrowSel) : undefined;
 
@@ -1106,6 +1109,10 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
               onCancel={() => {
                 setLinkMenu(null);
                 box.current?.focus({ preventScroll: true });
+              }}
+              onDismiss={() => {
+                setLinkMenu(null);
+                notify("Strzałki nie dodano — po upuszczeniu wybierz w menu „blokuje” albo „wynika z”.");
               }}
             />
           ) : null}
@@ -1567,8 +1574,9 @@ function LinkMenu({
   from,
   to,
   preferred,
-  onPick,
-  onCancel,
+  onPick: pick,
+  onCancel: cancel,
+  onDismiss,
 }: {
   x: number;
   y: number;
@@ -1576,9 +1584,22 @@ function LinkMenu({
   to: string;
   preferred: CanvasLinkKind;
   onPick: (kind: CanvasLinkKind) => void;
+  /** Świadoma rezygnacja (Esc, „Anuluj”). */
   onCancel: () => void;
+  /** Klik poza menu — bez wyboru strzałka nie powstaje. */
+  onDismiss: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Wybór / rezygnacja oddają fokus tablicy — wtedy utrata fokusu to nie klik obok.
+  const closing = useRef(false);
+  const onPick = (kind: CanvasLinkKind) => {
+    closing.current = true;
+    pick(kind);
+  };
+  const onCancel = () => {
+    closing.current = true;
+    cancel();
+  };
   useEffect(() => ref.current?.focus({ preventScroll: true }), []);
   const items: { kind: CanvasLinkKind; key: string; hint: string }[] = [
     { kind: "blocks", key: "B", hint: "zależność — jak na osi czasu" },
@@ -1595,8 +1616,10 @@ function LinkMenu({
       onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         const key = e.key.toLowerCase();
-        const pick = key === "b" ? "blocks" : key === "w" ? "derived" : e.key === "Enter" ? preferred : null;
-        if (pick) onPick(pick);
+        // Enter na pozycji menu (po Tab) obsługuje sam przycisk.
+        if (e.key === "Enter" && e.target !== e.currentTarget) return e.stopPropagation();
+        const kind = key === "b" ? "blocks" : key === "w" ? "derived" : e.key === "Enter" ? preferred : null;
+        if (kind) onPick(kind);
         else if (e.key === "Escape") onCancel();
         else return;
         // Klawisz nie dochodzi do skrótów tablicy ani `shell.tsx`.
@@ -1604,10 +1627,14 @@ function LinkMenu({
         e.stopPropagation();
       }}
       onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onCancel();
+        // Przełączenie okna (np. zrzut ekranu) nie zamyka menu — fokus wraca do niego razem z oknem.
+        if (closing.current || !document.hasFocus() || e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        closing.current = true;
+        onDismiss();
       }}
       data-testid="canvas-link-menu"
     >
+      <p className="px-2 pb-1 pt-0.5 text-[11px] text-[var(--muted)]">Wybierz rodzaj strzałki, żeby ją dodać:</p>
       {items.map((item) => (
         <button
           key={item.kind}

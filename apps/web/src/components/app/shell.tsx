@@ -416,7 +416,7 @@ export function Shell({
 
   return (
     <AppEnvProvider value={{ store, data, userId, timeZone: settings.timeZone, settings, today, workspaceId, openTask: setOpenTaskId, openTaskId, selectedIds, select }}>
-      <TaskActionsProvider store={store} timeZone={settings.timeZone} tasks={data.tasks}>
+      <TaskActionsProvider store={store} userId={userId} timeZone={settings.timeZone} tasks={data.tasks}>
         <AttachmentsProvider store={store} userId={userId}>
         <FocusProvider store={store} userId={userId} settings={settings}>
         <ReminderToasts />
