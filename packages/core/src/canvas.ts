@@ -408,14 +408,15 @@ const derivedEdges = (tasks: readonly LinkTask[]) => tasks.flatMap((t) => (t.der
  * filtrem, zadanie z innej listy) nie jest rysowane — trafia do `offBoard` widocznej karty. Połączenia
  * z zadaniami, których nie ma (kosz, brak dostępu), są pomijane. Linie rodzic → podzadanie (`parents`, domyślnie
  * tak) tylko gdy obie karty leżą na tablicy (tryb „Z podzadaniami”) — bez `offBoard` (ukryte podzadania pokazuje
- * licznik `↳`). Kilka strzałek między tą samą parą kart (obie strony, różne rodzaje) dostaje równoległe tory.
+ * licznik `↳`). Użytkownik wybiera osobno, co rysować: hierarchię (`parents`) i zależności (`links` = „blokuje”
+ * i „wynika z”, razem z `offBoard`). Kilka strzałek między tą samą parą kart (obie strony, różne rodzaje) dostaje równoległe tory.
  */
 export function canvasArrows(
   placed: ReadonlySet<string>,
   tasks: readonly LinkTask[],
   deps: readonly Dependency[],
   violated: ReadonlySet<string> = new Set(),
-  { parents = true }: { parents?: boolean } = {},
+  { parents = true, links = true }: { parents?: boolean; links?: boolean } = {},
 ): CanvasArrows {
   const known = new Set(tasks.map((t) => t.id));
   const arrows: CanvasArrow[] = [];
@@ -433,8 +434,10 @@ export function canvasArrows(
       else if (!list.includes(other)) list.push(other);
     }
   };
-  for (const d of deps) add('blocks', d.predecessorId, d.successorId, d.id);
-  for (const t of tasks) for (const from of new Set(t.derivedFrom ?? [])) add('derived', from, t.id, null);
+  if (links) {
+    for (const d of deps) add('blocks', d.predecessorId, d.successorId, d.id);
+    for (const t of tasks) for (const from of new Set(t.derivedFrom ?? [])) add('derived', from, t.id, null);
+  }
   if (parents) {
     for (const t of tasks) {
       if (t.parentId && placed.has(t.id) && placed.has(t.parentId)) {

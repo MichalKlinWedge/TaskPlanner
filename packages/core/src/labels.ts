@@ -63,6 +63,12 @@ export const CANVAS_TASKS: Record<'top' | 'all', string> = {
   all: 'Z podzadaniami',
 };
 
+/** Które strzałki rysują „Karteczki” (dwa niezależne przełączniki): linie rodzic → podzadanie oraz „blokuje” i „wynika z”. */
+export const CANVAS_ARROWS_SHOWN: Record<'parents' | 'links', { label: string; hint: string }> = {
+  parents: { label: 'Hierarchia', hint: 'Linie od zadania do jego podzadań' },
+  links: { label: 'Zależności', hint: 'Strzałki „blokuje” i „wynika z”' },
+};
+
 /** „Ułóż według …” w widoku „Karteczki” (`canvas-arrange.ts`), w kolejności menu. */
 export const CANVAS_ARRANGE_BY: Record<'color' | 'priority' | 'assignee' | 'status' | 'due', string> = {
   color: 'Koloru (tagu)',

@@ -129,7 +129,15 @@ test('karteczki: przesuwanie bez nachodzenia, pasek, dodawanie, kolor z tagu, pe
     // Linia rodzic → podzadanie (kropkowana, tylko do oglądania).
     const parentLine = board.locator(`[data-canvas-arrow][data-kind="parent"][data-from="${ids.second}"][data-to="${ids.sub}"]`);
     await expect(parentLine).toHaveCount(1);
+    // „Hierarchia” chowa linię rodzic → podzadanie (karta podzadania zostaje).
+    const hierarchy = view.getByRole('button', { name: 'Hierarchia', exact: true });
+    await hierarchy.click();
+    await expect(parentLine).toHaveCount(0);
+    await expect(card(ids.sub)).toBeVisible();
+    await hierarchy.click();
+    await expect(parentLine).toHaveCount(1);
     await view.getByRole('radio', { name: 'Tylko główne' }).click();
+    await expect(hierarchy).toBeDisabled();
     await expect(card(ids.sub)).toHaveCount(0);
     await expect(parentLine).toHaveCount(0);
     expect((await server.task(E2E_CANVAS.sub))?.canvas_pos).toEqual({ col: -2, row: 3 });
@@ -223,6 +231,38 @@ test('karteczki: strzałka „blokuje” = zależność na serwerze, cykl odrzuc
     await page.keyboard.press('w');
     await expect(arrow(ids.second, ids.first, 'derived')).toHaveCount(1);
     await server.waitForTask(E2E_CANVAS.first, (t) => t.derived_from?.includes(ids.second) ?? false);
+  });
+
+  await test.step('„Zależności” ukrywa strzałki (także po odświeżeniu) bez zmian na serwerze; nowa strzałka je włącza', async () => {
+    const toggle = view.getByRole('button', { name: 'Zależności', exact: true });
+    const all = board.locator('[data-canvas-arrows="base"] [data-canvas-arrow]');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(all).toHaveCount(0);
+    await page.reload();
+    await expect(card(ids.first)).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(all).toHaveCount(0);
+    expect((await server.dependencies(ids.first, ids.second)).filter((d) => d.deleted_at === null)).toHaveLength(1);
+    // Odrzucony duplikat nie włącza strzałek.
+    await drawArrow(ids.first, ids.second);
+    await menu.getByRole('menuitem', { name: /blokuje/ }).click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await toggle.click();
+    await expect(arrow(ids.first, ids.second, 'blocks')).toHaveCount(1);
+    await expect(arrow(ids.second, ids.first, 'derived')).toHaveCount(1);
+    // Usunięcie „blokuje” przy widocznych strzałkach, ukrycie, narysowanie od nowa → znów widoczne.
+    const line = (await arrow(ids.first, ids.second, 'blocks').locator('line').first().boundingBox())!;
+    await page.mouse.click(line.x + line.width / 2, line.y + line.height / 2);
+    await page.keyboard.press('Delete');
+    await expect(arrow(ids.first, ids.second, 'blocks')).toHaveCount(0);
+    await toggle.click();
+    await expect(all).toHaveCount(0);
+    await drawArrow(ids.first, ids.second);
+    await menu.getByRole('menuitem', { name: /blokuje/ }).click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(arrow(ids.first, ids.second, 'blocks')).toHaveCount(1);
+    await server.waitForDependency(ids.first, ids.second, (r) => r.filter((d) => d.deleted_at === null).length === 1);
   });
 
   await test.step('karta odłożona do paska: strzałek nie widać, „⇢ N” na drugiej karcie, zależność zostaje', async () => {

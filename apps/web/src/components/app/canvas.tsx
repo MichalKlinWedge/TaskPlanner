@@ -11,6 +11,7 @@ import {
   addDerivedLinkOps,
   assigneeOf,
   CANVAS_ARROW,
+  CANVAS_ARROW_GAP,
   CANVAS_CARD,
   CANVAS_DEFAULT_COLOR,
   CANVAS_FRAME,
@@ -30,6 +31,7 @@ import {
   canvasSubtaskProgress,
   canvasTasks,
   canvasUnplaceOps,
+  CANVAS_ARROWS_SHOWN,
   CANVAS_TASKS,
   cellInGroup,
   clampCanvasZoom,
@@ -77,6 +79,27 @@ import { useTaskActions } from "./task-item";
 import { Button } from "./ui";
 
 // ── Stan widoku na urządzeniu ─────────────────────────────────────────────────────────────────
+
+/** Widoczne strzałki (hierarchia / zależności) — wybór na urządzeniu, wspólny dla list. */
+type ArrowsShown = Record<keyof typeof CANVAS_ARROWS_SHOWN, boolean>;
+const ARROWS_KEY = "tp-canvas-arrows";
+
+function loadArrowsShown(): ArrowsShown {
+  try {
+    const v = JSON.parse(localStorage.getItem(ARROWS_KEY) ?? "{}") as Partial<ArrowsShown> | null;
+    return { parents: v?.parents !== false, links: v?.links !== false };
+  } catch {
+    return { parents: true, links: true };
+  }
+}
+
+function saveArrowsShown(shown: ArrowsShown) {
+  try {
+    localStorage.setItem(ARROWS_KEY, JSON.stringify(shown));
+  } catch {
+    // Bez pamięci przeglądarki — wybór do odświeżenia strony.
+  }
+}
 
 type Viewport = CanvasViewport;
 
@@ -243,7 +266,10 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   // Strzałki: „blokuje” = zależności (te same co na osi czasu i w panelu), „wynika z” = `tasks.derived_from`.
   const deps = useDependencies(store);
   const violated = useMemo(() => new Set(violations(data.tasks, deps).map((v) => v.dependency.id)), [data.tasks, deps]);
-  const links = useMemo(() => canvasArrows(new Set(layout.placed.map((p) => p.task.id)), data.tasks, deps, violated), [layout, data.tasks, deps, violated]);
+  // Co rysować: hierarchia (rodzic → podzadanie) i zależności osobno; ukryte nie trafiają też do eksportu.
+  const [arrowsShown, setArrowsShown] = useState<ArrowsShown>(loadArrowsShown);
+  useEffect(() => saveArrowsShown(arrowsShown), [arrowsShown]);
+  const links = useMemo(() => canvasArrows(new Set(layout.placed.map((p) => p.task.id)), data.tasks, deps, violated, arrowsShown), [layout, data.tasks, deps, violated, arrowsShown]);
   // „⇢ N” na karcie: połączenia z kartami, których nie ma na tablicy (tekst = tytuły do dymka).
   const offBoard = useMemo(() => new Map([...links.offBoard].map(([id, others]) => [id, others.map((o) => titles.get(o) ?? "?").join("\n")])), [links, titles]);
 
@@ -544,6 +570,9 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     );
   };
 
+  // Nowa strzałka musi być widoczna — narysowanie jej włącza ukryte „Zależności”.
+  const showLinks = () => setArrowsShown((s) => (s.links ? s : { ...s, links: true }));
+
   const createLink = (kind: CanvasLinkKind) => {
     const menu = linkMenu;
     setLinkMenu(null);
@@ -554,10 +583,12 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     if (kind === "blocks") {
       const result = addDependencyOps(data.tasks, deps, { predecessorId: menu.fromId, successorId: menu.toId });
       if ("error" in result) return notify(dependencyErrorText(result.error, quoted));
+      showLinks();
       return void apply(result.ops, `Zależność: ${sentence}`, result.undo);
     }
     const result = addDerivedLinkOps(data.tasks, { fromId: menu.fromId, toId: menu.toId });
     if ("error" in result) return notify(derivedLinkErrorText(result.error, quoted));
+    showLinks();
     void apply(result.ops, `Powiązanie: ${sentence}`, result.undo);
   };
 
@@ -838,6 +869,41 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
               {CANVAS_TASKS[k]}
             </button>
           ))}
+        </div>
+        <div className="flex overflow-hidden rounded-md border border-[var(--line)]" role="group" aria-label="Widoczne strzałki" data-testid="canvas-arrows-shown">
+          {(Object.keys(CANVAS_ARROWS_SHOWN) as (keyof ArrowsShown)[]).map((k) => {
+            // Bez kart podzadań linii hierarchii i tak nie ma.
+            const off = k === "parents" && show === "top";
+            return (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={arrowsShown[k]}
+                disabled={off}
+                onClick={() => {
+                  setSelectedArrow(null);
+                  setArrowsShown((s) => ({ ...s, [k]: !s[k] }));
+                }}
+                className={`flex items-center gap-1.5 px-2 py-1 disabled:opacity-40 ${arrowsShown[k] ? "bg-[var(--accent)] text-white" : "enabled:hover:bg-[var(--hover)]"}`}
+                title={`${CANVAS_ARROWS_SHOWN[k].hint}${off ? ` — tylko w trybie „${CANVAS_TASKS.all}”` : arrowsShown[k] ? " — kliknij, aby ukryć" : " — kliknij, aby pokazać"}`}
+              >
+                <svg width="18" height="8" viewBox="0 0 18 8" aria-hidden stroke="currentColor" fill="currentColor">
+                  {k === "parents" ? (
+                    <>
+                      <circle cx="3" cy="4" r="2.5" stroke="none" />
+                      <line x1="7" y1="4" x2="18" y2="4" strokeWidth="1.5" strokeDasharray="2 2" />
+                    </>
+                  ) : (
+                    <>
+                      <line x1="0" y1="4" x2="11" y2="4" strokeWidth="1.5" />
+                      <path d="M10 0.5 18 4 10 7.5Z" stroke="none" />
+                    </>
+                  )}
+                </svg>
+                {CANVAS_ARROWS_SHOWN[k].label}
+              </button>
+            );
+          })}
         </div>
         <span className="flex-1 lg:hidden" />
         {/* Podstawa 0: podpowiedź wypełnia wolne miejsce i skraca się, zamiast zawijać pasek. */}
@@ -1376,6 +1442,7 @@ function ArrowLayer({
           selected={arrow.key === selected}
           draft={arrow.key === "draft"}
           interactive={interactive && arrow.kind !== "parent"}
+          hit={arrow.offset ? CANVAS_ARROW_GAP.lane : 12}
           x1={seg.x1}
           y1={seg.y1}
           x2={seg.x2}
@@ -1397,6 +1464,7 @@ const Arrow = memo(function Arrow({
   selected,
   draft,
   interactive,
+  hit,
   x1,
   y1,
   x2,
@@ -1411,6 +1479,8 @@ const Arrow = memo(function Arrow({
   selected: boolean;
   draft: boolean;
   interactive: boolean;
+  /** Szerokość pola kliknięcia; równoległe strzałki mają je na szerokość toru, żeby się nie zasłaniały. */
+  hit: number;
   x1: number;
   y1: number;
   x2: number;
@@ -1441,7 +1511,7 @@ const Arrow = memo(function Arrow({
   return (
     <g data-canvas-arrow={draft ? undefined : id} data-kind={kind} data-from={fromId || undefined} data-to={toId || undefined} data-violated={violated || undefined} data-selected={selected || undefined}>
       {interactive ? (
-        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth={12} strokeLinecap="round" style={{ pointerEvents: "stroke", cursor: "pointer" }} onPointerDown={(e) => onDown(e, id)}>
+        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth={hit} strokeLinecap="butt" style={{ pointerEvents: "stroke", cursor: "pointer" }} onPointerDown={(e) => onDown(e, id)}>
           <title>{`${CANVAS_ARROW[kind].label}${violated ? " — naruszona kolejność" : ""} (kliknij, aby zaznaczyć)`}</title>
         </line>
       ) : null}

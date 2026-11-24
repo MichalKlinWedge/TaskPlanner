@@ -387,6 +387,21 @@ describe('strzałki: canvasArrows / canvasArrowSegment / „wynika z”', () => 
     expect(canvasArrows(new Set([A, B]), tasks, [], new Set(), { parents: false }).arrows).toEqual([]);
   });
 
+  it('hierarchia i zależności wyświetlane osobno; ukryte nie zajmują torów ani „poza tablicą”', () => {
+    const tasks = [
+      { id: A, derivedFrom: null, parentId: null },
+      { id: B, derivedFrom: [A], parentId: A },
+      { id: C, derivedFrom: [A], parentId: null },
+    ];
+    const shown = (options: { parents?: boolean; links?: boolean }) => canvasArrows(new Set([A, B]), tasks, [dep('d1', A, B)], new Set(), options);
+    expect(shown({ links: false }).arrows.map((a) => [a.kind, a.offset])).toEqual([['parent', 0]]);
+    expect(shown({ links: false }).offBoard.size).toBe(0);
+    expect(shown({ parents: false }).arrows.map((a) => a.kind)).toEqual(['blocks', 'derived']);
+    expect(shown({ parents: false }).offBoard.get(A)).toEqual([C]);
+    expect(shown({}).arrows.map((a) => a.kind)).toEqual(['blocks', 'derived', 'parent']);
+    expect(shown({ parents: false, links: false }).arrows).toEqual([]);
+  });
+
   it('kilka strzałek tej samej pary dostaje równoległe tory, przeciwne kierunki po obu stronach', () => {
     const tasks = [{ id: A, derivedFrom: [B] }, { id: B, derivedFrom: null }];
     const { arrows } = canvasArrows(new Set([A, B]), tasks, [dep('d1', A, B)]);
