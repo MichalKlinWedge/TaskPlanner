@@ -2,8 +2,8 @@
  * Automatyczne układanie karteczek (menu „Ułóż” w widoku „Karteczki”, tylko web).
  *
  * Cztery sposoby: „Według …” (kolumny kategorii z opcjonalnymi ramkami grup), „Według strzałek” (warstwy
- * od lewej do prawej, karty bez połączeń z boku), „Według hierarchii” (drzewo: zadania główne, ich podzadania
- * w kolejnych kolumnach i tak w dół) i „Zagęść” (skraca puste kolumny i wiersze, zachowując
+ * od lewej do prawej, karty bez połączeń z boku), „Według hierarchii” (drzewo z góry na dół: zadania główne
+ * w pierwszym rzędzie, podzadania pod nimi) i „Zagęść” (skraca puste kolumny i wiersze, zachowując
  * względny układ). Wynik to plan: operacje do jednej paczki `mutateMany` z „Cofnij” + podgląd (komórki
  * docelowe, ramki). Wynik zależy tylko od danych (pozycje, id, `sort_key`, tagi, zależności, data) —
  * dwie osoby dostają to samo — a karta już stojąca na swoim miejscu nie dostaje zapisu, więc ponowne
@@ -395,7 +395,7 @@ function arrowsPattern(items: readonly Item<CanvasArrangeTask>[], ctx: CanvasArr
 }
 
 /**
- * Karty bez połączeń (bez podzadań): blok wierszami z prawej strony głównego układu (`main` = jego wysokość
+ * Karty bez połączeń: blok wierszami z prawej strony głównego układu (`main` = jego wysokość
  * i pierwsza wolna kolumna za jedną pustą), najwyżej `CANVAS_ARRANGE_COLUMNS` kolumn; bez głównego układu — od (0, 0).
  */
 function sideBlock(cells: Map<string, Cell>, ids: readonly string[], main: { height: number; right: number } | null) {
@@ -405,49 +405,82 @@ function sideBlock(cells: Map<string, Cell>, ids: readonly string[], main: { hei
   ids.forEach((id, j) => cells.set(id, { col: col0 + (j % width), row: Math.floor(j / width) }));
 }
 
+/** Od ilu podzadań bez własnych podzadań stoją one w siatce pod rodzicem zamiast w jednym rzędzie. */
+const LEAF_ROW_MAX = 5;
+
 /**
- * „Według hierarchii”: drzewo od lewej do prawej — zadanie główne w kolumnie 0, jego podzadania w kolumnie 2,
- * ich podzadania w 4 itd. (co druga kolumna, jak warstwy strzałek; linie rodzic → podzadanie są wtedy czytelne).
- * Rodzic stoi w wierszu swojego pierwszego podzadania, każdy liść ma własny wiersz, drzewa zadań głównych jedno
- * pod drugim z pustym wierszem. Kolejność rodzeństwa = kolejność ręczna listy (`sort_key`, potem id), więc wynik
- * nie zależy od dotychczasowych komórek. Karta, której rodzica nie ma w układzie (np. podzadanie z zaznaczenia
- * bez rodzica, tryb „Tylko główne”), jest korzeniem; korzenie bez podzadań — w bloku z prawej, jak karty bez połączeń.
+ * „Według hierarchii”: drzewo z góry na dół — wszystkie zadania główne w pierwszym rzędzie (kolejność ręczna
+ * listy: `sort_key`, potem id), podzadania w wierszu 2, ich podzadania w 4 itd. (pusty wiersz na linie
+ * rodzic → podzadanie). Każde poddrzewo ma własny, rozłączny pas kolumn, a rodzic stoi nad środkiem swoich
+ * podzadań, więc linie różnych zadań głównych nigdy się nie krzyżują ani nie idą pod cudzymi kartami.
+ * Więcej niż `LEAF_ROW_MAX` podzadań-liści jednego rodzica = siatka (rodzic nad jej środkiem), potem poddrzewa.
+ * Między pasami zadań głównych pusta kolumna, gdy któreś ma podzadania. Podzadania, których rodzica nie ma
+ * w układzie (zaznaczenie bez rodzica, rodzic ukryty), stoją na prawo od drugiego poziomu w dół — pierwszy
+ * rząd zostaje dla zadań głównych (bez nich — od pierwszego rzędu). Wynik nie zależy od dotychczasowych komórek.
  */
 function hierarchyPattern(items: readonly Item<CanvasArrangeTask>[]): Pattern {
   const order = (a: CanvasArrangeTask, b: CanvasArrangeTask) => cmp(a.sortKey, b.sortKey) || byId(a, b);
-  const byIdMap = new Map(items.map((i) => [i.task.id, i.task]));
+  const ids = new Set(items.map((i) => i.task.id));
   const children = new Map<string, CanvasArrangeTask[]>();
-  const roots: CanvasArrangeTask[] = [];
+  const mains: CanvasArrangeTask[] = [];
+  const orphans: CanvasArrangeTask[] = [];
   for (const { task } of items) {
-    const parent = task.parentId && task.parentId !== task.id ? byIdMap.get(task.parentId) : undefined;
-    if (parent) (children.get(parent.id) ?? children.set(parent.id, []).get(parent.id)!).push(task);
-    else roots.push(task);
+    if (!task.parentId) mains.push(task);
+    else if (task.parentId === task.id || !ids.has(task.parentId)) orphans.push(task);
+    else (children.get(task.parentId) ?? children.set(task.parentId, []).get(task.parentId)!).push(task);
   }
   for (const list of children.values()) list.sort(order);
-  roots.sort(order);
+  mains.sort(order);
+  orphans.sort(order);
 
   const cells = new Map<string, Cell>();
-  let row = 0;
-  let right = 0;
-  const place = (task: CanvasArrangeTask, depth: number) => {
-    const col = 2 * depth;
-    right = Math.max(right, col);
-    const start = row;
-    const kids = children.get(task.id) ?? [];
-    cells.set(task.id, { col, row: start });
-    if (!kids.length) row++;
-    else for (const kid of kids) if (!cells.has(kid.id)) place(kid, depth + 1);
+  const seen = new Set<string>();
+  /** Rodzeństwo na głębokości `depth` od kolumny `col0`; zwraca szerokość pasa i środek (kolumna rodzica). */
+  const placeSiblings = (list: readonly CanvasArrangeTask[], depth: number, col0: number): { width: number; center: number } => {
+    const kids = list.filter((t) => !seen.has(t.id));
+    for (const t of kids) seen.add(t.id);
+    const leaves = kids.filter((t) => !children.get(t.id)?.length);
+    const grid = leaves.length > LEAF_ROW_MAX ? leaves : [];
+    const inGrid = new Set(grid);
+    let col = col0;
+    let center: number | null = null;
+    if (grid.length) {
+      const width = Math.max(3, Math.ceil(Math.sqrt(grid.length)));
+      grid.forEach((t, j) => cells.set(t.id, { col: col0 + (j % width), row: 2 * depth + Math.floor(j / width) }));
+      col += width;
+      // Rodzic nad siatką: linie do jej dalszych wierszy zostają w pasie siatki.
+      center = col0 + Math.floor((width - 1) / 2);
+    }
+    const at: number[] = [];
+    for (const t of kids) {
+      if (inGrid.has(t)) continue;
+      const own = placeTree(t, depth, col);
+      at.push(own.center);
+      col += own.width;
+    }
+    center ??= at.length ? Math.floor((at[0]! + at[at.length - 1]!) / 2) : col0;
+    return { width: col - col0, center };
   };
-  const trees = roots.filter((t) => children.has(t.id));
-  for (const root of trees) {
-    place(root, 0);
-    row++;
+  const placeTree = (task: CanvasArrangeTask, depth: number, col0: number): { width: number; center: number } => {
+    seen.add(task.id);
+    const below = placeSiblings(children.get(task.id) ?? [], depth + 1, col0);
+    cells.set(task.id, { col: below.center, row: 2 * depth });
+    return { width: Math.max(1, below.width), center: below.center };
+  };
+
+  let col = 0;
+  let previous: CanvasArrangeTask | null = null;
+  for (const main of mains) {
+    if (previous && (children.has(previous.id) || children.has(main.id))) col++;
+    col += placeTree(main, 0, col).width;
+    previous = main;
   }
-  sideBlock(
-    cells,
-    roots.filter((t) => !children.has(t.id)).map((t) => t.id),
-    trees.length ? { height: row - 1, right: right + 2 } : null,
-  );
+  // Pętla rodziców nie powinna wystąpić (serwer ją odrzuca) — takie karty stają jak podzadania bez rodzica.
+  const rest = () => items.map((i) => i.task).filter((t) => !seen.has(t.id)).sort(order);
+  const depth = mains.length ? 1 : 0;
+  if (mains.length) col++;
+  col += placeSiblings(orphans, depth, col).width;
+  for (let left = rest(); left.length; left = rest()) col += placeTree(left[0]!, depth, col).width;
   return { cells, frames: [] };
 }
 

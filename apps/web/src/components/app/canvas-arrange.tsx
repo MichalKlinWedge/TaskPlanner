@@ -72,7 +72,7 @@ export function CanvasArrangeButton<T extends CanvasArrangeTask>({
   context,
   selected,
   editable,
-  subtasksShown,
+  hierarchy,
   onPreview,
   onApply,
 }: {
@@ -82,10 +82,13 @@ export function CanvasArrangeButton<T extends CanvasArrangeTask>({
   /** Zaznaczone zadania (karty z tablicy i z paska). */
   selected: ReadonlySet<string>;
   editable: boolean;
-  /** Tryb „Z podzadaniami” — bez niego „Według hierarchii” widzi tylko zadania główne. */
-  subtasksShown: boolean;
+  /**
+   * „Według hierarchii” układa zawsze z podzadaniami: w trybie „Tylko główne” tablica podaje tu układ wszystkich
+   * kart i zaznaczenie poszerzone o podzadania (`null` = podzadania już są na tablicy).
+   */
+  hierarchy: (() => { layout: CanvasLayout<T>; selected: ReadonlySet<string> }) | null;
   onPreview: (plan: CanvasArrangePlan | null) => void;
-  onApply: (plan: CanvasArrangePlan, label: string) => void;
+  onApply: (plan: CanvasArrangePlan, label: string, mode: CanvasArrange) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [prefs, setPrefs] = useState<ArrangePrefs>(loadPrefs);
@@ -145,20 +148,26 @@ export function CanvasArrangeButton<T extends CanvasArrangeTask>({
       key: "hierarchy",
       label: "Według hierarchii",
       mode: { kind: "hierarchy" },
-      hint: subtasksShown ? "Zadania główne od lewej, podzadania w kolejnych kolumnach i tak w dół" : "Włącz „Z podzadaniami”, żeby ułożyć też podzadania",
+      hint: `Zadania główne w pierwszym rzędzie, podzadania pod nimi${hierarchy ? " — przełączy na „Z podzadaniami”" : ""}`,
     },
     { key: "compact", label: "Zagęść", mode: { kind: "compact" }, hint: "Najwyżej jedna pusta kolumna / wiersz odstępu; grupy jadą z kartami (zawsze cała tablica)" },
   ];
 
+  const planFor = (item: Item): CanvasArrangePlan => {
+    const full = item.mode.kind === "hierarchy" ? hierarchy?.() : null;
+    return full
+      ? measuredPlan(full.layout, item.mode, { ...ctx, selection: scope === "selection" ? full.selected : null })
+      : measuredPlan(layout, item.mode, ctx);
+  };
   const show = (item: Item) => {
-    const plan = measuredPlan(layout, item.mode, ctx);
+    const plan = planFor(item);
     setHover({ key: item.key, plan });
     previewRef.current(plan);
   };
   const apply = (item: Item) => {
-    const plan = hover?.key === item.key ? hover.plan : measuredPlan(layout, item.mode, ctx);
+    const plan = hover?.key === item.key ? hover.plan : planFor(item);
     close();
-    onApply(plan, item.label);
+    onApply(plan, item.label, item.mode);
   };
 
   return (

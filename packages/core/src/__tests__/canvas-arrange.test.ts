@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { canvasArrangePlan, canvasArrangeSummary, canvasDueBucket, type CanvasArrange, type CanvasArrangeContext, type CanvasArrangeTask } from '../canvas-arrange.ts';
-import { canvasLayout, cellKey, type CanvasCell } from '../canvas.ts';
+import { canvasArrowSegment, canvasCardRect, canvasLayout, cellKey, type CanvasCell, type CanvasSegment } from '../canvas.ts';
 import type { Dependency } from '../dependencies.ts';
 import { uuidv5 } from '../ids.ts';
 import type { CanvasGroup } from '../schemas/model.ts';
@@ -256,39 +256,150 @@ describe('Ułóż według hierarchii', () => {
     task('d', [8, 1], { sortKey: 'd' }),
   ];
 
-  it('drzewo od lewej: główne, podzadania co drugą kolumnę, rodzic w wierszu pierwszego dziecka, bez podzadań z boku', () => {
+  /** Linie rodzic → podzadanie i karty w pikselach (jak `ArrowLayer`) — sprawdzenie geometrii. */
+  const lines = (tasks: T[]) => {
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    const main = (t: T): string => {
+      const parent = t.parentId ? byId.get(t.parentId) : undefined;
+      return parent ? main(parent) : t.id;
+    };
+    const rects = tasks.map((t) => ({ id: t.id, main: main(t), rect: canvasCardRect(t.canvasPos!) }));
+    const rectOf = new Map(rects.map((r) => [r.id, r.rect]));
+    const segments = tasks.flatMap((t) => {
+      const from = t.parentId ? rectOf.get(t.parentId) : undefined;
+      const seg = from ? canvasArrowSegment(from, rectOf.get(t.id)!, 0, 0) : null;
+      return seg ? [{ from: t.parentId!, to: t.id, main: main(t), seg }] : [];
+    });
+    return { rects, segments };
+  };
+  const side = (s: CanvasSegment, x: number, y: number) => Math.sign((s.x2 - s.x1) * (y - s.y1) - (s.y2 - s.y1) * (x - s.x1));
+  const crosses = (p: CanvasSegment, q: CanvasSegment) =>
+    side(p, q.x1, q.y1) * side(p, q.x2, q.y2) < 0 && side(q, p.x1, p.y1) * side(q, p.x2, p.y2) < 0;
+  const underCard = (s: CanvasSegment, r: { x: number; y: number; w: number; h: number }) =>
+    Array.from({ length: 101 }, (_, i) => i / 100).some((k) => {
+      const [x, y] = [s.x1 + (s.x2 - s.x1) * k, s.y1 + (s.y2 - s.y1) * k];
+      return x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h;
+    });
+  /** Żadne dwie linie się nie krzyżują i żadna nie idzie pod kartą innego zadania głównego; zwraca liczbę linii. */
+  const clean = (tasks: T[]) => {
+    noOverlap(tasks);
+    const { rects, segments } = lines(tasks);
+    const bad: string[] = [];
+    segments.forEach((p, i) => {
+      for (const q of segments.slice(i + 1)) if (p.from !== q.from && crosses(p.seg, q.seg)) bad.push(`${p.from}→${p.to} × ${q.from}→${q.to}`);
+      for (const r of rects) if (r.main !== p.main && underCard(p.seg, r.rect)) bad.push(`${p.from}→${p.to} pod ${r.id}`);
+    });
+    expect(bad).toEqual([]);
+    return segments.length;
+  };
+  /** Zadania główne i tylko one w najwyższym wierszu. */
+  const mainsOnTop = (tasks: T[]) => {
+    const top = Math.min(...tasks.map((t) => t.canvasPos!.row));
+    for (const t of tasks) expect(t.canvasPos!.row === top, t.id).toBe(!t.parentId);
+  };
+
+  it('drzewo z góry na dół: główne w pierwszym rzędzie, podzadania pod nimi, każde drzewo we własnym pasie kolumn', () => {
     const ts = tree();
     const p = plan(ts, { kind: 'hierarchy' });
     const after = apply(ts, [], p.ops);
-    // Kotwica (0, 0) = lewy górny róg kart na tablicy.
+    // Kotwica (0, 0) = lewy górny róg kart na tablicy; zadania bez podzadań obok siebie.
     expect(cells(after.tasks)).toEqual({
-      a: '0:0',
-      a1: '2:0',
-      a12: '4:0',
-      a11: '4:1',
+      a: '1:0',
+      a1: '0:2',
+      a12: '0:4',
+      a11: '1:4',
       a2: '2:2',
-      b: '0:4',
-      b1: '2:4',
-      // Wysokość drzewa 5 wierszy → 1 kolumna z prawej (za kolumną 4 i jedną pustą).
+      b: '4:0',
+      b1: '4:2',
       c: '6:0',
-      d: '6:1',
+      d: '7:0',
     });
-    noOverlap(after.tasks);
+    expect(clean(after.tasks)).toBe(5);
+    mainsOnTop(after.tasks);
     expect(p.groups).toEqual([]);
     expect(plan(after.tasks, { kind: 'hierarchy' }).ops).toEqual([]);
   });
 
-  it('podzadanie bez rodzica w zakresie jest korzeniem; tryb „Tylko główne” = same korzenie z boku od (0, 0)', () => {
-    const ts = tree();
-    const sel = plan(ts, { kind: 'hierarchy' }, { selection: new Set(['a1', 'a11', 'a12']) });
-    const after = apply(ts, [], sel.ops);
+  it('kontrola pomocnika: przeplecione drzewa są wykrywane jako krzyżujące się', () => {
+    const ts = [task('p', [0, 0]), task('q', [2, 0]), task('p1', [2, 2], { parentId: 'p' }), task('q1', [0, 2], { parentId: 'q' })];
+    expect(() => clean(ts)).toThrow();
+  });
+
+  it('ponad 5 podzadań bez własnych podzadań = siatka pod rodzicem, poddrzewa obok', () => {
+    const ts = [
+      task('m', [4, 4]),
+      ...Array.from({ length: 10 }, (_, i) => task(`m${i}`, [i, 9], { parentId: 'm' })),
+      task('mx', [0, 0], { parentId: 'm' }),
+      task('mx1', [1, 0], { parentId: 'mx' }),
+      task('n', [0, 1]),
+      task('n1', [0, 2], { parentId: 'n' }),
+    ];
+    const after = apply(ts, [], plan(ts, { kind: 'hierarchy' }).ops);
     const at = positions(after.tasks);
-    expect(at('a11').col - at('a1').col).toBe(2);
-    expect(at('a12').row).toBe(at('a1').row);
+    // 10 liści: szerokość 4, wiersze 2–4; rodzic nad siatką; poddrzewo `mx` zaraz za nią, `n` za pustą kolumną.
+    expect([at('m0'), at('m3'), at('m4'), at('m9')]).toEqual([
+      { col: 0, row: 2 },
+      { col: 3, row: 2 },
+      { col: 0, row: 3 },
+      { col: 1, row: 4 },
+    ]);
+    expect([at('m'), at('mx'), at('mx1'), at('n')]).toEqual([
+      { col: 1, row: 0 },
+      { col: 4, row: 2 },
+      { col: 4, row: 4 },
+      { col: 6, row: 0 },
+    ]);
+    clean(after.tasks);
+    mainsOnTop(after.tasks);
+  });
+
+  it('losowe drzewa: linie się nie krzyżują, główne w pierwszym rzędzie, powtórka bez zmian', () => {
+    let seed = 7;
+    const random = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+    for (let round = 0; round < 20; round++) {
+      const ts: T[] = [];
+      const depth = new Map<string, number>();
+      for (let i = 0; i < 70; i++) {
+        const candidates = ts.filter((t) => depth.get(t.id)! < 4);
+        const parent = random() < 0.2 ? undefined : candidates[Math.floor(random() * candidates.length)];
+        const id = `t${String(i).padStart(2, '0')}`;
+        depth.set(id, parent ? depth.get(parent.id)! + 1 : 0);
+        ts.push(task(id, random() < 0.1 ? null : [i % 9, Math.floor(i / 9)], { parentId: parent?.id ?? null, sortKey: String(random()) }));
+      }
+      const after = apply(ts, [], plan(ts, { kind: 'hierarchy' }).ops);
+      clean(after.tasks);
+      mainsOnTop(after.tasks);
+      expect(plan(after.tasks, { kind: 'hierarchy' }).ops).toEqual([]);
+      // Wynik nie zależy od kolejności wejścia.
+      const reversed = [...ts].reverse();
+      expect(cells(apply(reversed, [], plan(reversed, { kind: 'hierarchy' }).ops).tasks)).toEqual(cells(after.tasks));
+    }
+  });
+
+  it('podzadania bez rodzica w układzie: od drugiego poziomu za zadaniami głównymi, bez głównych — od pierwszego rzędu', () => {
+    const ts = [...tree(), task('o', [2, 2], { parentId: 'ukryte' }), task('o1', [2, 3], { parentId: 'o' })];
+    const after = apply(ts, [], plan(ts, { kind: 'hierarchy' }).ops);
+    const at = positions(after.tasks);
+    expect([at('o'), at('o1')]).toEqual([
+      { col: 9, row: 2 },
+      { col: 9, row: 4 },
+    ]);
+    mainsOnTop(after.tasks);
+    clean(after.tasks);
+    const sel = apply(ts, [], plan(ts, { kind: 'hierarchy' }, { selection: new Set(['a1', 'a11', 'a12']) }).ops);
+    const on = positions(sel.tasks);
+    expect(on('a11').row - on('a1').row).toBe(2);
+    expect(on('a12').col).toBe(on('a1').col);
+    noOverlap(sel.tasks);
+  });
+
+  it('pętla rodziców nie wywraca układu; same zadania główne = jeden rząd', () => {
+    const loop = [task('m', [0, 0]), task('x', [1, 0], { parentId: 'y' }), task('y', [2, 0], { parentId: 'x' })];
+    const after = apply(loop, [], plan(loop, { kind: 'hierarchy' }).ops);
     noOverlap(after.tasks);
-    const top = ts.filter((t) => !t.parentId);
-    const flat = apply(top, [], plan(top, { kind: 'hierarchy' }).ops);
-    expect(cells(flat.tasks)).toEqual({ a: '1:0', b: '2:0', c: '3:0', d: '4:0' });
+    expect(positions(after.tasks)('m')).toEqual({ col: 0, row: 0 });
+    const top = tree().filter((t) => !t.parentId);
+    expect(cells(apply(top, [], plan(top, { kind: 'hierarchy' }).ops).tasks)).toEqual({ a: '1:0', b: '2:0', c: '3:0', d: '4:0' });
   });
 });
 
@@ -320,6 +431,7 @@ describe('wydajność', () => {
       task(`t${String(i).padStart(3, '0')}`, [(i * 7) % 60, Math.floor(i / 20) * 2], {
         priority: ((i % 4) + 1) as Priority,
         tagIds: [`tag${i % 5}`],
+        parentId: i % 12 ? `t${String(i % 4 ? i - (i % 4) : i - (i % 12)).padStart(3, '0')}` : null,
         derivedFrom: i % 2 && i > 25 ? [`t${String(i - 25).padStart(3, '0')}`] : null,
       }),
     );

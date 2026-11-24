@@ -285,6 +285,7 @@ Ta sama tablica; krok 8 w `perf/canvas.spec.ts`. Obliczenie planu = `performance
 | Obliczenie: według priorytetu | 0 ms | 1 ms | 498 kart |
 | Obliczenie: według odpowiedzialnego / statusu / terminu | 1 ms | 1 ms | 492–500 kart |
 | Obliczenie: według strzałek | 2 ms | 2 ms | 500 kart, 478 krawędzi |
+| Obliczenie: według hierarchii | 1 ms | 2 ms | 500 kart (bez podzadań — jeden rząd; drzewo 500 kart sprawdza vitest) |
 | Obliczenie: zagęść | 1 ms | 1 ms | tablica już zwarta — 0 kart |
 | Podgląd (obliczenie + obrysy) | 12–20 ms | 34 ms | wszystkie sposoby |
 | „Według priorytetu” → karty i ramki narysowane | 679 ms | 720 ms | 498 zapisów `canvas_pos` + grupy w jednej paczce |

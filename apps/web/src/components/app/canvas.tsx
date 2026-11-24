@@ -244,12 +244,15 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
   // tylko do odczytu (gość bez edycji nie zapisze preferencji) wybór trzyma sama karta przeglądarki.
   const [localShow, setLocalShow] = useState<CanvasTasks | null>(null);
   const show: CanvasTasks = (canEdit ? null : localShow) ?? list.prefs.canvasTasks ?? "top";
-  const setShow = (next: CanvasTasks) => {
-    if (!canEdit) return setLocalShow(next);
+  const showPrefs = (next: CanvasTasks) => {
     const prefs = { ...list.prefs };
     delete prefs.canvasTasks;
     if (next !== "top") prefs.canvasTasks = next;
-    void store.mutate("lists", list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
+    return prefs;
+  };
+  const setShow = (next: CanvasTasks) => {
+    if (!canEdit) return setLocalShow(next);
+    void store.mutate("lists", list.id, { view_prefs: showPrefs(next) }).catch((e: unknown) => notify(String(e)));
   };
 
   const cards = useMemo(
@@ -826,6 +829,17 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
     return { tags: [...seen.values()].sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1)), plain };
   }, [layout, tagsById]);
 
+  // „Według hierarchii” w trybie „Tylko główne”: wszystkie karty listy i podzadania zaznaczonych zadań.
+  const hierarchyScope = () => {
+    const all = withCompleted(canvasTasks(data.tasks, list.id, "all"), list.prefs.completed ?? "today", ctx);
+    const scope = new Set(selected);
+    // Zadania idą w dowolnej kolejności, a poziomów jest najwyżej kilka — do ustalenia się zbioru.
+    for (let size = -1; size !== scope.size; ) {
+      size = scope.size;
+      for (const t of all) if (t.parentId && scope.has(t.parentId)) scope.add(t.id);
+    }
+    return { layout: canvasLayout(all), selected: scope };
+  };
   const arrangeContext = useMemo(
     () => ({ listId: list.id, groups, tags: tagsById, collaborators: data.collaborators, today: ctx.today, firstDayOfWeek: ctx.firstDayOfWeek, dependencies: deps }),
     [list.id, groups, tagsById, data.collaborators, ctx.today, ctx.firstDayOfWeek, deps],
@@ -848,11 +862,15 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
           context={arrangeContext}
           selected={selected}
           editable={editable}
-          subtasksShown={show === "all"}
+          hierarchy={show === "all" ? null : hierarchyScope}
           onPreview={setArrangePreview}
-          onApply={(plan, label) => {
-            if (!plan.ops.length) return notify(`${label}: ${canvasArrangeSummary(plan)}.`);
-            void apply(plan.ops, `${label}: ${canvasArrangeSummary(plan)}`, plan.undo);
+          onApply={(plan, label, mode) => {
+            // Hierarchia bez widocznych podzadań nie miałaby sensu — tryb zmienia się w tej samej paczce.
+            const reveal = mode.kind === "hierarchy" && show !== "all";
+            const ops: TaskOp[] = reveal ? [...plan.ops, { table: "lists", id: list.id, patch: { view_prefs: showPrefs("all") } }] : plan.ops;
+            if (!ops.length) return notify(`${label}: ${canvasArrangeSummary(plan)}.`);
+            const undo: TaskOp[] = reveal ? [...plan.undo, { table: "lists", id: list.id, patch: { view_prefs: { ...list.prefs } } }] : plan.undo;
+            void apply(ops, `${label}: ${canvasArrangeSummary(plan)}`, undo);
           }}
         />
         <div className="flex overflow-hidden rounded-md border border-[var(--line)]" role="radiogroup" aria-label="Zadania na karteczkach" data-testid="canvas-show">

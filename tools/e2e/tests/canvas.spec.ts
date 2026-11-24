@@ -366,15 +366,24 @@ test('karteczki: „Ułóż” — podgląd, według priorytetu z ramkami, „Co
     await page.keyboard.press('Escape');
   });
 
-  await test.step('„Według hierarchii” (z podzadaniami): podzadanie dwie kolumny na prawo od rodzica, w jego wierszu', async () => {
-    await view.getByRole('radio', { name: 'Z podzadaniami' }).click();
+  await test.step('„Według hierarchii” z „Tylko główne”: pokazuje podzadania, główne w jednym rzędzie, podzadanie pod rodzicem; „Cofnij”', async () => {
+    const start = { second: await pos(E2E_CANVAS.second), sub: await pos(E2E_CANVAS.sub) };
+    const all = view.getByRole('radio', { name: 'Z podzadaniami' });
+    await expect(all).toHaveAttribute('aria-checked', 'false');
+    await arrange.click();
+    await page.getByTestId('canvas-arrange-hierarchy').click();
+    await expect(all).toHaveAttribute('aria-checked', 'true');
     await expect(card(ids.sub)).toBeVisible();
+    await page.getByRole('status').filter({ hasText: 'Według hierarchii' }).getByRole('button', { name: 'Cofnij' }).click();
+    await expect(all).toHaveAttribute('aria-checked', 'false');
+    await expect.poll(async () => ({ second: await pos(E2E_CANVAS.second), sub: await pos(E2E_CANVAS.sub) })).toEqual(start);
     await arrange.click();
     await page.getByTestId('canvas-arrange-hierarchy').click();
     await expect.poll(async () => {
       const [parent, sub] = [await pos(E2E_CANVAS.second), await pos(E2E_CANVAS.sub)];
       return parent && sub ? { dc: sub.col - parent.col, dr: sub.row - parent.row } : null;
-    }).toEqual({ dc: 2, dr: 0 });
+    }).toEqual({ dc: 0, dr: 2 });
+    expect((await pos(E2E_CANVAS.first))!.row).toBe((await pos(E2E_CANVAS.second))!.row);
     await expect(board.locator(`[data-canvas-arrow][data-kind="parent"][data-from="${ids.second}"][data-to="${ids.sub}"]`)).toHaveCount(1);
     await view.getByRole('radio', { name: 'Tylko główne' }).click();
     await expect(card(ids.sub)).toHaveCount(0);
