@@ -1,8 +1,9 @@
 /**
  * Szczegóły zadania (MVP-3, jak panel zadania na webie): tytuł, status, priorytet, lista, termin,
- * godzina, początek, czas, osoby (odpowiedzialny i uczestnicy — tylko informacyjnie), powtarzanie (edytor M7,
- * pomiń / zakończ serię), czas pracy, tagi, przypomnienia, zależności (M12, jak na webie), opis Markdown (edycja
- * + podgląd z odhaczaniem pól), podzadania do 4 poziomów, komentarze, kosz.
+ * godzina, początek, czas, opis Markdown (edycja + podgląd z odhaczaniem pól), osoby (odpowiedzialny i uczestnicy —
+ * tylko informacyjnie), komentarze, zadanie nadrzędne, podzadania do 4 poziomów, zależności (M12), tagi, załączniki,
+ * przypomnienia, powtarzanie (edytor M7, pomiń / zakończ serię), czas pracy (tylko przy włączonym trybie skupienia),
+ * kosz. Kolejność sekcji jak w panelu zadania na webie.
  * Każda zmiana to `mutate` jednego pola — synchronizacja scala zmiany z innych urządzeń (§6).
  */
 import {
@@ -293,20 +294,14 @@ export default function TaskScreen() {
           </View>
           </Block>
 
-          {task.kind === 'task' ? <ParentField key={`parent:${task.id}`} task={task} data={data} parent={parent} /> : null}
-          <PeopleField key={`people:${task.id}`} task={task} data={data} />
-          <RecurrenceField key={`rec:${task.id}`} task={task} data={data} today={today} timeZone={data.settings.timeZone} onSave={(patch) => void update(patch)} />
-          <TimeField task={task} />
-          <TagsField task={task} data={data} />
-          <RemindersField task={task} today={today} />
-          <DependenciesField key={`dep:${task.id}`} task={task} data={data} />
-
           <Block title="Opis">
             <DescriptionField taskId={task.id} />
           </Block>
-        </Editable>
 
-        <AttachmentsField taskId={task.id} readOnly={readOnly} />
+          <PeopleField key={`people:${task.id}`} task={task} data={data} />
+          <CommentsField key={`com:${task.id}`} task={task} data={data} today={today} />
+          {task.kind === 'task' ? <ParentField key={`parent:${task.id}`} task={task} data={data} parent={parent} /> : null}
+        </Editable>
 
         <Block title={`Podzadania${children.length ? ` · ${children.filter((c) => c.status === 'done').length}/${children.filter((c) => c.status !== 'cancelled').length}` : ''}`}>
           <View style={{ marginHorizontal: -12 }}>
@@ -326,7 +321,16 @@ export default function TaskScreen() {
         </Block>
 
         <Editable readOnly={readOnly}>
-          <CommentsField key={`com:${task.id}`} task={task} data={data} today={today} />
+          <DependenciesField key={`dep:${task.id}`} task={task} data={data} />
+          <TagsField task={task} data={data} />
+        </Editable>
+
+        <AttachmentsField taskId={task.id} readOnly={readOnly} />
+
+        <Editable readOnly={readOnly}>
+          <RemindersField task={task} today={today} />
+          <RecurrenceField key={`rec:${task.id}`} task={task} data={data} today={today} timeZone={data.settings.timeZone} onSave={(patch) => void update(patch)} />
+          {data.settings.focus.enabled ? <TimeField task={task} /> : null}
         </Editable>
 
         <View style={styles.footer}>

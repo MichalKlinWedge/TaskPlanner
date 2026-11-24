@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * Panel zadania (MVP-2): wszystkie pola zadania, opis w Markdown (TipTap), tagi, przypomnienia,
- * podzadania (do 4 poziomów), czas pracy (M14), zależności (poprzednicy / następnicy, M12), osoby (odpowiedzialny
- * i uczestnicy — tylko informacyjnie), komentarze, historia zmian (online, z `activity_log`) i kosz. Każda zmiana to
+ * Panel zadania (MVP-2): wszystkie pola zadania, opis w Markdown (TipTap), osoby (odpowiedzialny i uczestnicy — tylko
+ * informacyjnie), komentarze, zadanie nadrzędne, podzadania (do 4 poziomów), zależności (poprzednicy / następnicy, M12),
+ * tagi, załączniki, przypomnienia, powtarzanie, czas pracy (M14, tylko przy włączonym trybie skupienia), historia zmian
+ * (online, z `activity_log`) i kosz — w tej kolejności, tak samo na telefonie. Każda zmiana to
  * `store.mutate` jednego pola — synchronizacja scala zmiany pól z innych urządzeń (§6).
  */
 import {
@@ -133,7 +134,7 @@ function Block({ id, title, children }: { id?: string; title: string; children: 
 }
 
 export function TaskPanel({ taskId }: { taskId: string }) {
-  const { data, userId, today, timeZone, openTask } = useAppEnv();
+  const { data, userId, settings, today, timeZone, openTask } = useAppEnv();
   const { run, toggle } = useTaskActions();
   const task = data.tasks.find((t) => t.id === taskId);
 
@@ -283,10 +284,6 @@ export function TaskPanel({ taskId }: { taskId: string }) {
         </div>
         </Block>
 
-        {task.kind === "task" ? <ParentField key={`parent:${task.id}`} task={task} parent={parent} /> : null}
-
-        <PeopleField key={`people:${task.id}`} task={task} />
-
         {task.kind === "habit" ? (
           <Block title="Nawyk">
             <a href={`#/habit/${task.id}`} className={`self-start ${navLinkClass}`}>
@@ -295,15 +292,15 @@ export function TaskPanel({ taskId }: { taskId: string }) {
           </Block>
         ) : null}
 
-        <RecurrenceField key={`rec:${task.id}`} task={task} onSave={(patch) => void update(patch)} timeZone={timeZone} today={today} />
-
-        <TagsField task={task} userId={userId} />
-
-        <RemindersField key={`rem:${task.id}`} task={task} />
-
         <Block title="Opis">
           <DescriptionEditor key={task.id} taskId={task.id} readOnly={readOnly} />
         </Block>
+
+        <PeopleField key={`people:${task.id}`} task={task} />
+
+        <CommentsField key={`com:${task.id}`} task={task} />
+
+        {task.kind === "task" ? <ParentField key={`parent:${task.id}`} task={task} parent={parent} /> : null}
       </Editable>
 
       <Block title={`Podzadania${children.length ? ` · ${children.filter((c) => c.status === "done").length}/${children.filter((c) => c.status !== "cancelled").length}` : ""}`}>
@@ -325,14 +322,20 @@ export function TaskPanel({ taskId }: { taskId: string }) {
         )}
       </Block>
 
+      <Editable readOnly={readOnly}>
+        <DependenciesField key={`dep:${task.id}`} task={task} />
+
+        <TagsField task={task} userId={userId} />
+      </Editable>
+
       <AttachmentsField key={`att:${task.id}`} task={task} readOnly={readOnly} />
 
       <Editable readOnly={readOnly}>
-        <TaskTimeField task={task} />
+        <RemindersField key={`rem:${task.id}`} task={task} />
 
-        <DependenciesField key={`dep:${task.id}`} task={task} />
+        <RecurrenceField key={`rec:${task.id}`} task={task} onSave={(patch) => void update(patch)} timeZone={timeZone} today={today} />
 
-        <CommentsField key={`com:${task.id}`} task={task} />
+        {settings.focus.enabled ? <TaskTimeField task={task} /> : null}
       </Editable>
 
       <History
