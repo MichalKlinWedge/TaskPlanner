@@ -6,7 +6,7 @@ import { expect, openApp, test, unique } from '../src/fixtures.ts';
 
 // Zadania z dzisiejszym terminem do kosza — nie wypychają pozycji z panelu i nie zapychają kalendarza kolejnym testom.
 test.afterEach(async ({ server }) => {
-  const prefixes = ['Blok', 'Trzymany', 'W trakcie'];
+  const prefixes = ['Blok', 'Trzymany', 'W trakcie', 'Klik'];
   const { error } = await server.client.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('scope_id', defaultWorkspaceId(server.userId, 'personal')).or(prefixes.map((t) => `title.like.${t} *`).join(','));
   expect(error).toBeNull();
 });
@@ -82,4 +82,44 @@ test('zmiana danych w trakcie przeciągania nie gubi upuszczenia', async ({ page
   await server.waitForTask(title, (t) => t.due_time === '12:00');
   await expect(block).toContainText('12:00');
   await other.close();
+});
+
+test('klik w puste miejsce dodaje zadanie z datą i godziną', async ({ page, server }) => {
+  await openApp(page);
+  await page.goto('/#/calendar');
+  const calendar = page.getByTestId('calendar');
+  const dialog = page.getByRole('dialog', { name: 'Szybkie dodawanie' });
+  const field = dialog.getByRole('textbox', { name: 'Dodaj zadanie' });
+  await calendar.getByRole('button', { name: 'Dzień', exact: true }).click();
+  const today = (await calendar.locator('.fc-timegrid-col[data-date]').first().getAttribute('data-date'))!;
+
+  // Dolna połowa komórki 16:30 — nadal 16:30 (pół godziny pod kursorem).
+  const lane = calendar.locator('td.fc-timegrid-slot-lane[data-time="16:30:00"]');
+  await lane.scrollIntoViewIfNeeded();
+  const box = (await lane.boundingBox())!;
+  await page.mouse.click(box.x + box.width * 0.9, box.y + box.height * 0.75);
+  await expect(dialog.getByRole('heading')).toContainText('16:30');
+  const timed = unique('Klik');
+  await field.fill(timed);
+  await field.press('Enter');
+  await expect(dialog).toBeHidden();
+  await server.waitForTask(timed, (t) => t.due_date === today && t.due_time === '16:30');
+  await expect(calendar.locator('.fc-timegrid-event').filter({ hasText: timed })).toBeVisible();
+
+  // Klik w blok otwiera zadanie, nie dodawanie.
+  await calendar.locator('.fc-timegrid-event').filter({ hasText: timed }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('[data-task-panel]')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // Miesiąc: sam dzień; godzina z wpisu zostaje w klikniętym dniu.
+  await calendar.getByRole('button', { name: 'Miesiąc', exact: true }).click();
+  const cell = calendar.locator(`.fc-daygrid-day:not(.fc-day-today)`).last();
+  const day = (await cell.getAttribute('data-date'))!;
+  const cellBox = (await cell.boundingBox())!;
+  await page.mouse.click(cellBox.x + cellBox.width / 2, cellBox.y + cellBox.height - 6);
+  const dated = unique('Klik');
+  await field.fill(`${dated} o 14`);
+  await field.press('Enter');
+  await server.waitForTask(dated, (t) => t.due_date === day && t.due_time === '14:00');
 });

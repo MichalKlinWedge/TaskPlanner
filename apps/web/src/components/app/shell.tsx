@@ -4,7 +4,7 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, tagsForWorkspace, VIEW_SECTION, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type ViewContext, type WebClip } from "@taskplanner/core";
+import { applyFilter, BOARD_BY, bulkTaskOps, dayLabel, sharedText, habitsForDay, isEmptyFilter, isOpen, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, tagsForWorkspace, VIEW_SECTION, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type QuickAddSlot, type ViewContext, type WebClip } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -128,6 +128,12 @@ export function Shell({
   const [shared, setShared] = useState(() => (typeof window !== "undefined" ? (sharedClip(pendingClip()) ?? readShare(new URLSearchParams(window.location.search))) : null));
   // Skrót „Szybkie dodawanie” z ikony aplikacji: `/?quick=1`.
   const [quickOpen, setQuickOpen] = useState(() => typeof window !== "undefined" && (new URLSearchParams(window.location.search).has("quick") || shared !== null));
+  // Puste miejsce kliknięte w kalendarzu: okno dodaje na ten dzień i godzinę.
+  const [quickSlot, setQuickSlot] = useState<QuickAddSlot | null>(null);
+  const openQuickAt = (slot: QuickAddSlot) => {
+    setQuickSlot(slot);
+    setQuickOpen(true);
+  };
   useEffect(() => {
     const url = new URL(window.location.href);
     if (url.searchParams.has("quick") || SHARE_PARAMS.some((p) => url.searchParams.has(p))) {
@@ -341,7 +347,7 @@ export function Shell({
     ) : route.view === "calendar" ? (
       <>
         <h1 className="sr-only">Kalendarz</h1>
-        <CalendarScreen data={data} ctx={ctx} settings={settings} />
+        <CalendarScreen data={data} ctx={ctx} settings={settings} onAdd={openQuickAt} />
       </>
     ) : route.view === "habits" ? (
       <HabitsView data={data} ctx={ctx} targetInbox={targetInbox} navigate={navigate} />
@@ -571,10 +577,13 @@ export function Shell({
           open={quickOpen}
           onClose={() => {
             setQuickOpen(false);
+            setQuickSlot(null);
             setShared(null);
             dropClip();
           }}
           {...quickDefaults}
+          slot={quickSlot}
+          heading={quickSlot ? `Nowe zadanie: ${dayLabel(quickSlot.date)}${quickSlot.time ? `, ${quickSlot.time}` : ""}` : undefined}
           {...(shared && { initialText: shared.text, link: shared.url ? { url: shared.url, shared: true } : undefined, clip: shared.clip, placeholder: "Zadanie z udostępnionego linku" })}
         />
         {palette ? (

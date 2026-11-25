@@ -15,6 +15,7 @@ import {
   withLinkOps,
   type LocalDate,
   type QuickAddContext,
+  type QuickAddSlot,
   type QuickAddTokenKind,
   type TaskOp,
 } from '@taskplanner/core';
@@ -41,6 +42,8 @@ export interface QuickAddFieldProps {
   /** Lista, gdy wpis nie wskazuje innej; brak = Inbox bieżącej (albo pierwszej) przestrzeni. */
   listId?: string;
   dueDate?: LocalDate | null;
+  /** Dotknięte miejsce kalendarza: dzień i godzina, gdy wpis ich nie podaje. */
+  slot?: QuickAddSlot | null;
   parent?: { id: string; listId: string };
   placeholder?: string;
   autoFocus?: boolean;
@@ -56,7 +59,7 @@ export interface QuickAddFieldProps {
   defaults?: { status?: string; priority?: number; tagNames?: readonly string[]; boardColumnId?: string };
 }
 
-export function QuickAddField({ listId, dueDate, parent, placeholder = 'Dodaj zadanie', autoFocus, initialText = '', link, onAdded, submitLabel, defaults }: QuickAddFieldProps) {
+export function QuickAddField({ listId, dueDate, slot, parent, placeholder = 'Dodaj zadanie', autoFocus, initialText = '', link, onAdded, submitLabel, defaults }: QuickAddFieldProps) {
   const p = usePalette();
   const data = useAppData();
   const workspaceId = useWorkspace(data);
@@ -73,8 +76,9 @@ export function QuickAddField({ listId, dueDate, parent, placeholder = 'Dodaj za
       workspaces: data.workspaces.map((w) => w.name),
       lists: data.lists.filter((l) => l.kind !== 'inbox').map((l) => ({ workspace: names.get(l.workspaceId) ?? '', name: l.name, kind: l.kind })),
       tags: data.tags.map((t) => t.name),
+      ...(slot && { slot }),
     }),
-    [data.workspaces, data.lists, data.tags, names, defaultWorkspace],
+    [data.workspaces, data.lists, data.tags, names, defaultWorkspace, slot],
   );
   const timeZone = data.settings.timeZone;
   const parse = (value: string) => parseQuickAdd(value, { ...parserContext, now: localDateTimeAt(new Date(), timeZone) });

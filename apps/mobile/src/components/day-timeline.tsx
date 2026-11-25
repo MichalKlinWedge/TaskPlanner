@@ -3,7 +3,8 @@
  * nawyków i wydarzeń obok siebie przy nakładaniu (`blockLanes`), obramowanie konfliktu. Plan liczy
  * `core` (`blocksForDay`, `conflicts`, `freeSlots`) — tu jest tylko rysowanie i gesty. Z `editable`
  * blok zadania przesuwa się po przytrzymaniu i przeciągnięciu, a uchwyt na dole zmienia długość
- * (co 15 min, `snapMinutes`); zapis robi ekran (`onMove` / `onResize`). Dotknięcie bloku → `onPress`.
+ * (co 15 min, `snapMinutes`); zapis robi ekran (`onMove` / `onResize`). Dotknięcie bloku → `onPress`,
+ * pustego miejsca → `onEmpty` (minuta od północy).
  */
 import { minutesToTime, PRIORITY, snapMinutes, type Block, type DayPlan, type FreeSlot, type ViewTask } from '@taskplanner/core';
 import * as Haptics from 'expo-haptics';
@@ -42,6 +43,7 @@ export interface DayTimelineProps {
   /** Id zadań ze szkicu ułożenia dnia — bloki przerywane, jeszcze niezapisane. */
   drafted?: ReadonlySet<string>;
   onPress: (block: Block) => void;
+  onEmpty?: (min: number) => void;
   onMove?: (task: ViewTask, startMin: number, durationMin: number) => void;
   onResize?: (task: ViewTask, startMin: number, endMin: number) => void;
 }
@@ -61,6 +63,8 @@ export function DayTimeline(props: DayTimelineProps) {
         </View>
       ))}
       <View style={[styles.lane, { height: y(to) }]} pointerEvents="box-none">
+        {/* Pod blokami; czytnik ekranu ma „+” na ekranie kalendarza. */}
+        {props.onEmpty ? <Pressable accessible={false} style={StyleSheet.absoluteFill} onPress={(e) => props.onEmpty?.(from + (e.nativeEvent.locationY / hour) * 60)} /> : null}
         {props.free.map((s) => (
           <View key={s.startMin} pointerEvents="none" style={[styles.free, { top: y(s.startMin), height: y(s.endMin) - y(s.startMin) }]} />
         ))}

@@ -19,6 +19,16 @@ export interface QuickAddContext {
   workspaces: readonly string[];
   lists: readonly { workspace: string; name: string; kind?: string }[];
   tags: readonly string[];
+  /**
+   * Kliknięte miejsce kalendarza: dzień i godzina (bez `time` = „cały dzień”), gdy wpis ich nie podaje.
+   * Każde pole osobno: sama godzina we wpisie zostaje w klikniętym dniu, sama data — o klikniętej godzinie.
+   */
+  slot?: QuickAddSlot;
+}
+
+export interface QuickAddSlot {
+  date: LocalDate;
+  time?: LocalTime;
 }
 
 export type QuickAddRecurrence =
@@ -615,6 +625,8 @@ export function parseQuickAdd(text: string, ctx: QuickAddContext): QuickAddResul
   if (time) {
     fields.dueTime = time.time;
     if (time.durationMin) fields.durationMin = time.durationMin;
+  } else if (ctx.slot?.time) {
+    fields.dueTime = ctx.slot.time;
   }
   const duration = value('duration');
   if (duration) fields.durationMin = duration.minutes;
@@ -627,20 +639,22 @@ export function parseQuickAdd(text: string, ctx: QuickAddContext): QuickAddResul
 
   const date = value('date');
   const recurrence = value('recurrence');
+  // Bez daty we wpisie liczy się od klikniętego dnia, inaczej od dziś.
+  const day = ctx.slot?.date ?? today;
   if (date) fields.dueDate = resolveDate(date.spec, today, fields.dueTime, nowTime);
 
   if (recurrence) {
     const spec = recurrence.spec;
     if (spec.type === 'after') {
       fields.recurrence = { mode: 'after_completion', every: { unit: spec.unit, n: spec.n } };
-      fields.dueDate ??= today;
+      fields.dueDate ??= day;
     } else {
-      const base = fields.dueDate ?? today;
+      const base = fields.dueDate ?? day;
       if (!fields.dueDate) {
-        // Pierwsze wystąpienie od dziś, którego godzina jeszcze nie minęła.
+        // Pierwsze wystąpienie od dziś, którego godzina jeszcze nie minęła (od klikniętego dnia — bez względu na godzinę).
         for (let k = 0; k < 400; k++) {
-          const candidate = addDays(today, k);
-          if (k === 0 && fields.dueTime && fields.dueTime <= nowTime) continue;
+          const candidate = addDays(day, k);
+          if (k === 0 && !ctx.slot && fields.dueTime && fields.dueTime <= nowTime) continue;
           if (matchesRule(spec, candidate, base)) {
             fields.dueDate = candidate;
             break;
@@ -649,6 +663,8 @@ export function parseQuickAdd(text: string, ctx: QuickAddContext): QuickAddResul
       }
       fields.recurrence = { mode: 'schedule', rrule: ruleFor(spec, fields.dueDate ?? base), anchor: fields.dueDate ?? base };
     }
+  } else if (!fields.dueDate && ctx.slot) {
+    fields.dueDate = ctx.slot.date;
   } else if (!fields.dueDate && fields.dueTime) {
     // Sama godzina: dziś, jeśli jeszcze nie minęła, inaczej jutro.
     fields.dueDate = fields.dueTime > nowTime ? today : addDays(today, 1);

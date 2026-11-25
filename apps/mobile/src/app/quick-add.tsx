@@ -1,9 +1,9 @@
 /**
  * Okno szybkiego dodawania (przycisk „+”, skrót aplikacji z ekranu głównego, widżet, `taskplanner://quick-add`).
- * Parametry: `listId`, `dueDate`, `parentId` (podzadanie), `tag` (dokładany do zadania), `text` (początkowy tekst), `voice=1`
+ * Parametry: `listId`, `dueDate`, `dueTime` (z `dueDate`: dotknięte miejsce kalendarza), `parentId` (podzadanie), `tag` (dokładany do zadania), `text` (początkowy tekst), `voice=1`
  * (mikrofon z widżetu: podpowiedź dyktowania — mikrofon jest na klawiaturze, która otwiera się od razu).
  */
-import { relativeDay, type LocalDate } from '@taskplanner/core';
+import { relativeDay, type LocalDate, type LocalTime, type QuickAddSlot } from '@taskplanner/core';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
@@ -17,13 +17,17 @@ export default function QuickAddScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
   const { data, today } = useView();
-  const params = useLocalSearchParams<{ listId?: string; dueDate?: string; parentId?: string; tag?: string; text?: string; voice?: string }>();
+  const params = useLocalSearchParams<{ listId?: string; dueDate?: string; dueTime?: string; parentId?: string; tag?: string; text?: string; voice?: string }>();
   const voice = params.voice === '1';
   const [more, setMore] = useState(false);
   const parentTask = params.parentId ? data.tasks.find((t) => t.id === params.parentId) : undefined;
   const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(params.dueDate ?? '') ? (params.dueDate as LocalDate) : null;
+  const slot = useMemo(
+    (): QuickAddSlot | null => (dueDate && /^\d{2}:\d{2}$/.test(params.dueTime ?? '') ? { date: dueDate, time: params.dueTime as LocalTime } : null),
+    [dueDate, params.dueTime],
+  );
   const defaults = useMemo(() => (params.tag ? { tagNames: [params.tag] } : undefined), [params.tag]);
-  const context = [params.tag ? `@${params.tag}` : '', dueDate ? relativeDay(dueDate, today) : ''].filter(Boolean).join(' · ');
+  const context = [params.tag ? `@${params.tag}` : '', dueDate ? relativeDay(dueDate, today) : '', slot?.time ?? ''].filter(Boolean).join(' · ');
   const parent = parentTask ? { id: parentTask.id, listId: parentTask.listId } : undefined;
   const close = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
@@ -43,6 +47,7 @@ export default function QuickAddScreen() {
           autoFocus
           listId={params.listId}
           dueDate={dueDate}
+          slot={slot}
           defaults={defaults}
           parent={parent}
           initialText={params.text ?? ''}

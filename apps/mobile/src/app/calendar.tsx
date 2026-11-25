@@ -3,7 +3,7 @@
  * / miesiąc nad `core/time-blocking.ts`, jak `#/calendar` na webie. Dzień: wiersz „cały dzień”,
  * konflikty, oś z przeciąganiem bloków zadań (przytrzymanie → przesunięcie, uchwyt → długość),
  * „Zaplanuj…” dla zadań bez godziny (`scheduleBlockPatch`), menu bloku i pozycji „cały dzień” (otwórz, godzina,
- * inny dzień, czas trwania, „Bez godziny” — `unscheduleBlockPatch`), „+” = nowe zadanie na oglądany dzień. Tydzień: `calendarEntries` → `agendaDays`. Miesiąc: `monthWeeks`
+ * inny dzień, czas trwania, „Bez godziny” — `unscheduleBlockPatch`), „+” = nowe zadanie na oglądany dzień, dotknięcie pustego miejsca osi = nowe zadanie na tę godzinę. Tydzień: `calendarEntries` → `agendaDays`. Miesiąc: `monthWeeks`
  * z liczbą pozycji, dotknięcie dnia → agenda dnia. Wydarzenia: kalendarze połączone na serwerze
  * i wybrane kalendarze telefonu (`lib/calendar-events.ts`). Wszystkie zmiany z „Cofnij”. Chipy filtra
  * zawężają zadania we wszystkich widokach (wydarzenia i nawyki zostają); bez terminu i godziny, bo o nich
@@ -17,6 +17,7 @@ import {
   applyFilter,
   calendarEntries,
   capitalized,
+  clickedTime,
   datesPatch,
   dayLabel,
   formatMinutes,
@@ -333,7 +334,7 @@ function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; da
         ) : null}
         <View style={styles.row}>
           <Text style={{ color: p.muted, fontSize: 12, flex: 1 }}>
-            {plural(day.timed.filter((b) => !b.passive).length, ['blok', 'bloki', 'bloków'])} · przytrzymaj blok, żeby go przesunąć
+            {plural(day.timed.filter((b) => !b.passive).length, ['blok', 'bloki', 'bloków'])} · przytrzymaj blok, żeby go przesunąć · dotknij pustego miejsca, żeby dodać zadanie
           </Text>
           <Chip label="+ Zaplanuj…" onPress={() => void planNext()} />
         </View>
@@ -352,6 +353,7 @@ function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; da
         nowMin={date === today ? nowMin : null}
         editable
         onPress={(b) => void onBlock(b)}
+        onEmpty={(min) => openQuickAdd({ dueDate: date, dueTime: clickedTime(min) })}
         onMove={(task, startMin, durationMin) => schedule(task, scheduleBlockPatch(task, date, startMin, { durationMin }), at(startMin))}
         onResize={(task, startMin, endMin) => schedule(task, resizeBlockPatch(startMin, endMin), `— ${formatMinutes(Math.max(5, endMin - startMin))}`)}
       />

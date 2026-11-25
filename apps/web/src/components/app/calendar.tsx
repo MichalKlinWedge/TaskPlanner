@@ -6,6 +6,7 @@
  * konflikty; `freeSlotTimes` — wolne okna w godzinach pracy w widoku dnia). Time-blocking: panel
  * zadań bez godziny → przeciągnięcie na godzinę (`scheduleBlockPatch`), rozciąganie bloku
  * (`resizeBlockPatch`), blok z powrotem na panel zdejmuje godzinę (`unscheduleBlockPatch`).
+ * Klik w puste miejsce otwiera szybkie dodawanie na ten dzień i godzinę (`onAdd`).
  *
  * Czas zadań jest pływający, więc kalendarz pracuje w „UTC” jako zegarze ściennym (bez stref) —
  * „teraz” to zegar ścienny strefy z ustawień.
@@ -13,12 +14,13 @@
 import plLocale from "@fullcalendar/core/locales/pl";
 import type { CalendarOptions, DatesSetArg, EventClickArg, EventDropArg, EventInput } from "@fullcalendar/core";
 import dayGridPlugin from "@fullcalendar/daygrid";
-import interactionPlugin, { Draggable, type DropArg, type EventDragStopArg, type EventResizeDoneArg } from "@fullcalendar/interaction";
+import interactionPlugin, { Draggable, type DateClickArg, type DropArg, type EventDragStopArg, type EventResizeDoneArg } from "@fullcalendar/interaction";
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import {
   applyFilter,
   calendarEntries,
+  clickedTime,
   habitSlots,
   isEmptyFilter,
   matchesFilter,
@@ -36,6 +38,7 @@ import {
   type FilterQuery,
   type LocalDate,
   type ProfileSettings,
+  type QuickAddSlot,
   type TaskOp,
   type ViewContext,
   type ViewTask,
@@ -114,7 +117,7 @@ const HeldCalendar = memo(
   (_, next) => next.held.current,
 );
 
-export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: ViewContext; settings: ProfileSettings }) {
+export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; ctx: ViewContext; settings: ProfileSettings; onAdd: (slot: QuickAddSlot) => void }) {
   const { openTask, select, store } = useAppEnv();
   const [, navigate] = useRoute();
   const { run } = useTaskActions();
@@ -274,6 +277,13 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
     openTask(id);
   };
 
+  // Puste miejsce: pół godziny pod kursorem; wiersz „cały dzień” i miesiąc — sam dzień.
+  const onDateClick = (info: DateClickArg) => {
+    // Dotyk: bez emulowanego `mousedown`, który trafiłby w tło świeżo otwartego okna i je zamknął.
+    if (info.jsEvent.type === "touchend" && info.jsEvent.cancelable) info.jsEvent.preventDefault();
+    onAdd({ date: wallDate(info.date), ...(!info.allDay && { time: clickedTime(wallMinutes(info.date)) }) });
+  };
+
   const onDates = (arg: DatesSetArg) => {
     const next = { from: wallDate(arg.start), to: wallDate(arg.end) };
     setRange((r) => (r && r.from === next.from && r.to === next.to ? r : next));
@@ -327,7 +337,7 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
             «
           </button>
         </div>
-        <p className="px-1 text-xs text-[var(--muted)]">Przeciągnij na godzinę. Blok upuszczony tutaj traci godzinę.</p>
+        <p className="px-1 text-xs text-[var(--muted)]">Przeciągnij na godzinę. Blok upuszczony tutaj traci godzinę. Klik w puste miejsce kalendarza dodaje zadanie.</p>
         <ul ref={list} className="flex max-h-[40vh] flex-col gap-1 overflow-y-auto lg:max-h-[calc(100dvh-14rem)]">
           {candidates.slice(0, PANEL_LIMIT).map((t) => (
             <li
@@ -391,6 +401,7 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
             eventResizeStart: hold,
             eventResizeStop: release,
             eventClick: onClick,
+            dateClick: onDateClick,
             eventDidMount: (info) => {
               const hint = info.event.extendedProps.hint as string | null;
               info.el.title = hint ? `${info.event.title}

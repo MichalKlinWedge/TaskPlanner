@@ -85,6 +85,8 @@ const then = <T,>(choice: Promise<T>, act: (value: T) => unknown) => void choice
 export interface QuickAddParams {
   listId?: string;
   dueDate?: string;
+  /** Godzina z dotkniętego miejsca kalendarza (z `dueDate`). */
+  dueTime?: string;
   parentId?: string;
   /** Nazwa tagu dokładanego do zadania (widok tagu) — dowolna, także spoza gramatyki „@tag”. */
   tag?: string;

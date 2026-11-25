@@ -247,6 +247,7 @@ Widoki stałe w pasku bocznym [W+A]:
 ### M11. Kalendarz i time-blocking
 - **[W]** FullCalendar: dzień, tydzień, miesiąc. Wiersz „cały dzień” = zadania z datą bez godziny. Zadania z godziną = bloki o długości `duration_min`.
 - **Time-blocking**: panel boczny z zadaniami bez godziny (Inbox, Dziś, zaległe, dowolny filtr) → przeciągnięcie na godzinę ustawia `due_date`, `due_time` i `duration_min` (szacunek albo domyślne 30 min). Rozciąganie bloku zmienia czas trwania; przeciągnięcie z powrotem do panelu usuwa godzinę.
+- **Klik w puste miejsce** [W+A]: szybkie dodawanie z datą i godziną klikniętej pół godziny (wiersz „cały dzień” i miesiąc [W] — sama data); data albo godzina we wpisie zastępuje tylko swoje pole.
 - Wydarzenia z kalendarzy zewnętrznych (M18) obok zadań, innym stylem, tylko do odczytu (do czasu Etapu 12). **Nakładanie się** bloku z wydarzeniem albo innym blokiem → ostrzeżenie (obramowanie + ikona) i lista konfliktów w „Dziś”.
 - Wolne okna w godzinach pracy (`core/time-blocking.ts`) podświetlone w widoku dnia; „Zaplanuj automatycznie” — v1.x.
 - **[A]** dzień (oś godzin, przeciąganie bloków po długim przytrzymaniu), tydzień (agenda), miesiąc (kropki + lista dnia). Wydarzenia z kalendarza telefonu (`expo-calendar`) widoczne bez serwera.

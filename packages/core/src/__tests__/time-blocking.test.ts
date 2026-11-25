@@ -10,6 +10,7 @@ import {
   blockLanes,
   blocksForDay,
   calendarEntries,
+  clickedTime,
   freeSlotTimes,
   conflictIds,
   conflicts,
@@ -125,6 +126,7 @@ describe('przeciąganie', () => {
     expect(resizeBlockPatch(600, 602)).toEqual({ duration_min: 5 });
     expect(unscheduleBlockPatch()).toEqual({ due_time: null });
     expect(minutesToTime(-30)).toBe('23:30');
+    expect([0, 29, 30, 615, 629.9, 1439, 1500, -5].map(clickedTime)).toEqual(['00:00', '00:00', '00:30', '10:00', '10:00', '23:30', '23:30', '00:00']);
   });
 });
 

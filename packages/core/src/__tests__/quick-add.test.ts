@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { parseQuickAdd, suppressToken, type QuickAddContext, type QuickAddResult } from '../quick-add.ts';
+import { parseQuickAdd, suppressToken, type QuickAddContext, type QuickAddResult, type QuickAddSlot } from '../quick-add.ts';
 
 const fixture = (name: string) => readFileSync(new URL(`../../../../fixtures/${name}`, import.meta.url), 'utf8');
 
@@ -86,5 +86,35 @@ describe('szybkie dodawanie — zakresy znaków do podświetlania', () => {
     const result = parseQuickAdd(suppressToken(text, time), ctx);
     expect(result.title).toBe('Spotkanie o projekcie o 10:00');
     expect(result.fields).toEqual({ dueDate: '2026-11-19', priority: 2 });
+  });
+});
+
+describe('kliknięte miejsce kalendarza (slot)', () => {
+  // Piątek 27.11.2026, 10:00; „teraz” = środa 18.11.2026, 12:00.
+  const slot: QuickAddSlot = { date: '2026-11-27', time: '10:00' };
+  const fields = (text: string, s: QuickAddSlot = slot) => parseQuickAdd(text, { ...ctx, slot: s }).fields;
+
+  it('sam tytuł — dzień i godzina z kliknięcia', () => {
+    expect(fields('Dentysta')).toEqual({ dueDate: '2026-11-27', dueTime: '10:00' });
+    expect(fields('Dentysta', { date: slot.date })).toEqual({ dueDate: '2026-11-27' });
+    expect(parseQuickAdd('Dentysta', { ...ctx, slot }).tokens).toEqual([]);
+  });
+
+  it('wpis wygrywa, każde pole osobno', () => {
+    expect(fields('Dentysta o 14')).toEqual({ dueDate: '2026-11-27', dueTime: '14:00' });
+    expect(fields('Dentysta o 14', { date: slot.date })).toEqual({ dueDate: '2026-11-27', dueTime: '14:00' });
+    expect(fields('Dentysta jutro')).toEqual({ dueDate: '2026-11-19', dueTime: '10:00' });
+    expect(fields('Dentysta jutro o 8')).toEqual({ dueDate: '2026-11-19', dueTime: '08:00' });
+  });
+
+  it('miejsce w przeszłości zostaje', () => {
+    expect(fields('Dentysta', { date: '2026-11-16', time: '09:00' })).toEqual({ dueDate: '2026-11-16', dueTime: '09:00' });
+  });
+
+  it('cykl liczony od klikniętego dnia', () => {
+    expect(fields('Podlać co tydzień')).toMatchObject({ dueDate: '2026-11-27', dueTime: '10:00', recurrence: { rrule: 'FREQ=WEEKLY;BYDAY=FR', anchor: '2026-11-27' } });
+    expect(fields('Podlać co poniedziałek')).toMatchObject({ dueDate: '2026-11-30', dueTime: '10:00', recurrence: { rrule: 'FREQ=WEEKLY;BYDAY=MO', anchor: '2026-11-30' } });
+    // Dziś o godzinie, która już minęła: kliknięcie jest wprost, więc seria zaczyna się tego dnia.
+    expect(fields('Podlać codziennie', { date: '2026-11-18', time: '09:00' })).toMatchObject({ dueDate: '2026-11-18', dueTime: '09:00' });
   });
 });

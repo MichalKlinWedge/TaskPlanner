@@ -5,7 +5,7 @@
  * (klik cofa rozpoznanie), podgląd tytułu i listy docelowej, wiele linii naraz (wklejenie).
  * Ten sam komponent w widokach (pole na górze) i w oknie wywoływanym klawiszem `Q` / `Ctrl+Spacja`.
  */
-import { clipQuote, findUrl, linkName, localDateTimeAt, parseQuickAdd, withLinkOps, plural, quickAddChip, quickAddTaskOps, suppressToken, taskTagOps, type LocalDate, type TaskOp, type QuickAddContext, type QuickAddTokenKind, type WebClip } from "@taskplanner/core";
+import { clipQuote, findUrl, linkName, localDateTimeAt, parseQuickAdd, withLinkOps, plural, quickAddChip, quickAddTaskOps, suppressToken, taskTagOps, type LocalDate, type TaskOp, type QuickAddContext, type QuickAddSlot, type QuickAddTokenKind, type WebClip } from "@taskplanner/core";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 
 import { lastSortKey, useAppEnv } from "./app-env";
@@ -29,6 +29,8 @@ export interface QuickAddProps {
   listId?: string;
   /** Termin, gdy wpis go nie podaje. */
   dueDate?: LocalDate | null;
+  /** Kliknięte miejsce kalendarza: dzień i godzina, gdy wpis ich nie podaje. */
+  slot?: QuickAddSlot | null;
   /** Pola z kolumny tablicy (status, priorytet), gdy wpis ich nie podaje; tagi dokładane. */
   defaults?: { status?: string; priority?: number; tagNames?: readonly string[]; boardColumnId?: string; /** Komórka karteczki (widok „Karteczki”) — tylko pierwsze zadanie, gdy zostaje na `listId`. */ canvasPos?: { col: number; row: number } };
   /** Podzadanie tego zadania (lista rodzica, wskazanie listy we wpisie pomijane). */
@@ -46,7 +48,7 @@ export interface QuickAddProps {
   clip?: WebClip;
 }
 
-export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dodaj zadanie", autoFocus, onAdded, onCancel, initialText, link: sharedLink, clip: initialClip }: QuickAddProps) {
+export function QuickAdd({ listId, dueDate, slot, parent, defaults, placeholder = "Dodaj zadanie", autoFocus, onAdded, onCancel, initialText, link: sharedLink, clip: initialClip }: QuickAddProps) {
   const { data, userId, timeZone, today, workspaceId } = useAppEnv();
   const { run, notify } = useTaskActions();
   const [text, setText] = useState(initialText ?? "");
@@ -70,8 +72,9 @@ export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dod
       workspaces: data.workspaces.map((w) => w.name),
       lists: data.lists.filter((l) => l.kind !== "inbox").map((l) => ({ workspace: names.get(l.workspaceId) ?? "", name: l.name, kind: l.kind })),
       tags: data.tags.map((t) => t.name),
+      ...(slot && { slot }),
     }),
-    [data.workspaces, data.lists, data.tags, names, defaultWorkspace],
+    [data.workspaces, data.lists, data.tags, names, defaultWorkspace, slot],
   );
   const parse = (value: string) => parseQuickAdd(value, { ...parserContext, now: localDateTimeAt(new Date(), timeZone) });
   const result = useMemo(() => parse(text), [text, parserContext, timeZone]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -216,11 +219,12 @@ export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dod
 }
 
 /** Okno szybkiego dodawania nad bieżącym widokiem. */
-export function QuickAddDialog({ open, onClose, ...props }: QuickAddProps & { open: boolean; onClose: () => void }) {
+export function QuickAddDialog({ open, onClose, heading, ...props }: QuickAddProps & { open: boolean; onClose: () => void; heading?: string }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-[15vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div role="dialog" aria-modal="true" aria-label="Szybkie dodawanie" className="max-h-[80vh] w-full max-w-xl overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3 shadow-2xl">
+        {heading ? <h2 className="px-1 text-sm font-medium">{heading}</h2> : null}
         <QuickAdd {...props} autoFocus onAdded={(more) => !more && onClose()} onCancel={onClose} />
         <p className="px-1 text-xs text-[var(--muted)]">
           Np. „Zapłacić rachunek jutro o 10 #dom !wysoki @telefon ~15m” · Esc — zamknij
