@@ -15,6 +15,7 @@ import { onRejectedOps } from "@/lib/local-store";
 import { useAppEnv } from "./app-env";
 import { PeopleBadges } from "./people-badges";
 import { TAG_CHIP, tagChipStyle } from "./tag-chip";
+import { EyeIcon } from "./ui";
 
 // ── Akcje ────────────────────────────────────────────────────────────────────────────────────
 
@@ -277,7 +278,7 @@ export function DoneCircle({ task, closed, readOnly, onToggle, className = "" }:
 
 export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, onTomorrow, columnTags, widths = {} }: TaskItemProps) {
   const { toggle } = useTaskActions();
-  const { openTask, selectedIds, select, data, trashed } = useAppEnv();
+  const { openTask, openTaskId, openTaskMode, selectedIds, select, data, trashed } = useAppEnv();
   const inTrash = trashed?.has(task.id) ?? false;
   const selected = !inTrash && selectedIds.has(task.id);
   const attachments = data.attachments.get(task.id)?.length ?? 0;
@@ -367,6 +368,20 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
         </span>
       </button>
       <PeopleBadges task={task} className="mt-0.5" />
+      <button
+        type="button"
+        aria-label={`Podgląd zadania „${task.title}”`}
+        title="Podgląd zadania"
+        aria-pressed={openTaskId === task.id && openTaskMode === "preview"}
+        onClick={() => {
+          if (!inTrash) select(task.id);
+          openTask(task.id, "preview");
+        }}
+        className="mt-px flex h-5 shrink-0 items-center rounded px-1 text-[var(--muted)] opacity-50 group-hover:opacity-100 hover:bg-[var(--hover)] hover:text-[var(--accent)] focus:opacity-100 aria-pressed:text-[var(--accent)] aria-pressed:opacity-100"
+        data-testid="task-preview-open"
+      >
+        <EyeIcon />
+      </button>
       {onAddSubtask ? (
         <button
           type="button"

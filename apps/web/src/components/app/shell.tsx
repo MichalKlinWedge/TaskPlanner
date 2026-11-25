@@ -13,7 +13,7 @@ import { useAppData, useToday, type List, type Workspace } from "@/lib/app-data"
 import { GOOGLE_RETURN_PARAM } from "@/lib/calendars";
 import { DEFAULT_ROUTE, routeHash, useRoute, type Route } from "@/lib/route";
 
-import { AppEnvProvider, useAppEnv, visibleTaskIds } from "./app-env";
+import { AppEnvProvider, useAppEnv, visibleTaskIds, type TaskPanelMode } from "./app-env";
 import { Board } from "./board";
 import { CalendarScreen } from "./calendar";
 import { DayPlan } from "./day-plan";
@@ -144,6 +144,12 @@ export function Shell({
   }, []);
   // Klik w przypomnienie przy zamkniętej karcie: `/?task=<id>` (Service Worker, M8).
   const [openTaskId, setOpenTaskId] = useState<string | null>(() => (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("task") : null));
+  // Panel jako formularz (domyślnie) albo podgląd (ikona oka w wierszu zadania).
+  const [openTaskMode, setOpenTaskMode] = useState<TaskPanelMode>("edit");
+  const openTask = useCallback((id: string | null, mode: TaskPanelMode = "edit") => {
+    setOpenTaskId(id);
+    setOpenTaskMode(mode);
+  }, []);
   // Klik poza panelem zadania zamyka go — po obsłudze kliknięcia (zamknięcie przy `pointerdown` przesunęłoby
   // układ pod kursorem), chyba że to kliknięcie otworzyło inne zadanie. Bez zamykania: wiersze i karty zadań
   // (zaznaczanie, odhaczanie, przeciąganie), okna dialogowe, komunikat z „Cofnij”, pasek boczny (zamyka sam)
@@ -188,11 +194,11 @@ export function Shell({
     }
     if (!("serviceWorker" in navigator)) return;
     const onMessage = (event: MessageEvent) => {
-      if (event.data?.type === "open-task" && typeof event.data.taskId === "string") setOpenTaskId(event.data.taskId);
+      if (event.data?.type === "open-task" && typeof event.data.taskId === "string") openTask(event.data.taskId);
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
     return () => navigator.serviceWorker.removeEventListener("message", onMessage);
-  }, []);
+  }, [openTask]);
 
   const [palette, setPalette] = useState<PaletteMode | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -416,7 +422,7 @@ export function Shell({
   const quickDefaults = list ? { listId: list.id } : route.view === "today" ? { listId: targetInbox?.id, dueDate: today } : { listId: targetInbox?.id };
 
   return (
-    <AppEnvProvider value={{ store, data, userId, timeZone: settings.timeZone, settings, today, workspaceId, openTask: setOpenTaskId, openTaskId, selectedIds, select }}>
+    <AppEnvProvider value={{ store, data, userId, timeZone: settings.timeZone, settings, today, workspaceId, openTask, openTaskId, openTaskMode, selectedIds, select }}>
       <TaskActionsProvider store={store} userId={userId} timeZone={settings.timeZone} tasks={data.tasks}>
         <AttachmentsProvider store={store} userId={userId}>
         <FocusProvider store={store} userId={userId} settings={settings}>
@@ -830,7 +836,7 @@ function Keyboard({
   openShortcuts: () => void;
   toggleSidebar: () => void;
 }) {
-  const { openTask, openTaskId, data } = useAppEnv();
+  const { openTask, openTaskId, openTaskMode, data } = useAppEnv();
   // Otwarte zadanie z kosza (podgląd) nie wchodzi do trybu skupienia.
   const focusTaskId = selected.at(-1) ?? (data.tasks.some((t) => t.id === openTaskId) ? openTaskId : null);
   const focusOn = useFocus().settings.enabled;
@@ -873,7 +879,8 @@ function Keyboard({
           const range = anchor <= end ? ids.slice(anchor, end + 1) : ids.slice(end, anchor + 1).reverse();
           setSelected(range);
         } else setSelected([next]);
-        if (openTaskId) openTask(next);
+        // J / K przy otwartym panelu zostaje w jego trybie.
+        if (openTaskId) openTask(next, openTaskMode);
         document.querySelector(`main [data-task-id="${next}"]`)?.scrollIntoView({ block: "nearest" });
       };
 
@@ -906,7 +913,7 @@ function Keyboard({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [blocked, selected, setSelected, navigate, openQuick, openPalette, openShortcuts, toggleSidebar, openTask, openTaskId, focusTaskId, bulk, focusOn]);
+  }, [blocked, selected, setSelected, navigate, openQuick, openPalette, openShortcuts, toggleSidebar, openTask, openTaskId, openTaskMode, focusTaskId, bulk, focusOn]);
 
   return null;
 }

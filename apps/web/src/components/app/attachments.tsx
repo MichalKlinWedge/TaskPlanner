@@ -340,6 +340,47 @@ export function AttachmentsField({ task, readOnly = false }: { task: ViewTask; r
   );
 }
 
+/** Załączniki zadania do podglądu (`task-preview.tsx`): linki i pliki do otwarcia, bez dodawania i usuwania. */
+export function AttachmentsSummary({ taskId }: { taskId: string }) {
+  const { data } = useAppEnv();
+  const api = useAttachments();
+  const [shown, setShown] = useState<Shown | null>(null);
+  const items = data.attachments.get(taskId) ?? [];
+  const waiting = api.pending.filter((p) => p.taskId === taskId && !items.some((i) => i.id === p.id));
+  const links = items.filter((a) => a.kind === "link");
+  const files = items.filter((a) => a.kind === "file");
+  return (
+    <>
+      {links.length ? (
+        <ul className="mb-2 flex flex-col gap-1" aria-label="Linki">
+          {links.map((a) => (
+            <LinkRow key={a.id} item={a} />
+          ))}
+        </ul>
+      ) : null}
+      {files.length || waiting.length ? (
+        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Pliki">
+          {files.map((a) => (
+            <FileTile key={a.id} item={a} onOpen={() => setShown(a)} />
+          ))}
+          {waiting.map((p) => (
+            <PendingTile key={p.id} file={p} onOpen={() => setShown({ id: p.id, storagePath: null, name: p.name, mime: p.mime })} />
+          ))}
+        </ul>
+      ) : null}
+      {shown ? <PreviewDialog item={shown} onClose={() => setShown(null)} /> : null}
+    </>
+  );
+}
+
+/** Liczba załączników razem z plikami czekającymi na wysyłkę. */
+export function useAttachmentCount(taskId: string): number {
+  const { data } = useAppEnv();
+  const { pending } = useAttachments();
+  const items = data.attachments.get(taskId) ?? [];
+  return items.length + pending.filter((p) => p.taskId === taskId && !items.some((i) => i.id === p.id)).length;
+}
+
 function LinkRow({ item, onRemove }: { item: Attachment; onRemove?: () => void }) {
   const p = item.preview;
   return (

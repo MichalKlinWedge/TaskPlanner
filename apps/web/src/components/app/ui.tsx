@@ -35,6 +35,16 @@ export function IconButton({ label, className = "", ...props }: ButtonHTMLAttrib
   );
 }
 
+/** Oko — podgląd zadania (wiersz listy, panel); kreska w kolorze tekstu. */
+export function EyeIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 /** Link przejścia / powrotu („← Nawyki”, „Przegląd tygodnia →”) — jeden styl z ramką, dla `<a>` i `<button>`. */
 export const navLinkClass =
   "inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--line)] bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--foreground)]";

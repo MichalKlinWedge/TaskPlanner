@@ -32,7 +32,6 @@ import {
   editCommentOps,
   MAX_COMMENT_LENGTH,
   removeParticipantOps,
-  sortComments,
   deleteTaskOps,
   descendants,
   endSeriesOps,
@@ -82,29 +81,30 @@ import {
   type TrashPreview,
   type ViewTask,
 } from "@taskplanner/core";
-import { EditorContent, useEditor } from "@tiptap/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { listEditable } from "@/lib/app-data";
 import { useDependencies } from "@/lib/dependencies";
-import { descriptionExtensions, descriptionMarkdown } from "@/lib/editor";
 import { useLocalQuery } from "@/lib/local-store";
 import { usePlugins } from "@/lib/plugins";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { useTaskComments, useTaskDescription, useTaskReminders } from "@/lib/task-details";
 import { useTrash } from "@/lib/trash";
 
 import { BreakdownField } from "./ai-breakdown";
 import { AppEnvProvider, useAppEnv } from "./app-env";
 import { AttachmentsField } from "./attachments";
 import { TaskTimeField } from "./focus";
+import { MarkdownPreview } from "./markdown-preview";
 import { PurgeButton } from "./purge-button";
 import { QuickAdd } from "./quick-add";
 import { RecurrenceEditor } from "./recurrence-editor";
 import { TAG_CHIP, TagColorPicker, tagChipStyle } from "./tag-chip";
 import { TaskItem, useTaskActions } from "./task-item";
 import { LockedSections, PanelSection, useSectionsLocked } from "./panel-section";
-import { Button, CommitInput, IconButton, Input, inputClass, navLinkClass, Select } from "./ui";
+import { TaskPreview } from "./task-preview";
+import { Button, CommitInput, EyeIcon, IconButton, Input, inputClass, navLinkClass, Select } from "./ui";
 
 type Row = Record<string, string | number | null>;
 
@@ -147,7 +147,10 @@ function Block({ id, title, children }: { id?: string; title: string; children: 
   );
 }
 
-/** Panel zadania; zadanie w koszu — ten sam panel tylko do odczytu, z przywróceniem. */
+/**
+ * Panel zadania: formularz albo podgląd (`TaskPreview`), przełącznik w nagłówku; zadanie w koszu — ten sam panel
+ * tylko do odczytu, z przywróceniem.
+ */
 export function TaskPanel({ taskId }: { taskId: string }) {
   const { data, openTask } = useAppEnv();
   const task = data.tasks.find((t) => t.id === taskId);
@@ -162,7 +165,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [openTask]);
 
-  return task ? <TaskDetails task={task} /> : <TrashedTaskPanel taskId={taskId} />;
+  return task ? <TaskFrame task={task} /> : <TrashedTaskPanel taskId={taskId} />;
 }
 
 /** Zadanie spoza widoków: w koszu tego urządzenia → podgląd, inaczej komunikat. */
@@ -183,8 +186,42 @@ function TrashedTaskPanel({ taskId }: { taskId: string }) {
   }
   return (
     <AppEnvProvider value={value}>
-      <TaskDetails task={preview.task} trash={preview} />
+      <TaskFrame task={preview.task} trash={preview} />
     </AppEnvProvider>
+  );
+}
+
+/** Ramka panelu z przełącznikiem trybu i treścią wybranego trybu. */
+function TaskFrame({ task, trash }: { task: ViewTask; trash?: TrashPreview<TrashedTask> }) {
+  const { data, openTask, openTaskMode } = useAppEnv();
+  const preview = openTaskMode === "preview";
+  const listReadOnly = !listEditable(data, task.listId);
+  const editable = !trash && !listReadOnly;
+  const label = !preview ? "Podgląd zadania (tylko wypełnione dane)" : editable ? "Edytuj zadanie" : "Wszystkie pola zadania";
+  return (
+    <PanelFrame
+      onClose={() => openTask(null)}
+      actions={
+        <Button className="px-2 py-0.5 text-xs" title={label} aria-label={label} data-testid="task-mode-switch" onClick={() => openTask(task.id, preview ? "edit" : "preview")}>
+          {preview ? (
+            editable ? "✎ Edytuj" : "Wszystkie pola"
+          ) : (
+            <>
+              <EyeIcon /> Podgląd
+            </>
+          )}
+        </Button>
+      }
+    >
+      {preview ? (
+        <>
+          {trash ? <TrashBar preview={trash} readOnly={listReadOnly} /> : null}
+          <TaskPreview task={task} trash={trash} />
+        </>
+      ) : (
+        <TaskDetails task={task} trash={trash} />
+      )}
+    </PanelFrame>
   );
 }
 
@@ -241,7 +278,7 @@ function TaskDetails({ task, trash }: { task: ViewTask; trash?: TrashPreview<Tra
   };
 
   return (
-    <PanelFrame onClose={() => openTask(null)}>
+    <>
       {parent ? (
         <button type="button" className="mb-2 block max-w-full truncate text-left text-xs text-[var(--muted)] hover:text-[var(--accent)]" onClick={() => openTask(parent.id)}>
           ↑ {parent.title}
@@ -427,7 +464,7 @@ function TaskDetails({ task, trash }: { task: ViewTask; trash?: TrashPreview<Tra
           </Button>
         )}
       </div>
-    </PanelFrame>
+    </>
   );
 }
 
@@ -778,14 +815,7 @@ function PeopleField({ task }: { task: ViewTask }) {
 function CommentsField({ task }: { task: ViewTask }) {
   const { store, userId, today, timeZone } = useAppEnv();
   const { run, notify } = useTaskActions();
-  const { rows } = useLocalQuery<Row>(store, "select id, body, posted_at, edited_at, created_by from task_comments where task_id = ? and deleted_at is null", [task.id], ["task_comments"]);
-  const comments = useMemo(
-    () =>
-      sortComments(
-        rows.map((r) => ({ id: String(r.id), taskId: task.id, body: String(r.body), postedAt: String(r.posted_at), editedAt: (r.edited_at as string | null) ?? null, authorId: (r.created_by as string | null) ?? null })),
-      ),
-    [rows, task.id],
-  );
+  const comments = useTaskComments(store, task.id);
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
 
@@ -911,7 +941,7 @@ function storedPanelWidth() {
  * Panel po prawej (na telefonie pełny ekran). Na szerokim ekranie lewą krawędź da się przeciągnąć
  * (albo strzałkami po jej zaznaczeniu) — szerokość zostaje w `localStorage`, dwuklik przywraca domyślną.
  */
-function PanelFrame({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+function PanelFrame({ onClose, actions, children }: { onClose: () => void; actions?: ReactNode; children: ReactNode }) {
   const [width, setWidth] = useState(storedPanelWidth);
   // Pełny widok: panel zajmuje miejsce widoku (do menu po lewej), sekcje jako kafelki obok siebie.
   const [full, setFull] = useState(() => {
@@ -979,7 +1009,8 @@ function PanelFrame({ onClose, children }: { onClose: () => void; children: Reac
         className={`@container min-w-0 flex-1 overflow-y-auto p-4 lg:p-5 ${full ? "" : "lg:w-[var(--tp-panel-width)] lg:flex-none"}`}
         style={{ "--tp-panel-width": `${clampPanelWidth(width)}px` } as CSSProperties}
       >
-        <div className="mb-1 flex justify-end gap-1">
+        <div className="mb-1 flex items-center justify-end gap-1">
+          {actions ? <span className="mr-auto">{actions}</span> : null}
           <IconButton label={full ? "Zwykły panel" : "Pełny widok — wszystkie sekcje obok siebie"} className="hidden lg:inline-flex" aria-pressed={full} onClick={toggleFull}>
             {full ? "⤡" : "⤢"}
           </IconButton>
@@ -1186,9 +1217,9 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
 }
 
 function RemindersField({ task }: { task: ViewTask }) {
-  const { store } = useAppEnv();
+  const { store, today } = useAppEnv();
   const { run } = useTaskActions();
-  const { rows } = useLocalQuery<Row>(store, "select id, kind, offset_min, at_date, at_time from reminders where task_id = ? and deleted_at is null order by kind, offset_min, at_date, at_time", [task.id], ["reminders"]);
+  const rows = useTaskReminders(store, task.id, today);
   const [choice, setChoice] = useState("");
   const [at, setAt] = useState({ date: task.dueDate ?? "", time: "09:00" });
 
@@ -1198,9 +1229,9 @@ function RemindersField({ task }: { task: ViewTask }) {
     <Block title="Przypomnienia">
       <ul className="mb-2 flex flex-col gap-1 text-sm">
         {rows.map((r) => (
-          <li key={String(r.id)} className="flex items-center gap-2">
-            <span>🔔 {r.kind === "relative" ? reminderOffset(Number(r.offset_min)) : `${relativeDay(String(r.at_date) as LocalDate, task.dueDate ?? (String(r.at_date) as LocalDate))} ${String(r.at_time).slice(0, 5)}`}</span>
-            <IconButton label="Usuń przypomnienie" onClick={() => void run([{ table: "reminders", id: String(r.id), patch: { deleted_at: new Date().toISOString() } }])}>
+          <li key={r.id} className="flex items-center gap-2">
+            <span>🔔 {r.label}</span>
+            <IconButton label="Usuń przypomnienie" onClick={() => void run([{ table: "reminders", id: r.id, patch: { deleted_at: new Date().toISOString() } }])}>
               ×
             </IconButton>
           </li>
@@ -1252,28 +1283,6 @@ function RemindersField({ task }: { task: ViewTask }) {
 /** Tryb opisu zapamiętany na urządzeniu: tekst Markdown albo podgląd. */
 const DESCRIPTION_MODE_KEY = "tp-description-mode";
 
-const PREVIEW_CLASS =
-  "text-sm [&_.tiptap]:outline-none [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-4 [&_blockquote]:pl-3 [&_pre]:bg-black/10 [&_pre]:p-2 [&_code]:rounded [&_code]:bg-black/10 [&_code]:px-1 [&_h1]:mt-2 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-2 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-1 [&_h3]:font-semibold [&_a]:text-[var(--accent)] [&_a]:underline [&_hr]:my-2 [&_hr]:border-[var(--line)] [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_ul[data-type=taskList]_li]:flex [&_ul[data-type=taskList]_li]:items-start [&_ul[data-type=taskList]_li]:gap-2 [&_ul[data-type=taskList]_label]:mt-1.5 [&_ul[data-type=taskList]_p]:my-0.5 [&_li[data-checked=true]>div]:text-[var(--muted)] [&_li[data-checked=true]>div]:line-through [&_table]:my-2 [&_table]:border-collapse [&_td]:border [&_td]:border-[var(--line)] [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-[var(--line)] [&_th]:bg-[var(--hover)] [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_td_p]:my-0 [&_th_p]:my-0";
-
-/** Markdown opisu wyrenderowany przez TipTap tylko do odczytu (ten sam GFM co wcześniej w edytorze). */
-function MarkdownPreview({ markdown, onEdit }: { markdown: string; onEdit?: () => void }) {
-  const editor = useEditor({
-    extensions: descriptionExtensions,
-    content: "",
-    immediatelyRender: false,
-    editable: false,
-    editorProps: { attributes: { "aria-label": "Podgląd opisu" } },
-  });
-  useEffect(() => {
-    if (editor && descriptionMarkdown(editor).trim() !== markdown.trim()) editor.commands.setContent(markdown, { contentType: "markdown" });
-  }, [editor, markdown]);
-  return (
-    <div className={PREVIEW_CLASS} onDoubleClick={onEdit} title={onEdit ? "Dwuklik — edycja Markdown" : undefined} data-testid="description-preview">
-      {markdown.trim() ? <EditorContent editor={editor} /> : <p className="text-[var(--muted)]">Brak opisu.</p>}
-    </div>
-  );
-}
-
 /** Przyciski formatowania nad polem Markdown (grupy rozdziela `sep`). */
 const FORMAT_BUTTONS: { action: MarkdownAction; label: string; icon: ReactNode; sep?: true }[] = [
   { action: "bold", label: "Pogrubienie (Ctrl+B)", icon: <b>B</b> },
@@ -1312,8 +1321,7 @@ function applyTextEdit(area: HTMLTextAreaElement, edit: MarkdownTextEdit, setTex
 export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string; readOnly?: boolean }) {
   const { store } = useAppEnv();
   const { run } = useTaskActions();
-  const { rows } = useLocalQuery<Row>(store, "select description_md from tasks where id = ?", [taskId], ["tasks"]);
-  const saved = (rows[0]?.description_md as string | null) ?? "";
+  const saved = useTaskDescription(store, taskId);
   const [draft, setDraft] = useState(saved);
   const [base, setBase] = useState(saved);
   const [editing, setEditing] = useState(false);

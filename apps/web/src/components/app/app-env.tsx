@@ -10,6 +10,8 @@ import { createContext, useContext } from "react";
 
 import type { AppData } from "@/lib/app-data";
 
+export type TaskPanelMode = "edit" | "preview";
+
 export interface AppEnv {
   store: TabStore;
   data: AppData;
@@ -22,8 +24,10 @@ export interface AppEnv {
   today: LocalDate;
   /** Bieżąca przestrzeń; `null` = „Wszystkie”. */
   workspaceId: string | null;
-  /** Otwarcie panelu zadania (`null` zamyka). */
-  openTask: (id: string | null) => void;
+  /** Otwarcie panelu zadania (`null` zamyka): formularz albo podgląd samych wypełnionych danych. */
+  openTask: (id: string | null, mode?: TaskPanelMode) => void;
+  /** Tryb otwartego panelu zadania. */
+  openTaskMode: TaskPanelMode;
   /** Zadanie otwarte w panelu. */
   openTaskId: string | null;
   /** Zaznaczone zadania (akcje palety i skrótów działają na nich). */
