@@ -11,7 +11,8 @@ import { useState } from "react";
 
 import { createAiAccount, deleteAiAccount, testAiAccount, updateAiAccount, useAiAccount } from "@/lib/ai";
 
-import { Button, Card, Field, Input, Notice, Select } from "./ui";
+import { CollapsibleCard } from "./collapsible-card";
+import { Button, Field, Input, Notice, Select } from "./ui";
 
 const dateTime = (iso: string) => new Date(iso).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
 const TONE = { ok: "text-green-700 dark:text-green-400", error: "text-red-700 dark:text-red-400", muted: "text-[var(--muted)]" } as const;
@@ -52,8 +53,7 @@ export function AiCard({ store }: { store: TabStore }) {
     });
 
   return (
-    <Card className="mt-4">
-      <h2 className="mb-1 text-sm font-semibold">Asystent AI</h2>
+    <CollapsibleCard id="ai" title="Asystent AI" alert={account?.status === "error"}>
       <p className="mb-3 text-xs text-[var(--muted)]">{AI_INTRO}</p>
 
       {account ? <AccountSummary account={account} busy={busy} onModel={(model) => run(async () => (await updateAiAccount(account.id, { model }), null))} /> : null}
@@ -95,7 +95,7 @@ export function AiCard({ store }: { store: TabStore }) {
         </div>
       ) : null}
       <p className="mt-3 text-xs text-[var(--muted)]">{aiDataNote(account?.provider ?? "gemini")}</p>
-    </Card>
+    </CollapsibleCard>
   );
 }
 

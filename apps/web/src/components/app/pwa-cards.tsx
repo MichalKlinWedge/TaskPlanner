@@ -11,7 +11,7 @@ import { useStoreStatus } from "@/lib/local-store";
 import { checkOfflineCache, offlineStatus, subscribeOffline, type OfflineCheck } from "@/lib/service-worker";
 
 import { CollapsibleCard } from "./collapsible-card";
-import { Button, Card } from "./ui";
+import { Button } from "./ui";
 
 const SHORTCUTS = "Szybkie dodawanie, Dziś, Kalendarz";
 
@@ -21,8 +21,7 @@ export function InstallCard() {
   const install = async () => setDismissed(!(await promptInstall()));
 
   return (
-    <Card className="mt-4">
-      <h2 className="mb-2 text-sm font-semibold">Aplikacja na pulpicie</h2>
+    <CollapsibleCard id="install" title="Aplikacja na pulpicie">
       {state === "installed" ? (
         <p className="text-sm" data-testid="install-state">
           Zainstalowana. Skróty z ikony aplikacji (prawy przycisk na pasku zadań lub w menu Start, przytrzymanie ikony na telefonie): {SHORTCUTS}.
@@ -41,7 +40,7 @@ export function InstallCard() {
           pulpitu lub menu Start. Firefox nie instaluje aplikacji internetowych; Safari na macOS: Plik → Dodaj do Docka.
         </p>
       )}
-    </Card>
+    </CollapsibleCard>
   );
 }
 

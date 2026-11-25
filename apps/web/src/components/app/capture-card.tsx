@@ -5,23 +5,17 @@
  * z adresem i tytułem bieżącej strony oraz opis udostępniania z telefonu (Web Share Target z
  * manifestu — działa w zainstalowanej aplikacji na Androidzie).
  */
-import { useEffect, useRef } from "react";
-
-import { Card } from "./ui";
+import { CollapsibleCard } from "./collapsible-card";
 
 /** Kod zakładki: nowa karta z `/?share_url=…&share_title=…` (parametry jak w `share_target`). */
 export const bookmarkletCode = (origin: string) =>
   `javascript:(()=>{window.open('${origin}/?share_url='+encodeURIComponent(location.href)+'&share_title='+encodeURIComponent(document.title),'_blank','noopener')})()`;
 
 export function CaptureCard() {
-  const link = useRef<HTMLAnchorElement>(null);
-  // React blokuje `javascript:` w `href` — adres ustawiony bezpośrednio na elemencie.
-  useEffect(() => {
-    link.current?.setAttribute("href", bookmarkletCode(window.location.origin));
-  }, []);
+  // React blokuje `javascript:` w `href` — adres ustawiony bezpośrednio na elemencie (powstaje po rozwinięciu karty).
+  const link = (el: HTMLAnchorElement | null) => el?.setAttribute("href", bookmarkletCode(window.location.origin));
   return (
-    <Card className="mt-4">
-      <h2 className="mb-1 text-sm font-semibold">Dodawanie z innych miejsc</h2>
+    <CollapsibleCard id="capture" title="Dodawanie z innych miejsc">
       <ul className="flex flex-col gap-2 text-sm">
         <li>
           <strong>Zakładka w przeglądarce:</strong> przeciągnij{" "}
@@ -37,6 +31,6 @@ export function CaptureCard() {
           <strong>Wklejony adres</strong> w szybkim dodawaniu trafia do załączników zadania; tytuł strony uzupełni się sam (offline — po połączeniu).
         </li>
       </ul>
-    </Card>
+    </CollapsibleCard>
   );
 }

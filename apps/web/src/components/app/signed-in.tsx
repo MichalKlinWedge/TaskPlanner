@@ -15,6 +15,7 @@ import { AiCard } from "./ai-card";
 import { BackupCard } from "./backup-card";
 import { CalendarsCard } from "./calendars-card";
 import { CaptureCard } from "./capture-card";
+import { CollapsibleCard } from "./collapsible-card";
 import { ErrorsCard } from "./errors-card";
 import { ProfileForm, type ProfileValues } from "./profile-form";
 import { InvitesCard } from "./invites-card";
@@ -94,7 +95,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
         settingsView={
           <>
             <h1 className="mb-4 text-xl font-semibold">Ustawienia</h1>
-            <Card>
+            <CollapsibleCard id="general" title="Ogólne" defaultOpen className="">
               <ProfileForm
                 key={profile?.settings ?? ""}
                 initial={{ displayName: profile?.display_name ?? null, settings }}
@@ -103,7 +104,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
                   await store.mutate("profiles", userId, { display_name: displayName || null, settings: { ...next, onboarded: true } });
                 }}
               />
-            </Card>
+            </CollapsibleCard>
             <RemindersCard store={store} userId={userId} />
             <CalendarsCard store={store} timeZone={parseSettings(settings).timeZone} />
             <PluginsCard store={store} userId={userId} />

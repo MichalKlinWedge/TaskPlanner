@@ -10,7 +10,8 @@ import { BACKUP_TABLE, BACKUP_TABLES, BackupError, backupFileName, backupRowCoun
 import { applyBackupPlan, exportBackup, planBackupImport, type TabStore } from "@taskplanner/sync";
 import { useRef, useState } from "react";
 
-import { Button, Card, Notice } from "./ui";
+import { CollapsibleCard } from "./collapsible-card";
+import { Button, Notice } from "./ui";
 
 interface Pending {
   name: string;
@@ -70,8 +71,7 @@ export function BackupCard({ store, userId, timeZone }: { store: TabStore; userI
     });
 
   return (
-    <Card className="mt-4">
-      <h2 className="mb-1 text-sm font-semibold">Kopia zapasowa</h2>
+    <CollapsibleCard id="backup" title="Kopia zapasowa">
       <p className="mb-3 text-xs text-[var(--muted)]">
         Plik JSON z danymi z tej przeglądarki: przestrzenie, listy, zadania i cykliczne z historią, tagi, przypomnienia, zależności, czas, filtry, przeglądy, profil (także kosz). Bez urządzeń, połączonych kalendarzy i plików załączników (jedną przestrzeń z załącznikami, osobami i rolami zapiszesz w „Przestrzenie i listy” → „Eksportuj”).
       </p>
@@ -102,7 +102,7 @@ export function BackupCard({ store, userId, timeZone }: { store: TabStore; userI
         </div>
       ) : null}
       {pending ? <ImportPreview pending={pending} busy={!!busy} onRestore={() => void restore(pending)} onCancel={() => setPending(null)} /> : null}
-    </Card>
+    </CollapsibleCard>
   );
 }
 
