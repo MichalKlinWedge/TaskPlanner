@@ -7,7 +7,7 @@
  */
 import { z } from 'zod';
 
-import { addDays, localDateAt, weekStart } from './dates.ts';
+import { addDays, localDateAt, parseLocalDateTime, weekStart } from './dates.ts';
 import type { HabitSettings } from './habits.ts';
 import { PRIORITY, TASK_STATUS, VIEW_SECTION } from './labels.ts';
 import { dayLabel, shortDate } from './format.ts';
@@ -116,6 +116,22 @@ const COMPARE: Record<SortBy, (a: ViewTask, b: ViewTask) => number> = {
 
 /** Sortowanie widoku listy (M9): ręczne / priorytet / termin / data dodania. Nie zmienia wejścia. */
 export const sortTasks = (tasks: readonly ViewTask[], by: SortBy): ViewTask[] => [...tasks].sort(COMPARE[by]);
+
+// ── Godzina minęła ───────────────────────────────────────────────────────────────────────────
+
+const toMinutes = (time: LocalTime): number => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+
+/**
+ * Ile minut temu minęła godzina dzisiejszego otwartego zadania (0 = nie minęła). `now` — zegar ścienny
+ * `RRRR-MM-DDTGG:MM` (`localDateTimeAt`). Zadanie z czasem trwania jest po czasie od końca bloku:
+ * 12:00 na godzinę o 12:30 jeszcze trwa. Wcześniejsze dni wyróżnia sama data („Zaległe”).
+ */
+export function minutesLate(task: Pick<ViewTask, 'kind' | 'status' | 'dueDate' | 'dueTime' | 'durationMin'>, now: string): number {
+  if (task.kind !== 'task' || !task.dueTime || !isOpen(task)) return 0;
+  const { date, time } = parseLocalDateTime(now);
+  if (task.dueDate !== date) return 0;
+  return Math.max(0, toMinutes(time) - toMinutes(task.dueTime) - (task.durationMin ?? 0));
+}
 
 // ── Inbox i Dziś ─────────────────────────────────────────────────────────────────────────────
 

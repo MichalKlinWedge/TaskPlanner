@@ -15,6 +15,7 @@ import {
   flattenTree,
   groupTasks,
   isEmptyFilter,
+  minutesLate,
   progress,
   selectFiltered,
   selectInbox,
@@ -77,6 +78,33 @@ describe('daty lokalne', () => {
     expect(weekStart('2026-11-22')).toBe('2026-11-16');
     expect(weekStart('2026-11-18', 7)).toBe('2026-11-15');
     expect(weekStart('2026-11-15', 7)).toBe('2026-11-15');
+  });
+});
+
+describe('minutesLate', () => {
+  const at = (over: Partial<ViewTask>, time = '12:30') => minutesLate(task({ dueDate: '2026-11-18', dueTime: '12:00', ...over }), `2026-11-18T${time}`);
+
+  it('liczy minuty od godziny dzisiejszego zadania', () => {
+    expect(at({})).toBe(30);
+    expect(at({}, '12:00')).toBe(0);
+    expect(at({}, '11:59')).toBe(0);
+    expect(at({ dueTime: '07:25' }, '09:00')).toBe(95);
+  });
+
+  it('z czasem trwania — od końca bloku', () => {
+    expect(at({ durationMin: 60 })).toBe(0);
+    expect(at({ durationMin: 25 })).toBe(5);
+    expect(at({ dueTime: '23:30', durationMin: 60 }, '23:59')).toBe(0);
+  });
+
+  it('zamknięte, bez godziny, z innego dnia i nawyk — nie', () => {
+    expect(at({ status: 'done' })).toBe(0);
+    expect(at({ status: 'cancelled' })).toBe(0);
+    expect(at({ dueTime: null })).toBe(0);
+    expect(at({ dueDate: null })).toBe(0);
+    expect(at({ dueDate: '2026-11-17' })).toBe(0);
+    expect(at({ dueDate: '2026-11-19' })).toBe(0);
+    expect(at({ kind: 'habit' })).toBe(0);
   });
 });
 

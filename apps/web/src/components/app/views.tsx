@@ -23,6 +23,7 @@ import {
   LIST_COLUMN,
   LIST_KIND,
   matchesFilter,
+  minutesLate,
   orderedColumns,
   plural,
   progress,
@@ -57,7 +58,7 @@ import {
 import type { TabStore } from "@taskplanner/sync";
 import { useMemo, useState, type ReactNode } from "react";
 
-import { listEditable, type AppData, type List } from "@/lib/app-data";
+import { listEditable, useLocalMinute, type AppData, type List } from "@/lib/app-data";
 import { useListWidths } from "@/lib/list-widths";
 import { useTrash } from "@/lib/trash";
 
@@ -178,6 +179,7 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
   // Etap 8: nawyki dnia ze stanem odhaczenia, postępem i passą (kolejność jak w `selectToday`).
   const habits = useMemo(() => habitsForDay(view.habits, data.habitCompletions, ctx.today, ctx.today), [view.habits, data.habitCompletions, ctx.today]);
   const names = listNames(data);
+  const now = useLocalMinute(ctx.timeZone);
   const { run } = useTaskActions();
   const toTomorrow = (task: ViewTask) => {
     const { ops, undo } = bulkTaskOps([task], data.tasks, { kind: "tomorrow" }, { today: ctx.today, now: new Date(), timeZone: ctx.timeZone });
@@ -209,7 +211,7 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
           ) : null}
           {view.today.length ? (
             <Section title={VIEW_SECTION.today} count={view.today.length}>
-              <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} />}</Paged>
+              <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} lateMin={minutesLate(t, now)} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} />}</Paged>
             </Section>
           ) : null}
           {view.ongoing.length ? (

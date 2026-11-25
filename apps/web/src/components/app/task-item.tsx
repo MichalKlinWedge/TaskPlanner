@@ -4,7 +4,7 @@
  * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
  * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { assigneeOf, columnDate, completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, LIST_COLUMN, type ListColumn, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { assigneeOf, columnDate, completeTaskOps, descendants, describeRecurrence, formatMinutes, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, LIST_COLUMN, type ListColumn, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
@@ -162,6 +162,8 @@ export interface TaskItemProps {
   onAddSubtask?: () => void;
   /** Przycisk „→ Jutro” po prawej (widok „Dziś”: zaległe i dzisiejsze); ukryty przy zadaniu tylko do podglądu. */
   onTomorrow?: () => void;
+  /** Ile minut po godzinie zadania (`minutesLate`, widok „Dziś”) — wyróżnia wiersz i godzinę; 0 / brak = w czasie. */
+  lateMin?: number;
   /** Tagi pokazywane w kolumnie „Tagi” (`view_prefs.columnTags`); `null` / brak = wszystkie. */
   columnTags?: ReadonlySet<string> | null;
   /** Szerokości kolumn ustawione w nagłówku (`useListWidths`); brak = domyślne. */
@@ -276,7 +278,7 @@ export function DoneCircle({ task, closed, readOnly, onToggle, className = "" }:
   );
 }
 
-export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, onTomorrow, columnTags, widths = {} }: TaskItemProps) {
+export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, onTomorrow, lateMin = 0, columnTags, widths = {} }: TaskItemProps) {
   const { toggle } = useTaskActions();
   const { openTask, openTaskId, openTaskMode, selectedIds, select, data, trashed } = useAppEnv();
   const inTrash = trashed?.has(task.id) ?? false;
@@ -307,11 +309,12 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
   return (
     <li
       ref={dnd?.ref}
-      className={`group relative flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""} ${selected ? "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]" : "bg-[var(--background)]"} ${dnd?.dragging ? "z-10 opacity-80 shadow-lg" : ""}`}
+      className={`group relative flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""} ${selected ? "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]" : lateMin > 0 ? "bg-[color-mix(in_srgb,var(--danger)_7%,var(--background))] shadow-[inset_3px_0_0_var(--danger)]" : "bg-[var(--background)]"} ${dnd?.dragging ? "z-10 opacity-80 shadow-lg" : ""}`}
       style={{ ...dnd?.style, paddingLeft: depth * 20 }}
       data-task-id={task.id}
       data-virtual={virtualDate ? "" : undefined}
       data-selected={selected || undefined}
+      data-late={lateMin > 0 || undefined}
     >
       {dnd ? (
         <button
@@ -349,7 +352,15 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
         <span className={`block break-words ${closed ? "line-through opacity-50" : ""}`}>{task.title}</span>
         <span className="flex flex-wrap items-center gap-x-2 text-xs text-[var(--muted)]">
           {showDate && date && !dueColumn ? <span className={overdue ? "font-medium text-[var(--danger)]" : ""}>{relativeDay(date, today)}</span> : null}
-          {task.dueTime && !dueColumn ? <span>{task.dueTime}</span> : null}
+          {task.dueTime && !dueColumn ? (
+            lateMin > 0 ? (
+              <span className="font-semibold text-[var(--danger)]" data-testid="task-late">
+                {task.dueTime} · {formatMinutes(lateMin)} po czasie
+              </span>
+            ) : (
+              <span>{task.dueTime}</span>
+            )
+          ) : null}
           {task.recurrence ? <span title={describeRecurrence(task.recurrence)}>↻ {describeRecurrence(task.recurrence)}</span> : null}
           {needsDecision(task) && !closed ? (
             <span className="text-amber-700 dark:text-amber-300" title="Przesuwane 3 razy lub więcej — zrób, zmniejsz albo usuń">

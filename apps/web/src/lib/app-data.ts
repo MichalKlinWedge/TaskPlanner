@@ -6,7 +6,7 @@
  * (także z innej karty i z synchronizacji) — zadania przyrostowo (`createTaskCache`: tylko zmienione
  * wiersze, gotowe `ViewTask` reszty zostają); reguły widoków liczy `@taskplanner/core`.
  */
-import { AttachmentPreview, boardColumnDefs, canEditList, canvasGroupsOf, FilterQuery, localDateAt, ProfileSettings, scopeCollaborator, scopeTag, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, withSharedCollaborators, withSharedTags, type BoardColumnDef, type CanvasGroup, type Collaborator, type GuestAccess, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ScopeRole, type ViewTask } from "@taskplanner/core";
+import { AttachmentPreview, boardColumnDefs, canEditList, canvasGroupsOf, FilterQuery, localDateAt, localDateTimeAt, ProfileSettings, scopeCollaborator, scopeTag, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, withSharedCollaborators, withSharedTags, type BoardColumnDef, type CanvasGroup, type Collaborator, type GuestAccess, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ScopeRole, type ViewTask } from "@taskplanner/core";
 import { createTaskCache, type TabStore, type TaskEntry } from "@taskplanner/sync";
 import { useEffect, useMemo, useState } from "react";
 
@@ -133,6 +133,18 @@ export function useToday(timeZone?: string): LocalDate {
     return () => clearInterval(timer);
   }, [timeZone]);
   return today;
+}
+
+/** Zegar ścienny w strefie użytkownika co do minuty, `RRRR-MM-DDTGG:MM` (nowa wartość tylko przy zmianie minuty). */
+export function useLocalMinute(timeZone?: string): string {
+  const [now, setNow] = useState(() => localDateTimeAt(new Date(), timeZone));
+  useEffect(() => {
+    const tick = () => setNow(localDateTimeAt(new Date(), timeZone));
+    tick();
+    const timer = setInterval(tick, 10_000);
+    return () => clearInterval(timer);
+  }, [timeZone]);
+  return now;
 }
 
 /** Gotowe `ViewTask` przy wpisach bufora — wpis niezmieniony od poprzedniego odczytu = ten sam obiekt. */
