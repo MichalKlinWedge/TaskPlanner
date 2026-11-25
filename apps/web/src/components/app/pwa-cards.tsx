@@ -10,7 +10,7 @@ import { installState, promptInstall, subscribeInstall } from "@/lib/install";
 import { useStoreStatus } from "@/lib/local-store";
 import { checkOfflineCache, offlineStatus, subscribeOffline, type OfflineCheck } from "@/lib/service-worker";
 
-import { CollapsibleCard } from "./collapsible-card";
+import { SettingsSection } from "./settings-section";
 import { Button } from "./ui";
 
 const SHORTCUTS = "Szybkie dodawanie, Dziś, Kalendarz";
@@ -21,7 +21,7 @@ export function InstallCard() {
   const install = async () => setDismissed(!(await promptInstall()));
 
   return (
-    <CollapsibleCard id="install" title="Aplikacja na pulpicie">
+    <SettingsSection title="Aplikacja na pulpicie">
       {state === "installed" ? (
         <p className="text-sm" data-testid="install-state">
           Zainstalowana. Skróty z ikony aplikacji (prawy przycisk na pasku zadań lub w menu Start, przytrzymanie ikony na telefonie): {SHORTCUTS}.
@@ -40,7 +40,7 @@ export function InstallCard() {
           pulpitu lub menu Start. Firefox nie instaluje aplikacji internetowych; Safari na macOS: Plik → Dodaj do Docka.
         </p>
       )}
-    </CollapsibleCard>
+    </SettingsSection>
   );
 }
 
@@ -71,9 +71,9 @@ const NEEDS_NETWORK: { what: string; detail: string }[] = [
 /** Stan pracy bez sieci w tej przeglądarce (M20): baza, trwała pamięć, Service Worker, pliki. */
 export function OfflineCard() {
   return (
-    <CollapsibleCard id="offline" title="Praca bez sieci w tej przeglądarce">
+    <SettingsSection title="Praca bez sieci w tej przeglądarce">
       <OfflineStatus />
-    </CollapsibleCard>
+    </SettingsSection>
   );
 }
 

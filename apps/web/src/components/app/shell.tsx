@@ -25,7 +25,6 @@ import { DailyReview, ReviewNudge, WeeklyReview } from "./review";
 import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-views";
 import { AttachmentsProvider } from "./attachments";
 import { CollaboratorsView } from "./collaborators";
-import { openSettingsSection } from "./collapsible-card";
 import { HabitDetail, HabitNotificationActions, HabitsView } from "./habits";
 import { DeliveryLogScreen } from "./plugins-card";
 import { QuickAddDialog } from "./quick-add";
@@ -138,8 +137,7 @@ export function Shell({
     if (url.searchParams.has(GOOGLE_RETURN_PARAM)) {
       url.searchParams.delete(GOOGLE_RETURN_PARAM);
       url.searchParams.delete("account");
-      url.hash = "#/settings";
-      openSettingsSection("calendars");
+      url.hash = "#/settings/calendars";
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     }
@@ -339,7 +337,7 @@ export function Shell({
       <HabitDetail key={route.id} id={route.id} data={data} ctx={ctx} navigate={navigate} />
     ) : route.view === "timeline" ? null : route.view === "focus" && !settings.focus.enabled ? (
       <p className="p-6 text-sm text-[var(--muted)]" data-testid="focus-disabled">
-        Tryb skupienia jest wyłączony — włącz go w <a href="#/settings" className="text-[var(--accent)] underline">Ustawieniach</a>.
+        Tryb skupienia jest wyłączony — włącz go w <a href="#/settings/general" className="text-[var(--accent)] underline">Ustawieniach</a>.
       </p>
     ) : route.view === "focus" ? (
       <FocusScreen key={route.id ?? ""} taskId={route.id ?? null} ctx={ctx} onExit={() => navigate(lastRoute)} navigate={navigate} />
@@ -551,7 +549,7 @@ export function Shell({
             </div>
           </aside>
           <main ref={mainRef} className="@container min-w-0 flex-1 overflow-y-auto lg:[&:has(~[data-task-panel=full])]:hidden">
-            <div className={`mx-auto w-full p-4 pb-20 [--tp-pad:1rem] sm:p-6 sm:[--tp-pad:1.5rem] ${wide ? "" : route.view === "today" ? "max-w-5xl" : list?.prefs.columns?.length ? "max-w-6xl" : "max-w-3xl"}`}>{content}</div>
+            <div className={route.view === "settings" ? "h-full" : `mx-auto w-full p-4 pb-20 [--tp-pad:1rem] sm:p-6 sm:[--tp-pad:1.5rem] ${wide ? "" : route.view === "today" ? "max-w-5xl" : list?.prefs.columns?.length ? "max-w-6xl" : "max-w-3xl"}`}>{content}</div>
           </main>
           {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>

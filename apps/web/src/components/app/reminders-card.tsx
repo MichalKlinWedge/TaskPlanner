@@ -11,7 +11,7 @@ import { useState } from "react";
 import { useLocalQuery } from "@/lib/local-store";
 import { browserDeviceId, enableBrowserReminders, forgetDevice, pushSupport, setDeviceReminders } from "@/lib/push";
 
-import { CollapsibleCard } from "./collapsible-card";
+import { SettingsSection } from "./settings-section";
 import { Button, Notice } from "./ui";
 
 interface DeviceRow extends Record<string, string | number | null> {
@@ -53,7 +53,7 @@ export function RemindersCard({ store, userId }: { store: TabStore; userId: stri
   };
 
   return (
-    <CollapsibleCard id="reminders" title="Przypomnienia">
+    <SettingsSection title="Przypomnienia">
       <p className="mb-3 text-xs text-[var(--muted)]">Przypomnienie (i koniec etapu skupienia przy zamkniętej karcie) przychodzi tylko na urządzenia z włączonymi przypomnieniami.</p>
 
       <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
@@ -102,6 +102,6 @@ export function RemindersCard({ store, userId }: { store: TabStore; userId: stri
           })}
         </ul>
       ) : null}
-    </CollapsibleCard>
+    </SettingsSection>
   );
 }
