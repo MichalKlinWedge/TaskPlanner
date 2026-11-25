@@ -54,6 +54,23 @@ export class Server {
     return data as ServerTask | null;
   }
 
+  /**
+   * Role we wspólnej przestrzeni jak po `global-setup.ts` (konto E2E = główny właściciel, druga osoba = edytor,
+   * bez propozycji roli) — testy zmieniające role nie mogą decydować o wyniku następnych.
+   */
+  async resetSharedRoles(workspace: string): Promise<void> {
+    const steps = [
+      () => this.client.from('scope_owner_offers').delete().eq('scope_id', workspace),
+      () => this.client.from('scope_members').update({ role: 'owner' }).eq('scope_id', workspace).eq('user_id', this.userId),
+      () => this.client.from('sync_scopes').update({ owner_id: this.userId }).eq('id', workspace),
+      () => this.client.from('scope_members').update({ role: 'editor' }).eq('scope_id', workspace).neq('user_id', this.userId),
+    ];
+    for (const step of steps) {
+      const { error } = await step();
+      if (error) throw new Error(`Role wspólnej przestrzeni: ${error.message}`);
+    }
+  }
+
   /** Wiersze `task_dependencies` poprzednik → następnik (także usunięte miękko). */
   async dependencies(predecessorId: string, successorId: string): Promise<ServerDependency[]> {
     const { data, error } = await this.client.from('task_dependencies').select('id, predecessor_id, successor_id, deleted_at').eq('predecessor_id', predecessorId).eq('successor_id', successorId);

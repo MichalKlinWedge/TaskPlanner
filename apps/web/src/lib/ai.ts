@@ -5,7 +5,7 @@
  * użytkownika) — klucz idzie tylko w ciele zapytania do funkcji i zostaje w Vault; konto wraca zwykłą
  * synchronizacją (`ai_accounts`, tylko do odczytu, bez klucza).
  */
-import { AI_NEEDS_NETWORK, AI_OFFLINE_NOTE, parseAiAccount, type AiAccount, type AiAccountTestResult, type AiBreakdownRequest, type AiBreakdownResult, type AiDayPlanRequest, type AiDayPlanResult, type AiProvider, type AiWeekSummaryRequest, type AiWeekSummaryResult } from "@taskplanner/core";
+import { AI_NEEDS_NETWORK, AI_OFFLINE_NOTE, parseAiAccount, type AiAccount, type AiAccountTestResult, type AiBreakdownRequest, type AiBreakdownResult, type AiClipRequest, type AiClipResult, type AiDayPlanRequest, type AiDayPlanResult, type AiProvider, type AiWeekSummaryRequest, type AiWeekSummaryResult } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useMemo } from "react";
 
@@ -41,6 +41,8 @@ export const askBreakdown = (request: AiBreakdownRequest) => call<AiBreakdownRes
 export const askDayPlan = (request: AiDayPlanRequest) => call<AiDayPlanResult>("day-plan", request);
 /** „✨ Opisz tydzień”: zdania ze znacznikami i sugestie (nic nie zapisuje; sprawdza je `weekSummaryFromAi`). */
 export const askWeekSummary = (request: AiWeekSummaryRequest) => call<AiWeekSummaryResult>("week-summary", request);
+/** „✨ Streść”: propozycja tytułu i punktów z wycinka strony (nic nie zapisuje; sprawdza ją `applyClipSummary`). */
+export const askClip = (request: AiClipRequest) => call<AiClipResult>("clip", request);
 
 type Row = Record<string, string | number | null>;
 

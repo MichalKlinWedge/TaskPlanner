@@ -11,7 +11,7 @@
  * „teraz” to zegar ścienny strefy z ustawień.
  */
 import plLocale from "@fullcalendar/core/locales/pl";
-import type { DatesSetArg, EventClickArg, EventDropArg, EventInput } from "@fullcalendar/core";
+import type { CalendarOptions, DatesSetArg, EventClickArg, EventDropArg, EventInput } from "@fullcalendar/core";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin, { Draggable, type DropArg, type EventDragStopArg, type EventResizeDoneArg } from "@fullcalendar/interaction";
 import FullCalendar from "@fullcalendar/react";
@@ -40,7 +40,7 @@ import {
   type ViewContext,
   type ViewTask,
 } from "@taskplanner/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import type { AppData } from "@/lib/app-data";
 import { useCalendarEvents } from "@/lib/calendar-events";
@@ -102,6 +102,18 @@ function panelTasks(source: string, data: AppData, ctx: ViewContext): ViewTask[]
   return filter ? applyFilter(data.tasks, filter.query, ctx.today).filter((t) => noTime(t) && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId)) : [];
 }
 
+/**
+ * FullCalendar zamrożony na czas przeciągania / rozciągania bloku. Nowe opcje (każdy render ekranu, np. po
+ * synchronizacji) wymieniają jego kontekst, a upuszczenie z innym kontekstem niż przy ostatnim ruchu myszy
+ * traktuje jak przeniesienie do innego kalendarza: blok się przesuwa, ale `eventDrop` nie przychodzi i zapis ginie.
+ */
+const HeldCalendar = memo(
+  function HeldCalendar({ calendarRef, options }: { calendarRef: RefObject<FullCalendar | null>; held: RefObject<boolean>; options: CalendarOptions }) {
+    return <FullCalendar ref={calendarRef} {...options} />;
+  },
+  (_, next) => next.held.current,
+);
+
 export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: ViewContext; settings: ProfileSettings }) {
   const { openTask, select, store } = useAppEnv();
   const [, navigate] = useRoute();
@@ -118,11 +130,28 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
   const panel = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const calendar = useRef<FullCalendar>(null);
+  const held = useRef(false);
+  const [, setReleases] = useState(0);
+  const hold = () => {
+    held.current = true;
+  };
+  // Po obsłużeniu upuszczenia (`eventDrop` / `eventResize` przychodzi zaraz po „stop”): render ze zmianami z czasu przeciągania.
+  const release = () => {
+    setTimeout(() => {
+      held.current = false;
+      setReleases((n) => n + 1);
+    }, 0);
+  };
   const timeZone = ctx.timeZone;
   const duration = settings.defaultDurationMin;
 
   const tasks = useMemo(() => data.tasks.filter((t) => t.kind === "task" && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId)), [data.tasks, ctx.workspaceId]);
   const byId = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
+  // Obsługa upuszczenia pochodzi sprzed zamrożenia kalendarza, a zadanie mogło się w międzyczasie zmienić.
+  const latest = useRef(byId);
+  useEffect(() => {
+    latest.current = byId;
+  }, [byId]);
   // Nawyki z porą — bloki do odczytu (odhacza się je w „Dziś” / „Cykliczne”); klik otwiera nawyk.
   const habits = useMemo(
     () => (range ? habitSlots(data.tasks.filter((t) => !ctx.workspaceId || t.workspaceId === ctx.workspaceId), data.habitCompletions, range.from, range.to, ctx.today) : []),
@@ -204,12 +233,12 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
   };
 
   const onDrop = (info: DropArg) => {
-    const task = byId.get(info.draggedEl.getAttribute("data-task") ?? "");
+    const task = latest.current.get(info.draggedEl.getAttribute("data-task") ?? "");
     if (task) schedule(task, info.date, info.allDay);
   };
 
   const onEventDrop = (info: EventDropArg) => {
-    const task = byId.get(String(info.event.extendedProps.taskId));
+    const task = latest.current.get(String(info.event.extendedProps.taskId));
     if (!task || !info.event.start) return info.revert();
     // Z wiersza „cały dzień” na godzinę — szacunek / domyślny czas; między godzinami — długość bloku zostaje.
     const length = info.event.end && !info.oldEvent.allDay ? Math.round((info.event.end.getTime() - info.event.start.getTime()) / 60_000) : undefined;
@@ -218,7 +247,7 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
   };
 
   const onResize = (info: EventResizeDoneArg) => {
-    const task = byId.get(String(info.event.extendedProps.taskId));
+    const task = latest.current.get(String(info.event.extendedProps.taskId));
     const { start, end } = info.event;
     if (!task || !start || !end) return info.revert();
     const patch = resizeBlockPatch(0, Math.round((end.getTime() - start.getTime()) / 60_000));
@@ -227,10 +256,11 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
 
   // Blok upuszczony na panel → bez godziny (dzień i szacunek zostają).
   const onDragStop = (info: EventDragStopArg) => {
+    release();
     const box = panel.current?.getBoundingClientRect();
     const { clientX: x, clientY: y } = info.jsEvent;
     if (!box || x < box.left || x > box.right || y < box.top || y > box.bottom) return;
-    const task = byId.get(String(info.event.extendedProps.taskId));
+    const task = latest.current.get(String(info.event.extendedProps.taskId));
     if (!task?.dueTime) return;
     void run([{ table: "tasks", id: task.id, patch: unscheduleBlockPatch() }], { text: `„${task.title}” — bez godziny`, undo: [{ table: "tasks", id: task.id, patch: { due_time: task.dueTime } }] });
   };
@@ -331,35 +361,41 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
             ⚠ Nakładające się bloki w widocznym zakresie: {conflictCount}
           </p>
         ) : null}
-        <FullCalendar
-          ref={calendar}
-          plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
-          initialView={view}
-          initialDate={ctx.today}
-          timeZone="UTC"
-          now={() => localDateTimeAt(new Date(), timeZone)}
-          headerToolbar={{ left: "prev,next today", center: "title", right: "timeGridDay,timeGridWeek,dayGridMonth" }}
-          locale={plLocale}
-          firstDay={ctx.firstDayOfWeek ?? 1}
-          height="calc(100dvh - 11rem)"
-          scrollTime={`${settings.workHours.start}:00`}
-          businessHours={{ daysOfWeek: settings.workHours.days.map((d) => d % 7), startTime: settings.workHours.start, endTime: settings.workHours.end }}
-          snapDuration="00:15:00"
-          nowIndicator
-          editable
-          droppable
-          dayMaxEvents={4}
-          events={events}
-          datesSet={onDates}
-          drop={onDrop}
-          eventDrop={onEventDrop}
-          eventResize={onResize}
-          eventDragStop={onDragStop}
-          eventClick={onClick}
-          eventDidMount={(info) => {
-            const hint = info.event.extendedProps.hint as string | null;
-            info.el.title = hint ? `${info.event.title}
+        <HeldCalendar
+          calendarRef={calendar}
+          held={held}
+          options={{
+            plugins: [timeGridPlugin, dayGridPlugin, interactionPlugin],
+            initialView: view,
+            initialDate: ctx.today,
+            timeZone: "UTC",
+            now: () => localDateTimeAt(new Date(), timeZone),
+            headerToolbar: { left: "prev,next today", center: "title", right: "timeGridDay,timeGridWeek,dayGridMonth" },
+            locale: plLocale,
+            firstDay: ctx.firstDayOfWeek ?? 1,
+            height: "calc(100dvh - 11rem)",
+            scrollTime: `${settings.workHours.start}:00`,
+            businessHours: { daysOfWeek: settings.workHours.days.map((d) => d % 7), startTime: settings.workHours.start, endTime: settings.workHours.end },
+            snapDuration: "00:15:00",
+            nowIndicator: true,
+            editable: true,
+            droppable: true,
+            dayMaxEvents: 4,
+            events,
+            datesSet: onDates,
+            drop: onDrop,
+            eventDrop: onEventDrop,
+            eventResize: onResize,
+            eventDragStart: hold,
+            eventDragStop: onDragStop,
+            eventResizeStart: hold,
+            eventResizeStop: release,
+            eventClick: onClick,
+            eventDidMount: (info) => {
+              const hint = info.event.extendedProps.hint as string | null;
+              info.el.title = hint ? `${info.event.title}
 ${hint}` : info.event.title;
+            },
           }}
         />
       </div>
