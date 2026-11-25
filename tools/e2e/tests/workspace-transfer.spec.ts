@@ -12,6 +12,7 @@ import { sharedIds } from '../src/global-setup.ts';
 
 test('przestrzeń z załącznikiem i rolami: eksport do JSON i import jako nowa', async ({ page, server }) => {
   const { workspace } = sharedIds(server.userId);
+  await server.resetSharedRoles(workspace);
   await openApp(page, `#/list/${inboxId(workspace)}`);
   const title = unique('Z plikiem');
   const add = page.getByRole('main').getByRole('textbox', { name: 'Dodaj do „Inbox”' });

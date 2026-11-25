@@ -7,7 +7,7 @@
  * a ta idzie paczką do `report_client_errors`, gdy jest sieć i zalogowany użytkownik. Błędy sieci
  * pomija `isTransientError`. Własne błędy wysyłki nie są zgłaszane (bez pętli).
  */
-import { errorReport, parseErrorQueue, queueError, settleQueue, isTransientError, type ClientErrorReport, type ErrorKind } from "@taskplanner/core";
+import { errorReport, parseErrorQueue, isWebClipHash, queueError, settleQueue, isTransientError, type ClientErrorReport, type ErrorKind } from "@taskplanner/core";
 
 import { supabaseBrowser } from "./supabase-browser";
 
@@ -58,7 +58,8 @@ export function reportError(kind: ErrorKind, value: unknown, context?: Record<st
       platform: "web",
       now: new Date(),
       appVersion: APP_VERSION,
-      url: `${location.pathname}${location.hash}`,
+      // Część `#` z wycinkiem strony to cudza treść — nie trafia do dziennika.
+      url: `${location.pathname}${isWebClipHash(location.hash) ? "" : location.hash}`,
       userAgent: navigator.userAgent,
       context,
     });

@@ -24,8 +24,9 @@ function acceptDialogs(page: Page): string[] {
 /** Powrót do karty przeglądarki — odświeża propozycje i panel osób. */
 const focus = (page: Page) => page.evaluate(() => window.dispatchEvent(new Event('focus')));
 
-/** „Udostępnij” / „Osoby” na karcie przestrzeni „Wspólna E2E” (ostatniej na ekranie). */
-const openPeople = (page: Page, name: string) => page.locator('main').getByRole('button', { name, exact: true }).last().click();
+/** Przycisk („Udostępnij”) na karcie przestrzeni „Wspólna E2E” — inne testy dokładają przestrzenie, więc po nazwie. */
+const openPeople = (page: Page, name: string) =>
+  page.locator('main').getByRole('button', { name: WORKSPACE, exact: true }).locator(`xpath=ancestor::*[.//button[normalize-space()="${name}"]][1]`).getByRole('button', { name, exact: true }).click();
 
 /** Role na serwerze, np. `{ A: 'owner*' }` (`*` = główny właściciel). */
 async function roles(server: Server, workspace: string, names: Record<string, string>) {
@@ -39,6 +40,7 @@ async function roles(server: Server, workspace: string, names: Record<string, st
 test('właściciel proponuje rolę i przekazuje przestrzeń — za zgodą współpracownika', async ({ page, browser, server }, info) => {
   test.setTimeout(120_000);
   const { workspace } = sharedIds(server.userId);
+  await server.resetSharedRoles(workspace);
   const { data: others } = await server.client.from('scope_members').select('user_id').eq('scope_id', workspace).neq('user_id', server.userId);
   const secondId = String(others![0]!.user_id);
   const now = () => roles(server, workspace, { [server.userId]: 'A', [secondId]: 'B' });
