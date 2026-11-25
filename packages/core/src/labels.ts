@@ -153,6 +153,8 @@ export const QUICK_ADD_KIND: Record<'date' | 'time' | 'duration' | 'priority' | 
 export const VIEW_SECTION = {
   overdue: 'Zaległe',
   today: 'Dziś',
+  lateToday: 'Dziś, godzina minęła',
+  earlier: 'Wcześniejsze dni',
   ongoing: 'Trwające',
   habits: 'Cykliczne na dziś',
   done: 'Ukończone',

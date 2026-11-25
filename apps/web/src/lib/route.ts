@@ -9,6 +9,7 @@ import { useCallback, useSyncExternalStore } from "react";
 export type Route =
   | { view: "inbox" }
   | { view: "today" }
+  | { view: "overdue" }
   | { view: "upcoming" }
   | { view: "board" }
   | { view: "calendar" }
@@ -33,6 +34,7 @@ export function parseRoute(hash: string): Route {
   switch (view) {
     case "inbox":
     case "today":
+    case "overdue":
     case "upcoming":
     case "board":
     case "calendar":

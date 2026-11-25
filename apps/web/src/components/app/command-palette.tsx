@@ -36,6 +36,7 @@ import { inputClass } from "./ui";
 export const AVAILABLE_COMMANDS = new Set([
   "view.inbox",
   "view.today",
+  "view.overdue",
   "view.upcoming",
   "view.kanban",
   "view.calendar",

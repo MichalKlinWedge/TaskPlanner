@@ -230,6 +230,7 @@ Oznaczenia: **[W]** web, **[A]** Android, **[W+A]** oba.
 Widoki stałe w pasku bocznym [W+A]:
 - **Inbox** — zadania z list `inbox` (bieżącej przestrzeni lub wszystkich). Licznik w pasku bocznym i na widżecie.
 - **Dziś** — sekcje: Zaległe, Dziś (z godziną: według godziny; bez godziny: kolejność ręczna), Trwające (zakres `start_date`–`due_date` obejmuje dziś), Cykliczne na dziś. Obok [W]: pasek „Plan dnia” z wydarzeniami kalendarza i blokami zadań.
+- **Zaległe** [W] — otwarte zadania po terminie: dzisiejsze, których godzina minęła (z czasem trwania — od końca bloku), i z wcześniejszych dni; licznik w pasku bocznym. Dzisiejsze bez godziny nie są zaległe do końca dnia.
 - **Nadchodzące** — kolejne 14 dni pogrupowane po dniu (z wirtualnymi wystąpieniami cyklicznych), przeciąganie między dniami zmienia `due_date`; dalej „Później” po tygodniach.
 - **Projekt / lista** — drzewo zadań z podzadaniami (zwijanie), postęp, sortowanie ręczne / priorytet / termin / data dodania.
 - **Tag, zapisany filtr** — wynik filtra.
@@ -287,7 +288,7 @@ Widoki stałe w pasku bocznym [W+A]:
 - **Paleta** `Ctrl+K` [W] (na [A]: ikona szukania z tymi samymi wynikami): zadania (tytuł, opis, tagi, nazwa listy), listy, przestrzenie, tagi, filtry, widoki i **akcje** („Przenieś do…”, „Ustaw priorytet…”, „Zaplanuj na jutro”, „Tryb skupienia”, „Nowy projekt”, „Przełącz przestrzeń”, „Przegląd dnia”, „Motyw ciemny”). Akcje działają na zaznaczonych zadaniach.
 - Wyszukiwanie lokalne: SQLite FTS5 (`unicode61 remove_diacritics 2` — „zolw” znajduje „żółw”), prefiksy, ranking (tytuł > tagi > opis), ostatnio używane na górze. Ten sam kod na webie i telefonie, działa offline.
   - Zrobione (19.11.2026) w `core/search.ts` bez FTS5: indeks w pamięci (`buildSearchIndex`, `search`) — normalizacja bez ogonków i „ł”, każde słowo zapytania pasuje do początku słowa (środek słowa od 3 znaków, słabiej), wagi tytuł 10 > tagi 6 > słowa kluczowe akcji 5 > lista 4 > opis 2, zamknięte niżej, premia za ostatnie użycie, podświetlenia w tytule; 5 000 pozycji < 15 ms. FTS5 tylko, jeśli zabraknie wydajności (zawężenie kandydatów). Polecenia palety i skróty: `core/commands.ts` (`COMMANDS`, `LIST_SHORTCUTS`, `commandSearchItems`).
-- **Skróty [W]**: `Q` szybkie dodawanie, `Ctrl+K` paleta, `/` szukaj, `G` potem `I`/`T`/`U`/`K`/`C`/`O` — Inbox/Dziś/Nadchodzące/Kanban/Kalendarz/Oś czasu, `J`/`K` następne/poprzednie zadanie, `E` ukończ, `1`–`4` priorytet, `T` dziś, `M` jutro, `D` wybór daty, `F` tryb skupienia, `Del` kosz, `?` lista skrótów. Lista skrótów w `core` (etykiety), obsługa w `apps/web`.
+- **Skróty [W]**: `Q` szybkie dodawanie, `Ctrl+K` paleta, `/` szukaj, `G` potem `I`/`T`/`Z`/`U`/`K`/`C`/`O` — Inbox/Dziś/Zaległe/Nadchodzące/Kanban/Kalendarz/Oś czasu, `J`/`K` następne/poprzednie zadanie, `E` ukończ, `1`–`4` priorytet, `T` dziś, `M` jutro, `D` wybór daty, `F` tryb skupienia, `Del` kosz, `?` lista skrótów. Lista skrótów w `core` (etykiety), obsługa w `apps/web`.
 
 ### M18. Kalendarze zewnętrzne
 - **Odczyt** (Etap 5):
@@ -509,7 +510,7 @@ Scenariusze na lokalnym Supabase z trzema klientami (2 × Node, 1 × przeglądar
 - „Dziś” liczone według strefy urządzenia (dzień zmienia się o północy lokalnej; po północy widok odświeża się sam).
 - Zrobione w `core/views.ts` (18.11.2026): `selectToday`, `selectUpcoming`, `selectInbox`, `FilterQuery` + `applyFilter`/`matchesFilter`, `sortTasks`, `groupTasks`, `buildTree`/`flattenTree`/`progress`, `withCompleted`; wejście = `ViewTask` (camelCase, z `tagIds`). Ustalenia:
   - w dniu najpierw zadania z godziną (według godziny), potem bez godziny (kolejność ręczna); zaległe od najstarszego terminu, potem priorytet,
-  - „Nadchodzące” zaczyna się od dziś (zaległe tylko w „Dziś”); wirtualne wystąpienia serii od dnia po późniejszej z dat: bieżący termin, dziś — zgodnie z `nextDue`; seria „po ukończeniu” nie ma wirtualnych wystąpień; nawyki są tylko w sekcji „Cykliczne na dziś”,
+  - „Nadchodzące” zaczyna się od dziś (zaległe w „Dziś” i „Zaległe”); wirtualne wystąpienia serii od dnia po późniejszej z dat: bieżący termin, dziś — zgodnie z `nextDue`; seria „po ukończeniu” nie ma wirtualnych wystąpień; nawyki są tylko w sekcji „Cykliczne na dziś”,
   - dzień ukończenia = data lokalna `completed_at` w strefie z ustawień (`localDateAt`),
   - postęp rodzica nie liczy anulowanych podzadań; podzadanie bez rodzica na wejściu jest korzeniem,
   - filtr zapisany ma daty względne (`{ offsetDays: 0 }` = dzień oglądania), więc „termin ≤ dziś” działa także jutro.

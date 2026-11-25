@@ -31,6 +31,7 @@ import {
   relativeDay,
   selectInbox,
   selectToday,
+  selectOverdue,
   selectUpcoming,
   SORT_BY,
   sortTasks,
@@ -171,6 +172,15 @@ export function InboxView({ data, ctx, targetInbox, toolbar }: ViewProps) {
   );
 }
 
+/** Przycisk „→ Jutro” przy wierszu: przeniesienie z „Cofnij”. */
+function useToTomorrow(data: AppData, ctx: ViewContext) {
+  const { run } = useTaskActions();
+  return (task: ViewTask) => {
+    const { ops, undo } = bulkTaskOps([task], data.tasks, { kind: "tomorrow" }, { today: ctx.today, now: new Date(), timeZone: ctx.timeZone });
+    void run(ops, { text: `„${task.title}” → ${relativeDay(addDays(ctx.today, 1), ctx.today)}`, undo });
+  };
+}
+
 // ── Dziś ─────────────────────────────────────────────────────────────────────────────────────
 
 /** `aside` — „Plan dnia” obok listy (na szerokim ekranie po prawej, na wąskim pod listą). */
@@ -180,11 +190,7 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
   const habits = useMemo(() => habitsForDay(view.habits, data.habitCompletions, ctx.today, ctx.today), [view.habits, data.habitCompletions, ctx.today]);
   const names = listNames(data);
   const now = useLocalMinute(ctx.timeZone);
-  const { run } = useTaskActions();
-  const toTomorrow = (task: ViewTask) => {
-    const { ops, undo } = bulkTaskOps([task], data.tasks, { kind: "tomorrow" }, { today: ctx.today, now: new Date(), timeZone: ctx.timeZone });
-    void run(ops, { text: `„${task.title}” → ${relativeDay(addDays(ctx.today, 1), ctx.today)}`, undo });
-  };
+  const toTomorrow = useToTomorrow(data, ctx);
   const open = view.overdue.length + view.today.length;
   const empty = !open && !view.ongoing.length && !view.habits.length && !view.done.length;
   return (
@@ -235,6 +241,42 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
         </div>
         {aside}
       </div>
+    </>
+  );
+}
+
+// ── Zaległe ──────────────────────────────────────────────────────────────────────────────────
+
+/** Wszystko po terminie: dzisiejsze po godzinie (na górze — nie giną pod długą listą) i z wcześniejszych dni. */
+export function OverdueView({ data, ctx, toolbar }: ViewProps) {
+  const now = useLocalMinute(ctx.timeZone);
+  const view = useMemo(() => selectOverdue(data.tasks, ctx, now), [data.tasks, ctx, now]);
+  const names = listNames(data);
+  const toTomorrow = useToTomorrow(data, ctx);
+  const count = view.today.length + view.earlier.length;
+  return (
+    <>
+      <Header title={VIEW_SECTION.overdue} subtitle={plural(count, ["zadanie", "zadania", "zadań"])}>
+        <TaskExportButton
+          title={VIEW_SECTION.overdue}
+          data={data}
+          ctx={ctx}
+          count={count}
+          rows={() => [...view.today.map((task) => ({ task, section: VIEW_SECTION.lateToday })), ...view.earlier.map((task) => ({ task, section: VIEW_SECTION.earlier }))]}
+        />
+      </Header>
+      {toolbar}
+      {view.today.length ? (
+        <Section title={VIEW_SECTION.lateToday} count={view.today.length} tone="danger">
+          <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} lateMin={minutesLate(t, now)} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} />}</Paged>
+        </Section>
+      ) : null}
+      {view.earlier.length ? (
+        <Section title={VIEW_SECTION.earlier} count={view.earlier.length} tone="danger">
+          <Paged items={view.earlier}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} />}</Paged>
+        </Section>
+      ) : null}
+      {count ? null : <Empty>Nic nie zalega.</Empty>}
     </>
   );
 }

@@ -19,6 +19,7 @@ import {
   progress,
   selectFiltered,
   selectInbox,
+  selectOverdue,
   selectToday,
   selectUpcoming,
   sortTasks,
@@ -105,6 +106,39 @@ describe('minutesLate', () => {
     expect(at({ dueDate: '2026-11-17' })).toBe(0);
     expect(at({ dueDate: '2026-11-19' })).toBe(0);
     expect(at({ kind: 'habit' })).toBe(0);
+  });
+});
+
+describe('Zaległe', () => {
+  const tasks = [
+    task({ id: 'old-p4', dueDate: '2026-11-10', priority: 4 }),
+    task({ id: 'old-p1', dueDate: '2026-11-10', priority: 1 }),
+    task({ id: 'yesterday-evening', dueDate: '2026-11-17', dueTime: '23:00', durationMin: 120 }),
+    task({ id: 'late-11', dueDate: '2026-11-18', dueTime: '11:00' }),
+    task({ id: 'late-08', dueDate: '2026-11-18', dueTime: '08:00', durationMin: 60 }),
+    task({ id: 'running', dueDate: '2026-11-18', dueTime: '11:30', durationMin: 60 }),
+    task({ id: 'later', dueDate: '2026-11-18', dueTime: '13:00' }),
+    task({ id: 'no-time', dueDate: '2026-11-18' }),
+    task({ id: 'tomorrow', dueDate: '2026-11-19', dueTime: '08:00' }),
+    task({ id: 'undated' }),
+    task({ id: 'done', dueDate: '2026-11-10', status: 'done' }),
+    task({ id: 'cancelled', dueDate: '2026-11-18', dueTime: '08:00', status: 'cancelled' }),
+    task({ id: 'waiting', dueDate: '2026-11-16', status: 'waiting' }),
+    task({ id: 'habit', kind: 'habit', dueDate: '2026-11-10' }),
+    task({ id: 'other-ws', workspaceId: 'ws-2', dueDate: '2026-11-18', dueTime: '09:00' }),
+  ];
+
+  it('dzisiejsze po godzinie i z wcześniejszych dni', () => {
+    const view = selectOverdue(tasks, ctx, '2026-11-18T12:00');
+    expect(ids(view.today)).toEqual(['late-08', 'other-ws', 'late-11']);
+    expect(ids(view.earlier)).toEqual(['old-p1', 'old-p4', 'waiting', 'yesterday-evening']);
+  });
+
+  it('tryb jednej przestrzeni; godzina mija w ciągu dnia', () => {
+    const one = { ...ctx, workspaceId: 'ws-2' };
+    expect(ids(selectOverdue(tasks, one, '2026-11-18T09:00').today)).toEqual([]);
+    expect(ids(selectOverdue(tasks, one, '2026-11-18T09:01').today)).toEqual(['other-ws']);
+    expect(selectOverdue(tasks, one, '2026-11-18T09:01').earlier).toEqual([]);
   });
 });
 

@@ -6,9 +6,9 @@
  * (także z innej karty i z synchronizacji) — zadania przyrostowo (`createTaskCache`: tylko zmienione
  * wiersze, gotowe `ViewTask` reszty zostają); reguły widoków liczy `@taskplanner/core`.
  */
-import { AttachmentPreview, boardColumnDefs, canEditList, canvasGroupsOf, FilterQuery, localDateAt, localDateTimeAt, ProfileSettings, scopeCollaborator, scopeTag, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, withSharedCollaborators, withSharedTags, type BoardColumnDef, type CanvasGroup, type Collaborator, type GuestAccess, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ScopeRole, type ViewTask } from "@taskplanner/core";
+import { AttachmentPreview, boardColumnDefs, canEditList, canvasGroupsOf, FilterQuery, localDateAt, localDateTimeAt, minutesLate, ProfileSettings, scopeCollaborator, scopeTag, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, withSharedCollaborators, withSharedTags, type BoardColumnDef, type CanvasGroup, type Collaborator, type GuestAccess, type HabitCompletion, type LocalDate, type LocalTaskRow, type ListKind, type ProjectStatus, type ScopeRole, type ViewTask } from "@taskplanner/core";
 import { createTaskCache, type TabStore, type TaskEntry } from "@taskplanner/sync";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { reportError } from "./error-log";
 
@@ -145,6 +145,23 @@ export function useLocalMinute(timeZone?: string): string {
     return () => clearInterval(timer);
   }, [timeZone]);
   return now;
+}
+
+const everyTenSeconds = (listener: () => void) => {
+  const timer = setInterval(listener, 10_000);
+  return () => clearInterval(timer);
+};
+
+/** Ile z podanych zadań na dziś jest po godzinie — komponent rysuje się ponownie tylko, gdy liczba się zmieni. */
+export function useLateCount(tasks: readonly ViewTask[], timeZone?: string): number {
+  return useSyncExternalStore(
+    everyTenSeconds,
+    () => {
+      const now = localDateTimeAt(new Date(), timeZone);
+      return tasks.reduce((n, t) => n + (minutesLate(t, now) > 0 ? 1 : 0), 0);
+    },
+    () => 0,
+  );
 }
 
 /** Gotowe `ViewTask` przy wpisach bufora — wpis niezmieniony od poprzedniego odczytu = ten sam obiekt. */

@@ -103,6 +103,9 @@ const nullsLast = <T extends string>(a: T | null, b: T | null) => (a === b ? 0 :
 /** Kolejność w obrębie dnia (M9): najpierw z godziną według godziny, potem bez godziny według kolejności ręcznej. */
 export const byDayOrder = (a: ViewTask, b: ViewTask): number => nullsLast(a.dueTime, b.dueTime) || byManual(a, b);
 
+/** Zaległe z wcześniejszych dni: od najstarszego, w obrębie dnia według priorytetu. */
+const byOverdue = (a: ViewTask, b: ViewTask): number => byText(a.dueDate!, b.dueDate!) || a.priority - b.priority || byDayOrder(a, b);
+
 export const SortBy = z.enum(['manual', 'priority', 'due', 'created']);
 export type SortBy = z.infer<typeof SortBy>;
 
@@ -181,11 +184,36 @@ export function selectToday(tasks: readonly ViewTask[], ctx: ViewContext, { comp
     else if (t.dueDate === today) view.today.push(t);
     else if (t.startDate && t.startDate <= today) view.ongoing.push(t);
   }
-  view.overdue.sort((a, b) => byText(a.dueDate!, b.dueDate!) || a.priority - b.priority || byDayOrder(a, b));
+  view.overdue.sort(byOverdue);
   view.today.sort(byDayOrder);
   view.ongoing.sort((a, b) => byText(a.dueDate!, b.dueDate!) || byManual(a, b));
   view.habits.sort(byDayOrder);
   view.done.sort((a, b) => byText(b.completedAt ?? '', a.completedAt ?? ''));
+  return view;
+}
+
+// ── Zaległe ──────────────────────────────────────────────────────────────────────────────────
+
+export interface OverdueView {
+  /** Termin dziś, a godzina minęła (`minutesLate`) — według godziny. */
+  today: ViewTask[];
+  /** `due_date` < dziś, od najstarszego. */
+  earlier: ViewTask[];
+}
+
+/**
+ * „Zaległe”: otwarte zadania po terminie — z wcześniejszych dni i dzisiejsze, których godzina minęła.
+ * `now` — zegar ścienny jak w `minutesLate`. Dzisiejsze bez godziny czekają do końca dnia; nawyki odpadają.
+ */
+export function selectOverdue(tasks: readonly ViewTask[], ctx: ViewContext, now: string): OverdueView {
+  const view: OverdueView = { today: [], earlier: [] };
+  for (const t of tasks) {
+    if (!t.dueDate || t.dueDate > ctx.today || t.kind !== 'task' || !isOpen(t) || !inWorkspace(ctx)(t)) continue;
+    if (t.dueDate < ctx.today) view.earlier.push(t);
+    else if (minutesLate(t, now) > 0) view.today.push(t);
+  }
+  view.today.sort(byDayOrder);
+  view.earlier.sort(byOverdue);
   return view;
 }
 

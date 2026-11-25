@@ -4,12 +4,12 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, tagsForWorkspace, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type ViewContext, type WebClip } from "@taskplanner/core";
+import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, tagsForWorkspace, VIEW_SECTION, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type ViewContext, type WebClip } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
-import { useAppData, useToday, type List, type Workspace } from "@/lib/app-data";
+import { useAppData, useLateCount, useToday, type List, type Workspace } from "@/lib/app-data";
 import { GOOGLE_RETURN_PARAM } from "@/lib/calendars";
 import { DEFAULT_ROUTE, routeHash, useRoute, type Route } from "@/lib/route";
 import { dropClip, pendingClip } from "@/lib/web-clip";
@@ -33,7 +33,7 @@ import { ReminderNotificationActions } from "./reminder-actions";
 import { TaskPanel } from "./task-panel";
 import { TaskActionsProvider, useTaskActions } from "./task-item";
 import { Select, Splash } from "./ui";
-import { InboxView, ListView, TodayView, TrashView, UpcomingView } from "./views";
+import { InboxView, ListView, OverdueView, TodayView, TrashView, UpcomingView } from "./views";
 
 // Oś czasu (SVAR Gantt) — osobny kawałek kodu, dociągany w wolnej chwili po starcie i przy pierwszym otwarciu.
 const loadTimeline = () => import("./timeline");
@@ -238,8 +238,10 @@ export function Shell({
     }
     const perFilter = new Map(data.savedFilters.map((f) => [f.id, filterCount(data.tasks, f.query, ctx)]));
     const habits = habitsForDay(data.tasks, data.habitCompletions, ctx.today, ctx.today, ctx.workspaceId).filter((h) => !h.settled).length;
-    return { inbox: selectInbox(data.tasks, inboxIds, ctx).length, today: view.overdue.length + view.today.length, overdue: view.overdue.length, habits, perList, perTag, perFilter };
+    return { inbox: selectInbox(data.tasks, inboxIds, ctx).length, today: view.overdue.length + view.today.length, overdue: view.overdue.length, todayTasks: view.today, habits, perList, perTag, perFilter };
   }, [data.tasks, data.lists, data.savedFilters, data.habitCompletions, ctx]);
+
+  const overdueCount = counts.overdue + useLateCount(counts.todayTasks, settings.timeZone);
 
   // Kryterium kolumn tablicy `#/board` — per przeglądarka (tablica listy ma je w `view_prefs`).
   const [boardBy, setBoardByState] = useState<BoardBy>(() => {
@@ -292,7 +294,7 @@ export function Shell({
   const list = route.view === "list" ? data.lists.find((l) => l.id === route.id) : undefined;
   const tag = route.view === "tag" ? data.tags.find((t) => t.id === route.id) : undefined;
   const savedFilter = route.view === "filter" ? data.savedFilters.find((f) => f.id === route.id) : undefined;
-  const filterable = ["inbox", "today", "upcoming", "list", "board"].includes(route.view);
+  const filterable = ["inbox", "today", "overdue", "upcoming", "list", "board"].includes(route.view);
   const wide = route.view === "board" || route.view === "calendar" || route.view === "timeline" || list?.prefs.view === "kanban" || list?.prefs.view === "canvas";
   // Widoki dostają zadania po filtrze doraźnym; liczniki paska bocznego liczą się z pełnych danych.
   const query = list ? (list.prefs.filter ?? {}) : adhoc;
@@ -311,6 +313,8 @@ export function Shell({
       <InboxView {...props} />
     ) : route.view === "today" ? (
       <TodayView {...props} aside={<DayPlan key={`${today}:${workspaceId ?? ""}`} data={data} ctx={ctx} settings={settings} />} />
+    ) : route.view === "overdue" ? (
+      <OverdueView {...props} />
     ) : route.view === "upcoming" ? (
       <UpcomingView {...props} />
     ) : route.view === "board" ? (
@@ -401,6 +405,7 @@ export function Shell({
   const mainNav: NavEntry[] = [
     { route: { view: "inbox" }, icon: "📥", label: "Inbox", count: counts.inbox },
     { route: { view: "today" }, icon: "☀️", label: "Dziś", count: counts.today, alert: counts.overdue > 0 },
+    { route: { view: "overdue" }, icon: "⏰", label: VIEW_SECTION.overdue, count: overdueCount || undefined, alert: overdueCount > 0 },
     { route: { view: "upcoming" }, icon: "📅", label: "Nadchodzące" },
     { route: { view: "board" }, icon: "▦", label: "Tablica" },
     { route: { view: "calendar" }, icon: "🗓", label: "Kalendarz" },
@@ -797,7 +802,7 @@ function readShare(params: URLSearchParams): Shared | null {
   return result.text ? result : null;
 }
 
-const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" }, h: { view: "habits" } };
+const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, z: { view: "overdue" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" }, h: { view: "habits" } };
 
 /** Akcja na zaznaczonych z dymkiem „Cofnij”. */
 function useBulk(selected: readonly string[]) {
@@ -992,6 +997,7 @@ function PaletteHost({
     const actions: Record<string, () => void> = {
       "view.inbox": () => then(() => navigate({ view: "inbox" })),
       "view.today": () => then(() => navigate({ view: "today" })),
+      "view.overdue": () => then(() => navigate({ view: "overdue" })),
       "view.upcoming": () => then(() => navigate({ view: "upcoming" })),
       "view.kanban": () => then(() => navigate({ view: "board" })),
       "view.calendar": () => then(() => navigate({ view: "calendar" })),
