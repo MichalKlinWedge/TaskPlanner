@@ -6,21 +6,25 @@
  * konflikty; `freeSlotTimes` — wolne okna w godzinach pracy w widoku dnia). Time-blocking: panel
  * zadań bez godziny → przeciągnięcie na godzinę (`scheduleBlockPatch`), rozciąganie bloku
  * (`resizeBlockPatch`), blok z powrotem na panel zdejmuje godzinę (`unscheduleBlockPatch`).
- * Klik w puste miejsce otwiera szybkie dodawanie na ten dzień i godzinę (`onAdd`).
+ * Klik w puste miejsce otwiera szybkie dodawanie na ten dzień i godzinę (`onAdd`). Wysokość wiersza
+ * (15 min / 30 min / 1 h) przełącza się nad siatką dnia i tygodnia; przeciąganie zawsze co 15 min.
  *
  * Czas zadań jest pływający, więc kalendarz pracuje w „UTC” jako zegarze ściennym (bez stref) —
  * „teraz” to zegar ścienny strefy z ustawień.
  */
 import plLocale from "@fullcalendar/core/locales/pl";
-import type { CalendarOptions, DatesSetArg, EventClickArg, EventDropArg, EventInput } from "@fullcalendar/core";
+import type { CalendarOptions, DatesSetArg, DurationInput, EventClickArg, EventDropArg, EventInput } from "@fullcalendar/core";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin, { Draggable, type DateClickArg, type DropArg, type EventDragStopArg, type EventResizeDoneArg } from "@fullcalendar/interaction";
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import {
   applyFilter,
+  CALENDAR_SLOTS,
   calendarEntries,
   clickedTime,
+  DEFAULT_CALENDAR_SLOT,
+  formatMinutes,
   habitSlots,
   isEmptyFilter,
   matchesFilter,
@@ -35,6 +39,7 @@ import {
   selectInbox,
   selectToday,
   unscheduleBlockPatch,
+  type CalendarSlot,
   type FilterQuery,
   type LocalDate,
   type ProfileSettings,
@@ -58,6 +63,9 @@ type CalendarView = "timeGridDay" | "timeGridWeek" | "dayGridMonth";
 
 const VIEWS: readonly CalendarView[] = ["timeGridDay", "timeGridWeek", "dayGridMonth"];
 const VIEW_KEY = "tp-calendar-view";
+/** Wysokość wiersza siatki w minutach (per przeglądarka). */
+const SLOT_KEY = "tp-calendar-slot";
+const SLOT_DURATION: Record<CalendarSlot, string> = { 15: "00:15:00", 30: "00:30:00", 60: "01:00:00" };
 /** Panel zadań zwinięty ręcznie (per przeglądarka); bez tego przy wejściu zwija się sam, gdy wszystkie źródła są puste. */
 const PANEL_KEY = "tp-calendar-panel-closed";
 
@@ -83,6 +91,15 @@ function readView(): CalendarView {
     return VIEWS.includes(v as CalendarView) ? (v as CalendarView) : "timeGridWeek";
   } catch {
     return "timeGridWeek";
+  }
+}
+
+function readSlot(): CalendarSlot {
+  try {
+    const v = Number(localStorage.getItem(SLOT_KEY));
+    return CALENDAR_SLOTS.find((s) => s === v) ?? DEFAULT_CALENDAR_SLOT;
+  } catch {
+    return DEFAULT_CALENDAR_SLOT;
   }
 }
 
@@ -122,6 +139,7 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
   const [, navigate] = useRoute();
   const { run } = useTaskActions();
   const [view, setView] = useState<CalendarView>(readView);
+  const [slot, setSlot] = useState<CalendarSlot>(readSlot);
   const [range, setRange] = useState<{ from: LocalDate; to: LocalDate } | null>(null);
   const [source, setSource] = useState("today");
   // Filtr ukrywa bloki zadań i pozycje panelu; kolizje i wolne okna liczą się z całości.
@@ -132,6 +150,7 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
   const [panelOpen, setPanelOpen] = useState(() => !readPanelClosed() && PANEL_SOURCES(data).some((s) => panelTasks(s, data, ctx).length));
   const panel = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLUListElement>(null);
+  const grid = useRef<HTMLDivElement>(null);
   const calendar = useRef<FullCalendar>(null);
   const held = useRef(false);
   const [, setReleases] = useState(0);
@@ -214,6 +233,28 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
     calendar.current?.getApi().updateSize();
   }, [panelOpen]);
 
+  // Inna wysokość wiersza → u góry siatki zostaje ta sama godzina (gdy mieściła się cała doba — początek pracy).
+  const scrollAfter = useRef<DurationInput | null>(null);
+  const changeSlot = (next: CalendarSlot) => {
+    if (next === slot) return;
+    const scroller = grid.current?.querySelector(".fc-timegrid-body")?.closest(".fc-scroller");
+    if (scroller) {
+      const scrollable = scroller.scrollHeight > scroller.clientHeight + 1;
+      scrollAfter.current = scrollable ? { minutes: Math.round((scroller.scrollTop / scroller.scrollHeight) * 1440) } : `${settings.workHours.start}:00`;
+    }
+    setSlot(next);
+    try {
+      localStorage.setItem(SLOT_KEY, String(next));
+    } catch {
+      // Bez pamięci przeglądarki — do odświeżenia.
+    }
+  };
+  useEffect(() => {
+    if (scrollAfter.current === null) return;
+    calendar.current?.getApi().scrollToTime(scrollAfter.current);
+    scrollAfter.current = null;
+  }, [slot]);
+
   // Zadania z panelu → przeciąganie do kalendarza (bez tworzenia zdarzenia — pojawi się z lokalnej bazy).
   useEffect(() => {
     if (!panelOpen || !list.current) return;
@@ -277,11 +318,11 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
     openTask(id);
   };
 
-  // Puste miejsce: pół godziny pod kursorem; wiersz „cały dzień” i miesiąc — sam dzień.
+  // Puste miejsce: wiersz siatki pod kursorem; wiersz „cały dzień” i miesiąc — sam dzień.
   const onDateClick = (info: DateClickArg) => {
     // Dotyk: bez emulowanego `mousedown`, który trafiłby w tło świeżo otwartego okna i je zamknął.
     if (info.jsEvent.type === "touchend" && info.jsEvent.cancelable) info.jsEvent.preventDefault();
-    onAdd({ date: wallDate(info.date), ...(!info.allDay && { time: clickedTime(wallMinutes(info.date)) }) });
+    onAdd({ date: wallDate(info.date), ...(!info.allDay && { time: clickedTime(wallMinutes(info.date), slot) }) });
   };
 
   const onDates = (arg: DatesSetArg) => {
@@ -364,8 +405,18 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
         </ul>
       </aside>
       )}
-      <div className="tp-calendar min-w-0 flex-1" data-testid="calendar">
-        <FilterBar query={filter} onChange={setFilter} hide={HIDDEN_FILTERS} />
+      <div ref={grid} className="tp-calendar min-w-0 flex-1" data-testid="calendar">
+        <FilterBar query={filter} onChange={setFilter} hide={HIDDEN_FILTERS}>
+          {view !== "dayGridMonth" ? (
+            <div className="ml-auto flex overflow-hidden rounded-md border border-[var(--line)] text-xs" role="group" aria-label="Wysokość wiersza" title="Ile czasu obejmuje jeden wiersz siatki">
+              {CALENDAR_SLOTS.map((s) => (
+                <button key={s} type="button" aria-pressed={slot === s} className={`px-2.5 py-1 ${slot === s ? "bg-[var(--accent)] text-white" : "hover:bg-black/5 dark:hover:bg-white/10"}`} onClick={() => changeSlot(s)}>
+                  {formatMinutes(s)}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </FilterBar>
         {conflictCount ? (
           <p className="mb-2 text-xs text-[var(--danger)]" role="status">
             ⚠ Nakładające się bloki w widocznym zakresie: {conflictCount}
@@ -386,6 +437,8 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
             height: "calc(100dvh - 11rem)",
             scrollTime: `${settings.workHours.start}:00`,
             businessHours: { daysOfWeek: settings.workHours.days.map((d) => d % 7), startTime: settings.workHours.start, endTime: settings.workHours.end },
+            slotDuration: SLOT_DURATION[slot],
+            expandRows: true,
             snapDuration: "00:15:00",
             nowIndicator: true,
             editable: true,

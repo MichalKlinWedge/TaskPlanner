@@ -357,8 +357,14 @@ export function blockLanes(blocks: readonly Pick<Block, 'id' | 'kind' | 'startMi
 /** Zaokrąglenie minut do siatki (przeciąganie w kalendarzu; domyślnie co 15 min). */
 export const snapMinutes = (minutes: number, step = 15): number => Math.round(minutes / step) * step;
 
-/** Kliknięte miejsce osi dnia → początek pół godziny (wysokość komórki kalendarza), najpóźniej 23:30. */
-export const clickedTime = (minutes: number): LocalTime => minutesToTime(Math.min(Math.max(Math.floor(minutes / 30) * 30, 0), 1410));
+/** Wysokość wiersza osi dnia w kalendarzu (min) — do wyboru; domyślnie pół godziny. */
+export const CALENDAR_SLOTS = [15, 30, 60] as const;
+export type CalendarSlot = (typeof CALENDAR_SLOTS)[number];
+export const DEFAULT_CALENDAR_SLOT: CalendarSlot = 30;
+
+/** Kliknięte miejsce osi dnia → początek wiersza pod kursorem (domyślnie pół godziny), najpóźniej ostatni wiersz doby. */
+export const clickedTime = (minutes: number, slot: CalendarSlot = DEFAULT_CALENDAR_SLOT): LocalTime =>
+  minutesToTime(Math.min(Math.max(Math.floor(minutes / slot) * slot, 0), 1440 - slot));
 
 /** Minuty od północy → `GG:MM` (0–1439). */
 export const minutesToTime = (minutes: number): LocalTime => {

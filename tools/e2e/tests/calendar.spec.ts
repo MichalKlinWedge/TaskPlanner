@@ -112,6 +112,27 @@ test('klik w puste miejsce dodaje zadanie z datą i godziną', async ({ page, se
   await expect(page.locator('[data-task-panel]')).toBeVisible();
   await page.keyboard.press('Escape');
 
+  // Wysokość wiersza: 15 min → klik daje kwadrans, 1 h → pełną godzinę; wybór przeżywa przeładowanie.
+  const slots = calendar.getByRole('group', { name: 'Wysokość wiersza' });
+  await expect(slots.getByRole('button', { name: '30 min' })).toHaveAttribute('aria-pressed', 'true');
+  for (const [name, time, expected] of [['15 min', '17:15:00', '17:15'], ['1 h', '18:00:00', '18:00']] as const) {
+    await slots.getByRole('button', { name, exact: true }).click();
+    const row = calendar.locator(`td.fc-timegrid-slot-lane[data-time="${time}"]`);
+    await row.scrollIntoViewIfNeeded();
+    const rowBox = (await row.boundingBox())!;
+    await page.mouse.click(rowBox.x + rowBox.width * 0.9, rowBox.y + rowBox.height * 0.75);
+    await expect(dialog.getByRole('heading')).toContainText(expected);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+  }
+  await page.reload();
+  await expect(slots.getByRole('button', { name: '1 h', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(calendar.locator('td.fc-timegrid-slot-lane')).toHaveCount(24);
+  // Powrót z całej doby na ekranie → początek godzin pracy, nie północ.
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await slots.getByRole('button', { name: '15 min', exact: true }).click();
+  await expect(calendar.locator('td.fc-timegrid-slot-lane[data-time="09:00:00"]')).toBeInViewport();
+
   // Miesiąc: sam dzień; godzina z wpisu zostaje w klikniętym dniu.
   await calendar.getByRole('button', { name: 'Miesiąc', exact: true }).click();
   const cell = calendar.locator(`.fc-daygrid-day:not(.fc-day-today)`).last();

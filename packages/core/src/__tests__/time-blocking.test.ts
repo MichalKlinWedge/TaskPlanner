@@ -126,7 +126,9 @@ describe('przeciąganie', () => {
     expect(resizeBlockPatch(600, 602)).toEqual({ duration_min: 5 });
     expect(unscheduleBlockPatch()).toEqual({ due_time: null });
     expect(minutesToTime(-30)).toBe('23:30');
-    expect([0, 29, 30, 615, 629.9, 1439, 1500, -5].map(clickedTime)).toEqual(['00:00', '00:00', '00:30', '10:00', '10:00', '23:30', '23:30', '00:00']);
+    expect([0, 29, 30, 615, 629.9, 1439, 1500, -5].map((m) => clickedTime(m))).toEqual(['00:00', '00:00', '00:30', '10:00', '10:00', '23:30', '23:30', '00:00']);
+    expect([14, 15, 629, 1439, 1500].map((m) => clickedTime(m, 15))).toEqual(['00:00', '00:15', '10:15', '23:45', '23:45']);
+    expect([59, 60, 629, 1439, 1500].map((m) => clickedTime(m, 60))).toEqual(['00:00', '01:00', '10:00', '23:00', '23:00']);
   });
 });
 
