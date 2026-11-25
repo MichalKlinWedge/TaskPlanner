@@ -28,6 +28,7 @@ export * from './labels.ts';
 export * from './lists.ts';
 export * from './markdown.ts';
 export * from './markdown-edit.ts';
+export * from './html-to-markdown.ts';
 export * from './onboarding.ts';
 export * from './pdf.ts';
 export * from './plugins/index.ts';

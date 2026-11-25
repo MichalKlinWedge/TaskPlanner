@@ -7,13 +7,13 @@
  */
 import { bookmarkletCode } from "@taskplanner/core";
 
-import { CollapsibleCard } from "./collapsible-card";
+import { SettingsSection } from "./settings-section";
 
 export function CaptureCard() {
-  // React blokuje `javascript:` w `href` — adres ustawiony bezpośrednio na elemencie (powstaje po rozwinięciu karty).
+  // React blokuje `javascript:` w `href` — adres ustawiony bezpośrednio na elemencie.
   const link = (el: HTMLAnchorElement | null) => el?.setAttribute("href", bookmarkletCode(window.location.origin));
   return (
-    <CollapsibleCard id="capture" title="Dodawanie z innych miejsc">
+    <SettingsSection title="Dodawanie z innych miejsc">
       <ul className="flex flex-col gap-2 text-sm">
         <li>
           <strong>Zakładka w przeglądarce:</strong> przeciągnij{" "}
@@ -33,6 +33,6 @@ export function CaptureCard() {
           <strong>Wklejony adres</strong> w szybkim dodawaniu trafia do załączników zadania; tytuł strony uzupełni się sam (offline — po połączeniu).
         </li>
       </ul>
-    </CollapsibleCard>
+    </SettingsSection>
   );
 }

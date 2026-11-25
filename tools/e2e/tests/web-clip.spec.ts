@@ -19,9 +19,7 @@ async function openSite(context: BrowserContext, title: string): Promise<Page> {
 
 /** Kod zakładki z karty w Ustawieniach (`href`, jak po przeciągnięciu na pasek). */
 async function bookmarklet(page: Page): Promise<string> {
-  await openApp(page, '#/settings');
-  // Zwinięta karta nie montuje zakładki.
-  await page.getByRole('button', { name: 'Dodawanie z innych miejsc' }).click();
+  await openApp(page, '#/settings/capture');
   const link = page.getByTestId('bookmarklet');
   await expect(link).toHaveAttribute('href', /^javascript:/);
   return (await link.getAttribute('href'))!;

@@ -15,7 +15,7 @@ import { useState } from "react";
 import { addIcs, connectGoogle, disconnectCalendarAccount, setCalendarVisible, syncCalendarAccount } from "@/lib/calendars";
 import { useLocalQuery } from "@/lib/local-store";
 
-import { CollapsibleCard } from "./collapsible-card";
+import { SettingsSection } from "./settings-section";
 import { Button, Input, Notice } from "./ui";
 
 interface AccountRow extends Record<string, string | number | null> {
@@ -111,7 +111,7 @@ export function CalendarsCard({ store, timeZone }: { store: TabStore; timeZone?:
   };
 
   return (
-    <CollapsibleCard id="calendars" title="Połączone kalendarze" alert={accounts.some((a) => a.status !== "active")}>
+    <SettingsSection title="Połączone kalendarze">
       <p className="mb-3 text-xs text-[var(--muted)]">
         Spotkania z kalendarzy widać w kalendarzu obok zadań (tylko do odczytu). Odświeżają się same co kilka minut. Zadania z godziną z wybranych przestrzeni mogą też trafiać do
         osobnego kalendarza „Task Planner” w Google — przesunięcie tam zmienia zadanie.
@@ -204,7 +204,7 @@ export function CalendarsCard({ store, timeZone }: { store: TabStore; timeZone?:
       ) : (
         <p className="text-xs text-[var(--muted)]">Brak połączonych kalendarzy.</p>
       )}
-    </CollapsibleCard>
+    </SettingsSection>
   );
 }
 

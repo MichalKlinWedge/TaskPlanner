@@ -64,7 +64,7 @@ export function parseInline(text: string): MdSpan[] {
     };
     while (i < src.length) {
       const rest = src.slice(i);
-      if (rest[0] === '\\' && rest.length > 1 && /[\\`*_~[\]()#!+\-.<>]/.test(rest[1]!)) {
+      if (rest[0] === '\\' && rest.length > 1 && /[\\`*_~[\]()#!+\-.<>&|]/.test(rest[1]!)) {
         plain += rest[1];
         i += 2;
         continue;

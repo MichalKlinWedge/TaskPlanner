@@ -12,7 +12,7 @@ import { deleteAccount } from "@/lib/account";
 import { closeStore } from "@/lib/local-store";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-import { CollapsibleCard } from "./collapsible-card";
+import { SettingsSection } from "./settings-section";
 import { Button, Input, Notice } from "./ui";
 
 export function AccountCard({ email }: { email: string | null }) {
@@ -37,7 +37,7 @@ export function AccountCard({ email }: { email: string | null }) {
   };
 
   return (
-    <CollapsibleCard id="account" title="Usuń konto">
+    <SettingsSection title="Usuń konto">
       <p className="mb-3 text-sm opacity-70">{ACCOUNT_DELETE_NOTE}</p>
       <form onSubmit={(e) => void submit(e)} className="flex flex-wrap items-center gap-2">
         <Input
@@ -58,6 +58,6 @@ export function AccountCard({ email }: { email: string | null }) {
           <Notice tone="error">{error}</Notice>
         </div>
       ) : null}
-    </CollapsibleCard>
+    </SettingsSection>
   );
 }

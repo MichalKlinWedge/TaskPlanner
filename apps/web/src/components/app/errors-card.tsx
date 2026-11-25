@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { APP_VERSION, flushErrors, queuedErrors, reportError } from "@/lib/error-log";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-import { CollapsibleCard } from "./collapsible-card";
+import { SettingsSection } from "./settings-section";
 import { Button, Notice } from "./ui";
 
 interface ErrorRow {
@@ -30,9 +30,9 @@ const PLATFORM: Record<string, string> = { web: "przeglądarka", android: "telef
 
 export function ErrorsCard() {
   return (
-    <CollapsibleCard id="errors" title="Błędy aplikacji">
+    <SettingsSection title="Błędy aplikacji">
       <ErrorsLog />
-    </CollapsibleCard>
+    </SettingsSection>
   );
 }
 
@@ -57,7 +57,7 @@ function ErrorsLog() {
   }, []);
 
   useEffect(() => {
-    // Wczytanie przy rozwinięciu karty (zapytanie do serwera, nie do lokalnej bazy).
+    // Wczytanie przy pierwszym otwarciu sekcji (zapytanie do serwera, nie do lokalnej bazy).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);

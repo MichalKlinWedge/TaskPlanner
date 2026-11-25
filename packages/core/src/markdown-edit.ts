@@ -160,6 +160,25 @@ function insertBlock(text: string, s: number, e: number, block: string, selFrom:
 const LIST_LINE = /^(\s*)(?:([-*+]) \[[ xX]\] |([-*+]) |(\d{1,9})([.)]) |> ?)/;
 
 /**
+ * Wklejenie zamienionego tekstu (`htmlToMarkdown`) w miejsce zaznaczenia: jedna linia wchodzi w zdanie, bloki są
+ * oddzielone pustą linią; lista wklejona w pustej pozycji listy zastępuje jej znacznik. Kursor na końcu.
+ */
+export function markdownPaste(text: string, start: number, end: number, pasted: { markdown: string; inline: boolean }): MarkdownTextEdit {
+  const [s, e] = start <= end ? [start, end] : [end, start];
+  const { markdown } = pasted;
+  if (pasted.inline) return { from: s, to: e, insert: markdown, selStart: s + markdown.length, selEnd: s + markdown.length };
+  const line = lineStart(text, s);
+  const empty = s > line && LIST_LINE.exec(text.slice(line, s))?.[0].length === s - line && LIST_LINE.test(markdown);
+  const from = empty ? line : s;
+  const before = text.slice(0, from);
+  const after = text.slice(e);
+  const lead = empty || before === '' || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+  const trail = after === '' || after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n';
+  const at = from + lead.length + markdown.length;
+  return { from, to: e, insert: `${lead}${markdown}${trail}`, selStart: at, selEnd: at };
+}
+
+/**
  * Enter w linii listy / cytatu (jak w GitLabie): nowa linia z kolejnym znacznikiem (`- `, `2. `, `- [ ] `,
  * `> `), a Enter w pustej pozycji kończy listę (zdejmuje znacznik). `null` = zwykły Enter.
  */

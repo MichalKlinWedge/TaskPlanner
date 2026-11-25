@@ -59,8 +59,10 @@ import {
   taskLinks,
   tagsForWorkspace,
   MARKDOWN_SHORTCUTS,
+  htmlToMarkdown,
   markdownContinueList,
   markdownEdit,
+  markdownPaste,
   reorderTaskTagOps,
   taskTagId,
   taskTagOps,
@@ -71,6 +73,7 @@ import {
   type LocalTime,
   type MarkdownAction,
   type MarkdownTextEdit,
+  type PastedMarkdown,
   type Priority,
   type Recurrence,
   type TaskLink,
@@ -80,7 +83,7 @@ import {
   type ViewTask,
 } from "@taskplanner/core";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { listEditable } from "@/lib/app-data";
@@ -1303,6 +1306,8 @@ function applyTextEdit(area: HTMLTextAreaElement, edit: MarkdownTextEdit, setTex
  * Opis zadania w Markdown — w panelu i w trybie skupienia. Edycja = tekst źródłowy (GFM) z przyciskami
  * formatowania (core `markdownEdit`, skróty Ctrl+B/I/K, Enter kontynuuje listę), przełącznik „Podgląd”
  * pokazuje wynik, „⛶” otwiera opis na pełnym ekranie (Esc wraca). Zapis przy opuszczeniu pola.
+ * Wklejanie z formatowaniem (core `htmlToMarkdown`): przycisk „📋” czyta schowek, a po zwykłym Ctrl+V
+ * sformatowanego tekstu pod polem jest „Zamień na Markdown” (działa też bez zgody na odczyt schowka).
  */
 export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string; readOnly?: boolean }) {
   const { store } = useAppEnv();
@@ -1385,6 +1390,56 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
     }
   };
 
+  // Ostatnio wklejony tekst, który da się zamienić na Markdown — do pierwszej zmiany treści.
+  const [pasted, setPasted] = useState<{ text: string; from: number; to: number; result: PastedMarkdown } | null>(null);
+  const [pasteNote, setPasteNote] = useState<string | null>(null);
+  const insertText = (el: HTMLTextAreaElement, from: number, to: number, insert: string) =>
+    applyTextEdit(el, { from, to, insert, selStart: from + insert.length, selEnd: from + insert.length }, setDraft);
+  const onAreaPaste = (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    setPasteNote(null);
+    setPasted(null);
+    const html = e.clipboardData.getData("text/html");
+    const result = html ? htmlToMarkdown(html) : null;
+    const plain = e.clipboardData.getData("text/plain").replace(/\r\n?/g, "\n");
+    if (!result?.formatted || !plain) return;
+    e.preventDefault();
+    const from = Math.min(el.selectionStart, el.selectionEnd);
+    insertText(el, from, Math.max(el.selectionStart, el.selectionEnd), plain);
+    setPasted({ text: el.value, from, to: from + plain.length, result });
+  };
+  const convertPasted = () => {
+    const el = area.current;
+    if (el && pasted && el.value === pasted.text) applyTextEdit(el, markdownPaste(el.value, pasted.from, pasted.to, pasted.result), setDraft);
+    setPasted(null);
+  };
+  const pasteFormatted = async () => {
+    const el = area.current;
+    if (!el) return;
+    setPasteNote(null);
+    setPasted(null);
+    let html = "";
+    let plain = "";
+    try {
+      // Chrome: bez czyszczenia HTML zostają listy Worda; inne przeglądarki pomijają opcję.
+      const read = navigator.clipboard.read as (options?: { unsanitized: string[] }) => Promise<ClipboardItem[]>;
+      for (const item of await read.call(navigator.clipboard, { unsanitized: ["text/html"] })) {
+        if (!html && item.types.includes("text/html")) html = await (await item.getType("text/html")).text();
+        if (!plain && item.types.includes("text/plain")) plain = await (await item.getType("text/plain")).text();
+      }
+    } catch {
+      setPasteNote("Przeglądarka nie dała dostępu do schowka — wklej przez Ctrl+V, a potem wybierz „Zamień na Markdown” pod polem.");
+      return;
+    }
+    // Okno zgody mogło zabrać fokus, a w tym czasie panel mógł się zamknąć.
+    if (!el.isConnected) return;
+    const result = html ? htmlToMarkdown(html) : null;
+    // Bez formatowania lepszy jest zwykły tekst (np. skopiowane źródło Markdown — bez ukośników).
+    if (result && (result.formatted || !plain)) applyTextEdit(el, markdownPaste(el.value, el.selectionStart, el.selectionEnd, result), setDraft);
+    else if (plain) insertText(el, el.selectionStart, el.selectionEnd, plain.replace(/\r\n?/g, "\n"));
+    else setPasteNote("W schowku nie ma tekstu.");
+  };
+
   const toolbar = (
     <div className="flex flex-wrap items-center gap-1">
       {readOnly ? null : (
@@ -1413,6 +1468,10 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
               </IconButton>
             </span>
           ))}
+          <span aria-hidden className="mx-1 h-4 w-px bg-[var(--line)]" />
+          <IconButton label="Wklej z formatowaniem (zamiana na Markdown)" onMouseDown={(e) => e.preventDefault()} onClick={() => void pasteFormatted()}>
+            📋
+          </IconButton>
         </div>
       )}
       <span className="flex-1" />
@@ -1440,6 +1499,7 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
         autoFocus={fullScreen}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={onAreaKey}
+        onPaste={onAreaPaste}
         onFocus={() => setEditing(true)}
         onBlur={() => {
           save();
@@ -1453,12 +1513,36 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
       />
     );
 
+  const offer = !preview && pasted?.text === draft;
+  const pasteBar =
+    preview || (!offer && !pasteNote) ? null : (
+      <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]" role="status" data-testid="description-paste">
+        <span>{offer ? "Wklejono zwykły tekst." : pasteNote}</span>
+        {offer ? (
+          <Button className="px-2 py-0.5 text-xs" onMouseDown={(e) => e.preventDefault()} onClick={convertPasted}>
+            Zamień na Markdown
+          </Button>
+        ) : null}
+        <IconButton
+          label="Ukryj"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            setPasted(null);
+            setPasteNote(null);
+          }}
+        >
+          ✕
+        </IconButton>
+      </div>
+    );
+
   return (
     <div className="flex flex-col gap-2">
       {full ? <p className="text-xs text-[var(--muted)]">Opis jest otwarty na pełnym ekranie.</p> : (
         <>
           {toolbar}
           {body(false)}
+          {pasteBar}
         </>
       )}
       {full
@@ -1467,6 +1551,7 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
               <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-3">
                 {toolbar}
                 {body(true)}
+                {pasteBar}
               </div>
             </div>,
             document.body,
