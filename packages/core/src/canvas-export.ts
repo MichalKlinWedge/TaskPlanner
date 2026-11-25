@@ -26,6 +26,7 @@ import {
   type PlacedCard,
 } from './canvas.ts';
 import { collaboratorBadge } from './collaborators.ts';
+import { rgbOf } from './colors.ts';
 import { dayMonth, plural } from './format.ts';
 import { PRIORITY } from './labels.ts';
 import { pdfPageSize, type PdfOrientation, type PdfPaper } from './pdf.ts';
@@ -108,13 +109,6 @@ export const CANVAS_EXPORT_THEMES: Record<CanvasExportThemeName, CanvasExportThe
     participantText: '#7dd3fc',
   },
 };
-
-function rgbOf(color: string): [number, number, number] | null {
-  const hex = color.trim().replace(/^#/, '');
-  const full = /^[0-9a-f]{3}$/i.test(hex) ? [...hex].map((c) => c + c).join('') : hex;
-  if (!/^[0-9a-f]{6}$/i.test(full)) return null;
-  return [parseInt(full.slice(0, 2), 16), parseInt(full.slice(2, 4), 16), parseInt(full.slice(4, 6), 16)];
-}
 
 /** `color-mix(in srgb, a share, b)` → `#rrggbb` (`share` 0–1 = udział `a`); zły kolor = szary. */
 export function mixHex(a: string, b: string, share: number): string {

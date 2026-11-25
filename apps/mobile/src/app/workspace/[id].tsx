@@ -8,11 +8,12 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert } from 'react-native';
 
+import { ColorPicker } from '@/components/color-picker';
 import { EditableItem } from '@/components/editable-item';
 import { SharingSection } from '@/components/sharing';
 import { SyncIndicator } from '@/components/sync-indicator';
 import { TemplateFields, TemplatesSection, type TemplateChoice } from '@/components/templates';
-import { Button, Chip, ColorPicker, Field, P, Row, Screen, Section } from '@/components/ui';
+import { Button, Chip, Field, P, Row, Screen, Section } from '@/components/ui';
 import { useView } from '@/lib/app-data';
 import { useLocalQuery } from '@/lib/local-query';
 import { createTask } from '@/lib/tasks';

@@ -12,6 +12,7 @@ export * from './canvas-export.ts';
 export * from './backup.ts';
 export * from './collaborators.ts';
 export * from './comments.ts';
+export * from './colors.ts';
 export * from './commands.ts';
 export * from './dates.ts';
 export * from './day-planner.ts';

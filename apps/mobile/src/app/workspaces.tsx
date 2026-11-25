@@ -3,9 +3,10 @@ import { canEditScope, COLORS, plural, SCOPE_ROLE } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { useState } from 'react';
 
+import { ColorPicker } from '@/components/color-picker';
 import { EditableItem } from '@/components/editable-item';
 import { SyncIndicator } from '@/components/sync-indicator';
-import { Button, ColorPicker, Field, P, Screen, Section } from '@/components/ui';
+import { Button, Field, P, Screen, Section } from '@/components/ui';
 import { useLocalQuery } from '@/lib/local-query';
 import { archiveWorkspace, createWorkspace, moveItem, updateWorkspace, workspaceItems, type WorkspaceItem } from '@/lib/workspaces';
 

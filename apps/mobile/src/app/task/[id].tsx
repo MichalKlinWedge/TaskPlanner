@@ -57,6 +57,7 @@ import {
   relativeDay,
   removeDependencyOps,
   reparentTaskOps,
+  readableColor,
   responsibleAccount,
   shortDate,
   skipOccurrenceOps,
@@ -551,7 +552,7 @@ function TagsField({ task, data }: { task: ViewTask; data: AppData }) {
           <Pill
             key={tagId}
             label={`@${byId.get(tagId)?.name ?? '…'}  ×`}
-            color={byId.get(tagId)?.color ?? '#d97706'}
+            color={readableColor(byId.get(tagId)?.color ?? '#d97706', p.card, p.fg)}
             onPress={() => void run([{ table: 'task_tags', id: taskTagId(task.id, tagId), patch: { deleted_at: new Date().toISOString() } }])}
           />
         ))}

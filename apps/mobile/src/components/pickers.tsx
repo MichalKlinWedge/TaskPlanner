@@ -1,11 +1,11 @@
 /**
  * Arkusze wyboru wywoływane z dowolnego miejsca (gest na wierszu, pasek zaznaczenia, szczegóły
  * zadania): `pickOption` — lista opcji, `pickMany` — kilka opcji z „Zastosuj”, `pickDate` — gotowe dni + kalendarz miesiąca, `pickTime` —
- * gotowe godziny + wpisanie, `pickNumber` — liczba z zakresu, `pickAmount` — gotowe liczby i „Inna…”. Jeden `<PickerHost />` w układzie głównym; Promise kończy się wyborem
+ * gotowe godziny + wpisanie, `pickColor` — szersza paleta + wpisanie #RRGGBB, `pickNumber` — liczba z zakresu, `pickAmount` — gotowe liczby i „Inna…”. Jeden `<PickerHost />` w układzie głównym; Promise kończy się wyborem
  * albo `undefined` po zamknięciu. Własne arkusze zamiast natywnego wyboru daty — bez dodatkowego
  * modułu natywnego, a gotowe dni („Jutro”, „Za tydzień”) są o jedno dotknięcie.
  */
-import { addDays, addMonths, capitalized, dayChip, isoWeekday, monthLabel, WEEKDAY, type IsoWeekday, type LocalDate, type LocalTime } from '@taskplanner/core';
+import { addDays, addMonths, capitalized, COLOR_GRID, dayChip, isoWeekday, monthLabel, parseHexColor, WEEKDAY, type IsoWeekday, type LocalDate, type LocalTime } from '@taskplanner/core';
 import { useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +27,7 @@ type Request =
   | { kind: 'many'; title: string; options: Option<unknown>[]; resolve: (value: unknown[] | undefined) => void }
   | { kind: 'date'; title: string; value: LocalDate | null; today: LocalDate; allowNone: boolean; resolve: (value: LocalDate | null | undefined) => void }
   | { kind: 'time'; title: string; value: LocalTime | null; allowNone: boolean; resolve: (value: LocalTime | null | undefined) => void }
+  | { kind: 'color'; title: string; value: string | null; resolve: (value: string | undefined) => void }
   | { kind: 'number'; title: string; value: number | null; min: number; max: number; unit?: string; resolve: (value: number | undefined) => void };
 
 let current: Request | null = null;
@@ -57,6 +58,9 @@ export const pickDate = (opts: { title: string; value: LocalDate | null; today: 
 
 export const pickTime = (opts: { title: string; value: LocalTime | null; allowNone?: boolean }): Promise<LocalTime | null | undefined> =>
   open<LocalTime | null | undefined>({ kind: 'time', allowNone: false, ...opts });
+
+/** Dowolny kolor `#RRGGBB`; `undefined` = zamknięte bez wyboru. */
+export const pickColor = (opts: { title: string; value: string | null }): Promise<string | undefined> => open<string | undefined>({ kind: 'color', ...opts });
 
 interface NumberRange {
   value: number | null;
@@ -98,6 +102,7 @@ export function PickerHost() {
           {request.kind === 'option' ? <OptionList options={request.options} /> : null}
           {request.kind === 'date' ? <DatePicker key={`${request.title}:${request.value}`} request={request} /> : null}
           {request.kind === 'time' ? <TimePicker key={`${request.title}:${request.value}`} request={request} /> : null}
+          {request.kind === 'color' ? <ColorSheet key={`${request.title}:${request.value}`} request={request} /> : null}
           {request.kind === 'number' ? <NumberPicker key={`${request.title}:${request.value}`} request={request} /> : null}
         </Sheet>
       ) : null}
@@ -297,6 +302,49 @@ function TimePicker({ request }: { request: Extract<Request, { kind: 'time' }> }
   );
 }
 
+/** Dotknięcie w palecie tylko wpisuje kolor (pola są małe) — zapis przyciskiem „Ustaw”. */
+function ColorSheet({ request }: { request: Extract<Request, { kind: 'color' }> }) {
+  const p = usePalette();
+  const [text, setText] = useState(request.value?.toUpperCase() ?? '');
+  const color = parseHexColor(text);
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={{ gap: 3 }}>
+        {COLOR_GRID.map((row, i) => (
+          <View key={i} style={{ flexDirection: 'row', gap: 3 }}>
+            {row.map((c) => (
+              <Pressable
+                key={c}
+                accessibilityRole="button"
+                accessibilityLabel={c}
+                accessibilityState={{ selected: c === color }}
+                onPress={() => setText(c)}
+                style={[styles.colorCell, { backgroundColor: c, borderColor: c === color ? p.fg : 'transparent' }]}
+              />
+            ))}
+          </View>
+        ))}
+      </View>
+      <View style={[styles.pills, { alignItems: 'center' }]}>
+        <View style={[styles.colorPreview, { backgroundColor: color ?? 'transparent', borderColor: p.border }]} />
+        <TextInput
+          accessibilityLabel="Kolor w zapisie #RRGGBB"
+          value={text}
+          onChangeText={setText}
+          placeholder="#RRGGBB"
+          placeholderTextColor={p.muted}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          maxLength={9}
+          onSubmitEditing={() => color && close(color)}
+          style={[styles.timeInput, { color: p.fg, borderColor: color || !text ? p.border : p.bad, minWidth: 130 }]}
+        />
+        <Pill label="Ustaw" selected={!!color} onPress={() => color && close(color)} />
+      </View>
+    </View>
+  );
+}
+
 function NumberPicker({ request }: { request: Extract<Request, { kind: 'number' }> }) {
   const p = usePalette();
   const { min, max, unit } = request;
@@ -346,5 +394,7 @@ const styles = StyleSheet.create({
   cell: { width: `${100 / 7}%`, alignItems: 'center', justifyContent: 'center' },
   weekday: { fontSize: 12, textAlign: 'center', paddingBottom: 4 },
   day: { height: 42, borderRadius: 21 },
+  colorCell: { flex: 1, height: 34, borderRadius: 6, borderWidth: 2 },
+  colorPreview: { width: 36, height: 36, borderRadius: 18, borderWidth: 1 },
   timeInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 18, minWidth: 100 },
 });

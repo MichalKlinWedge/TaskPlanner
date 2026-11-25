@@ -7,6 +7,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { useLocalQuery } from "@/lib/local-store";
 import { useClickOutside } from "@/lib/use-click-outside";
 
+import { CustomColorPanel, CustomColorSwatch } from "./color-picker";
 import { ProjectStatusSelect } from "./project-status";
 import { SharingPanel } from "./sharing";
 import { TemplatePicker, TemplatesCard, useCreateFromTemplate, useProjectTemplates, type TemplateChoice } from "./templates";
@@ -381,37 +382,48 @@ function EditableName({ value, max, onSave, className = "" }: { value: string; m
 
 function ColorPicker({ value, onChange, label }: { value: string | null; onChange: (color: string) => void; label: string }) {
   const [open, setOpen] = useState(false);
+  const [custom, setCustom] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
   useClickOutside(open, () => setOpen(false), root);
+  const pick = (color: string) => {
+    onChange(color);
+    setOpen(false);
+  };
   return (
     <span ref={root} className="relative inline-flex">
       <button
         type="button"
         aria-label={label}
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setOpen((o) => !o);
+          setCustom(false);
+        }}
         className="h-4 w-4 rounded-full border border-[var(--line)]"
         style={{ background: value ?? "transparent" }}
       />
       {open ? (
-        <span role="listbox" aria-label={label} className="absolute top-6 left-0 z-10 flex w-max gap-1 rounded-md border border-[var(--line)] bg-[var(--surface)] p-2 shadow">
-          {COLORS.map((color) => (
-            <button
-              key={color.value}
-              type="button"
-              role="option"
-              aria-selected={color.value.toLowerCase() === value?.toLowerCase()}
-              aria-label={color.label}
-              title={color.label}
-              onClick={() => {
-                onChange(color.value);
-                setOpen(false);
-              }}
-              className="h-5 w-5 rounded-full ring-offset-1 aria-selected:ring-2 aria-selected:ring-[var(--accent)]"
-              style={{ background: color.value }}
-            />
-          ))}
-        </span>
+        <div className="absolute top-6 left-0 z-10 flex w-max flex-col gap-2 rounded-md border border-[var(--line)] bg-[var(--surface)] p-2 shadow">
+          <div className="flex gap-1">
+            <div role="listbox" aria-label={label} className="flex gap-1">
+              {COLORS.map((color) => (
+                <button
+                  key={color.value}
+                  type="button"
+                  role="option"
+                  aria-selected={color.value.toLowerCase() === value?.toLowerCase()}
+                  aria-label={color.label}
+                  title={color.label}
+                  onClick={() => pick(color.value)}
+                  className="h-5 w-5 rounded-full ring-offset-1 aria-selected:ring-2 aria-selected:ring-[var(--accent)]"
+                  style={{ background: color.value }}
+                />
+              ))}
+            </div>
+            <CustomColorSwatch value={value} open={custom} onClick={() => setCustom((c) => !c)} className="h-5 w-5 rounded-full" />
+          </div>
+          {custom ? <CustomColorPanel value={value} onChange={pick} /> : null}
+        </div>
       ) : null}
     </span>
   );

@@ -1,5 +1,4 @@
-/** Klocki ekranów: kolory (jasny / ciemny), ekran, sekcja, tekst, przyciski, pola, chipy, kolory. */
-import { COLORS } from '@taskplanner/core';
+/** Klocki ekranów: kolory (jasny / ciemny), ekran, sekcja, tekst, przyciski, pola, chipy, kropka koloru. */
 import type { ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, useColorScheme, View, type TextInputProps } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -96,36 +95,6 @@ export function ColorDot({ color, size = 12 }: { color: string | null; size?: nu
   return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color ?? 'transparent', borderWidth: 1, borderColor: color ?? p.border }} />;
 }
 
-/** Paleta kolorów z `@taskplanner/core` (`COLORS`); z `onClear` także „bez koloru” (∅). */
-export function ColorPicker({ value, onChange, onClear }: { value: string | null; onChange: (color: string) => void; onClear?: () => void }) {
-  const p = usePalette();
-  return (
-    <View style={styles.row}>
-      {onClear ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Bez koloru"
-          accessibilityState={{ selected: !value }}
-          onPress={onClear}
-          style={[styles.swatch, styles.noColor, { borderColor: !value ? p.fg : p.border }]}
-        >
-          <Text style={{ color: p.muted, fontSize: 14 }}>∅</Text>
-        </Pressable>
-      ) : null}
-      {COLORS.map((c) => (
-        <Pressable
-          key={c.value}
-          accessibilityRole="button"
-          accessibilityLabel={c.label}
-          accessibilityState={{ selected: value?.toUpperCase() === c.value }}
-          onPress={() => onChange(c.value)}
-          style={[styles.swatch, { backgroundColor: c.value, borderColor: value?.toUpperCase() === c.value ? p.fg : 'transparent' }]}
-        />
-      ))}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   scroll: { paddingBottom: 32 },
@@ -142,6 +111,4 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { borderWidth: 1, borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 },
   chipText: { fontSize: 14 },
-  swatch: { width: 30, height: 30, borderRadius: 15, borderWidth: 3 },
-  noColor: { alignItems: 'center', justifyContent: 'center' },
 });

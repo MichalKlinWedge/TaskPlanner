@@ -187,7 +187,7 @@ Oznaczenia: **[W]** web, **[A]** Android, **[W+A]** oba.
 - Historia zmian zadania (z `activity_log`) [W].
 
 ### M4. Tagi, filtry, inteligentne listy
-- Tagi są **wspólne dla wszystkich przestrzeni** (zakres osobisty): nazwa (unikalna bez rozróżniania wielkości liter i polskich znaków), kolor. Zadanie ma dowolną liczbę tagów (`task_tags`).
+- Tagi są **wspólne dla wszystkich przestrzeni** (zakres osobisty): nazwa (unikalna bez rozróżniania wielkości liter i polskich znaków), kolor (jak dla przestrzeni, list i grup karteczek: domyślna paleta albo „Inny kolor” — szersza paleta, zapis #RRGGBB, na webie także próbnik). Zadanie ma dowolną liczbę tagów (`task_tags`).
   - v1.x (20.11.2026): tag można **przypisać do przestrzeni** (`tags.workspace_ids`, ekran tagu → „Widoczny w”); żadna = wszystkie. To tylko widoczność: w wybranej przestrzeni pasek boczny, chipy filtra, podpowiedzi w zadaniu i kolumny tablicy pokazują jej tagi + tagi już przypięte / zaznaczone; widok „Wszystkie przestrzenie” i paleta pokazują wszystkie. Tag nadal jest jeden na nazwę — `@nazwa` w innej przestrzeni trafia w ten sam tag (core `tagsForWorkspace`). Nowy tag (szybkie dodawanie, panel zadania) dostaje przestrzeń zadania, na którym powstał (`taskTagOps(…, workspaceId)`); istniejącego nie zmienia.
 - Filtrowanie: chipy w każdym widoku — tagi (wszystkie / dowolny), priorytet, lista, status, zakres dat, „bez terminu”, „z godziną”.
 - **Zapisane filtry** (`saved_filters`): nazwa, ikona, definicja (Zod: `FilterQuery`) — np. „Telefony na dziś” = tag `telefon` ∧ termin ≤ dziś. Widoczne w pasku bocznym jak listy, z licznikiem.

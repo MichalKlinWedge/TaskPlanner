@@ -5,7 +5,8 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Button, ColorDot, ColorPicker, Field, Row, usePalette } from './ui';
+import { ColorPicker } from './color-picker';
+import { Button, ColorDot, Field, Row, usePalette } from './ui';
 
 export interface EditableItemProps {
   name: string;

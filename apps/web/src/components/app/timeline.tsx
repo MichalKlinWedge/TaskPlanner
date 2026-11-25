@@ -21,6 +21,7 @@ import "@svar-ui/react-gantt/all.css";
 import {
   addDays,
   addDependencyOps,
+  contrastRatio,
   daysBetween,
   dependencyErrorText,
   dayMonth,
@@ -529,7 +530,9 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   const projectCss = projects
     .map((p) => {
       const color = p.color && /^#[0-9a-f]{3,8}$/i.test(p.color) ? p.color : "var(--muted)";
-      return `.tp-timeline .wx-bar[data-id=":${PROJECT}${p.id}"]{--wx-gantt-summary-color:color-mix(in srgb, ${color} 55%, white);--wx-gantt-summary-fill-color:${color};--wx-gantt-summary-font-color:#fff}`;
+      // Dowolny jasny kolor: ciemny podpis zamiast białego.
+      const font = color.startsWith("#") && contrastRatio("#FFFFFF", color) < 2.5 ? "#18181b" : "#fff";
+      return `.tp-timeline .wx-bar[data-id=":${PROJECT}${p.id}"]{--wx-gantt-summary-color:color-mix(in srgb, ${color} 55%, white);--wx-gantt-summary-fill-color:${color};--wx-gantt-summary-font-color:${font}}`;
     })
     .join("");
 

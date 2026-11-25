@@ -8,7 +8,7 @@
  * wartości współdzielone i trzy widoki animowane na wiersz) dochodzi dopiero po pierwszym
  * narysowaniu listy (`RowsInteractive` z `TaskSections`), a metadane to jeden `Text` z jednym zagnieżdżonym.
  */
-import { assigneeOf, collaboratorBadge, columnDate, describeRecurrence, formatMinutes, isOpen, LIST_COLUMN, needsDecision, PRIORITY, READONLY_LIST_NOTE, relativeDay, type ListColumn, type LocalDate, type ViewTask } from '@taskplanner/core';
+import { assigneeOf, collaboratorBadge, columnDate, describeRecurrence, formatMinutes, isOpen, LIST_COLUMN, needsDecision, PRIORITY, READONLY_LIST_NOTE, readableColor, relativeDay, type ListColumn, type LocalDate, type ViewTask } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { createContext, memo, useContext, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -191,7 +191,7 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
             <View key={c} style={[styles.tags, { width: COLUMN_WIDTH[c], opacity: closed ? 0.5 : 1 }]}>
               {tagBubbles.length ? (
                 tagBubbles.map((tag) => (
-                  <Text key={tag.id} style={[styles.tag, tag.color ? { color: tag.color, backgroundColor: `${tag.color}33` } : { color: p.fg, backgroundColor: p.border }]} numberOfLines={1}>
+                  <Text key={tag.id} style={[styles.tag, tag.color ? { color: readableColor(tag.color, p.card, p.fg), backgroundColor: `${tag.color}33` } : { color: p.fg, backgroundColor: p.border }]} numberOfLines={1}>
                     {tag.name}
                   </Text>
                 ))

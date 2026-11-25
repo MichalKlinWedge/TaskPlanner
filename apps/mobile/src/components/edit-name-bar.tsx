@@ -2,7 +2,8 @@
 import { useState } from 'react';
 import { Alert, View } from 'react-native';
 
-import { Button, ColorPicker, Field, Row } from './ui';
+import { ColorPicker } from './color-picker';
+import { Button, Field, Row } from './ui';
 
 export function EditNameBar({
   name,
