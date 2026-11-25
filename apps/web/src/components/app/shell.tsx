@@ -301,7 +301,9 @@ export function Shell({
   const tag = route.view === "tag" ? data.tags.find((t) => t.id === route.id) : undefined;
   const savedFilter = route.view === "filter" ? data.savedFilters.find((f) => f.id === route.id) : undefined;
   const filterable = ["inbox", "today", "overdue", "upcoming", "list", "board"].includes(route.view);
-  const wide = route.view === "board" || route.view === "calendar" || route.view === "timeline" || list?.prefs.view === "kanban" || list?.prefs.view === "canvas";
+  const smartPrefs = route.view === "inbox" || route.view === "today" || route.view === "overdue" || route.view === "upcoming" ? settings.views[route.view] : undefined;
+  const hasColumns = !!(list?.prefs ?? smartPrefs)?.columns?.length;
+  const wide = smartPrefs?.view === "kanban" || route.view === "board" || route.view === "calendar" || route.view === "timeline" || list?.prefs.view === "kanban" || list?.prefs.view === "canvas";
   // Widoki dostają zadania po filtrze doraźnym; liczniki paska bocznego liczą się z pełnych danych.
   const query = list ? (list.prefs.filter ?? {}) : adhoc;
   const viewData = filterable && !isEmptyFilter(query) ? { ...data, tasks: applyFilter(data.tasks, query, today) } : data;
@@ -568,7 +570,7 @@ export function Shell({
             </div>
           </aside>
           <main ref={mainRef} className="@container relative min-w-0 flex-1 overflow-y-auto lg:[&:has(~[data-task-panel=full])]:hidden">
-            <div className={route.view === "settings" ? "h-full" : `mx-auto w-full p-4 pb-20 [--tp-pad:1rem] sm:p-6 sm:[--tp-pad:1.5rem] ${wide ? "" : route.view === "today" ? "max-w-5xl" : list?.prefs.columns?.length ? "max-w-6xl" : "max-w-3xl"}`}>{content}</div>
+            <div className={route.view === "settings" ? "h-full" : `mx-auto w-full p-4 pb-20 [--tp-pad:1rem] sm:p-6 sm:[--tp-pad:1.5rem] ${wide ? "" : route.view === "today" ? (hasColumns ? "max-w-7xl" : "max-w-5xl") : hasColumns ? "max-w-6xl" : "max-w-3xl"}`}>{content}</div>
           </main>
           {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>

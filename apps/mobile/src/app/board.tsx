@@ -9,7 +9,7 @@
  * Tryb „Własne” (tylko tablica listy): kolumny z `lists.board_columns` — dodanie, zmiana nazwy,
  * przesunięcie, usunięcie (z „Cofnij”) jak na webie; „Dodaj kartę” nad kartami ustawia pola kolumny.
  * `?list=` — tablica listy (kryterium w `view_prefs.boardBy`, chipy filtra zapisane w `view_prefs.filter`
- * jak na ekranie listy), bez — bieżącej przestrzeni (chipy filtra w pamięci do zamknięcia aplikacji)
+ * jak na ekranie listy), `?view=` — widoku zbiorczego (`smartBoard`, kryterium w `settings.views`), bez — bieżącej przestrzeni (chipy filtra w pamięci do zamknięcia aplikacji)
  * (kryterium zapamiętane na urządzeniu).
  */
 import {
@@ -22,12 +22,16 @@ import {
   moveBoardColumnOps,
   removeBoardColumnOps,
   renameBoardColumnOps,
+  SMART_VIEW,
+  smartBoard,
+  smartViewsPatch,
   tagsForWorkspace,
   type BoardBy,
   type BoardColumn,
   type BoardColumnDef,
   type FilterQuery,
   type LocalDate,
+  type SmartView,
   type TaskOp,
   type ViewTask,
 } from '@taskplanner/core';
@@ -46,7 +50,8 @@ import { pickOption, type Option } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
 import { RowsInteractive, TaskRow } from '@/components/task-row';
 import { Chip, usePalette } from '@/components/ui';
-import { listEditable, listLabel, useView } from '@/lib/app-data';
+import { listEditable, listLabel, targetInbox, useLocalMinute, useView } from '@/lib/app-data';
+import { updateSettings } from '@/lib/profile';
 import { mutate } from '@/lib/sync';
 
 const BY_KEY = 'board.by';
@@ -77,19 +82,26 @@ const inside = (r: Rect, x: number, y: number, slop = 6) => x >= r.x - slop && x
 export default function BoardScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
-  const { list: listId } = useLocalSearchParams<{ list?: string }>();
+  const { list: listId, view: viewParam } = useLocalSearchParams<{ list?: string; view?: string }>();
+  const view = !listId && viewParam && viewParam in SMART_VIEW ? (viewParam as SmartView) : null;
   const { data, today, ctx } = useView();
   const { run, notify } = useTaskActions();
   const list = listId ? data.lists.find((l) => l.id === listId) : undefined;
+  const now = useLocalMinute(ctx.timeZone);
+  const inboxIds = useMemo(() => new Set(data.lists.filter((l) => l.kind === 'inbox').map((l) => l.id)), [data.lists]);
+  // Inbox jednej przestrzeni ma własne kolumny swojej listy.
+  const inboxes = view === 'inbox' ? data.lists.filter((l) => l.kind === 'inbox' && (!ctx.workspaceId || l.workspaceId === ctx.workspaceId)) : [];
+  const owner = list ?? (inboxes.length === 1 ? inboxes[0] : undefined);
   // Lista tylko do podglądu (gość): bez dodawania kart i zmian kolumn.
-  const locked = list ? !listEditable(data, list.id) : false;
+  const locked = owner ? !listEditable(data, owner.id) : false;
   const [localBy, setLocalBy] = useState<BoardBy>(() => (Storage.getItemSync(BY_KEY) as BoardBy | null) ?? 'status');
   // Własne kolumny należą do listy — tablica przestrzeni (bez `?list=`) ich nie ma.
-  const savedBy: BoardBy = list ? (list.prefs.boardBy ?? 'status') : localBy;
-  const by: BoardBy = savedBy === 'custom' && !list ? 'status' : savedBy;
-  const defs = useMemo(() => (by === 'custom' ? (list?.boardColumns ?? []) : []), [by, list?.boardColumns]);
+  const savedBy: BoardBy = list ? (list.prefs.boardBy ?? 'status') : view ? (data.settings.views[view]?.boardBy ?? (view === 'upcoming' ? 'weekday' : 'status')) : localBy;
+  const by: BoardBy = savedBy === 'custom' && !owner ? 'status' : savedBy;
+  const defs = useMemo(() => (by === 'custom' ? (owner?.boardColumns ?? []) : []), [by, owner?.boardColumns]);
   const setBy = (next: BoardBy) => {
     if (list) void mutate('lists', list.id, { view_prefs: { ...list.prefs, boardBy: next } }).catch((e: unknown) => notify(String(e)));
+    else if (view) void updateSettings((s) => ({ views: smartViewsPatch(s.views, view, { boardBy: next }) })).catch((e: unknown) => notify(e instanceof Error ? e.message : String(e)));
     else {
       Storage.setItemSync(BY_KEY, next);
       setLocalBy(next);
@@ -105,23 +117,31 @@ export default function BoardScreen() {
     if (!isEmptyFilter(next)) prefs.filter = next;
     void mutate('lists', list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
   };
-  const tasks = useMemo(() => {
-    const own = data.tasks.filter((t) => (listId ? t.listId === listId : !ctx.workspaceId || t.workspaceId === ctx.workspaceId));
-    return isEmptyFilter(filter) ? own : applyFilter(own, filter, today);
-  }, [data.tasks, listId, ctx.workspaceId, filter, today]);
+  // Minuta liczy się tylko dla „Zaległych” — inne tablice nie przeliczają się z zegarem.
+  const minute = view === 'overdue' ? now : '';
+  const { tasks, smart } = useMemo(() => {
+    const own = view ? data.tasks : data.tasks.filter((t) => (listId ? t.listId === listId : !ctx.workspaceId || t.workspaceId === ctx.workspaceId));
+    const shown = isEmptyFilter(filter) ? own : applyFilter(own, filter, today);
+    const smart = view ? smartBoard(view, shown, ctx, { inboxIds, now: minute }) : null;
+    return { tasks: smart?.tasks ?? shown, smart };
+  }, [data.tasks, listId, view, ctx, inboxIds, minute, filter, today]);
+  const canAdd = !locked && (!smart || smart.addDue !== undefined);
+  const doneNote = smart ? smart.doneNote : '„Gotowe” z ostatnich 7 dni';
+  const newListId = list?.id ?? (view ? targetInbox(data, ctx.workspaceId ?? null)?.id : undefined);
   const lists = useMemo(() => {
     const used = new Set(tasks.map((t) => t.listId));
-    return data.lists.filter((l) => used.has(l.id) || l.id === listId);
-  }, [data.lists, tasks, listId]);
+    return data.lists.filter((l) => used.has(l.id) || l.id === listId).map((l) => ({ ...l, name: listLabel(data, l.id) }));
+  }, [data, tasks, listId]);
   // Kolumny tagów: tagi przestrzeni tablicy (wybranej albo wspólnej dla jej list) + użyte na kartach.
   const tags = useMemo(() => {
     const space = ctx.workspaceId ?? (lists.length && lists.every((l) => l.workspaceId === lists[0]!.workspaceId) ? lists[0]!.workspaceId : null);
     return tagsForWorkspace(data.tags, space, tasks.flatMap((t) => t.tagIds));
   }, [data.tags, ctx.workspaceId, lists, tasks]);
-  const columns = useMemo(() => boardColumns(tasks, by, { today, firstDayOfWeek: ctx.firstDayOfWeek }, { tags, lists, columns: defs }), [tasks, by, today, ctx.firstDayOfWeek, tags, lists, defs]);
+  const columns = useMemo(() => boardColumns(tasks, by, { today, firstDayOfWeek: ctx.firstDayOfWeek, ...smart?.options }, { tags, lists, columns: defs }), [tasks, by, today, ctx.firstDayOfWeek, smart, tags, lists, defs]);
   const [selected, setSelected] = useState<string | null>(null);
   // Na start pierwsza kolumna z wartością (dzień / tag / własna), nie przypięta kolumna bez wartości.
-  const column = columns.find((c) => c.key === selected) ?? columns.find((c) => c.key !== 'none') ?? columns[0];
+  // Widok zbiorczy otwiera się na pierwszej kolumnie z kartami.
+  const column = columns.find((c) => c.key === selected) ?? (view ? columns.find((c) => c.tasks.length) : undefined) ?? columns.find((c) => c.key !== 'none') ?? columns[0];
   const pinned = columns[0]?.key === 'none' ? columns[0] : undefined;
   const scrolled = pinned ? columns.slice(1) : columns;
 
@@ -146,18 +166,18 @@ export default function BoardScreen() {
   // Pole nazwy: nowa kolumna (`id` = null) albo zmiana nazwy wybranej.
   const [naming, setNaming] = useState<{ id: string | null; name: string } | null>(null);
   const saveName = () => {
-    if (!list || !naming) return;
+    if (!owner || !naming) return;
     const { id, name } = naming;
     const ok = id
-      ? editColumns((current) => renameBoardColumnOps(list.id, current, id, name))
+      ? editColumns((current) => renameBoardColumnOps(owner.id, current, id, name))
       : editColumns((current) => {
-          const added = addBoardColumnOps(list.id, current, name);
+          const added = addBoardColumnOps(owner.id, current, name);
           setSelected(added.id);
           return added.ops;
         });
     if (ok) setNaming(null);
   };
-  const customColumn = by === 'custom' && list && column && column.key !== 'none' ? column : undefined;
+  const customColumn = by === 'custom' && owner && column && column.key !== 'none' ? column : undefined;
   const customIndex = customColumn ? defs.findIndex((d) => d.id === customColumn.key) : -1;
 
   // Dodanie w kolumnie dostaje jej atrybut (status / priorytet / dzień / tag / lista / własna kolumna).
@@ -190,12 +210,18 @@ export default function BoardScreen() {
     return map;
   }, [data.tasks]);
 
+  // Szary wiersz karty: rodzic podzadania (widoki zbiorcze) i lista, gdy tablica ma ich kilka.
+  const cardNote = (task: ViewTask) => {
+    const parent = task.parentId && smart?.options.subtasks ? data.tasks.find((t) => t.id === task.parentId) : undefined;
+    const name = owner ? undefined : listLabel(data, task.listId);
+    return parent ? `↑ ${parent.title}${name ? ` · ${name}` : ''}` : name;
+  };
   const moveCard = async (task: ViewTask, from: BoardColumn) => {
     const at = from.tasks.findIndex((t) => t.id === task.id);
     const options: Option<Move>[] = [
       ...(at > 0 ? [{ label: '↑ Wyżej', value: { kind: 'up' } as Move }] : []),
       ...(at < from.tasks.length - 1 ? [{ label: '↓ Niżej', value: { kind: 'down' } as Move }] : []),
-      ...columns.filter((c) => c.key !== from.key).map((c) => ({ label: `→ ${c.label}`, hint: `${c.tasks.length}`, value: { kind: 'column', key: c.key } as Move })),
+      ...columns.filter((c) => c.key !== from.key && !c.fixed).map((c) => ({ label: `→ ${c.label}`, hint: `${c.tasks.length}`, value: { kind: 'column', key: c.key } as Move })),
     ];
     const move = await pickOption(`„${task.title}”`, options);
     if (!move) return;
@@ -205,6 +231,7 @@ export default function BoardScreen() {
   };
   const dropCard = (task: ViewTask, from: BoardColumn, target: BoardColumn, index: number) => {
     if (by === 'tag' && target.key !== from.key && target.key !== 'none' && task.tagIds.includes(target.key)) return notify('Zadanie ma już ten tag.');
+    if (target.fixed && target.key !== from.key) return notify(`Na kolumnę „${target.label}” nie da się przenieść — wybierz dzień.`);
     const { ops, undo } = boardDropOps(task, data.tasks, by, from.key, target.key, target.tasks, index, { today, now: new Date(), timeZone: ctx.timeZone });
     void run(ops, target.key === from.key ? undefined : { text: `„${task.title}” → ${target.label}`, undo });
   };
@@ -341,7 +368,7 @@ export default function BoardScreen() {
     else chipViews.delete(key);
   };
 
-  const title = list ? `Tablica · ${list.name}` : `Tablica · ${data.workspaces.find((w) => w.id === ctx.workspaceId)?.name ?? 'wszystko'}`;
+  const title = list ? `Tablica · ${list.name}` : view ? `Tablica · ${SMART_VIEW[view]}` : `Tablica · ${data.workspaces.find((w) => w.id === ctx.workspaceId)?.name ?? 'wszystko'}`;
 
   return (
     <View ref={rootRef} collapsable={false} style={{ flex: 1, backgroundColor: p.bg }}>
@@ -350,14 +377,14 @@ export default function BoardScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Kolumny: ${BOARD_BY[by]}`}
-          onPress={() => void pickOption<BoardBy>('Kolumny według', (Object.keys(BOARD_BY) as BoardBy[]).filter((k) => k !== 'custom' || list).map((k) => ({ label: BOARD_BY[k], value: k, selected: k === by }))).then((v) => v && setBy(v))}
+          onPress={() => void pickOption<BoardBy>('Kolumny według', (Object.keys(BOARD_BY) as BoardBy[]).filter((k) => k !== 'custom' || owner).map((k) => ({ label: BOARD_BY[k], value: k, selected: k === by }))).then((v) => v && setBy(v))}
           style={[styles.by, { borderColor: p.border }]}
         >
           <Text style={{ color: p.fg, fontSize: 13 }}>Kolumny: {BOARD_BY[by]}</Text>
         </Pressable>
-        {by === 'status' ? <Text style={{ color: p.muted, fontSize: 12 }}>„Gotowe” z ostatnich 7 dni</Text> : null}
+        {by === 'status' && doneNote ? <Text style={{ color: p.muted, fontSize: 12 }}>{doneNote}</Text> : null}
       </View>
-      <FilterBar query={filter} onChange={setFilter} hide={list ? ['lists'] : []} save />
+      <FilterBar query={filter} onChange={setFilter} hide={list || view === 'inbox' ? ['lists'] : []} save />
       <View style={styles.tabRow}>
         {pinned ? (
           <View style={[styles.pinned, { borderColor: p.border }]}>
@@ -372,7 +399,7 @@ export default function BoardScreen() {
               <Chip label={`${c.label} ${c.tasks.length}`} selected={c.key === column?.key || hover === c.key} onPress={() => setSelected(c.key)} />
             </View>
           ))}
-          {by === 'custom' && list && !locked ? <Chip label="+ Kolumna" onPress={() => setNaming({ id: null, name: '' })} /> : null}
+          {by === 'custom' && owner && !locked ? <Chip label="+ Kolumna" onPress={() => setNaming({ id: null, name: '' })} /> : null}
         </ScrollView>
       </View>
       {naming ? (
@@ -395,7 +422,7 @@ export default function BoardScreen() {
             <Text style={{ color: p.muted }}>Anuluj</Text>
           </Pressable>
         </View>
-      ) : customColumn && list && !locked ? (
+      ) : customColumn && owner && !locked ? (
         <View style={styles.columnTools}>
           <Text style={{ color: p.muted, fontSize: 12, flex: 1 }} numberOfLines={1}>
             Kolumna „{customColumn.label}”
@@ -408,7 +435,7 @@ export default function BoardScreen() {
             accessibilityLabel="Przesuń kolumnę w lewo"
             disabled={customIndex <= 0}
             hitSlop={6}
-            onPress={() => editColumns((current) => moveBoardColumnOps(list.id, current, customColumn.key, customIndex - 1))}
+            onPress={() => editColumns((current) => moveBoardColumnOps(owner.id, current, customColumn.key, customIndex - 1))}
           >
             <Text style={[styles.tool, { color: customIndex <= 0 ? p.muted : p.accent }]}>←</Text>
           </Pressable>
@@ -417,7 +444,7 @@ export default function BoardScreen() {
             accessibilityLabel="Przesuń kolumnę w prawo"
             disabled={customIndex >= defs.length - 1}
             hitSlop={6}
-            onPress={() => editColumns((current) => moveBoardColumnOps(list.id, current, customColumn.key, customIndex + 1))}
+            onPress={() => editColumns((current) => moveBoardColumnOps(owner.id, current, customColumn.key, customIndex + 1))}
           >
             <Text style={[styles.tool, { color: customIndex >= defs.length - 1 ? p.muted : p.accent }]}>→</Text>
           </Pressable>
@@ -427,7 +454,7 @@ export default function BoardScreen() {
             hitSlop={6}
             onPress={() => {
               setSelected(null);
-              editColumns((current) => removeBoardColumnOps(list.id, current, customColumn.key, data.tasks), `Usunięto kolumnę „${customColumn.label}”`);
+              editColumns((current) => removeBoardColumnOps(owner.id, current, customColumn.key, data.tasks), `Usunięto kolumnę „${customColumn.label}”`);
             }}
           >
             <Text style={[styles.tool, { color: p.bad }]}>✕</Text>
@@ -440,9 +467,9 @@ export default function BoardScreen() {
             <FlatList
               ref={listRef}
               ListHeaderComponent={
-                locked ? undefined : (
+                !canAdd || column.fixed ? undefined : (
                   <View style={styles.addCard}>
-                    <QuickAddField key={`${by}:${column.key}`} listId={list?.id} placeholder="Dodaj kartę" {...addProps} />
+                    <QuickAddField key={`${by}:${column.key}`} listId={newListId} dueDate={smart?.addDue} placeholder="Dodaj kartę" {...addProps} />
                   </View>
                 )
               }
@@ -463,7 +490,7 @@ export default function BoardScreen() {
                         task={item}
                         today={today}
                         showDate={by !== 'weekday'}
-                        listName={list ? undefined : listLabel(data, item.listId)}
+                        listName={cardNote(item)}
                         progress={children.get(item.id)}
                         tagNames={by === 'tag' ? undefined : item.tagIds.map((id) => tagName.get(id) ?? '').filter(Boolean)}
                       />

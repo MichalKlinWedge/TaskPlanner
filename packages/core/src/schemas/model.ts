@@ -97,6 +97,11 @@ export const ViewPrefs = z.object({
 });
 export type ViewPrefs = z.infer<typeof ViewPrefs>;
 
+/** Ustawienia widoku zbiorczego (Inbox, Dziś, Zaległe, Nadchodzące): „Lista | Tablica” i kolumny jak w liście. */
+export const SmartViewPrefs = ViewPrefs.pick({ view: true, boardBy: true, columns: true, columnTags: true });
+export type SmartViewPrefs = z.infer<typeof SmartViewPrefs>;
+const smartViewPrefs = SmartViewPrefs.optional().catch(undefined);
+
 /** `tasks.source`: skąd zadanie przyszło. */
 export const TaskSource = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('manual') }),
@@ -150,6 +155,8 @@ export const ProfileSettings = z.object({
   taskPanel: z.object({ collapsed: z.record(z.string().max(40), z.boolean()).default({}) }).prefault({}),
   /** Oś czasu (web): zwinięte projekty (id list; tylko pierwszy poziom — zadania zwijają się do odświeżenia). */
   timeline: z.object({ collapsed: z.array(z.string().max(64)).max(500).default([]) }).prefault({}),
+  /** Widoki zbiorcze: ustawienia widoku (uszkodzone pomijane). */
+  views: z.object({ inbox: smartViewPrefs, today: smartViewPrefs, overdue: smartViewPrefs, upcoming: smartViewPrefs }).prefault({}),
   /** Onboarding zakończony (M1) — bez niego aplikacja po zalogowaniu pokazuje kreator. */
   onboarded: z.boolean().default(false),
 });

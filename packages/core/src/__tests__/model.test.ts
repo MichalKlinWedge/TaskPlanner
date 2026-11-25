@@ -135,6 +135,7 @@ describe('ustawienia profilu', () => {
       theme: 'system',
       taskPanel: { collapsed: {} },
       timeline: { collapsed: [] },
+      views: {},
       onboarded: false,
     });
   });

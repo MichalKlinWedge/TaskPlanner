@@ -29,6 +29,9 @@ export const BOARD_BY: Record<BoardBy, string> = {
 /** Pierwsza kolumna trybu „Własne”: zadania bez kolumny albo z kolumną spoza listy. */
 export const BOARD_UNASSIGNED = 'Do przypisania';
 
+/** Kolumna zadań z terminem przed pierwszym dniem tablicy (`BoardOptions.outside`). */
+export const BOARD_BEFORE = 'Wcześniej';
+
 /** Kolumny statusu (anulowane nie są na tablicy). */
 export const BOARD_STATUSES: readonly TaskStatus[] = ['todo', 'in_progress', 'waiting', 'done'];
 /** „Gotowe” starsze niż tyle dni są ukryte (M10). */
@@ -40,6 +43,8 @@ export interface BoardColumn {
   label: string;
   /** Opis wartości kolumny (dymek) — przy kolumnach statusów. */
   hint?: string;
+  /** Kolumna tylko do pokazania (dni poza zakresem): nie przyjmuje kart z innych kolumn ani nowych zadań. */
+  fixed?: true;
   tasks: ViewTask[];
 }
 
@@ -61,6 +66,16 @@ export function boardOrder(a: ViewTask, b: ViewTask): number {
   return a.priority - b.priority || (a.dueDate === b.dueDate ? 0 : a.dueDate === null ? 1 : b.dueDate === null ? -1 : byText(a.dueDate, b.dueDate)) || byText(a.sortKey, b.sortKey) || byText(a.id, b.id);
 }
 
+/** Dodatki tablicy widoku zbiorczego (`smartBoard`). */
+export interface BoardOptions {
+  /** Karty także z podzadań (zadania wybiera termin, nie drzewo). */
+  subtasks?: boolean;
+  /** Kolumny dni od `from` zamiast bieżącego tygodnia. */
+  days?: { from: LocalDate; count: number };
+  /** Zadania z terminem spoza kolumn dni: kolumny „Wcześniej” / „Później” zamiast pominięcia, bez „Bez terminu”. */
+  outside?: boolean;
+}
+
 /**
  * Kolumny tablicy z zadań-kandydatów (już zawężonych do listy / przestrzeni / filtra). Karty to
  * zadania główne (podzadania liczą się do postępu karty). Poza kolumną statusu — tylko otwarte;
@@ -70,12 +85,12 @@ export function boardOrder(a: ViewTask, b: ViewTask): number {
 export function boardColumns(
   tasks: readonly ViewTask[],
   by: BoardBy,
-  { today, firstDayOfWeek = 1, completedSince }: { today: LocalDate; firstDayOfWeek?: number; completedSince?: string },
+  { today, firstDayOfWeek = 1, completedSince, subtasks = false, days, outside = false }: { today: LocalDate; firstDayOfWeek?: number; completedSince?: string } & BoardOptions,
   lookup: BoardLookup = {},
 ): BoardColumn[] {
   const since = completedSince ?? `${addDays(today, -BOARD_DONE_DAYS)}T00:00:00Z`;
   const open = (t: ViewTask) => t.status !== 'done' && t.status !== 'cancelled';
-  const cards = tasks.filter((t) => t.kind === 'task' && t.parentId === null && t.status !== 'cancelled' && (open(t) || (by === 'status' && (t.completedAt ?? '') >= since)));
+  const cards = tasks.filter((t) => t.kind === 'task' && (subtasks || t.parentId === null) && t.status !== 'cancelled' && (open(t) || (by === 'status' && (t.completedAt ?? '') >= since)));
   const columns = new Map<string, BoardColumn>();
   const column = (key: string, label: string) => {
     if (!columns.has(key)) columns.set(key, { key, label, tasks: [] });
@@ -89,13 +104,18 @@ export function boardColumns(
     for (const p of [1, 2, 3, 4] as Priority[]) column(String(p), PRIORITY[p].label);
     for (const t of cards) columns.get(String(t.priority))!.tasks.push(t);
   } else if (by === 'weekday') {
-    column('none', VIEW_SECTION.noDate);
-    const start = weekStart(today, firstDayOfWeek);
-    for (let i = 0; i < 7; i++) {
+    // Widoki wybierane terminem nie mają zadań bez terminu.
+    if (!outside) column('none', VIEW_SECTION.noDate);
+    const start = days?.from ?? weekStart(today, firstDayOfWeek);
+    const count = days?.count ?? 7;
+    const end = addDays(start, count - 1);
+    if (outside && cards.some((t) => t.dueDate && t.dueDate < start)) column('before', BOARD_BEFORE).fixed = true;
+    for (let i = 0; i < count; i++) {
       const d = addDays(start, i);
       column(d, `${dayChip(d)}${d === today ? ' · dziś' : ''}`);
     }
-    for (const t of cards) (t.dueDate ? columns.get(t.dueDate) : columns.get('none'))?.tasks.push(t);
+    if (outside && cards.some((t) => t.dueDate && t.dueDate > end)) column('after', VIEW_SECTION.later).fixed = true;
+    for (const t of cards) columns.get(!t.dueDate ? 'none' : t.dueDate < start ? 'before' : t.dueDate > end ? 'after' : t.dueDate)?.tasks.push(t);
   } else if (by === 'tag') {
     column('none', VIEW_SECTION.noTag);
     for (const tag of [...(lookup.tags ?? [])].sort((a, b) => byText(a.sortKey, b.sortKey))) column(tag.id, tag.name);
@@ -159,6 +179,9 @@ export function boardDropOps(
     before[field] = previous;
   };
 
+  // Kolumna tylko do pokazania („Wcześniej” / „Później”) nie ma wartości do ustawienia.
+  if (by === 'weekday' && fromKey !== toKey && (toKey === 'before' || toKey === 'after')) return { ops, undo };
+
   if (fromKey !== toKey) {
     if (by === 'status') {
       const to = toKey as TaskStatus;
@@ -197,7 +220,7 @@ export function boardDropOps(
     else {
       const moves = moveTaskOps(all, task.id, toKey);
       ops.push(...moves);
-      undo.push(...moves.map((m): TaskOp => ({ table: 'tasks', id: m.id, patch: { list_id: task.listId } })));
+      undo.push(...moves.map((m): TaskOp => ({ table: 'tasks', id: m.id, patch: m.id === task.id && task.parentId ? { list_id: task.listId, parent_id: task.parentId } : { list_id: task.listId } })));
     }
   }
 

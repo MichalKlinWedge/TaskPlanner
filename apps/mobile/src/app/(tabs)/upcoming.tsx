@@ -11,9 +11,9 @@ import { FilterBar } from '@/components/filter-bar';
 import { ScreenHeader } from '@/components/sync-banner';
 import { openQuickAdd, TaskSections, type TaskSection } from '@/components/task-list';
 import { usePalette } from '@/components/ui';
+import { useSmartView } from '@/components/view-options';
 import { targetInbox, useView } from '@/lib/app-data';
 import { usePerfReady } from '@/lib/perf';
-import { rowMaker } from '@/lib/rows';
 
 function AddOnDay({ date, listId }: { date: string; listId?: string }) {
   const p = usePalette();
@@ -29,7 +29,7 @@ export default function UpcomingScreen() {
   usePerfReady('tab:upcoming', data.loaded);
   const [filter, setFilter] = useState<FilterQuery>({});
   const view = useMemo(() => selectUpcoming(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx), [data.tasks, filter, today, ctx]);
-  const row = rowMaker(data, today);
+  const { row, options, columnsHeader } = useSmartView('upcoming', data, today, workspaceId);
   const inbox = targetInbox(data, workspaceId)?.id;
   const sections: TaskSection[] = [
     ...view.days.map(({ date, items }) => ({
@@ -51,7 +51,9 @@ export default function UpcomingScreen() {
       sections={sections}
       header={
         <ScreenHeader subtitle="14 dni, dalej tygodniami · przesuń zadanie w lewo, żeby zmienić termin">
+          {options}
           <FilterBar query={filter} onChange={setFilter} save />
+          {columnsHeader}
         </ScreenHeader>
       }
       quickAdd={{ listId: inbox, dueDate: today }}

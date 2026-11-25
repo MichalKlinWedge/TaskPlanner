@@ -10,9 +10,9 @@ import { useTaskActions } from '@/components/actions';
 import { FilterBar } from '@/components/filter-bar';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
+import { useSmartView } from '@/components/view-options';
 import { targetInbox, useLocalMinute, useView } from '@/lib/app-data';
 import { usePerfReady } from '@/lib/perf';
-import { rowMaker } from '@/lib/rows';
 
 const TASKS = ['zadanie', 'zadania', 'zadań'] as const;
 
@@ -23,7 +23,7 @@ export default function OverdueScreen() {
   const [filter, setFilter] = useState<FilterQuery>({});
   const view = useMemo(() => selectOverdue(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx, now), [data.tasks, filter, today, ctx, now]);
   const { run } = useTaskActions();
-  const row = rowMaker(data, today);
+  const { row, options, columnsHeader } = useSmartView('overdue', data, today, workspaceId);
   // „→ Dziś” przy wierszu; `undefined` = nie ma czego przenieść (dzisiejsza seria).
   const toToday = (task: ViewTask) => {
     const move = overdueToTodayOps(task, { today, now });
@@ -38,7 +38,9 @@ export default function OverdueScreen() {
       sections={sections}
       header={
         <ScreenHeader subtitle={`${plural(view.today.length + view.earlier.length, TASKS)} · przesuń zadanie w lewo, żeby zmienić termin`}>
+          {options}
           <FilterBar query={filter} onChange={setFilter} save />
+          {view.today.length || view.earlier.length ? columnsHeader : null}
         </ScreenHeader>
       }
       empty={data.loaded ? 'Nic nie zalega.' : 'Wczytywanie…'}

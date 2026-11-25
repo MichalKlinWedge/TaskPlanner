@@ -8,9 +8,9 @@ import { useMemo, useState } from 'react';
 import { FilterBar } from '@/components/filter-bar';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections } from '@/components/task-list';
+import { useSmartView } from '@/components/view-options';
 import { targetInbox, useView } from '@/lib/app-data';
 import { usePerfReady } from '@/lib/perf';
-import { rowMaker } from '@/lib/rows';
 
 const TASKS = ['zadanie', 'zadania', 'zadań'] as const;
 
@@ -23,7 +23,7 @@ export default function InboxScreen() {
     const inbox = selectInbox(data.tasks, inboxIds, ctx);
     return isEmptyFilter(filter) ? inbox : applyFilter(inbox, filter, today);
   }, [data.tasks, inboxIds, ctx, filter, today]);
-  const row = rowMaker(data, today);
+  const { row, options, columnsHeader } = useSmartView('inbox', data, today, workspaceId);
   const wsName = new Map(data.workspaces.map((w) => [w.id, w.name]));
   const target = targetInbox(data, workspaceId);
   return (
@@ -31,7 +31,9 @@ export default function InboxScreen() {
       sections={[{ key: 'inbox', data: tasks.map((t) => row(t, { listName: workspaceId ? undefined : wsName.get(t.workspaceId) })) }]}
       header={
         <ScreenHeader subtitle={`${plural(tasks.length, TASKS)}${target && !workspaceId ? ` · nowe do „${wsName.get(target.workspaceId)}”` : ''}`}>
+          {options}
           <FilterBar query={filter} onChange={setFilter} hide={['lists']} save />
+          {tasks.length ? columnsHeader : null}
         </ScreenHeader>
       }
       empty={data.loaded ? 'Inbox jest pusty.' : 'Wczytywanie…'}

@@ -12,9 +12,7 @@ import {
   groupTasks,
   isEmptyFilter,
   isOpen,
-  LIST_COLUMN,
   LIST_KIND,
-  orderedColumns,
   plural,
   progress,
   READONLY_LIST_NOTE,
@@ -25,25 +23,24 @@ import {
   type CompletedMode,
   type FilterQuery,
   type GroupBy,
-  type ListColumn,
   type SortBy,
   type ViewPrefs,
 } from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
 import { FilterBar } from '@/components/filter-bar';
 import { SaveTemplateBar } from '@/components/templates';
-import { pickMany, pickOption } from '@/components/pickers';
+import { pickOption } from '@/components/pickers';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
 import { TaskColumnsHeader } from '@/components/task-row';
 import { usePalette } from '@/components/ui';
+import { ColumnChips, columnRowMaker, OptionChip, OptionRow, useColumns } from '@/components/view-options';
 import { useListEditable, useListShareBadge, useView } from '@/lib/app-data';
 import { usePerfReady } from '@/lib/perf';
-import { rowMaker } from '@/lib/rows';
 import { mutate } from '@/lib/sync';
 
 const OPEN = ['otwarte', 'otwarte', 'otwartych'] as const;
@@ -80,23 +77,14 @@ export default function ListScreen() {
   const groupBy: GroupBy = list?.prefs.groupBy ?? 'none';
   const completed: CompletedMode = list?.prefs.completed ?? 'today';
   const filter = list?.prefs.filter;
-  const prefColumns = list?.prefs.columns;
-  const columns = useMemo(() => orderedColumns(prefColumns), [prefColumns]);
-  const columnTagIds = list?.prefs.columnTags;
-  // Tagi w kolumnie „Tagi”: wybrane (tylko istniejące) albo `null` = wszystkie tagi zadania.
-  const columnTags = useMemo(() => {
-    const known = (columnTagIds ?? []).filter((tagId) => data.tags.some((t) => t.id === tagId));
-    return known.length ? new Set(known) : null;
-  }, [columnTagIds, data.tags]);
+  const { columns, columnTags } = useColumns(list?.prefs, data.tags);
 
   const tasks = useMemo(() => {
     const own = data.tasks.filter((t) => t.listId === id);
     return withCompleted(filter && !isEmptyFilter(filter) ? applyFilter(own, filter, today) : own, completed, ctx);
   }, [data.tasks, id, filter, today, completed, ctx]);
   const tree = sortBy === 'manual' && groupBy === 'none';
-  const baseRow = rowMaker(data, today);
-  const row: typeof baseRow = (task, props) =>
-    baseRow(task, columnTags && columns.includes('tags') ? { tagItems: task.tagIds.filter((tagId) => columnTags.has(tagId)).flatMap((tagId) => data.tags.find((t) => t.id === tagId) ?? []), ...props } : props);
+  const row = columnRowMaker(data, today, { columns, columnTags });
 
   const sections: TaskSection[] = useMemo(() => {
     if (tree) {
@@ -106,7 +94,6 @@ export default function ListScreen() {
           key: 'tree',
           data: nodes.map((node) =>
             row(node.task, {
-              columns,
               depth: node.depth,
               progress: node.children.length ? progress(node) : undefined,
               collapsed: node.children.length ? collapsed.has(node.task.id) : undefined,
@@ -126,7 +113,7 @@ export default function ListScreen() {
       key: g.key,
       title: g.label || undefined,
       count: g.label ? g.tasks.length : undefined,
-      data: g.tasks.map((t) => row(t, { key: `${g.key}:${t.id}`, columns })),
+      data: g.tasks.map((t) => row(t, { key: `${g.key}:${t.id}` })),
     }));
     // `row` zależy od danych — przeliczane razem z nimi.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,17 +135,10 @@ export default function ListScreen() {
     if (!isEmptyFilter(next)) prefs.filter = next;
     void mutate('lists', list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
   };
-  const setColumns = (next: readonly ListColumn[]) => {
-    const prefs = { ...list.prefs };
-    delete prefs.columns;
-    const ordered = orderedColumns(next);
-    if (ordered.length) prefs.columns = ordered;
-    void mutate('lists', list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
-  };
-  const setColumnTags = (next: readonly string[]) => {
-    const prefs = { ...list.prefs };
-    delete prefs.columnTags;
-    if (next.length) prefs.columnTags = [...next];
+  const setColumnPrefs = (patch: Pick<ViewPrefs, 'columns' | 'columnTags'>) => {
+    const prefs: ViewPrefs = { ...list.prefs, ...patch };
+    if (!prefs.columns?.length) delete prefs.columns;
+    if (!prefs.columnTags?.length) delete prefs.columnTags;
     void mutate('lists', list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
   };
   const workspace = data.workspaces.find((w) => w.id === list.workspaceId)?.name;
@@ -172,47 +152,18 @@ export default function ListScreen() {
         header={
           <ScreenHeader subtitle={`${LIST_KIND[list.kind]}${workspace ? ` · ${workspace}` : ''} · ${plural(tasks.filter(isOpen).length, OPEN)}`}>
             {editable ? null : <Text style={{ color: p.muted, fontSize: 13, paddingHorizontal: 12, paddingTop: 6 }}>{READONLY_LIST_NOTE}</Text>}
-            <View style={styles.prefs}>
+            <OptionRow>
               <Pref label="Sortowanie" value={sortBy} labels={SORT_BY} onChange={(v) => setPrefs({ sortBy: v })} />
               <Pref label="Grupy" value={groupBy} labels={GROUP_BY} onChange={(v) => setPrefs({ groupBy: v })} />
               <Pref label="Ukończone" value={completed} labels={COMPLETED_MODE} onChange={(v) => setPrefs({ completed: v })} />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Kolumny: ${columns.length ? columns.map((c) => LIST_COLUMN[c]).join(', ') : 'brak'}`}
-                onPress={() =>
-                  void pickMany<ListColumn>(
-                    'Kolumny',
-                    (Object.keys(LIST_COLUMN) as ListColumn[]).map((c) => ({ label: LIST_COLUMN[c], value: c, selected: columns.includes(c) })),
-                  ).then((v) => v && setColumns(v))
-                }
-                style={[styles.pref, { borderColor: p.border }]}
-              >
-                <Text style={{ color: p.fg, fontSize: 13 }}>Kolumny{columns.length ? ` (${columns.length})` : ''}</Text>
-              </Pressable>
-              {columns.includes('tags') ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Tagi w kolumnie: ${columnTags ? columnTags.size : 'wszystkie'}`}
-                  onPress={() =>
-                    void pickMany<string>(
-                      'Tagi w kolumnie (żaden = wszystkie)',
-                      tagsForWorkspace(data.tags, list.workspaceId, columnTagIds).map((t) => ({ label: `@${t.name}`, value: t.id, selected: !!columnTags?.has(t.id) })),
-                    ).then((v) => v && setColumnTags(v))
-                  }
-                  style={[styles.pref, { borderColor: p.border }]}
-                >
-                  <Text style={{ color: p.fg, fontSize: 13 }}>Tagi w kolumnie: {columnTags ? columnTags.size : 'wszystkie'}</Text>
-                </Pressable>
-              ) : null}
-              <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/board', params: { list: list.id } })} style={[styles.pref, { borderColor: p.border }]}>
-                <Text style={{ color: p.accent, fontSize: 13 }}>▦ Tablica</Text>
-              </Pressable>
+              <ColumnChips columns={columns} columnTags={columnTags} tags={tagsForWorkspace(data.tags, list.workspaceId, list.prefs.columnTags)} onChange={setColumnPrefs} />
+              <OptionChip label="▦ Tablica" accent onPress={() => router.push({ pathname: '/board', params: { list: list.id } })} />
               {list.kind === 'project' ? (
                 <Pressable accessibilityRole="button" onPress={() => setSavingTemplate((v) => !v)} style={[styles.pref, { borderColor: p.border }]}>
                   <Text style={{ color: p.accent, fontSize: 13 }}>⧉ Zapisz jako szablon</Text>
                 </Pressable>
               ) : null}
-            </View>
+            </OptionRow>
             {savingTemplate && list.kind === 'project' ? <SaveTemplateBar listId={list.id} listName={list.name} onClose={() => setSavingTemplate(false)} /> : null}
             <FilterBar query={filter ?? {}} onChange={setFilter} hide={['lists']} save />
             {tasks.length ? <TaskColumnsHeader columns={columns} /> : null}
@@ -227,6 +178,5 @@ export default function ListScreen() {
 }
 
 const styles = StyleSheet.create({
-  prefs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 12, paddingVertical: 8 },
   pref: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
 });

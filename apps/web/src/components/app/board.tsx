@@ -10,7 +10,7 @@
 import { closestCenter, closestCorners, DndContext, KeyboardSensor, PointerSensor, pointerWithin, useDroppable, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from "@dnd-kit/core";
 import { horizontalListSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { addBoardColumnOps, BOARD_BY, type BoardColumnDef, type TaskOp, boardColumns, boardDropOps, describeRecurrence, moveBoardColumnOps, removeBoardColumnOps, renameBoardColumnOps, isOpen, PRIORITY, relativeDay, tagsForWorkspace, type BoardBy, type BoardColumn, type LocalDate, type ViewContext, type ViewTask } from "@taskplanner/core";
+import { addBoardColumnOps, BOARD_BY, type BoardColumnDef, type TaskOp, boardColumns, boardDropOps, describeRecurrence, moveBoardColumnOps, removeBoardColumnOps, renameBoardColumnOps, isOpen, PRIORITY, relativeDay, tagsForWorkspace, type BoardBy, type BoardColumn, type LocalDate, type SmartBoard, type ViewContext, type ViewTask } from "@taskplanner/core";
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { listEditable, type AppData } from "@/lib/app-data";
@@ -59,7 +59,7 @@ interface ColumnEdit {
   onRemove: () => void;
 }
 
-const Card = memo(function Card({ task, column, by, today, tags, listName, progress }: { task: ViewTask; column: string; by: BoardBy; today: LocalDate; tags: readonly { id: string; name: string; color: string | null }[]; listName?: string; progress?: { done: number; total: number } }) {
+const Card = memo(function Card({ task, column, by, today, tags, listName, parentTitle, progress }: { task: ViewTask; column: string; by: BoardBy; today: LocalDate; tags: readonly { id: string; name: string; color: string | null }[]; listName?: string; parentTitle?: string; progress?: { done: number; total: number } }) {
   const { openTask, select, selectedIds, data } = useAppEnv();
   const { toggle } = useTaskActions();
   // Karta listy „tylko podgląd” nie daje się chwycić, ale zostaje miejscem upuszczenia innych.
@@ -99,6 +99,7 @@ const Card = memo(function Card({ task, column, by, today, tags, listName, progr
             {tag.name}
           </span>
         ))}
+        {parentTitle ? <span className="truncate" title={`Podzadanie: ${parentTitle}`}>↑ {parentTitle}</span> : null}
         {listName ? <span className="truncate">{listName}</span> : null}
       </div>
     </li>
@@ -112,6 +113,7 @@ function Column({
   today,
   listId,
   showList,
+  smart,
   edit,
   sortRef,
   sortStyle,
@@ -123,11 +125,14 @@ function Column({
   /** Lista nowych kart (widok listy / domyślny Inbox). */
   listId?: string;
   showList: boolean;
+  /** Tablica widoku zbiorczego: termin nowych kart, podzadania z nazwą rodzica. */
+  smart?: SmartBoard;
   edit?: ColumnEdit;
   /** Węzeł i styl kolumny przeciąganej (tryb „Własne”). */
   sortRef?: (node: HTMLElement | null) => void;
   sortStyle?: CSSProperties;
 }) {
+  const { workspaceId } = useAppEnv();
   const { setNodeRef, isOver } = useDroppable({ id: `column:${column.key}`, data: { column: column.key } });
   const [shown, setShown] = useState(PAGE);
   const [collapsed, setCollapsed] = useState(false);
@@ -139,7 +144,8 @@ function Column({
   const visible = column.tasks.slice(0, shown);
   const ids = useMemo(() => visible.map((t) => cardId(column.key, t.id)), [visible, column.key]);
   const tagById = useMemo(() => new Map(data.tags.map((t) => [t.id, t])), [data.tags]);
-  const listName = useMemo(() => new Map(data.lists.map((l) => [l.id, l.kind === "inbox" ? "Inbox" : l.name])), [data.lists]);
+  const listName = useMemo(() => boardListNames(data, workspaceId), [data, workspaceId]);
+  const parents = useMemo(() => (smart?.options.subtasks ? new Map(data.tasks.map((t) => [t.id, t.title])) : null), [smart, data.tasks]);
   const children = useMemo(() => {
     const map = new Map<string, { done: number; total: number }>();
     for (const t of data.tasks) {
@@ -153,8 +159,9 @@ function Column({
   }, [data.tasks]);
 
   // Dodanie w kolumnie dostaje jej atrybut (status / priorytet / dzień / tag / lista).
-  const add =
-    by === "status"
+  const add = {
+    dueDate: smart?.addDue,
+    ...(by === "status"
       ? { defaults: { status: column.key } }
       : by === "priority"
         ? { defaults: { priority: Number(column.key) } }
@@ -166,7 +173,8 @@ function Column({
               ? { listId: column.key }
               : by === "custom" && column.key !== "none"
                 ? { defaults: { boardColumnId: column.key } }
-                : {};
+                : {}),
+  };
 
   if (collapsed) {
     return (
@@ -233,7 +241,7 @@ function Column({
         </button>
       </header>
       {/* Dodanie nad kartami — widoczne bez przewijania długiej kolumny. */}
-      {!listId || listEditable(data, listId) ? (
+      {!column.fixed && canAdd(smart) && (!listId || listEditable(data, listId)) ? (
         <div className="mb-1.5">
           <QuickAdd placeholder="Dodaj kartę" listId={listId} {...add} />
         </div>
@@ -241,7 +249,7 @@ function Column({
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <ul className="flex min-h-12 flex-col gap-1.5">
           {visible.map((t) => (
-            <Card key={t.id} task={t} column={column.key} by={by} today={today} tags={t.tagIds.flatMap((id) => tagById.get(id) ?? [])} listName={showList ? listName.get(t.listId) : undefined} progress={children.get(t.id)} />
+            <Card key={t.id} task={t} column={column.key} by={by} today={today} tags={t.tagIds.flatMap((id) => tagById.get(id) ?? [])} listName={showList ? listName.get(t.listId) : undefined} parentTitle={t.parentId ? parents?.get(t.parentId) : undefined} progress={children.get(t.id)} />
           ))}
         </ul>
       </SortableContext>
@@ -284,6 +292,15 @@ function SortableColumn({ onRename, onRemove, ...props }: Omit<Parameters<typeof
 }
 
 const NO_COLUMNS: never[] = [];
+
+/** Na tablicy widoku bez terminu nowych kart („Zaległe”) się nie dodaje. */
+const canAdd = (smart: SmartBoard | undefined) => !smart || smart.addDue !== undefined;
+
+/** Nazwy list na kartach i kolumnach; przy wszystkich przestrzeniach Inbox z nazwą przestrzeni. */
+function boardListNames(data: AppData, workspaceId: string | null): Map<string, string> {
+  const spaces = new Map(data.workspaces.map((w) => [w.id, w.name]));
+  return new Map(data.lists.map((l) => [l.id, l.kind !== "inbox" ? l.name : workspaceId ? "Inbox" : `Inbox (${spaces.get(l.workspaceId) ?? ""})`]));
+}
 
 /** Dodanie własnej kolumny (pole nazwy w pasku tablicy). */
 function AddColumn({ onAdd }: { onAdd: (name: string) => void }) {
@@ -330,6 +347,7 @@ export function Board({
   listId,
   showList,
   addLabel,
+  smart,
 }: {
   data: AppData;
   ctx: ViewContext;
@@ -340,8 +358,12 @@ export function Board({
   showList: boolean;
   /** Podpowiedź pola dodawania nad tablicą (dokąd trafi zadanie). */
   addLabel?: string;
+  /** Widok zbiorczy (`smartBoard`): opcje kolumn, opis „Gotowe”, termin nowych kart. */
+  smart?: SmartBoard;
 }) {
   const { run, notify } = useTaskActions();
+  const options = smart?.options;
+  const doneNote = smart ? smart.doneNote : "„Gotowe” z ostatnich 7 dni";
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const lists = useMemo(() => {
     const used = new Set(tasks.map((t) => t.listId));
@@ -358,10 +380,12 @@ export function Board({
   const defs = owner?.boardColumns ?? NO_COLUMNS;
   // Kolumny tagów: tagi przestrzeni tablicy + użyte na kartach.
   const tags = useMemo(() => tagsForWorkspace(data.tags, space, tasks.flatMap((t) => t.tagIds)), [data.tags, space, tasks]);
-  const columns = useMemo(
-    () => (custom && !owner ? [] : boardColumns(tasks, by, { today: ctx.today, firstDayOfWeek: ctx.firstDayOfWeek }, { tags, lists, columns: defs })),
-    [tasks, by, custom, owner, ctx.today, ctx.firstDayOfWeek, tags, lists, defs],
-  );
+  const columns = useMemo(() => {
+    if (custom && !owner) return [];
+    const names = boardListNames(data, ctx.workspaceId ?? null);
+    const named = lists.map((l) => ({ id: l.id, name: names.get(l.id) ?? l.name, sortKey: l.sortKey }));
+    return boardColumns(tasks, by, { today: ctx.today, firstDayOfWeek: ctx.firstDayOfWeek, ...options }, { tags, lists: named, columns: defs });
+  }, [tasks, by, custom, owner, data, ctx.workspaceId, ctx.today, ctx.firstDayOfWeek, options, tags, lists, defs]);
   // Kolumna bez wartości (do przypisania / bez terminu / bez tagu) — pierwsza i przypięta.
   const pinned = columns[0]?.key === "none" ? columns[0] : undefined;
   const scrolled = pinned ? columns.filter((c) => c !== pinned) : columns;
@@ -408,6 +432,7 @@ export function Board({
       index = same && fromIndex < target.tasks.findIndex((t) => t.id === overCard.taskId) ? overIndex + 1 : overIndex;
     }
     if (same && index === fromIndex) return;
+    if (!same && target.fixed) return notify(`Na kolumnę „${target.label}” nie da się przenieść — wybierz dzień.`);
     if (by === "tag" && toKey !== "none" && from.column !== toKey && task.tagIds.includes(toKey)) return notify("Zadanie ma już ten tag.");
     const { ops, undo } = boardDropOps(task, data.tasks, by, from.column, toKey, target.tasks, Math.max(0, index), { today: ctx.today, now: new Date(), timeZone: ctx.timeZone });
     void run(ops, from.column === toKey ? undefined : { text: `„${task.title}” → ${target.label}`, undo });
@@ -424,7 +449,7 @@ export function Board({
             </option>
           ))}
         </Select>
-        {by === "status" ? <span className="text-[var(--muted)]">„Gotowe” z ostatnich 7 dni</span> : null}
+        {by === "status" && doneNote ? <span className="text-[var(--muted)]">{doneNote}</span> : null}
         {custom && owner ? <span className="text-[var(--muted)]">Kolumny listy „{owner.kind === "inbox" ? "Inbox" : owner.name}” — przeciągnij ⠿, by zmienić kolejność</span> : null}
         {custom && owner && !columnsLocked ? (
           <div className="ml-auto">
@@ -432,9 +457,9 @@ export function Board({
           </div>
         ) : null}
       </div>
-      {locked ? null : (
+      {locked || !canAdd(smart) ? null : (
         <div className="max-w-xl">
-          <QuickAdd listId={listId} placeholder={addLabel ?? "Dodaj zadanie"} />
+          <QuickAdd listId={listId} dueDate={smart?.addDue} placeholder={addLabel ?? "Dodaj zadanie"} />
         </div>
       )}
       {custom && !owner ? (
@@ -447,7 +472,7 @@ export function Board({
         <div className="flex gap-3 overflow-x-auto pb-4 sm:overflow-visible sm:pb-0" data-testid="board">
           {pinned ? (
             <div className="flex shrink-0 sm:pb-4">
-              <Column column={pinned} by={by} data={data} today={ctx.today} listId={listId} showList={showList} />
+              <Column column={pinned} by={by} data={data} today={ctx.today} listId={listId} showList={showList} smart={smart} />
             </div>
           ) : null}
           <div className="flex gap-3 sm:min-w-0 sm:flex-1 sm:overflow-x-auto sm:pb-4" data-testid="board-scroll">
@@ -462,11 +487,12 @@ export function Board({
                   today={ctx.today}
                   listId={listId}
                   showList={showList}
+                  smart={smart}
                   onRename={(name) => editColumns((current) => renameBoardColumnOps(owner.id, current, c.key, name))}
                   onRemove={() => editColumns((current) => removeBoardColumnOps(owner.id, current, c.key, data.tasks), `Usunięto kolumnę „${c.label}”`)}
                 />
               ) : (
-                <Column key={c.key} column={c} by={by} data={data} today={ctx.today} listId={listId} showList={showList} />
+                <Column key={c.key} column={c} by={by} data={data} today={ctx.today} listId={listId} showList={showList} smart={smart} />
               ),
             )}
           </SortableContext>

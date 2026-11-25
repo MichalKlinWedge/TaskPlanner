@@ -49,6 +49,7 @@ export * from './templates.ts';
 export * from './time-blocking.ts';
 export * from './timeline.ts';
 export * from './trash.ts';
+export * from './smart-views.ts';
 export * from './views.ts';
 export * from './web-clip.ts';
 export * from './week-summary.ts';

@@ -232,6 +232,7 @@ Widoki stałe w pasku bocznym [W+A]:
 - **Dziś** — sekcje: Zaległe, Dziś (z godziną: według godziny; bez godziny: kolejność ręczna), Trwające (zakres `start_date`–`due_date` obejmuje dziś), Cykliczne na dziś. Obok [W]: pasek „Plan dnia” z wydarzeniami kalendarza i blokami zadań.
 - **Zaległe** [W+A] — otwarte zadania po terminie: dzisiejsze, których godzina minęła (z czasem trwania — od końca bloku), i z wcześniejszych dni; licznik w pasku bocznym (telefon: Przeglądaj → „Zaległe”). Dzisiejsze bez godziny nie są zaległe do końca dnia. Przycisk „→ Dziś” przy wierszu: termin na dziś, a godzina, która dziś już minęła, znika (seria ją zachowuje).
 - **Nadchodzące** — kolejne 14 dni pogrupowane po dniu (z wirtualnymi wystąpieniami cyklicznych), przeciąganie między dniami zmienia `due_date`; dalej „Później” po tygodniach.
+- Inbox, Dziś, Zaległe i Nadchodzące mają opcje widoku listy [W+A]: „Lista | Tablica” (telefon: „▦ Tablica”), „Kolumny” i — na webie — eksport XLSX; wybór w `profiles.settings.views`. Tablica pokazuje te same zadania co lista widoku (bez wirtualnych wystąpień serii i Cyklicznych); w kolumnach dni termin spoza zakresu stoi w „Wcześniej” / „Później”.
 - **Projekt / lista** — drzewo zadań z podzadaniami (zwijanie), postęp, sortowanie ręczne / priorytet / termin / data dodania.
 - **Tag, zapisany filtr** — wynik filtra.
 - Grupowanie w każdym widoku: brak / priorytet / projekt / data / tag / status. Pokazywanie ukończonych: ukryte / dzisiejsze / wszystkie.

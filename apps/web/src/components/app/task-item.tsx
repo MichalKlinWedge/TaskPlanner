@@ -156,13 +156,13 @@ export interface TaskItemProps {
   habitDone?: boolean;
   /** Przeciąganie (`dnd.tsx`): element, styl przesunięcia i atrybuty uchwytu. */
   dnd?: { ref: (el: HTMLElement | null) => void; style: CSSProperties; handle: Record<string, unknown>; dragging: boolean };
-  /** Dodatkowe kolumny widoku listy (`view_prefs.columns`) — po prawej, w kolejności `LIST_COLUMN`. */
+  /** Dodatkowe kolumny widoku (`view_prefs.columns` listy, `settings.views` widoku zbiorczego) — po prawej, w kolejności `LIST_COLUMN`. */
   columns?: readonly ListColumn[];
   /** „+” przy tytule: dodanie podzadania (widok listy ustawia górne pole na to zadanie). */
   onAddSubtask?: () => void;
-  /** Przycisk „→ Dziś” po prawej (widok „Zaległe”); ukryty przy zadaniu tylko do podglądu. */
+  /** Przycisk „→ Dziś” po prawej tytułu, przed kolumnami (widok „Zaległe”); ukryty przy zadaniu tylko do podglądu. */
   onToday?: () => void;
-  /** Przycisk „→ Jutro” po prawej (widok „Dziś”: zaległe i dzisiejsze); ukryty przy zadaniu tylko do podglądu. */
+  /** Przycisk „→ Jutro” po prawej tytułu, przed kolumnami (widok „Dziś”: zaległe i dzisiejsze); ukryty przy zadaniu tylko do podglądu. */
   onTomorrow?: () => void;
   /** Ile minut po godzinie zadania (`minutesLate`, widok „Dziś”) — wyróżnia wiersz i godzinę; 0 / brak = w czasie. */
   lateMin?: number;
@@ -407,6 +407,34 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           +
         </button>
       ) : null}
+      {(onToday || onTomorrow) && !readOnly ? (
+        <span className="ml-auto flex shrink-0 gap-2">
+          {onToday ? (
+            <button
+              type="button"
+              aria-label={`Przenieś „${task.title}” na dziś`}
+              title="Przenieś na dziś; godzina, która dziś już minęła, znika"
+              onClick={onToday}
+              className="mt-px shrink-0 rounded-md px-2 py-0.5 text-xs whitespace-nowrap text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
+              data-testid="task-today"
+            >
+              → Dziś
+            </button>
+          ) : null}
+          {onTomorrow ? (
+            <button
+              type="button"
+              aria-label={`Przesuń „${task.title}” na jutro`}
+              title="Przesuń na jutro"
+              onClick={onTomorrow}
+              className="mt-px shrink-0 rounded-md px-2 py-0.5 text-xs whitespace-nowrap text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
+              data-testid="task-tomorrow"
+            >
+              → Jutro
+            </button>
+          ) : null}
+        </span>
+      ) : null}
       </div>
       {columns.map((c) => (
         <span key={c} className={`mt-0.5 text-xs ${c === "tags" ? "" : "truncate"} ${closed ? "opacity-50" : ""}`} style={columnStyle(c, widths)} data-column={c}>
@@ -433,7 +461,10 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
               <span className="text-[var(--muted)]">—</span>
             )
           ) : date ? (
-            <span className={overdue ? "font-medium text-[var(--danger)]" : ""} title={`${date}${task.dueTime ? ` ${task.dueTime}` : ""}`}>
+            <span
+              className={overdue || lateMin > 0 ? "font-medium text-[var(--danger)]" : ""}
+              title={`${date}${task.dueTime ? ` ${task.dueTime}` : ""}${lateMin > 0 ? ` · ${formatMinutes(lateMin)} po czasie` : ""}`}
+            >
               {columnDate(date, today)}
               {task.dueTime ? ` ${task.dueTime}` : ""}
             </span>
@@ -442,30 +473,6 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           )}
         </span>
       ))}
-      {onToday && !readOnly ? (
-        <button
-          type="button"
-          aria-label={`Przenieś „${task.title}” na dziś`}
-          title="Przenieś na dziś; godzina, która dziś już minęła, znika"
-          onClick={onToday}
-          className="mt-px shrink-0 rounded-md px-2 py-0.5 text-xs whitespace-nowrap text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
-          data-testid="task-today"
-        >
-          → Dziś
-        </button>
-      ) : null}
-      {onTomorrow && !readOnly ? (
-        <button
-          type="button"
-          aria-label={`Przesuń „${task.title}” na jutro`}
-          title="Przesuń na jutro"
-          onClick={onTomorrow}
-          className="mt-px shrink-0 rounded-md px-2 py-0.5 text-xs whitespace-nowrap text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
-          data-testid="task-tomorrow"
-        >
-          → Jutro
-        </button>
-      ) : null}
     </li>
   );
 }

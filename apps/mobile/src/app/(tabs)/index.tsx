@@ -15,9 +15,9 @@ import { HabitTodayItem } from '@/components/habits';
 import { ReviewNudge } from '@/components/review';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
+import { useSmartView } from '@/components/view-options';
 import { targetInbox, useView } from '@/lib/app-data';
 import { perfOnce, usePerfReady } from '@/lib/perf';
-import { rowMaker } from '@/lib/rows';
 
 const TASKS = ['zadanie', 'zadania', 'zadań'] as const;
 
@@ -26,13 +26,13 @@ export default function TodayScreen() {
   const [filter, setFilter] = useState<FilterQuery>({});
   const view = useMemo(() => selectToday(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx), [data.tasks, filter, today, ctx]);
   const habits = useMemo(() => habitsForDay(data.tasks, data.habitCompletions, today, today, workspaceId), [data.tasks, data.habitCompletions, today, workspaceId]);
-  const row = rowMaker(data, today);
+  const { row, options, columnsHeader } = useSmartView('today', data, today, workspaceId);
   const open = view.overdue.length + view.today.length;
   const habitsLeft = habits.filter((h) => !h.settled).length;
   usePerfReady('tab:index', data.loaded);
   if (data.loaded) perfOnce('start: Dziś', `${data.tasks.length} zadań`);
   const sections: TaskSection[] = [
-    { key: 'plan', data: [], footer: data.loaded ? <DayPlanCard data={data} today={today} workspaceId={workspaceId} /> : undefined },
+    { key: 'plan', data: [], footer: data.loaded ? <><DayPlanCard data={data} today={today} workspaceId={workspaceId} />{columnsHeader}</> : undefined },
     { key: 'overdue', title: VIEW_SECTION.overdue, count: view.overdue.length, tone: 'bad', data: view.overdue.map((t) => row(t, { withList: true })) },
     { key: 'today', title: VIEW_SECTION.today, count: view.today.length, data: view.today.map((t) => row(t, { showDate: false, withList: true })) },
     { key: 'ongoing', title: VIEW_SECTION.ongoing, count: view.ongoing.length, data: view.ongoing.map((t) => row(t, { withList: true })) },
@@ -57,6 +57,7 @@ export default function TodayScreen() {
       header={
         <ScreenHeader subtitle={`${capitalized(dayLabel(today))} · ${plural(open, TASKS)}`}>
           <ReviewNudge />
+          {options}
           <FilterBar query={filter} onChange={setFilter} save />
         </ScreenHeader>
       }

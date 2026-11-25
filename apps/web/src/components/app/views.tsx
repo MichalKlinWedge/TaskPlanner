@@ -3,7 +3,8 @@
 /**
  * Widoki list (M9): Inbox, Dziś, Nadchodzące, lista/projekt. Wybór i kolejność zadań liczy
  * `@taskplanner/core` (`selectInbox`, `selectToday`, `selectUpcoming`, `buildTree`, `groupTasks`…);
- * tu jest tylko układ.
+ * tu jest tylko układ. Widoki zbiorcze mają opcje widoku listy (`useSmartView`): „Lista | Tablica” i kolumny
+ * z `settings.views` profilu; tablica z `smartBoard`.
  */
 import {
   addDays,
@@ -34,6 +35,8 @@ import {
   selectToday,
   selectOverdue,
   selectUpcoming,
+  smartBoard,
+  smartViewsPatch,
   SORT_BY,
   sortTasks,
   tagsForWorkspace,
@@ -44,11 +47,14 @@ import {
   trashRoots,
   VIEW_SECTION,
   withCompleted,
+  type BoardBy,
   type CompletedMode,
   type FilterQuery,
   type GroupBy,
   type ListColumn,
   type LocalDate,
+  type SmartView,
+  type SmartViewPrefs,
   type SortBy,
   type ViewContext,
   type ViewPrefs,
@@ -148,6 +154,83 @@ function Empty({ children }: { children: ReactNode }) {
 
 const listNames = (data: AppData) => new Map(data.lists.map((l) => [l.id, l.name]));
 
+// ── Opcje widoku zbiorczego ──────────────────────────────────────────────────────────────────
+
+/** „Lista | Tablica | …” w nagłówku. */
+function ViewSwitch<V extends keyof typeof VIEW_LABEL>({ views, value, onChange }: { views: readonly V[]; value: V; onChange: (view: V) => void }) {
+  return (
+    <div className="flex overflow-hidden rounded-md border border-[var(--line)] text-xs" role="radiogroup" aria-label="Widok">
+      {views.map((v) => (
+        <button key={v} type="button" role="radio" aria-checked={value === v} onClick={() => onChange(v)} className={`px-2.5 py-1 ${value === v ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--hover)]"}`}>
+          {VIEW_LABEL[v]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Kolumny widoku: ustalona kolejność i tagi kolumny „Tagi” — wybrane (tylko istniejące) albo `null` = wszystkie. */
+function useColumns(prefs: SmartViewPrefs, tags: AppData["tags"]) {
+  const columns = orderedColumns(prefs.columns);
+  const columnTagIds = prefs.columnTags;
+  const columnTags = useMemo(() => {
+    const known = (columnTagIds ?? []).filter((id) => tags.some((t) => t.id === id));
+    return known.length ? new Set(known) : null;
+  }, [columnTagIds, tags]);
+  return { columns, columnTags };
+}
+
+/** Wiersze z kolumnami: bywają szersze od ekranu (szerokości z nagłówka) — przewijanie w poziomie; `pl-5` zostawia miejsce na uchwyt ⋮⋮. */
+function ColumnsScroll({ columns, children }: { columns: readonly ListColumn[]; children: ReactNode }) {
+  return (
+    <div className={columns.length ? "-ml-5 overflow-x-auto pl-5" : "contents"} data-testid="list-scroll">
+      {/* Szerokość nie mniejsza niż minimum wierszy (stałe „Zadanie”, ściśnięte kolumny) — reszta to suwak poziomy. */}
+      <div className={columns.length ? "min-w-min" : "contents"}>{children}</div>
+    </div>
+  );
+}
+
+/** Ustawienia widoku zbiorczego (`settings.views`, synchronizowane) i części układu: przełącznik, „Kolumny”, tablica. */
+function useSmartView(id: SmartView, ctx: ViewContext, targetInbox: List | undefined) {
+  const { store, settings, userId, data } = useAppEnv();
+  const { notify } = useTaskActions();
+  const prefs = settings.views[id] ?? {};
+  const { columns, columnTags } = useColumns(prefs, data.tags);
+  const [widths, setWidth] = useListWidths(`view:${id}`);
+  const setPrefs = (patch: Partial<SmartViewPrefs>) =>
+    void store.mutate("profiles", userId, { settings: { ...settings, views: smartViewsPatch(settings.views, id, patch) } }).catch((e: unknown) => notify(String(e)));
+  const kanban = prefs.view === "kanban";
+  return {
+    kanban,
+    cols: { columns, columnTags, widths },
+    switcher: <ViewSwitch views={["list", "kanban"]} value={kanban ? "kanban" : "list"} onChange={(view) => setPrefs({ view })} />,
+    columnsBar: kanban ? null : (
+      <div className="mb-2 flex flex-wrap gap-2">
+        <ColumnsPicker
+          value={columns}
+          onChange={(next) => setPrefs({ columns: next })}
+          tags={tagsForWorkspace(data.tags, ctx.workspaceId ?? null, prefs.columnTags)}
+          tagValue={columnTags ? [...columnTags] : []}
+          onTagsChange={(next) => setPrefs({ columnTags: next })}
+        />
+      </div>
+    ),
+    columnsHeader: <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} />,
+    board: (tasks: readonly ViewTask[], opts: { inboxIds?: ReadonlySet<string>; now?: string; addLabel?: string }) => (
+      <SmartBoardView id={id} tasks={tasks} ctx={ctx} targetInbox={targetInbox} by={prefs.boardBy ?? (id === "upcoming" ? "weekday" : "status")} onBy={(boardBy) => setPrefs({ boardBy })} {...opts} />
+    ),
+  };
+}
+
+const NO_IDS: ReadonlySet<string> = new Set();
+
+/** Tablica widoku zbiorczego: `tasks` po filtrze; pozostałe dane (podzadania, listy) pełne. */
+function SmartBoardView({ id, tasks, ctx, targetInbox, by, onBy, inboxIds = NO_IDS, now = "", addLabel }: { id: SmartView; tasks: readonly ViewTask[]; ctx: ViewContext; targetInbox: List | undefined; by: BoardBy; onBy: (by: BoardBy) => void; inboxIds?: ReadonlySet<string>; now?: string; addLabel?: string }) {
+  const { data } = useAppEnv();
+  const smart = useMemo(() => smartBoard(id, tasks, ctx, { inboxIds, now }), [id, tasks, ctx, inboxIds, now]);
+  return <Board data={data} ctx={ctx} tasks={smart.tasks} by={by} onBy={onBy} listId={targetInbox?.id} showList={id !== "inbox" || !ctx.workspaceId} addLabel={addLabel} smart={smart} />;
+}
+
 // ── Inbox ────────────────────────────────────────────────────────────────────────────────────
 
 export function InboxView({ data, ctx, targetInbox, toolbar }: ViewProps) {
@@ -155,19 +238,32 @@ export function InboxView({ data, ctx, targetInbox, toolbar }: ViewProps) {
   const tasks = useMemo(() => selectInbox(data.tasks, inboxIds, ctx), [data.tasks, inboxIds, ctx]);
   const workspaceName = new Map(data.workspaces.map((w) => [w.id, w.name]));
   const all = !ctx.workspaceId;
+  const view = useSmartView("inbox", ctx, targetInbox);
+  const addLabel = targetInbox && all ? `Dodaj do Inboxu („${workspaceName.get(targetInbox.workspaceId)}”)` : "Dodaj do Inboxu";
   return (
     <>
       <Header title="Inbox" subtitle={plural(tasks.length, ["zadanie", "zadania", "zadań"])}>
         <TaskExportButton title="Inbox" data={data} ctx={ctx} count={tasks.length} rows={() => tasks.map((task) => ({ task }))} />
+        {view.switcher}
       </Header>
+      {view.columnsBar}
       {toolbar}
-      <QuickAdd listId={targetInbox?.id} placeholder={targetInbox && all ? `Dodaj do Inboxu („${workspaceName.get(targetInbox.workspaceId)}”)` : "Dodaj do Inboxu"} />
-      {tasks.length ? (
-        <ul className="divide-y divide-[var(--line)]">
-          <Paged items={tasks}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={all ? workspaceName.get(t.workspaceId) : undefined} />}</Paged>
-        </ul>
+      {view.kanban ? (
+        view.board(data.tasks, { inboxIds, addLabel })
       ) : (
-        <Empty>Inbox jest pusty.</Empty>
+        <>
+          <QuickAdd listId={targetInbox?.id} placeholder={addLabel} />
+          {tasks.length ? (
+            <ColumnsScroll columns={view.cols.columns}>
+              {view.columnsHeader}
+              <ul className="divide-y divide-[var(--line)]">
+                <Paged items={tasks}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={all ? workspaceName.get(t.workspaceId) : undefined} {...view.cols} />}</Paged>
+              </ul>
+            </ColumnsScroll>
+          ) : (
+            <Empty>Inbox jest pusty.</Empty>
+          )}
+        </>
       )}
     </>
   );
@@ -193,9 +289,10 @@ function useToToday(ctx: ViewContext, now: string) {
 
 // ── Dziś ─────────────────────────────────────────────────────────────────────────────────────
 
-/** `aside` — „Plan dnia” obok listy (na szerokim ekranie po prawej, na wąskim pod listą). */
+/** `aside` — „Plan dnia” obok listy (na szerokim ekranie po prawej, na wąskim pod listą); tablica zajmuje całą szerokość, bez planu i „Cyklicznych”. */
 export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps & { aside?: ReactNode }) {
   const view = useMemo(() => selectToday(data.tasks, ctx), [data.tasks, ctx]);
+  const smart = useSmartView("today", ctx, targetInbox);
   // Etap 8: nawyki dnia ze stanem odhaczenia, postępem i passą (kolejność jak w `selectToday`).
   const habits = useMemo(() => habitsForDay(view.habits, data.habitCompletions, ctx.today, ctx.today), [view.habits, data.habitCompletions, ctx.today]);
   const names = listNames(data);
@@ -215,24 +312,34 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
             (["overdue", "today", "ongoing", "done"] as const).flatMap((key) => view[key].map((task) => ({ task, section: VIEW_SECTION[key] })))
           }
         />
+        {smart.switcher}
       </Header>
+      {smart.columnsBar}
+      {smart.kanban ? (
+        <>
+          {toolbar}
+          {smart.board(data.tasks, { addLabel: "Dodaj zadanie na dziś" })}
+        </>
+      ) : (
       <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-8">
         <div className="min-w-0">
           {toolbar}
           <QuickAdd listId={targetInbox?.id} dueDate={ctx.today} placeholder="Dodaj zadanie na dziś" />
+          <ColumnsScroll columns={smart.cols.columns}>
+          {open || view.ongoing.length || view.done.length ? smart.columnsHeader : null}
           {view.overdue.length ? (
             <Section title={VIEW_SECTION.overdue} count={view.overdue.length} tone="danger">
-              <Paged items={view.overdue}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} />}</Paged>
+              <Paged items={view.overdue}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} {...smart.cols} />}</Paged>
             </Section>
           ) : null}
           {view.today.length ? (
             <Section title={VIEW_SECTION.today} count={view.today.length}>
-              <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} lateMin={minutesLate(t, now)} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} />}</Paged>
+              <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} lateMin={minutesLate(t, now)} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} {...smart.cols} />}</Paged>
             </Section>
           ) : null}
           {view.ongoing.length ? (
             <Section title={VIEW_SECTION.ongoing} count={view.ongoing.length}>
-              <Paged items={view.ongoing}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />}</Paged>
+              <Paged items={view.ongoing}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} {...smart.cols} />}</Paged>
             </Section>
           ) : null}
           {habits.length ? (
@@ -244,13 +351,15 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
           ) : null}
           {view.done.length ? (
             <Section title={VIEW_SECTION.done} count={view.done.length}>
-              <Paged items={view.done}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />}</Paged>
+              <Paged items={view.done}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} {...smart.cols} />}</Paged>
             </Section>
           ) : null}
+          </ColumnsScroll>
           {empty ? <Empty>Na dziś nic nie ma.</Empty> : null}
         </div>
         {aside}
       </div>
+      )}
     </>
   );
 }
@@ -258,13 +367,14 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
 // ── Zaległe ──────────────────────────────────────────────────────────────────────────────────
 
 /** Wszystko po terminie: dzisiejsze po godzinie (na górze — nie giną pod długą listą) i z wcześniejszych dni. */
-export function OverdueView({ data, ctx, toolbar }: ViewProps) {
+export function OverdueView({ data, ctx, targetInbox, toolbar }: ViewProps) {
   const now = useLocalMinute(ctx.timeZone);
   const view = useMemo(() => selectOverdue(data.tasks, ctx, now), [data.tasks, ctx, now]);
   const names = listNames(data);
   const toTomorrow = useToTomorrow(data, ctx);
   const toToday = useToToday(ctx, now);
   const count = view.today.length + view.earlier.length;
+  const smart = useSmartView("overdue", ctx, targetInbox);
   return (
     <>
       <Header title={VIEW_SECTION.overdue} subtitle={plural(count, ["zadanie", "zadania", "zadań"])}>
@@ -275,19 +385,28 @@ export function OverdueView({ data, ctx, toolbar }: ViewProps) {
           count={count}
           rows={() => [...view.today.map((task) => ({ task, section: VIEW_SECTION.lateToday })), ...view.earlier.map((task) => ({ task, section: VIEW_SECTION.earlier }))]}
         />
+        {smart.switcher}
       </Header>
+      {smart.columnsBar}
       {toolbar}
+      {smart.kanban ? (
+        smart.board(data.tasks, { now })
+      ) : (
+      <ColumnsScroll columns={smart.cols.columns}>
+      {count ? smart.columnsHeader : null}
       {view.today.length ? (
         <Section title={VIEW_SECTION.lateToday} count={view.today.length} tone="danger">
-          <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} lateMin={minutesLate(t, now)} listName={names.get(t.listId)} onToday={toToday(t)} onTomorrow={() => toTomorrow(t)} />}</Paged>
+          <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} lateMin={minutesLate(t, now)} listName={names.get(t.listId)} onToday={toToday(t)} onTomorrow={() => toTomorrow(t)} {...smart.cols} />}</Paged>
         </Section>
       ) : null}
       {view.earlier.length ? (
         <Section title={VIEW_SECTION.earlier} count={view.earlier.length} tone="danger">
-          <Paged items={view.earlier}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} onToday={toToday(t)} onTomorrow={() => toTomorrow(t)} />}</Paged>
+          <Paged items={view.earlier}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} onToday={toToday(t)} onTomorrow={() => toTomorrow(t)} {...smart.cols} />}</Paged>
         </Section>
       ) : null}
       {count ? null : <Empty>Nic nie zalega.</Empty>}
+      </ColumnsScroll>
+      )}
     </>
   );
 }
@@ -296,6 +415,7 @@ export function OverdueView({ data, ctx, toolbar }: ViewProps) {
 
 export function UpcomingView({ data, ctx, targetInbox, toolbar }: ViewProps) {
   const view = useMemo(() => selectUpcoming(data.tasks, ctx), [data.tasks, ctx]);
+  const smart = useSmartView("upcoming", ctx, targetInbox);
   const names = listNames(data);
   return (
     <>
@@ -310,8 +430,15 @@ export function UpcomingView({ data, ctx, targetInbox, toolbar }: ViewProps) {
             ...view.later.flatMap(({ weekStart, items }) => items.map((item) => ({ task: item.task, section: `Tydzień od ${dayMonth(weekStart)}` }))),
           ]}
         />
+        {smart.switcher}
       </Header>
+      {smart.columnsBar}
       {toolbar}
+      {smart.kanban ? (
+        smart.board(data.tasks, { addLabel: "Dodaj zadanie na dziś" })
+      ) : (
+      <ColumnsScroll columns={smart.cols.columns}>
+      {smart.columnsHeader}
       <DayDnd>
         {view.days.map(({ date, items }) => (
           <DayDrop key={date} date={date}>
@@ -320,9 +447,9 @@ export function UpcomingView({ data, ctx, targetInbox, toolbar }: ViewProps) {
                 <Paged items={items}>
                   {(item) =>
                     item.virtual ? (
-                      <TaskItem key={`${item.task.id}:${item.date}`} task={item.task} today={ctx.today} showDate={false} listName={names.get(item.task.listId)} virtualDate={item.date} />
+                      <TaskItem key={`${item.task.id}:${item.date}`} task={item.task} today={ctx.today} showDate={false} listName={names.get(item.task.listId)} virtualDate={item.date} {...smart.cols} />
                     ) : (
-                      <DraggableTaskItem key={`${item.task.id}:${item.date}`} dragKey={`${item.task.id}:${item.date}`} task={item.task} today={ctx.today} showDate={false} listName={names.get(item.task.listId)} />
+                      <DraggableTaskItem key={`${item.task.id}:${item.date}`} dragKey={`${item.task.id}:${item.date}`} task={item.task} today={ctx.today} showDate={false} listName={names.get(item.task.listId)} {...smart.cols} />
                     )
                   }
                 </Paged>
@@ -337,11 +464,13 @@ export function UpcomingView({ data, ctx, targetInbox, toolbar }: ViewProps) {
           <h2 className="mt-6 text-sm font-semibold">{VIEW_SECTION.later}</h2>
           {view.later.map(({ weekStart, items }) => (
             <Section key={weekStart} title={`Tydzień od ${relativeDay(weekStart, ctx.today)}`} count={items.length}>
-              <Paged items={items}>{(item) => <TaskItem key={item.task.id} task={item.task} today={ctx.today} listName={names.get(item.task.listId)} />}</Paged>
+              <Paged items={items}>{(item) => <TaskItem key={item.task.id} task={item.task} today={ctx.today} listName={names.get(item.task.listId)} {...smart.cols} />}</Paged>
             </Section>
           ))}
         </>
       ) : null}
+      </ColumnsScroll>
+      )}
     </>
   );
 }
@@ -427,14 +556,8 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
   const sortBy: SortBy = list.prefs.sortBy ?? "manual";
   const groupBy: GroupBy = list.prefs.groupBy ?? "none";
   const completed: CompletedMode = list.prefs.completed ?? "today";
-  const columns = orderedColumns(list.prefs.columns);
-  const columnTagIds = list.prefs.columnTags;
+  const { columns, columnTags } = useColumns(list.prefs, data.tags);
   const [widths, setWidth] = useListWidths(list.id);
-  // Tagi w kolumnie „Tagi”: wybrane (tylko istniejące) albo `null` = wszystkie.
-  const columnTags = useMemo(() => {
-    const known = (columnTagIds ?? []).filter((id) => data.tags.some((t) => t.id === id));
-    return known.length ? new Set(known) : null;
-  }, [columnTagIds, data.tags]);
 
   const kanban = list.prefs.view === "kanban";
   const canvas = list.prefs.view === "canvas";
@@ -497,10 +620,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
       ) : (
         <p className="text-xs text-[var(--muted)]" data-testid="list-read-only">{READONLY_LIST_NOTE}</p>
       )}
-      {/* Z kolumnami wiersze mogą być szersze od ekranu (szerokości z nagłówka) — przewijanie w poziomie; pl-5 zostawia miejsce na uchwyt ⋮⋮. */}
-      <div className={columns.length ? "-ml-5 overflow-x-auto pl-5" : "contents"} data-testid="list-scroll">
-      {/* Szerokość nie mniejsza niż minimum wierszy (stałe „Zadanie”, ściśnięte kolumny) — reszta to suwak poziomy. */}
-      <div className={columns.length ? "min-w-min" : "contents"}>
+      <ColumnsScroll columns={columns}>
       {!tasks.length ? <Empty>Brak zadań.</Empty> : <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} />}
       {rows ? (
         <SortableTaskList ids={rows.map((n) => n.task.id)}>
@@ -537,8 +657,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
           ),
         )
       )}
-      </div>
-      </div>
+      </ColumnsScroll>
     </>
   );
 
@@ -579,13 +698,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
               : flattenTree(buildTree(tasks)).map((n) => ({ task: n.task, depth: n.depth }))
           }
         />
-        <div className="flex overflow-hidden rounded-md border border-[var(--line)] text-xs" role="radiogroup" aria-label="Widok">
-          {(["list", "kanban", "canvas"] as const).map((v) => (
-            <button key={v} type="button" role="radio" aria-checked={(list.prefs.view ?? "list") === v} onClick={() => setPrefs({ view: v })} className={`px-2.5 py-1 ${(list.prefs.view ?? "list") === v ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--hover)]"}`}>
-              {VIEW_LABEL[v]}
-            </button>
-          ))}
-        </div>
+        <ViewSwitch views={["list", "kanban", "canvas"]} value={canvas ? "canvas" : kanban ? "kanban" : "list"} onChange={(view) => setPrefs({ view })} />
       </Header>
       {/* Sortowanie / grupowanie listy — pod nagłówkiem, przyciski widoku zostają w rogu. */}
       {kanban ? null : canvas ? (
@@ -629,7 +742,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
               if (next.length) prefs.columns = next;
               void store.mutate("lists", list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
             }}
-            tags={tagsForWorkspace(data.tags, list.workspaceId, columnTagIds)}
+            tags={tagsForWorkspace(data.tags, list.workspaceId, list.prefs.columnTags)}
             tagValue={columnTags ? [...columnTags] : []}
             onTagsChange={(next) => {
               const prefs = { ...list.prefs };
