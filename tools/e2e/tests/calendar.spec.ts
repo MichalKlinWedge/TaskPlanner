@@ -53,7 +53,7 @@ test('zadanie z panelu na 10:00, blok przeciągnięty na 14:00', async ({ page, 
 test('zmiana danych w trakcie przeciągania nie gubi upuszczenia', async ({ page, context, server }) => {
   await openApp(page);
   const title = unique('Trzymany');
-  await page.getByRole('textbox', { name: 'Dodaj zadanie na dziś' }).fill(`${title} 9:00`);
+  await page.getByRole('textbox', { name: 'Dodaj zadanie na dziś' }).fill(`${title} dziś 9:00`);
   await page.keyboard.press('Enter');
   await server.waitForTask(title, (t) => t.due_time === '09:00');
   const other = await context.newPage();
