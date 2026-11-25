@@ -183,7 +183,7 @@ Oznaczenia: **[W]** web, **[A]** Android, **[W+A]** oba.
 - Ukończenie rodzica z nieukończonymi podzadaniami → pytanie „Ukończyć też podzadania?” (domyślnie tak).
 - Status: `todo` (Do zrobienia), `in_progress` (W trakcie), `waiting` (Oczekuje), `done` (Gotowe), `cancelled` (Anulowane). Lista statusów jest stała w v1.0 (D6).
 - Operacje grupowe na zaznaczonych zadaniach [W] (Shift/Ctrl + klik, klawiatura) i [A] (długie przytrzymanie): przenieś, termin, priorytet, tag, ukończ, usuń.
-- Usunięcie = kosz (`deleted_at`), przywracanie przez 30 dni; potem trwałe usunięcie (§6).
+- Usunięcie = kosz (`deleted_at`), przywracanie przez 30 dni; potem trwałe usunięcie (§6). Z kosza można też usunąć zadanie na stałe od razu (z potwierdzeniem, tylko z siecią, bez cofnięcia).
 - Historia zmian zadania (z `activity_log`) [W].
 
 ### M4. Tagi, filtry, inteligentne listy
@@ -221,6 +221,7 @@ Oznaczenia: **[W]** web, **[A]** Android, **[W+A]** oba.
 ### M8. Przypomnienia i powiadomienia
 - Rodzaje: **względne** (N minut/godzin/dni przed `due_date`+`due_time`; dla zadania bez godziny — przed domyślną godziną z ustawień) i **bezwzględne** (konkretna data i godzina lokalna). Kilka przypomnień na zadanie. Przy zadaniach cyklicznych przypomnienia względne dotyczą każdego wystąpienia.
 - **Telefon**: powiadomienia lokalne planowane z lokalnej bazy w oknie 7 dni (limit 50 naraz), przeplanowanie po każdej zmianie, synchronizacji, starcie aplikacji i w zadaniu w tle (`expo-background-task`). Akcje w powiadomieniu: „Ukończ”, „Odłóż 10 min / 1 h / do jutra” — działają przy zamkniętej aplikacji (zapis do SQLite + outbox).
+  - **Sposób przypominania** (ustawienie telefonu, „Konto i synchronizacja” → „Przypomnienia i praca w tle”): „Powiadomienie na belce” (domyślnie) albo „Alarm na cały ekran” — wybudza telefon, dzwoni do 2 min dźwiękiem budzika, pokazuje nad blokadą tytuł i opis oraz „Zakończ” / „Edytuj” / „Czekaj N min” (5 / 10 / 15 / 30 / 60, domyślnie 15; po tym czasie ta sama plansza). Bez odpowiedzi zostaje ciche powiadomienie z tymi przyciskami. Przy używanym telefonie Android pokazuje plakietkę zamiast planszy. Przeglądy i skupienie zostają na belce.
 - **Web**: Web Push z Edge Function `reminders-push` (co minutę z `pg_cron`), dla urządzeń, które w ustawieniach mają kanał „przeglądarka”. Gdy karta jest otwarta — dodatkowo powiadomienie w aplikacji.
 - Bez duplikatów: kanał przypomnień jest wybierany per urządzenie (M1); przypomnienie ukończonego zadania nie przychodzi (telefon przeplanowuje po synchronizacji, serwer sprawdza status w chwili wysyłki).
 - Powiadomienia systemowe aplikacji: przegląd dnia (M16), koniec Pomodoro (M14), nawyki (M15).
@@ -229,6 +230,7 @@ Oznaczenia: **[W]** web, **[A]** Android, **[W+A]** oba.
 Widoki stałe w pasku bocznym [W+A]:
 - **Inbox** — zadania z list `inbox` (bieżącej przestrzeni lub wszystkich). Licznik w pasku bocznym i na widżecie.
 - **Dziś** — sekcje: Zaległe, Dziś (z godziną: według godziny; bez godziny: kolejność ręczna), Trwające (zakres `start_date`–`due_date` obejmuje dziś), Cykliczne na dziś. Obok [W]: pasek „Plan dnia” z wydarzeniami kalendarza i blokami zadań.
+- **Zaległe** [W] — otwarte zadania po terminie: dzisiejsze, których godzina minęła (z czasem trwania — od końca bloku), i z wcześniejszych dni; licznik w pasku bocznym. Dzisiejsze bez godziny nie są zaległe do końca dnia.
 - **Nadchodzące** — kolejne 14 dni pogrupowane po dniu (z wirtualnymi wystąpieniami cyklicznych), przeciąganie między dniami zmienia `due_date`; dalej „Później” po tygodniach.
 - **Projekt / lista** — drzewo zadań z podzadaniami (zwijanie), postęp, sortowanie ręczne / priorytet / termin / data dodania.
 - **Tag, zapisany filtr** — wynik filtra.
@@ -286,7 +288,7 @@ Widoki stałe w pasku bocznym [W+A]:
 - **Paleta** `Ctrl+K` [W] (na [A]: ikona szukania z tymi samymi wynikami): zadania (tytuł, opis, tagi, nazwa listy), listy, przestrzenie, tagi, filtry, widoki i **akcje** („Przenieś do…”, „Ustaw priorytet…”, „Zaplanuj na jutro”, „Tryb skupienia”, „Nowy projekt”, „Przełącz przestrzeń”, „Przegląd dnia”, „Motyw ciemny”). Akcje działają na zaznaczonych zadaniach.
 - Wyszukiwanie lokalne: SQLite FTS5 (`unicode61 remove_diacritics 2` — „zolw” znajduje „żółw”), prefiksy, ranking (tytuł > tagi > opis), ostatnio używane na górze. Ten sam kod na webie i telefonie, działa offline.
   - Zrobione (19.11.2026) w `core/search.ts` bez FTS5: indeks w pamięci (`buildSearchIndex`, `search`) — normalizacja bez ogonków i „ł”, każde słowo zapytania pasuje do początku słowa (środek słowa od 3 znaków, słabiej), wagi tytuł 10 > tagi 6 > słowa kluczowe akcji 5 > lista 4 > opis 2, zamknięte niżej, premia za ostatnie użycie, podświetlenia w tytule; 5 000 pozycji < 15 ms. FTS5 tylko, jeśli zabraknie wydajności (zawężenie kandydatów). Polecenia palety i skróty: `core/commands.ts` (`COMMANDS`, `LIST_SHORTCUTS`, `commandSearchItems`).
-- **Skróty [W]**: `Q` szybkie dodawanie, `Ctrl+K` paleta, `/` szukaj, `G` potem `I`/`T`/`U`/`K`/`C`/`O` — Inbox/Dziś/Nadchodzące/Kanban/Kalendarz/Oś czasu, `J`/`K` następne/poprzednie zadanie, `E` ukończ, `1`–`4` priorytet, `T` dziś, `M` jutro, `D` wybór daty, `F` tryb skupienia, `Del` kosz, `?` lista skrótów. Lista skrótów w `core` (etykiety), obsługa w `apps/web`.
+- **Skróty [W]**: `Q` szybkie dodawanie, `Ctrl+K` paleta, `/` szukaj, `G` potem `I`/`T`/`Z`/`U`/`K`/`C`/`O` — Inbox/Dziś/Zaległe/Nadchodzące/Kanban/Kalendarz/Oś czasu, `J`/`K` następne/poprzednie zadanie, `E` ukończ, `1`–`4` priorytet, `T` dziś, `M` jutro, `D` wybór daty, `F` tryb skupienia, `Del` kosz, `?` lista skrótów. Lista skrótów w `core` (etykiety), obsługa w `apps/web`.
 
 ### M18. Kalendarze zewnętrzne
 - **Odczyt** (Etap 5):
@@ -508,7 +510,7 @@ Scenariusze na lokalnym Supabase z trzema klientami (2 × Node, 1 × przeglądar
 - „Dziś” liczone według strefy urządzenia (dzień zmienia się o północy lokalnej; po północy widok odświeża się sam).
 - Zrobione w `core/views.ts` (18.11.2026): `selectToday`, `selectUpcoming`, `selectInbox`, `FilterQuery` + `applyFilter`/`matchesFilter`, `sortTasks`, `groupTasks`, `buildTree`/`flattenTree`/`progress`, `withCompleted`; wejście = `ViewTask` (camelCase, z `tagIds`). Ustalenia:
   - w dniu najpierw zadania z godziną (według godziny), potem bez godziny (kolejność ręczna); zaległe od najstarszego terminu, potem priorytet,
-  - „Nadchodzące” zaczyna się od dziś (zaległe tylko w „Dziś”); wirtualne wystąpienia serii od dnia po późniejszej z dat: bieżący termin, dziś — zgodnie z `nextDue`; seria „po ukończeniu” nie ma wirtualnych wystąpień; nawyki są tylko w sekcji „Cykliczne na dziś”,
+  - „Nadchodzące” zaczyna się od dziś (zaległe w „Dziś” i „Zaległe”); wirtualne wystąpienia serii od dnia po późniejszej z dat: bieżący termin, dziś — zgodnie z `nextDue`; seria „po ukończeniu” nie ma wirtualnych wystąpień; nawyki są tylko w sekcji „Cykliczne na dziś”,
   - dzień ukończenia = data lokalna `completed_at` w strefie z ustawień (`localDateAt`),
   - postęp rodzica nie liczy anulowanych podzadań; podzadanie bez rodzica na wejściu jest korzeniem,
   - filtr zapisany ma daty względne (`{ offsetDays: 0 }` = dzień oglądania), więc „termin ≤ dziś” działa także jutro.

@@ -43,6 +43,10 @@ interface AttachmentsApi {
   discard: (id: string) => void;
   /** Adres do wyświetlenia: plik w kolejce (z IndexedDB) albo pobrany z Storage (pamięć podręczna). */
   objectUrl: (item: { id: string; storagePath: string | null; mime: string | null }) => Promise<string>;
+  /** Zawartość wysłanego pliku (eksport przestrzeni) — z pamięci podręcznej albo Storage, bez zapamiętywania. */
+  readFile: (storagePath: string) => Promise<Blob>;
+  /** Pliki z importu przestrzeni: id i ścieżki z planu importu, wysyłka w tle zwykłą kolejką. */
+  restoreFiles: (files: readonly { id: string; taskId: string; storagePath: string; name: string; mime: string; data: Blob }[]) => Promise<void>;
 }
 
 const Ctx = createContext<AttachmentsApi | null>(null);
@@ -57,13 +61,13 @@ export const useAttachments = (): AttachmentsApi => {
 const FILE_CACHE = "taskplanner-attachments";
 const cacheKey = (path: string) => `${location.origin}/__attachments/${encodeURIComponent(path)}`;
 
-async function storedFile(path: string): Promise<Blob> {
+async function storedFile(path: string, keep = true): Promise<Blob> {
   const cache = typeof caches !== "undefined" ? await caches.open(FILE_CACHE).catch(() => null) : null;
   const hit = await cache?.match(cacheKey(path));
   if (hit) return hit.blob();
   const { data, error } = await supabaseBrowser().storage.from("attachments").download(path);
   if (error || !data) throw new Error(navigator.onLine ? `Nie udało się pobrać pliku: ${error?.message ?? "brak danych"}` : "Plik nie był pobrany na tym urządzeniu — otworzy się po połączeniu.");
-  await cache?.put(cacheKey(path), new Response(data, { headers: { "content-type": data.type || "application/octet-stream" } })).catch(() => undefined);
+  if (keep) await cache?.put(cacheKey(path), new Response(data, { headers: { "content-type": data.type || "application/octet-stream" } })).catch(() => undefined);
   return data;
 }
 
@@ -188,6 +192,11 @@ export function AttachmentsProvider({ store, userId, children }: { store: TabSto
       const url = URL.createObjectURL(blob);
       urls.current.set(id, url);
       return url;
+    },
+    readFile: (storagePath) => storedFile(storagePath, false),
+    restoreFiles: async (files) => {
+      for (const { data, ...file } of files) await queue.enqueue({ ...file, size: data.size }, data);
+      void flush();
     },
   };
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
@@ -329,6 +338,47 @@ export function AttachmentsField({ task, readOnly = false }: { task: ViewTask; r
       {shown ? <PreviewDialog item={shown} onClose={() => setShown(null)} /> : null}
     </PanelSection>
   );
+}
+
+/** Załączniki zadania do podglądu (`task-preview.tsx`): linki i pliki do otwarcia, bez dodawania i usuwania. */
+export function AttachmentsSummary({ taskId }: { taskId: string }) {
+  const { data } = useAppEnv();
+  const api = useAttachments();
+  const [shown, setShown] = useState<Shown | null>(null);
+  const items = data.attachments.get(taskId) ?? [];
+  const waiting = api.pending.filter((p) => p.taskId === taskId && !items.some((i) => i.id === p.id));
+  const links = items.filter((a) => a.kind === "link");
+  const files = items.filter((a) => a.kind === "file");
+  return (
+    <>
+      {links.length ? (
+        <ul className="mb-2 flex flex-col gap-1" aria-label="Linki">
+          {links.map((a) => (
+            <LinkRow key={a.id} item={a} />
+          ))}
+        </ul>
+      ) : null}
+      {files.length || waiting.length ? (
+        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Pliki">
+          {files.map((a) => (
+            <FileTile key={a.id} item={a} onOpen={() => setShown(a)} />
+          ))}
+          {waiting.map((p) => (
+            <PendingTile key={p.id} file={p} onOpen={() => setShown({ id: p.id, storagePath: null, name: p.name, mime: p.mime })} />
+          ))}
+        </ul>
+      ) : null}
+      {shown ? <PreviewDialog item={shown} onClose={() => setShown(null)} /> : null}
+    </>
+  );
+}
+
+/** Liczba załączników razem z plikami czekającymi na wysyłkę. */
+export function useAttachmentCount(taskId: string): number {
+  const { data } = useAppEnv();
+  const { pending } = useAttachments();
+  const items = data.attachments.get(taskId) ?? [];
+  return items.length + pending.filter((p) => p.taskId === taskId && !items.some((i) => i.id === p.id)).length;
 }
 
 function LinkRow({ item, onRemove }: { item: Attachment; onRemove?: () => void }) {

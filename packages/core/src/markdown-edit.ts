@@ -160,6 +160,25 @@ function insertBlock(text: string, s: number, e: number, block: string, selFrom:
 const LIST_LINE = /^(\s*)(?:([-*+]) \[[ xX]\] |([-*+]) |(\d{1,9})([.)]) |> ?)/;
 
 /**
+ * Wklejenie zamienionego tekstu (`htmlToMarkdown`) w miejsce zaznaczenia: jedna linia wchodzi w zdanie, bloki są
+ * oddzielone pustą linią; lista wklejona w pustej pozycji listy zastępuje jej znacznik. Kursor na końcu.
+ */
+export function markdownPaste(text: string, start: number, end: number, pasted: { markdown: string; inline: boolean }): MarkdownTextEdit {
+  const [s, e] = start <= end ? [start, end] : [end, start];
+  const { markdown } = pasted;
+  if (pasted.inline) return { from: s, to: e, insert: markdown, selStart: s + markdown.length, selEnd: s + markdown.length };
+  const line = lineStart(text, s);
+  const empty = s > line && LIST_LINE.exec(text.slice(line, s))?.[0].length === s - line && LIST_LINE.test(markdown);
+  const from = empty ? line : s;
+  const before = text.slice(0, from);
+  const after = text.slice(e);
+  const lead = empty || before === '' || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+  const trail = after === '' || after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n';
+  const at = from + lead.length + markdown.length;
+  return { from, to: e, insert: `${lead}${markdown}${trail}`, selStart: at, selEnd: at };
+}
+
+/**
  * Enter w linii listy / cytatu (jak w GitLabie): nowa linia z kolejnym znacznikiem (`- `, `2. `, `- [ ] `,
  * `> `), a Enter w pustej pozycji kończy listę (zdejmuje znacznik). `null` = zwykły Enter.
  */
@@ -175,6 +194,27 @@ export function markdownContinueList(text: string, pos: number): MarkdownTextEdi
   const mark = taskMark ? `${taskMark} [ ] ` : bullet ? `${bullet} ` : number ? `${Number(number) + 1}${delim} ` : '> ';
   const insert = `\n${indent}${mark}`;
   return { from: pos, to: pos, insert, selStart: pos + insert.length, selEnd: pos + insert.length };
+}
+
+/** Tekst po podmianie z `markdownEdit` / `markdownContinueList`. */
+export const applyMarkdownEdit = (text: string, edit: MarkdownTextEdit): string => text.slice(0, edit.from) + edit.insert + text.slice(edit.to);
+
+/**
+ * Enter w polu, które podaje tylko tekst przed i po zmianie (telefon: `onChangeText`): `next` = `prev` z jednym
+ * nowym wierszem wstawionym w kontynuowanej liście → tekst z kolejnym znacznikiem i kursor; inaczej `null`.
+ * `cursor` — ostatnio znane miejsce kursora (rozstrzyga, gdy obok są puste linie).
+ */
+export function markdownNewline(prev: string, next: string, cursor: number): { text: string; cursor: number } | null {
+  if (next.length !== prev.length + 1) return null;
+  const insertedAt = (i: number) => next[i] === '\n' && next.slice(0, i) === prev.slice(0, i) && next.slice(i + 1) === prev.slice(i);
+  let at = cursor;
+  if (!insertedAt(at)) {
+    at = 0;
+    while (at < prev.length && prev[at] === next[at]) at++;
+    if (!insertedAt(at)) return null;
+  }
+  const edit = markdownContinueList(prev, at);
+  return edit && { text: applyMarkdownEdit(prev, edit), cursor: edit.selStart };
 }
 
 /** Skrót klawiszowy (Ctrl/⌘ + litera) → przycisk formatowania. */

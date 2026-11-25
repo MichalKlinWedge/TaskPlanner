@@ -8,8 +8,8 @@
 import {
   addDays,
   buildTree,
+  bulkTaskOps,
   canAddSubtask,
-  descendants,
   capitalized,
   COMPLETED_MODE,
   dayLabel,
@@ -18,30 +18,40 @@ import {
   GROUP_BY,
   groupTasks,
   habitsForDay,
+  isEmptyFilter,
   isOpen,
   LIST_COLUMN,
   LIST_KIND,
+  matchesFilter,
+  minutesLate,
   orderedColumns,
   plural,
   progress,
+  PROJECT_STATUS,
   relativeDay,
-  restoreTaskOps,
   selectInbox,
   selectToday,
+  selectOverdue,
   selectUpcoming,
   SORT_BY,
   sortTasks,
   tagsForWorkspace,
   TRASH_DAYS,
+  trashedWith,
+  trashListLabel,
+  trashPreview,
+  trashRoots,
   VIEW_SECTION,
   withCompleted,
   type CompletedMode,
+  type FilterQuery,
   type GroupBy,
   type ListColumn,
   type LocalDate,
   type SortBy,
   type ViewContext,
   type ViewPrefs,
+  type ViewTask,
   READONLY_LIST_NOTE,
   listShareBadge,
   type ListShareBadge,
@@ -49,15 +59,19 @@ import {
 import type { TabStore } from "@taskplanner/sync";
 import { useMemo, useState, type ReactNode } from "react";
 
-import { listEditable, type AppData, type List } from "@/lib/app-data";
+import { listEditable, useLocalMinute, type AppData, type List } from "@/lib/app-data";
 import { useListWidths } from "@/lib/list-widths";
-import { useLocalQuery } from "@/lib/local-store";
+import { useTrash } from "@/lib/trash";
 
+import { useAppEnv } from "./app-env";
 import { Board } from "./board";
 import { CanvasView } from "./canvas";
 import { DayDnd, DayDrop, DraggableTaskItem, SortableTaskItem, SortableTaskList } from "./dnd";
 import { TaskExportButton } from "./export";
+import { FilterBar } from "./filter-bar";
 import { HabitTodayItem } from "./habits";
+import { ProjectStatusSelect } from "./project-status";
+import { PurgeButton } from "./purge-button";
 import { QuickAdd } from "./quick-add";
 import { TaskColumnsHeader, TaskItem, useTaskActions } from "./task-item";
 import { SaveTemplateButton } from "./templates";
@@ -158,6 +172,15 @@ export function InboxView({ data, ctx, targetInbox, toolbar }: ViewProps) {
   );
 }
 
+/** Przycisk „→ Jutro” przy wierszu: przeniesienie z „Cofnij”. */
+function useToTomorrow(data: AppData, ctx: ViewContext) {
+  const { run } = useTaskActions();
+  return (task: ViewTask) => {
+    const { ops, undo } = bulkTaskOps([task], data.tasks, { kind: "tomorrow" }, { today: ctx.today, now: new Date(), timeZone: ctx.timeZone });
+    void run(ops, { text: `„${task.title}” → ${relativeDay(addDays(ctx.today, 1), ctx.today)}`, undo });
+  };
+}
+
 // ── Dziś ─────────────────────────────────────────────────────────────────────────────────────
 
 /** `aside` — „Plan dnia” obok listy (na szerokim ekranie po prawej, na wąskim pod listą). */
@@ -166,6 +189,8 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
   // Etap 8: nawyki dnia ze stanem odhaczenia, postępem i passą (kolejność jak w `selectToday`).
   const habits = useMemo(() => habitsForDay(view.habits, data.habitCompletions, ctx.today, ctx.today), [view.habits, data.habitCompletions, ctx.today]);
   const names = listNames(data);
+  const now = useLocalMinute(ctx.timeZone);
+  const toTomorrow = useToTomorrow(data, ctx);
   const open = view.overdue.length + view.today.length;
   const empty = !open && !view.ongoing.length && !view.habits.length && !view.done.length;
   return (
@@ -187,12 +212,12 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
           <QuickAdd listId={targetInbox?.id} dueDate={ctx.today} placeholder="Dodaj zadanie na dziś" />
           {view.overdue.length ? (
             <Section title={VIEW_SECTION.overdue} count={view.overdue.length} tone="danger">
-              <Paged items={view.overdue}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />}</Paged>
+              <Paged items={view.overdue}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} />}</Paged>
             </Section>
           ) : null}
           {view.today.length ? (
             <Section title={VIEW_SECTION.today} count={view.today.length}>
-              <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} listName={names.get(t.listId)} />}</Paged>
+              <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} lateMin={minutesLate(t, now)} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} />}</Paged>
             </Section>
           ) : null}
           {view.ongoing.length ? (
@@ -216,6 +241,42 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
         </div>
         {aside}
       </div>
+    </>
+  );
+}
+
+// ── Zaległe ──────────────────────────────────────────────────────────────────────────────────
+
+/** Wszystko po terminie: dzisiejsze po godzinie (na górze — nie giną pod długą listą) i z wcześniejszych dni. */
+export function OverdueView({ data, ctx, toolbar }: ViewProps) {
+  const now = useLocalMinute(ctx.timeZone);
+  const view = useMemo(() => selectOverdue(data.tasks, ctx, now), [data.tasks, ctx, now]);
+  const names = listNames(data);
+  const toTomorrow = useToTomorrow(data, ctx);
+  const count = view.today.length + view.earlier.length;
+  return (
+    <>
+      <Header title={VIEW_SECTION.overdue} subtitle={plural(count, ["zadanie", "zadania", "zadań"])}>
+        <TaskExportButton
+          title={VIEW_SECTION.overdue}
+          data={data}
+          ctx={ctx}
+          count={count}
+          rows={() => [...view.today.map((task) => ({ task, section: VIEW_SECTION.lateToday })), ...view.earlier.map((task) => ({ task, section: VIEW_SECTION.earlier }))]}
+        />
+      </Header>
+      {toolbar}
+      {view.today.length ? (
+        <Section title={VIEW_SECTION.lateToday} count={view.today.length} tone="danger">
+          <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} lateMin={minutesLate(t, now)} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} />}</Paged>
+        </Section>
+      ) : null}
+      {view.earlier.length ? (
+        <Section title={VIEW_SECTION.earlier} count={view.earlier.length} tone="danger">
+          <Paged items={view.earlier}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} />}</Paged>
+        </Section>
+      ) : null}
+      {count ? null : <Empty>Nic nie zalega.</Empty>}
     </>
   );
 }
@@ -348,7 +409,7 @@ function ColumnsPicker({
 const VIEW_LABEL = { list: "Lista", kanban: "Tablica", canvas: "Karteczki" } as const;
 
 export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; ctx: ViewContext; list: List; store: TabStore; toolbar?: ReactNode }) {
-  const { notify } = useTaskActions();
+  const { notify, run } = useTaskActions();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   // „+” przy zadaniu: górne pole dodaje podzadania tego zadania, po dodaniu wraca do zwykłego trybu.
   const [subParent, setSubParent] = useState<{ id: string; title: string } | null>(null);
@@ -480,6 +541,21 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
           return listShareBadge(ws?.role, list.guestAccess, ws?.members);
         })()}
       >
+        {list.kind === "project" ? (
+          <ProjectStatusSelect
+            name={list.name}
+            value={list.projectStatus}
+            onChange={
+              editable
+                ? (status) =>
+                    void run([{ table: "lists", id: list.id, patch: { project_status: status } }], {
+                      text: `„${list.name}” — ${PROJECT_STATUS[status].toLowerCase()}`,
+                      undo: [{ table: "lists", id: list.id, patch: { project_status: list.projectStatus } }],
+                    })
+                : undefined
+            }
+          />
+        ) : null}
         {list.kind === "project" ? <SaveTemplateButton listId={list.id} listName={list.name} /> : null}
         <TaskExportButton
           title={list.name}
@@ -567,49 +643,49 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
 
 // ── Kosz ─────────────────────────────────────────────────────────────────────────────────────
 
-/** Kosz (M3): usunięte w ostatnich 30 dniach, przywracanie razem z podzadaniami usuniętymi naraz. */
-export function TrashView({ data, store }: { data: AppData; store: TabStore }) {
+/**
+ * Kosz (M3): usunięte w ostatnich 30 dniach, przywracanie razem z podzadaniami usuniętymi naraz; kliknięcie
+ * otwiera szczegóły w panelu tylko do odczytu (`TaskPanel`).
+ */
+export function TrashView({ data, store, today }: { data: AppData; store: TabStore; today: LocalDate }) {
   const { run } = useTaskActions();
-  // Granica liczona przy wejściu do widoku (stabilna wartość parametru zapytania).
-  const [since] = useState(() => new Date(Date.now() - TRASH_DAYS * 86_400_000).toISOString());
-  const { rows } = useLocalQuery<Record<string, string | number | null>>(
-    store,
-    "select id, parent_id, list_id, title, deleted_at from tasks where deleted_at is not null and deleted_at > ? order by deleted_at desc",
-    [since],
-    ["tasks"],
-  );
-  const trashed = rows.map((r) => ({ id: String(r.id), parentId: r.parent_id as string | null, listId: String(r.list_id), title: String(r.title), deletedAt: r.deleted_at as string }));
-  const byId = new Map(trashed.map((t) => [t.id, t]));
-  // Podzadania usunięte razem z rodzicem są pod nim (przywracają się z nim), nie osobno.
-  const roots = trashed.filter((t) => !(t.parentId && byId.get(t.parentId)?.deletedAt === t.deletedAt));
-  const alive = new Set(data.tasks.map((t) => t.id));
+  const { openTask, openTaskId } = useAppEnv();
+  const { tasks: trashed, alive } = useTrash(store, data);
+  const roots = trashRoots(trashed);
+  const [filter, setFilter] = useState<FilterQuery>({});
+  const filtered = !isEmptyFilter(filter);
+  const shown = filtered ? roots.filter(matchesFilter(filter, today)) : roots;
   const names = listNames(data);
+  const open = openTaskId ? trashPreview(trashed, openTaskId, alive)?.root.id : undefined;
 
   return (
     <>
-      <Header title="Kosz" subtitle={`Usunięte zadania zostają tu ${TRASH_DAYS} dni, potem znikają na stałe.`} />
-      {roots.length ? (
-        <ul className="divide-y divide-[var(--line)]">
-          {roots.map((t) => {
-            const inside = descendants(trashed, t.id).filter((d) => d.deletedAt === t.deletedAt).length;
+      <Header title="Kosz" subtitle={`Usunięte zadania zostają tu ${TRASH_DAYS} dni, potem znikają na stałe. Kliknij zadanie, aby zobaczyć szczegóły.`} />
+      <FilterBar query={filter} onChange={setFilter} />
+      {shown.length ? (
+        <ul className="divide-y divide-[var(--line)]" aria-label="Zadania w koszu">
+          {shown.map((t) => {
+            const inside = trashedWith(trashed, t.id).length;
             return (
-              <li key={t.id} className="flex items-center gap-3 py-2 text-sm">
-                <div className="min-w-0 flex-1">
-                  <div className="break-words">{t.title}</div>
-                  <div className="text-xs text-[var(--muted)]">
-                    {names.get(t.listId) ?? "lista zarchiwizowana"} · usunięte {new Date(t.deletedAt).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" })}
+              // `data-card`: kliknięcie w wiersz nie zamyka panelu (jak karty tablicy).
+              <li key={t.id} data-card={t.id} className={`flex items-center gap-3 text-sm ${open === t.id ? "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]" : ""}`}>
+                <button type="button" className="min-w-0 flex-1 cursor-pointer py-2 pl-2 text-left hover:text-[var(--accent)]" title="Pokaż szczegóły" aria-current={open === t.id || undefined} onClick={() => openTask(t.id)}>
+                  <span className="block break-words">{t.title}</span>
+                  <span className="block text-xs text-[var(--muted)]">
+                    {trashListLabel(t, names.get(t.listId))} · usunięte {new Date(t.deletedAt).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" })}
                     {inside ? ` · z ${plural(inside, ["podzadaniem", "podzadaniami", "podzadaniami"])}` : ""}
-                  </div>
-                </div>
-                <Button onClick={() => void run(restoreTaskOps(trashed, t.id, { parentAlive: !t.parentId || alive.has(t.parentId) }), { text: `Przywrócono „${t.title}”` })}>
+                  </span>
+                </button>
+                <Button disabled={!listEditable(data, t.listId)} onClick={() => void run(trashPreview(trashed, t.id, alive)?.restore ?? [], { text: `Przywrócono „${t.title}”` })}>
                   Przywróć
                 </Button>
+                <PurgeButton task={t} inside={inside} />
               </li>
             );
           })}
         </ul>
       ) : (
-        <Empty>Kosz jest pusty.</Empty>
+        <Empty>{filtered && roots.length ? "Nic w koszu nie pasuje do filtra." : "Kosz jest pusty."}</Empty>
       )}
     </>
   );

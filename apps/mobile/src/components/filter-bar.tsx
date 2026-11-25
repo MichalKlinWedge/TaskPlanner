@@ -1,13 +1,16 @@
 /**
  * Chipy filtrów nad listą (M4, jak `FilterBar` na webie): aktywny warunek = chip (dotknięcie
  * zmienia, „×” usuwa), „+ Filtr” dodaje kolejny, „Wyczyść” zdejmuje wszystkie. Wybór w arkuszach
- * `pickOption` / `pickMany`; opis warunków i gotowe zakresy terminu z `core`.
+ * `pickOption` / `pickMany`; opis warunków i gotowe zakresy terminu z `core`. Z `save` — „Zapisz jako filtr” (`saved_filters`).
  */
-import { ASSIGNEE_CREATOR, ASSIGNEE_CREATOR_LABEL, collaboratorsByStatus, collaboratorsForWorkspace, DUE_PRESETS, duePreset, filterChips, isEmptyFilter, PRIORITY, tagsForWorkspace, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from '@taskplanner/core';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ASSIGNEE_CREATOR, ASSIGNEE_CREATOR_LABEL, collaboratorsByStatus, collaboratorsForWorkspace, DUE_PRESETS, duePreset, filterChips, isEmptyFilter, keyBetween, PRIORITY, tagsForWorkspace, TASK_STATUS, uuidv7, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from '@taskplanner/core';
+import { router } from 'expo-router';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useView } from '@/lib/app-data';
 
+import { useTaskActions } from './actions';
 import { pickMany, pickOption } from './pickers';
 import { usePalette } from './ui';
 
@@ -25,7 +28,7 @@ const FIELD_LABEL: Record<FilterField, string> = {
 
 const orUndefined = <T,>(values: T[]): T[] | undefined => (values.length ? values : undefined);
 
-export function FilterBar({ query, onChange, hide = [] }: { query: FilterQuery; onChange: (query: FilterQuery) => void; hide?: readonly FilterField[] }) {
+export function FilterBar({ query, onChange, hide = [], save }: { query: FilterQuery; onChange: (query: FilterQuery) => void; hide?: readonly FilterField[]; save?: boolean }) {
   const p = usePalette();
   const { data, workspaceId } = useView();
   // Tagi bieżącej przestrzeni + już zaznaczone.
@@ -132,6 +135,52 @@ export function FilterBar({ query, onChange, hide = [] }: { query: FilterQuery; 
           <Text style={{ color: p.muted, fontSize: 13 }}>Wyczyść</Text>
         </Pressable>
       ) : null}
+      {save && !isEmptyFilter(query) ? <SaveFilter query={query} /> : null}
+    </View>
+  );
+}
+
+/** „Zapisz jako filtr”: nazwa w polu obok chipów, po zapisie otwiera się zapisany filtr. */
+function SaveFilter({ query }: { query: FilterQuery }) {
+  const p = usePalette();
+  const { data } = useView();
+  const { run } = useTaskActions();
+  const [name, setName] = useState<string | null>(null);
+  if (name === null) {
+    return (
+      <Pressable accessibilityRole="button" onPress={() => setName('')} style={styles.clear}>
+        <Text style={{ color: p.accent, fontSize: 13 }}>Zapisz jako filtr</Text>
+      </Pressable>
+    );
+  }
+  const value = name.trim();
+  const submit = async () => {
+    if (!value) return;
+    const id = uuidv7();
+    await run([{ table: 'saved_filters', id, patch: { name: value.slice(0, 60), icon: null, query, sort_key: keyBetween(data.savedFilters.at(-1)?.sortKey) } }], { text: `Zapisano filtr „${value}”` });
+    setName(null);
+    router.push({ pathname: '/filter/[id]', params: { id } });
+  };
+  return (
+    <View style={styles.save}>
+      <TextInput
+        autoFocus
+        value={name}
+        onChangeText={setName}
+        placeholder="Nazwa filtra"
+        placeholderTextColor={p.muted}
+        accessibilityLabel="Nazwa filtra"
+        maxLength={60}
+        returnKeyType="done"
+        onSubmitEditing={() => void submit()}
+        style={[styles.saveInput, { color: p.fg, borderColor: p.border }]}
+      />
+      <Pressable accessibilityRole="button" disabled={!value} onPress={() => void submit()} hitSlop={8}>
+        <Text style={{ color: p.accent, fontSize: 14, fontWeight: '600', opacity: value ? 1 : 0.4 }}>Zapisz</Text>
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Anuluj zapis filtra" onPress={() => setName(null)} hitSlop={8}>
+        <Text style={{ color: p.muted, fontSize: 16 }}>✕</Text>
+      </Pressable>
     </View>
   );
 }
@@ -143,4 +192,6 @@ const styles = StyleSheet.create({
   chipX: { paddingLeft: 2, paddingRight: 10, paddingVertical: 4 },
   add: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
   clear: { paddingHorizontal: 4, paddingVertical: 5 },
+  save: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: 12 },
+  saveInput: { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, fontSize: 14 },
 });

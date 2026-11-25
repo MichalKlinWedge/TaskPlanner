@@ -70,3 +70,35 @@ describe('Markdown: bloki', () => {
     expect(toggleMarkdownCheckbox(src, 0)).toBe(src);
   });
 });
+
+describe('Markdown: tabele GFM', () => {
+  const cells = (row: ReturnType<typeof parseInline>[]) => row.map(spansText);
+  const table = (source: string) => {
+    const block = parseMarkdown(source).find((b) => b.kind === 'table');
+    return block && { align: block.align, header: cells(block.header), rows: block.rows.map(cells) };
+  };
+
+  it('nagłówek, wyrównanie, komórki dopełnione i obcięte do nagłówka', () => {
+    expect(table('| A | B | C |\n| :-- | :-: | --: |\n| 1 | 2 | 3 |\n| 4 |\n| 5 | 6 | 7 | 8 |')).toEqual({
+      align: ['left', 'center', 'right'],
+      header: ['A', 'B', 'C'],
+      rows: [['1', '2', '3'], ['4', '', ''], ['5', '6', '7']],
+    });
+  });
+
+  it('bez skrajnych kresek, pusta komórka, kreska z ukośnikiem i formatowanie w komórce', () => {
+    expect(table('A | B\n--- | ---\n| | x\\|y')).toEqual({ align: [null, null], header: ['A', 'B'], rows: [['', 'x|y']] });
+    const block = parseMarkdown('| A |\n| - |\n| **b** |')[0];
+    expect(block).toMatchObject({ kind: 'table', rows: [[[{ text: 'b', bold: true }]]] });
+  });
+
+  it('kończy się na pustej linii albo innym bloku; tekst obok zostaje', () => {
+    expect(parseMarkdown('przed\n| A | B |\n|---|---|\n| 1 | 2 |\n# Dalej').map((b) => b.kind)).toEqual(['paragraph', 'table', 'heading']);
+    expect(parseMarkdown('| A |\n|---|\n\npo').map((b) => b.kind)).toEqual(['table', 'paragraph']);
+  });
+
+  it('bez linii `---` albo z inną liczbą kolumn — zwykły tekst', () => {
+    expect(parseMarkdown('a | b').map((b) => b.kind)).toEqual(['paragraph']);
+    expect(table('| A | B |\n| --- |\n| 1 | 2 |')).toBeUndefined();
+  });
+});

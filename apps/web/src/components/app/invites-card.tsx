@@ -10,7 +10,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-import { Button, Card, Input, Notice } from "./ui";
+import { SettingsSection } from "./settings-section";
+import { Button, Input, Notice } from "./ui";
 
 interface Invite {
   pattern: string;
@@ -21,8 +22,24 @@ interface Invite {
 
 const date = (iso: string) => new Date(iso).toLocaleDateString("pl-PL", { dateStyle: "medium" });
 
+/** Czy konto jest administratorem (`is_app_admin`, z serwera); `null` — jeszcze nie wiadomo, bez sieci `false`. */
+export function useAppAdmin(): boolean | null {
+  const [admin, setAdmin] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void supabaseBrowser()
+      .rpc("is_app_admin")
+      .then(({ data }) => {
+        if (alive) setAdmin(data === true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return admin;
+}
+
 export function InvitesCard() {
-  const [admin, setAdmin] = useState(false);
   const [invites, setInvites] = useState<Invite[] | null>(null);
   const [pattern, setPattern] = useState("");
   const [note, setNote] = useState("");
@@ -39,20 +56,10 @@ export function InvitesCard() {
   }, []);
 
   useEffect(() => {
-    let alive = true;
-    void supabaseBrowser()
-      .rpc("is_app_admin")
-      .then(({ data }) => {
-        if (!alive || data !== true) return;
-        setAdmin(true);
-        void load();
-      });
-    return () => {
-      alive = false;
-    };
+    // Wczytanie przy pierwszym otwarciu sekcji (zapytanie do serwera, nie do lokalnej bazy).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
   }, [load]);
-
-  if (!admin) return null;
 
   const normalized = invitePattern(pattern);
 
@@ -85,8 +92,7 @@ export function InvitesCard() {
   };
 
   return (
-    <Card className="mt-4">
-      <h2 className="mb-1 text-sm font-semibold">Zaproszenia</h2>
+    <SettingsSection title="Zaproszenia">
       <p className="mb-3 text-sm opacity-70">
         Konto może założyć tylko adres z tej listy albo dowolny adres z wpisanej domeny („@firma.pl”, bez subdomen). Usunięcie z listy nie usuwa konta,
         które już powstało. Widzisz tę kartę jako administrator.
@@ -133,6 +139,6 @@ export function InvitesCard() {
           <Notice tone="error">{error}</Notice>
         </div>
       ) : null}
-    </Card>
+    </SettingsSection>
   );
 }

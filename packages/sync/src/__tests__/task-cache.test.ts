@@ -2,7 +2,7 @@
  * Przyrostowe odświeżanie zadań (`createTaskCache`): po zmianach z `watch` wynik jest taki sam jak
  * pełny odczyt, niezmienione wpisy zostają tymi samymi obiektami, a czytane są tylko zmienione zadania.
  */
-import { inboxId, keyBetween, uuidv7 } from '@taskplanner/core';
+import { inboxId, keyBetween, toTrashedTask, trashPreview, uuidv7 } from '@taskplanner/core';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { openNodeDb } from '../adapters/node.ts';
@@ -10,7 +10,7 @@ import { addChange, changesFromJson, changesToJson, MAX_CHANGED_IDS, type Change
 import { SyncEngine } from '../engine.ts';
 import type { SqlRow, SqlValue } from '../local-db.ts';
 import type { Remote } from '../remote.ts';
-import { createTaskCache, type TaskEntry } from '../task-cache.ts';
+import { createTaskCache, TRASH_SQL, type TaskEntry } from '../task-cache.ts';
 import { fillSample } from './helpers/sample-data.ts';
 
 const USER = '0190a000-0000-7000-8000-0000000000aa';
@@ -101,5 +101,29 @@ describe('zmiany w powiadomieniach', () => {
     expect(changesFromJson(['tasks', 'tags'], changesToJson(changes))).toEqual(new Map([['tasks', null], ['tags', new Set(['a'])]]));
     // Starsza karta-lider bez `ids`.
     expect(changesFromJson(['tasks'], undefined)).toEqual(new Map([['tasks', null]]));
+  });
+});
+
+describe('TRASH_SQL', () => {
+  it('usunięte zadanie z podzadaniem: tagi i nazwa listy, dzieci zostają; starsze niż granica pominięte', async () => {
+    const { engine, ids, inbox } = await setup();
+    const [child, tag, link, comment] = [uuidv7(), uuidv7(), uuidv7(), uuidv7()];
+    await engine.mutateMany([
+      { table: 'tasks', id: child, patch: { list_id: inbox, parent_id: ids[2], title: 'Krok', sort_key: keyBetween(undefined), status: 'todo', priority: 4, kind: 'task', postpone_count: 0 } },
+      { table: 'tags', id: tag, patch: { name: 'pilne', sort_key: 'a' } },
+      { table: 'task_tags', id: link, patch: { task_id: child, tag_id: tag } },
+      { table: 'task_comments', id: comment, patch: { task_id: child, body: 'Uwaga', posted_at: '2026-11-20T09:00:00.000Z' } },
+      { table: 'tasks', id: ids[2]!, patch: { deleted_at: '2026-11-20T10:00:00.000Z' } },
+      { table: 'tasks', id: child, patch: { deleted_at: '2026-11-20T10:00:00.000Z' } },
+    ]);
+    const rows = (await engine.db.all<SqlRow>(TRASH_SQL, ['2026-11-01T00:00:00.000Z'])).map(toTrashedTask);
+    // Przykładowe dane mają własne zadanie w koszu.
+    expect(rows.map((t) => t.id)).toEqual(expect.arrayContaining([ids[2], child]));
+    const row = rows.find((t) => t.id === child)!;
+    expect(row).toMatchObject({ title: 'Krok', parentId: ids[2], tagIds: [tag], listState: 'active', deletedAt: '2026-11-20T10:00:00.000Z' });
+    expect(row.listName).toBeTruthy();
+    expect(trashPreview(rows, child, new Set())?.root.id).toBe(ids[2]);
+    expect(await engine.db.all('select body from task_comments where task_id = ? and deleted_at is null', [child])).toEqual([{ body: 'Uwaga' }]);
+    expect((await engine.db.all(TRASH_SQL, ['2026-11-21T00:00:00.000Z'])).map((r) => r.id)).not.toContain(child);
   });
 });

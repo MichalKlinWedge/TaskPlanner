@@ -145,12 +145,6 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "calendars"
       referencedColumns: ["id"]
-    },{
-      foreignKeyName: "calendar_task_links_task_id_fkey"
-      columns: ["task_id"]
-isOneToOne: false
-      referencedRelation: "tasks"
-      referencedColumns: ["id"]
     }
                   ]
                 },"calendar_task_runs": {
@@ -497,6 +491,40 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"purged_files": {
+                  Row: {
+                    "path": string,"purged_at": string,"purged_by": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "path": string,"purged_at"?: string,"purged_by": string
+                  }
+                  Update: {
+                    "path"?: string,"purged_at"?: string,"purged_by"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"purged_tasks": {
+                  Row: {
+                    "id": string,"purged_at": string,"purged_by": string | null,"row_version": number,"scope_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "id": string,"purged_at"?: string,"purged_by"?: string | null,"row_version": number,"scope_id": string
+                  }
+                  Update: {
+                    "id"?: string,"purged_at"?: string,"purged_by"?: string | null,"row_version"?: number,"scope_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "purged_tasks_scope_id_fkey"
+      columns: ["scope_id"]
+isOneToOne: false
+      referencedRelation: "sync_scopes"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"reminder_deliveries": {
                   Row: {
                     "attempts": number,"claimed_at": string,"device_id": string,"error": string | null,"fire_at": string,"fire_key": string,"id": number,"sent_at": string | null,"status": string,"task_id": string | null,"user_id": string
@@ -647,6 +675,32 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "sync_scopes"
       referencedColumns: ["id"]
+    }
+                  ]
+                },"scope_owner_offers": {
+                  Row: {
+                    "after_role": string | null,"created_at": string,"expires_at": string,"id": string,"offered_by": string,"scope_id": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "after_role"?: string | null,"created_at"?: string,"expires_at"?: string,"id"?: string,"offered_by": string,"scope_id": string,"user_id": string
+                  }
+                  Update: {
+                    "after_role"?: string | null,"created_at"?: string,"expires_at"?: string,"id"?: string,"offered_by"?: string,"scope_id"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "scope_owner_offers_scope_id_offered_by_fkey"
+      columns: ["scope_id","offered_by"]
+isOneToOne: false
+      referencedRelation: "scope_members"
+      referencedColumns: ["scope_id","user_id"]
+    },{
+      foreignKeyName: "scope_owner_offers_scope_id_user_id_fkey"
+      columns: ["scope_id","user_id"]
+isOneToOne: false
+      referencedRelation: "scope_members"
+      referencedColumns: ["scope_id","user_id"]
     }
                   ]
                 },"scope_tags": {
@@ -944,6 +998,9 @@ isOneToOne: false
 "ai_secret_set":
 { Args: { "p_account": string,"p_secret": string }; Returns: undefined
                            },
+"answer_workspace_ownership_offer":
+{ Args: { "p_accept": boolean,"p_id": string }; Returns: string
+                           },
 "attachment_quota_bytes":
 { Args: Record<PropertyKey, never>; Returns: number
                            },
@@ -974,6 +1031,9 @@ isOneToOne: false
 "caller_email":
 { Args: Record<PropertyKey, never>; Returns: string
                            },
+"can_purge_file":
+{ Args: { "p_name": string }; Returns: boolean
+                           },
 "can_read_attachment":
 { Args: { "p_name": string }; Returns: boolean
                            },
@@ -988,6 +1048,9 @@ isOneToOne: false
                            },
 "can_write_scope":
 { Args: { "p_scope": string }; Returns: boolean
+                           },
+"cancel_workspace_ownership_offer":
+{ Args: { "p_id": string }; Returns: boolean
                            },
 "claim_plugin_deliveries":
 { Args: { "p_limit"?: number,"p_per_minute"?: number }; Returns: {
@@ -1049,6 +1112,9 @@ isOneToOne: false
 "decline_scope_invite":
 { Args: { "p_id": string }; Returns: boolean
                            },
+"drop_scope_owner":
+{ Args: { "p_after": string,"p_scope": string,"p_user": string }; Returns: undefined
+                           },
 "has_scope_access":
 { Args: { "p_scope": string }; Returns: boolean
                            },
@@ -1064,6 +1130,9 @@ isOneToOne: false
 "is_app_admin":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },
+"is_primary_owner":
+{ Args: { "p_scope": string }; Returns: boolean
+                           },
 "list_access":
 { Args: { "p_list": string,"p_user"?: string }; Returns: string
                            },
@@ -1075,14 +1144,23 @@ isOneToOne: false
 "list_visible":
 { Args: { "p_list": string }; Returns: boolean
                            },
+"lock_workspace_owner":
+{ Args: { "p_scope": string }; Returns: undefined
+                           },
 "mirror_collaborator":
 { Args: { "p_collaborator": string,"p_scope": string }; Returns: undefined
                            },
 "mirror_tag":
 { Args: { "p_scope": string,"p_tag": string }; Returns: undefined
                            },
+"my_ownership_offers":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
 "my_scope_invites":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"offer_workspace_ownership":
+{ Args: { "p_after"?: string,"p_scope": string,"p_user": string }; Returns: string
                            },
 "plugin_after_send":
 { Args: { "p_add": Json,"p_remove": (string)[],"p_status": string,"p_task": string,"p_user": string }; Returns: string
@@ -1159,6 +1237,9 @@ isOneToOne: false
 "pulled_readonly_tables":
 { Args: Record<PropertyKey, never>; Returns: (string)[]
                            },
+"purge_tasks":
+{ Args: { "p_ids": (string)[] }; Returns: Json
+                           },
 "push_changes":
 { Args: { "p_ops": Json }; Returns: Json
                            },
@@ -1179,6 +1260,9 @@ isOneToOne: false
                            },
 "require_workspace_owner":
 { Args: { "p_scope": string }; Returns: undefined
+                           },
+"resign_workspace_owner":
+{ Args: { "p_after"?: string,"p_scope": string }; Returns: undefined
                            },
 "retry_plugin_delivery":
 { Args: { "p_delivery": string }; Returns: undefined
@@ -1209,6 +1293,9 @@ isOneToOne: false
                            },
 "share_workspace":
 { Args: { "p_email": string,"p_role": string,"p_scope": string }; Returns: Json
+                           },
+"signal_scope":
+{ Args: { "p_scope": string }; Returns: undefined
                            },
 "sync_collaborator_spaces":
 { Args: { "p_collaborator": string }; Returns: undefined

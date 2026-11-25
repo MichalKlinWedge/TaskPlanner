@@ -7,6 +7,7 @@ import { advanceFocus, completionId, FOCUS_IDLE, focusEntryId, focusStepOps, inb
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { READONLY_SCOPE_MESSAGE } from '../engine.ts';
+import { purgeTasks } from '../purge.ts';
 import { createDevice, createUser, waitFor, type Device, type TestUser } from './helpers/devices.ts';
 
 let user: TestUser;
@@ -233,6 +234,49 @@ describe('PoC-1: synchronizacja w obie strony', () => {
     expect(stranger.rejected.map((r) => r.code)).toEqual(['TP003']);
     expect((await serverTask(phone, id))?.title).toBe('Prywatne');
     expect(await row(stranger, 'tasks', id)).toBeUndefined();
+  });
+});
+
+describe('v1.x: definitywne usunięcie z kosza', () => {
+  it('zadanie z podzadaniem i plikiem znika z serwera i obu urządzeń; usunięte osobno zostaje odpięte', async () => {
+    const id = await sharedTask('Na zawsze');
+    const child = await sharedTask('Krok', { parent_id: id });
+    const earlier = await sharedTask('Krok usunięty wcześniej', { parent_id: id });
+    const path = `${user.id}/${id}/plik.txt`;
+    expect((await phone.client.storage.from('attachments').upload(path, new TextEncoder().encode('abc'), { contentType: 'text/plain' })).error).toBeNull();
+    const attachment = uuidv7();
+    await phone.engine.mutate('attachments', attachment, { task_id: id, kind: 'file', name: 'plik.txt', storage_path: path, mime: 'text/plain', size_bytes: 3 });
+    await phone.engine.sync();
+    const purge = (device: Device) => purgeTasks(device.client, [id], { sync: () => device.engine.sync() });
+
+    // Poza koszem — odmowa; przeniesienie do kosza wysyła się przed usunięciem.
+    await expect(purge(phone)).rejects.toMatchObject({ code: 'TP007' });
+    await phone.engine.mutate('tasks', earlier, { deleted_at: '2026-11-20T08:00:00.000Z' });
+    const at = '2026-11-21T08:00:00.000Z';
+    await phone.engine.mutateMany([id, child].map((task) => ({ table: 'tasks' as const, id: task, patch: { deleted_at: at } })));
+    await web.engine.sync();
+    phone.net.online = false;
+    await expect(purge(phone)).rejects.toThrow(/brak sieci/);
+    phone.net.online = true;
+    // Niewysłana zmiana drugiego urządzenia w usuwanym zadaniu przepada razem z nim.
+    await web.engine.sync();
+    await web.engine.mutate('tasks', child, { title: 'Zmienione w koszu' });
+
+    expect(await purge(phone)).toBe(2);
+    await web.engine.sync();
+    await web.engine.sync();
+    for (const device of [phone, web]) {
+      expect(await row(device, 'tasks', id)).toBeUndefined();
+      expect(await row(device, 'tasks', child)).toBeUndefined();
+      expect(await device.engine.get('attachments', attachment)).toBeUndefined();
+      expect(await row(device, 'tasks', earlier)).toMatchObject({ parent_id: null });
+      expect((await row(device, 'tasks', earlier))?.deleted_at).toBeTruthy();
+      expect(await device.engine.pendingCount()).toBe(0);
+    }
+    expect(await serverTask(phone, id)).toBeNull();
+    expect((await phone.client.storage.from('attachments').list(`${user.id}/${id}`)).data).toEqual([]);
+    // Powtórka (np. drugie urządzenie kliknęło to samo) niczego nie psuje.
+    expect(await purge(web)).toBe(0);
   });
 });
 

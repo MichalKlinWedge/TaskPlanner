@@ -7,7 +7,7 @@
  */
 import { z } from 'zod';
 
-import { addDays, localDateAt, weekStart } from './dates.ts';
+import { addDays, localDateAt, parseLocalDateTime, weekStart } from './dates.ts';
 import type { HabitSettings } from './habits.ts';
 import { PRIORITY, TASK_STATUS, VIEW_SECTION } from './labels.ts';
 import { dayLabel, shortDate } from './format.ts';
@@ -103,6 +103,9 @@ const nullsLast = <T extends string>(a: T | null, b: T | null) => (a === b ? 0 :
 /** Kolejność w obrębie dnia (M9): najpierw z godziną według godziny, potem bez godziny według kolejności ręcznej. */
 export const byDayOrder = (a: ViewTask, b: ViewTask): number => nullsLast(a.dueTime, b.dueTime) || byManual(a, b);
 
+/** Zaległe z wcześniejszych dni: od najstarszego, w obrębie dnia według priorytetu. */
+const byOverdue = (a: ViewTask, b: ViewTask): number => byText(a.dueDate!, b.dueDate!) || a.priority - b.priority || byDayOrder(a, b);
+
 export const SortBy = z.enum(['manual', 'priority', 'due', 'created']);
 export type SortBy = z.infer<typeof SortBy>;
 
@@ -116,6 +119,22 @@ const COMPARE: Record<SortBy, (a: ViewTask, b: ViewTask) => number> = {
 
 /** Sortowanie widoku listy (M9): ręczne / priorytet / termin / data dodania. Nie zmienia wejścia. */
 export const sortTasks = (tasks: readonly ViewTask[], by: SortBy): ViewTask[] => [...tasks].sort(COMPARE[by]);
+
+// ── Godzina minęła ───────────────────────────────────────────────────────────────────────────
+
+const toMinutes = (time: LocalTime): number => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+
+/**
+ * Ile minut temu minęła godzina dzisiejszego otwartego zadania (0 = nie minęła). `now` — zegar ścienny
+ * `RRRR-MM-DDTGG:MM` (`localDateTimeAt`). Zadanie z czasem trwania jest po czasie od końca bloku:
+ * 12:00 na godzinę o 12:30 jeszcze trwa. Wcześniejsze dni wyróżnia sama data („Zaległe”).
+ */
+export function minutesLate(task: Pick<ViewTask, 'kind' | 'status' | 'dueDate' | 'dueTime' | 'durationMin'>, now: string): number {
+  if (task.kind !== 'task' || !task.dueTime || !isOpen(task)) return 0;
+  const { date, time } = parseLocalDateTime(now);
+  if (task.dueDate !== date) return 0;
+  return Math.max(0, toMinutes(time) - toMinutes(task.dueTime) - (task.durationMin ?? 0));
+}
 
 // ── Inbox i Dziś ─────────────────────────────────────────────────────────────────────────────
 
@@ -165,11 +184,36 @@ export function selectToday(tasks: readonly ViewTask[], ctx: ViewContext, { comp
     else if (t.dueDate === today) view.today.push(t);
     else if (t.startDate && t.startDate <= today) view.ongoing.push(t);
   }
-  view.overdue.sort((a, b) => byText(a.dueDate!, b.dueDate!) || a.priority - b.priority || byDayOrder(a, b));
+  view.overdue.sort(byOverdue);
   view.today.sort(byDayOrder);
   view.ongoing.sort((a, b) => byText(a.dueDate!, b.dueDate!) || byManual(a, b));
   view.habits.sort(byDayOrder);
   view.done.sort((a, b) => byText(b.completedAt ?? '', a.completedAt ?? ''));
+  return view;
+}
+
+// ── Zaległe ──────────────────────────────────────────────────────────────────────────────────
+
+export interface OverdueView {
+  /** Termin dziś, a godzina minęła (`minutesLate`) — według godziny. */
+  today: ViewTask[];
+  /** `due_date` < dziś, od najstarszego. */
+  earlier: ViewTask[];
+}
+
+/**
+ * „Zaległe”: otwarte zadania po terminie — z wcześniejszych dni i dzisiejsze, których godzina minęła.
+ * `now` — zegar ścienny jak w `minutesLate`. Dzisiejsze bez godziny czekają do końca dnia; nawyki odpadają.
+ */
+export function selectOverdue(tasks: readonly ViewTask[], ctx: ViewContext, now: string): OverdueView {
+  const view: OverdueView = { today: [], earlier: [] };
+  for (const t of tasks) {
+    if (!t.dueDate || t.dueDate > ctx.today || t.kind !== 'task' || !isOpen(t) || !inWorkspace(ctx)(t)) continue;
+    if (t.dueDate < ctx.today) view.earlier.push(t);
+    else if (minutesLate(t, now) > 0) view.today.push(t);
+  }
+  view.today.sort(byDayOrder);
+  view.earlier.sort(byOverdue);
   return view;
 }
 

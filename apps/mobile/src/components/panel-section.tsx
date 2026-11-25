@@ -5,13 +5,20 @@
  * Zwinięta sekcja nie renderuje treści.
  */
 import { TASK_SECTION_ICON } from '@taskplanner/core';
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
 import { usePalette } from '@/components/ui';
 import { useView } from '@/lib/app-data';
 import { mutate } from '@/lib/sync';
+
+/**
+ * Sekcje tylko do odczytu (przestrzeń / lista do podglądu, zadanie w koszu): treść wyszarzona i bez dotyku (przewijanie
+ * działa — gesty przechodzą do `ScrollView`), przyciski nagłówka ukryte; zwijanie i rozwijanie działa.
+ */
+const LockedContext = createContext(false);
+export const LockedSections = LockedContext.Provider;
 
 /** Czy sekcja jest zwinięta + przełącznik (zapis do profilu). */
 export function useSectionCollapsed(id: string, defaultCollapsed = false): [boolean, () => void] {
@@ -50,6 +57,7 @@ export function PanelSection({
 }) {
   const p = usePalette();
   const tint = useHeadTint();
+  const locked = useContext(LockedContext);
   const [collapsed, toggle] = useSectionCollapsed(id, defaultCollapsed);
   return (
     <View style={[styles.card, { backgroundColor: p.card, borderColor: p.border }]}>
@@ -73,9 +81,13 @@ export function PanelSection({
           </Text>
           {count !== undefined && count !== '' ? <Text style={{ color: p.muted, fontSize: 12 }}>· {count}</Text> : null}
         </Pressable>
-        {right ? <View style={styles.right}>{right}</View> : null}
+        {right && !locked ? <View style={styles.right}>{right}</View> : null}
       </View>
-      {collapsed ? null : <View style={styles.body}>{children}</View>}
+      {collapsed ? null : (
+        <View style={[styles.body, locked && styles.locked]} pointerEvents={locked ? 'none' : 'auto'} accessibilityState={locked ? { disabled: true } : undefined}>
+          {children}
+        </View>
+      )}
     </View>
   );
 }
@@ -89,4 +101,5 @@ const styles = StyleSheet.create({
   title: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5, opacity: 0.8, flexShrink: 1 },
   right: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   body: { padding: 12, gap: 8 },
+  locked: { opacity: 0.7 },
 });

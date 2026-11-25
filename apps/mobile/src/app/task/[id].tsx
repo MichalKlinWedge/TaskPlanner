@@ -59,13 +59,16 @@ import {
   tagsForWorkspace,
   taskTagId,
   taskTagOps,
-  toggleMarkdownCheckbox,
+  trashListLabel,
+  trashPreview,
   uuidv7,
   type Dependency,
   type LocalDate,
   type Recurrence,
   type TaskLink,
   type TaskStatus,
+  type TrashedTask,
+  type TrashPreview,
   type ViewTask,
 } from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
@@ -75,9 +78,10 @@ import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInpu
 import { confirm, useTaskActions } from '@/components/actions';
 import { BreakdownField } from '@/components/ai-breakdown';
 import { AttachmentsField } from '@/components/attachments-field';
-import { MarkdownView } from '@/components/markdown-view';
-import { PanelSection } from '@/components/panel-section';
-import { pickDate, pickOption, pickTime } from '@/components/pickers';
+import { DescriptionField } from '@/components/description-field';
+import { LockedSections, PanelSection } from '@/components/panel-section';
+import { PurgeButton } from '@/components/purge-button';
+import { pickAmount, pickDate, pickOption, pickTime } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
 import { RecurrenceEditor } from '@/components/recurrence-editor';
 import { pickList, pickPriority } from '@/components/task-menus';
@@ -90,26 +94,22 @@ import { useLocalQuery } from '@/lib/local-query';
 import { useSendableRules } from '@/lib/plugins';
 import { rememberRecent } from '@/lib/recent';
 import { permissionState, requestNotificationPermission } from '@/lib/reminders';
+import { useTrash } from '@/lib/trash';
 
 const STATUSES = Object.keys(TASK_STATUS) as TaskStatus[];
 const DURATIONS = [5, 10, 15, 30, 45, 60, 90, 120, 180, 240];
-/** Odstęp zależności w dniach (koniec poprzednika → początek następnika); inne wartości ustawia oś czasu na webie. */
+/** Odstęp zależności w dniach (koniec poprzednika → początek następnika); inne — „Inna…”. */
 const LAGS = [-2, -1, 0, 1, 2, 3, 5, 7, 10, 14, 21, 30];
 
 /** Wynik arkusza wyboru → akcja (bez zwracania wartości do `onPress`). */
 const then = <T,>(choice: Promise<T>, act: (value: T) => unknown) => void choice.then((value) => void act(value));
 
 /**
- * Część ekranu, którą da się zmieniać. W przestrzeni udostępnionej do podglądu wyszarzona i bez
- * dotyku (przewijanie działa — gesty przechodzą do `ScrollView`); zapis i tak odrzuciłby silnik.
+ * Część ekranu, którą da się zmieniać. W przestrzeni udostępnionej do podglądu i w koszu treść sekcji jest
+ * wyszarzona i bez dotyku (`LockedSections`); wiersz tytułu blokuje się osobno.
  */
 function Editable({ readOnly, children }: { readOnly: boolean; children: ReactNode }) {
-  if (!readOnly) return <>{children}</>;
-  return (
-    <View pointerEvents="none" accessibilityState={{ disabled: true }} style={{ opacity: 0.5, gap: 12 }}>
-      {children}
-    </View>
-  );
+  return <LockedSections value={readOnly}>{children}</LockedSections>;
 }
 
 /** Zwijana karta sekcji; klucz = tytuł bez licznika („Podzadania · 2/3” → „Podzadania”), ten sam co na webie. */
@@ -153,31 +153,39 @@ function Pill({ label, onPress, color }: { label: string; onPress: () => void; c
 export default function TaskScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const p = usePalette();
-  const { data, today } = useView();
+  const { data: live, today } = useView();
   const actions = useTaskActions();
   const { run, toggle } = actions;
-  const task = data.tasks.find((t) => t.id === id);
+  const liveTask = live.tasks.find((t) => t.id === id);
+  // Zadanie w koszu: ten sam ekran tylko do odczytu, z przywróceniem.
+  const trashed = useTrash(live.loaded && !liveTask);
+  const trash = useMemo(() => (liveTask || !trashed ? null : trashPreview(trashed, id, new Set(live.tasks.map((t) => t.id)))), [liveTask, trashed, id, live.tasks]);
+  // Zadania z kosza obok żywych: sekcje (zależności, zadanie nadrzędne) czytają je z `data.tasks`.
+  const data = useMemo(() => (trash && trashed ? { ...live, tasks: [...live.tasks, ...trashed] } : live), [live, trash, trashed]);
+  const task = liveTask ?? trash?.task;
   useEffect(() => rememberRecent(id), [id]);
 
   if (!task) {
     return (
       <View style={{ flex: 1, padding: 16, backgroundColor: p.bg }}>
         <Stack.Screen options={{ title: 'Zadanie' }} />
-        <Text style={{ color: p.muted }}>{data.loaded ? 'Tego zadania już nie ma (usunięte albo w zarchiwizowanej liście).' : 'Wczytywanie…'}</Text>
+        <Text style={{ color: p.muted }}>{live.loaded && trashed ? 'Tego zadania już nie ma (usunięte na stałe, nie ma go na tym urządzeniu albo jest w zarchiwizowanej liście).' : 'Wczytywanie…'}</Text>
       </View>
     );
   }
 
   const update = (patch: Record<string, unknown>, toast?: string) => run([{ table: 'tasks', id: task.id, patch }], toast ? { text: toast } : undefined);
   const parent = task.parentId ? data.tasks.find((t) => t.id === task.parentId) : undefined;
-  const children = data.tasks.filter((t) => t.parentId === task.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
+  const children = trash ? trash.children : data.tasks.filter((t) => t.parentId === task.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
   const closed = task.status === 'done' || task.status === 'cancelled';
   const color = PRIORITY[task.priority].color;
   // Własne kolumny tablicy listy zadania (tryb „Własne”) — tylko zadania najwyższego poziomu.
   const boardDefs = data.lists.find((l) => l.id === task.listId)?.boardColumns ?? [];
   const boardColumn = taskBoardColumn(task, boardDefs);
   const scopeReadOnly = !canEditScope(data.workspaces.find((w) => w.id === task.workspaceId)?.role);
-  const readOnly = !listEditable(data, task.listId);
+  const listReadOnly = !listEditable(data, task.listId);
+  // Zadanie w koszu: wszystko zablokowane, da się je tylko przywrócić.
+  const readOnly = listReadOnly || !!trash;
 
   const remove = () => {
     const ops = deleteTaskOps(data.tasks, task.id, new Date());
@@ -187,7 +195,7 @@ export default function TaskScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: p.bg }} behavior="height">
-      <Stack.Screen options={{ title: listLabel(data, task.listId) || 'Zadanie' }} />
+      <Stack.Screen options={{ title: trash ? 'Zadanie w koszu' : listLabel(data, task.listId) || 'Zadanie' }} />
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {parent ? (
           <Pressable accessibilityRole="link" onPress={() => router.replace({ pathname: '/task/[id]', params: { id: parent.id } })}>
@@ -197,7 +205,9 @@ export default function TaskScreen() {
           </Pressable>
         ) : null}
 
-        {readOnly ? (
+        {trash ? (
+          <TrashBar preview={trash} readOnly={listReadOnly} today={today} timeZone={data.settings.timeZone} />
+        ) : readOnly ? (
           <Text style={[styles.readOnly, { color: p.muted, backgroundColor: p.selected }]}>
             {scopeReadOnly
               ? `Przestrzeń „${data.workspaces.find((w) => w.id === task.workspaceId)?.name ?? ''}” jest udostępniona Ci tylko do podglądu — zadania nie da się zmienić.`
@@ -206,7 +216,7 @@ export default function TaskScreen() {
         ) : null}
 
         <Editable readOnly={readOnly}>
-          <View style={styles.titleRow}>
+          <View style={[styles.titleRow, readOnly && { opacity: 0.7 }]} pointerEvents={readOnly ? 'none' : 'auto'}>
             <Pressable
               accessibilityRole="checkbox"
               accessibilityState={{ checked: closed }}
@@ -235,7 +245,7 @@ export default function TaskScreen() {
             <Cell label="Priorytet" value={PRIORITY[task.priority].label} tone={color} onPress={() => then(pickPriority('Priorytet', task.priority), (v) => v && v !== task.priority && update({ priority: v }))} />
             <Cell
               label="Lista"
-              value={listLabel(data, task.listId)}
+              value={trash ? trashListLabel(trash.task, listLabel(data, task.listId)) : listLabel(data, task.listId)}
               onPress={() =>
                 then(pickList(data, 'Przenieś do listy', task.listId), (listId) => listId && listId !== task.listId && run(moveTaskOps(data.tasks, task.id, listId), { text: `Przeniesiono do ${listLabel(data, listId)}` }))
               }
@@ -244,10 +254,10 @@ export default function TaskScreen() {
               label="Czas"
               value={task.durationMin ? formatMinutes(task.durationMin) : '—'}
               onPress={() =>
-                then(pickOption<number>('Czas trwania', [
-                  ...DURATIONS.map((m) => ({ label: formatMinutes(m), value: m, selected: m === task.durationMin })),
-                  { label: 'Bez czasu', value: 0, tone: 'bad' as const },
-                ]), (m) => m !== undefined && update({ duration_min: m || null }))
+                then(pickAmount('Czas trwania', [
+                  { label: 'Bez czasu', value: 0, tone: 'bad' },
+                  ...[...new Set([...DURATIONS, ...(task.durationMin ? [task.durationMin] : [])])].sort((a, b) => a - b).map((m) => ({ label: formatMinutes(m), value: m, selected: m === task.durationMin })),
+                ], { value: task.durationMin, min: 1, max: 10_080, unit: 'min' }), (m) => m !== undefined && update({ duration_min: m || null }))
               }
             />
             <Cell
@@ -295,7 +305,7 @@ export default function TaskScreen() {
           </Block>
 
           <Block title="Opis">
-            <DescriptionField taskId={task.id} />
+            <DescriptionField key={task.id} taskId={task.id} />
           </Block>
 
           <PeopleField key={`people:${task.id}`} task={task} data={data} />
@@ -305,9 +315,7 @@ export default function TaskScreen() {
 
         <Block title={`Podzadania${children.length ? ` · ${children.filter((c) => c.status === 'done').length}/${children.filter((c) => c.status !== 'cancelled').length}` : ''}`}>
           <View style={{ marginHorizontal: -12 }}>
-            {children.map((c) => (
-              <TaskRow key={c.id} task={c} today={today} />
-            ))}
+            {children.map((c) => (trash ? <TrashedRow key={c.id} task={c} today={today} /> : <TaskRow key={c.id} task={c} today={today} />))}
           </View>
           {readOnly ? null : canAddSubtask(data.tasks, task.id) ? (
             <>
@@ -337,11 +345,57 @@ export default function TaskScreen() {
           <Text style={{ color: p.muted, fontSize: 12, flex: 1 }}>
             Dodano {task.createdAt.startsWith('1970') ? 'teraz (jeszcze nie wysłane)' : shortDate(task.createdAt.slice(0, 10))}
           </Text>
-          <SendToButton task={task} userId={data.userId} />
-          <Button kind="danger" title="Przenieś do kosza" disabled={readOnly} onPress={remove} />
+          {trash ? null : (
+            <>
+              <SendToButton task={task} userId={data.userId} />
+              <Button kind="danger" title="Przenieś do kosza" disabled={readOnly} onPress={remove} />
+            </>
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+/** Pasek zadania w koszu: od kiedy, z czym usunięte i „Przywróć”. */
+function TrashBar({ preview, readOnly, today, timeZone }: { preview: TrashPreview<TrashedTask>; readOnly: boolean; today: LocalDate; timeZone?: string }) {
+  const p = usePalette();
+  const { run } = useTaskActions();
+  const { task, root, parent, inside, restore, restoreAlone } = preview;
+  return (
+    <View style={[styles.trash, { backgroundColor: p.selected }]}>
+      <Text style={{ color: p.muted, fontSize: 13 }}>
+        🗑️ W koszu od {commentTime(task.deletedAt, today, timeZone)}
+        {parent ? ` (usunięte razem z „${root.title}”)` : ''} — tylko podgląd. Żeby coś zmienić, przywróć zadanie.
+      </Text>
+      <Button title={parent ? `Przywróć całość („${root.title}”)` : 'Przywróć'} disabled={readOnly} onPress={() => void run(restore, { text: `Przywrócono „${root.title}”` })} />
+      {restoreAlone ? (
+        <Button kind="secondary" title="Przywróć tylko to" disabled={readOnly} onPress={() => void run(restoreAlone, { text: `Przywrócono „${task.title}” jako zadanie główne` })} />
+      ) : null}
+      <PurgeButton task={task} inside={inside} onPurged={() => (router.canGoBack() ? router.back() : router.replace('/trash'))} />
+      {readOnly ? <Text style={{ color: p.muted, fontSize: 12 }}>Lista jest udostępniona Ci tylko do podglądu — zadania nie da się przywrócić ani usunąć.</Text> : null}
+    </View>
+  );
+}
+
+/** Podzadanie w koszu: bez odhaczania i gestów `TaskRow`, dotknięcie otwiera jego podgląd. */
+function TrashedRow({ task, today }: { task: ViewTask; today: LocalDate }) {
+  const p = usePalette();
+  const closed = !isOpen(task);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={task.title}
+      accessibilityHint="Otwiera szczegóły; tylko podgląd"
+      onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}
+      style={({ pressed }) => [styles.trashedRow, { borderColor: p.border, backgroundColor: pressed ? p.border : undefined }]}
+    >
+      <Text style={{ color: closed ? p.muted : p.fg, fontSize: 15, textDecorationLine: closed ? 'line-through' : 'none' }}>
+        {closed ? '✓ ' : ''}
+        {task.title}
+      </Text>
+      {task.dueDate ? <Text style={{ color: p.muted, fontSize: 12 }}>{relativeDay(task.dueDate, today)}</Text> : null}
+    </Pressable>
   );
 }
 
@@ -441,7 +495,7 @@ function TimeField({ task }: { task: ViewTask }) {
   const spent = spentMinutes(focus.entries, task.id);
   const estimate = task.durationMin;
   const add = () =>
-    void pickOption<number>('Dodaj czas pracy (kończy się teraz)', [5, 10, 15, 25, 30, 45, 60, 90, 120].map((m) => ({ label: formatMinutes(m), value: m }))).then((min) => {
+    void pickAmount('Dodaj czas pracy (kończy się teraz)', [5, 10, 15, 25, 30, 45, 60, 90, 120].map((m) => ({ label: formatMinutes(m), value: m })), { value: null, min: 1, max: 1440, unit: 'min' }).then((min) => {
       if (!min) return;
       const ops = manualEntryOps(task.id, min, new Date());
       void run(ops, { text: `Dodano ${formatMinutes(min)} pracy`, undo: ops.map((op) => ({ ...op, patch: { deleted_at: new Date().toISOString() } })) });
@@ -890,9 +944,10 @@ function DependenciesField({ task, data }: { task: ViewTask; data: AppData }) {
   const lagLabel = (days: number) => (days ? `${days > 0 ? '+' : ''}${plural(days, ['dzień', 'dni', 'dni'])}` : 'bez odstępu');
   const pickLag = (d: Dependency) =>
     then(
-      pickOption<number>(
+      pickAmount(
         'Odstęp: koniec poprzednika → początek następnika',
         [...new Set([...LAGS, d.lagDays])].sort((a, b) => a - b).map((n) => ({ label: lagLabel(n), value: n, selected: n === d.lagDays })),
+        { value: d.lagDays, min: -365, max: 365, unit: 'dni' },
       ),
       (lag) => lag !== undefined && clampLag(lag) !== d.lagDays && run([{ table: 'task_dependencies', id: d.id, patch: { lag_days: clampLag(lag) } }]),
     );
@@ -978,103 +1033,12 @@ function DependenciesField({ task, data }: { task: ViewTask; data: AppData }) {
   );
 }
 
-type Selection = { start: number; end: number };
-
-/** Opis: podgląd Markdown (dotknięcie „Edytuj”) albo pole tekstowe z paskiem formatowania. */
-function DescriptionField({ taskId }: { taskId: string }) {
-  const p = usePalette();
-  const { run } = useTaskActions();
-  const saved = useLocalQuery(['tasks'], async (engine) => ((await engine.db.all<{ d: string | null }>('select description_md as d from tasks where id = ?', [taskId]))[0]?.d ?? ''), [taskId]);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [selection, setSelection] = useState<Selection>({ start: 0, end: 0 });
-  const save = (value: string) => {
-    const md = value.trim();
-    if (md !== (saved ?? '').trim()) void run([{ table: 'tasks', id: taskId, patch: { description_md: md || null } }]);
-  };
-  const wrap = (mark: string) => {
-    const { start, end } = selection;
-    const inner = draft.slice(start, end) || 'tekst';
-    setDraft(draft.slice(0, start) + mark + inner + mark + draft.slice(end));
-  };
-  const linePrefix = (prefix: string) => {
-    const at = draft.lastIndexOf('\n', Math.max(0, selection.start - 1)) + 1;
-    setDraft(draft.slice(0, at) + prefix + draft.slice(at));
-  };
-
-  if (saved === undefined) return null;
-  if (!editing) {
-    return (
-      <View style={{ gap: 8 }}>
-        {saved.trim() ? (
-          <MarkdownView source={saved} onToggleCheckbox={(line) => save(toggleMarkdownCheckbox(saved, line))} />
-        ) : (
-          <Text style={{ color: p.muted, fontSize: 14 }}>Brak opisu.</Text>
-        )}
-        <View style={styles.pills}>
-          <Pill
-            label={saved.trim() ? 'Edytuj opis' : '+ Dodaj opis'}
-            onPress={() => {
-              // Zmiana z innego urządzenia nie przerywa pisania: szkic tylko przy wejściu w edycję.
-              setDraft(saved);
-              setEditing(true);
-            }}
-          />
-        </View>
-      </View>
-    );
-  }
-  return (
-    <View style={{ gap: 8 }}>
-      <View style={styles.pills}>
-        <Pill label="B" onPress={() => wrap('**')} />
-        <Pill label="I" onPress={() => wrap('*')} />
-        <Pill label="• lista" onPress={() => linePrefix('- ')} />
-        <Pill label="☐ pole" onPress={() => linePrefix('- [ ] ')} />
-        <Pill label="# nagłówek" onPress={() => linePrefix('## ')} />
-      </View>
-      <TextInput
-        autoFocus
-        multiline
-        value={draft}
-        onChangeText={setDraft}
-        onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
-        placeholder="Markdown: **pogrubienie**, *kursywa*, - lista, - [ ] pole, [link](https://…)"
-        placeholderTextColor={p.muted}
-        textAlignVertical="top"
-        style={[styles.input, styles.description, { color: p.fg, borderColor: p.border }]}
-      />
-      <View style={styles.pills}>
-        <Pill
-          label="Gotowe"
-          color={p.accent}
-          onPress={() => {
-            save(draft);
-            setEditing(false);
-          }}
-        />
-        <Pill
-          label="Anuluj"
-          onPress={() => {
-            setDraft(saved);
-            setEditing(false);
-          }}
-        />
-      </View>
-      {draft.trim() ? (
-        <View style={[styles.previewBox, { borderColor: p.border }]}>
-          <Text style={{ color: p.muted, fontSize: 11, marginBottom: 4 }}>PODGLĄD</Text>
-          <MarkdownView source={draft} />
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   body: { padding: 12, gap: 12, paddingBottom: 60 },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   readOnly: { fontSize: 13, borderRadius: 8, padding: 8 },
+  trash: { borderRadius: 8, padding: 10, gap: 8 },
+  trashedRow: { paddingHorizontal: 12, paddingVertical: 9, gap: 2, borderBottomWidth: StyleSheet.hairlineWidth },
   check: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   tick: { color: '#fff', fontSize: 14, fontWeight: '700' },
   title: { flex: 1, fontSize: 20, fontWeight: '600', paddingVertical: 4 },
@@ -1084,10 +1048,8 @@ const styles = StyleSheet.create({
   pill: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 11, paddingVertical: 5 },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 15 },
   tagInput: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 3, fontSize: 13, minWidth: 90 },
-  description: { minHeight: 140 },
   comment: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8, gap: 6 },
   commentInput: { minHeight: 64 },
-  previewBox: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 10 },
   reminder: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dependency: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   candidate: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9 },

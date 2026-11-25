@@ -16,9 +16,10 @@ import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type Re
 import { listEditable, type AppData } from "@/lib/app-data";
 
 import { useAppEnv } from "./app-env";
+import { PeopleBadges } from "./people-badges";
 import { QuickAdd } from "./quick-add";
 import { TAG_CHIP, tagChipStyle } from "./tag-chip";
-import { useTaskActions } from "./task-item";
+import { DoneCircle, useTaskActions } from "./task-item";
 import { Button, Input, Select } from "./ui";
 
 /** Ile kart kolumna rysuje od razu (PoC-5: ~400 sortowalnych kart = 150–184 ms na starcie przeciągania). */
@@ -58,8 +59,9 @@ interface ColumnEdit {
   onRemove: () => void;
 }
 
-const Card = memo(function Card({ task, column, today, tags, listName, progress }: { task: ViewTask; column: string; today: LocalDate; tags: readonly { id: string; name: string; color: string | null }[]; listName?: string; progress?: { done: number; total: number } }) {
-  const { openTask, select, selectedIds } = useAppEnv();
+const Card = memo(function Card({ task, column, by, today, tags, listName, progress }: { task: ViewTask; column: string; by: BoardBy; today: LocalDate; tags: readonly { id: string; name: string; color: string | null }[]; listName?: string; progress?: { done: number; total: number } }) {
+  const { openTask, select, selectedIds, data } = useAppEnv();
+  const { toggle } = useTaskActions();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cardId(column, task.id), data: { taskId: task.id, column } satisfies CardData });
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
   const overdue = isOpen(task) && task.dueDate !== null && task.dueDate < today;
@@ -77,10 +79,18 @@ const Card = memo(function Card({ task, column, today, tags, listName, progress 
       }}
       className={`cursor-grab rounded-md border border-l-4 border-[var(--line)] bg-[var(--surface)] px-2.5 py-2 text-sm shadow-sm ${isDragging ? "opacity-40" : ""} ${selectedIds.has(task.id) ? "ring-2 ring-[var(--accent)]" : ""}`}
     >
-      <div className={`break-words ${task.status === "done" ? "text-[var(--muted)] line-through" : ""}`}>{task.title}</div>
+      <div className="flex items-start gap-2">
+        {/* Spacja / Enter na kółku odhacza, a nie podnosi karty. */}
+        <span className="contents" onKeyDown={(e) => e.stopPropagation()}>
+          <DoneCircle task={task} closed={!isOpen(task)} readOnly={!listEditable(data, task.listId)} onToggle={() => void toggle(task)} className="mt-px" />
+        </span>
+        <div className={`min-w-0 flex-1 break-words ${task.status === "done" ? "text-[var(--muted)] line-through" : ""}`}>{task.title}</div>
+        <PeopleBadges task={task} className="mt-px" />
+      </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[var(--muted)]">
         {task.dueDate ? <span className={overdue ? "font-medium text-[var(--danger)]" : ""}>{relativeDay(task.dueDate, today)}{task.dueTime ? ` ${task.dueTime}` : ""}</span> : null}
         {task.recurrence ? <span title={describeRecurrence(task.recurrence)}>↻</span> : null}
+        {by !== "status" && (task.status === "in_progress" || task.status === "waiting") ? <span>{task.status === "in_progress" ? "w trakcie" : "oczekuje"}</span> : null}
         {progress && progress.total ? <span title="Podzadania">☑ {progress.done}/{progress.total}</span> : null}
         {tags.map((tag) => (
           <span key={tag.id} className={`px-1.5 ${TAG_CHIP}`} style={tagChipStyle(tag.color)}>
@@ -229,7 +239,7 @@ function Column({
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <ul className="flex min-h-12 flex-col gap-1.5">
           {visible.map((t) => (
-            <Card key={t.id} task={t} column={column.key} today={today} tags={t.tagIds.flatMap((id) => tagById.get(id) ?? [])} listName={showList ? listName.get(t.listId) : undefined} progress={children.get(t.id)} />
+            <Card key={t.id} task={t} column={column.key} by={by} today={today} tags={t.tagIds.flatMap((id) => tagById.get(id) ?? [])} listName={showList ? listName.get(t.listId) : undefined} progress={children.get(t.id)} />
           ))}
         </ul>
       </SortableContext>

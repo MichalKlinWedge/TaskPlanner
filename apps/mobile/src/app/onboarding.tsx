@@ -90,8 +90,8 @@ function Form({ profile }: { profile: Profile | null }) {
       <Section title="Tydzień">
         <P muted>Pierwszy dzień tygodnia</P>
         <Row>
-          {DAYS.map((d) => (
-            <Chip key={d} label={WEEKDAY[d].short} selected={firstDay === d} onPress={() => setFirstDay(d)} />
+          {([1, 7] as const).map((d) => (
+            <Chip key={d} label={WEEKDAY[d].label} selected={firstDay === d} onPress={() => setFirstDay(d)} />
           ))}
         </Row>
         <P muted>Dni pracy</P>

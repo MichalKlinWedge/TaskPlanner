@@ -2,6 +2,7 @@
  * Etykiety wartości ze schematów (SPECYFIKACJA §7.9). Aplikacje nie definiują własnych.
  */
 import type { AiAccountStatus, AiProvider } from './ai.ts';
+import type { ReminderMode } from './alarms.ts';
 import type { BackupTable } from './backup.ts';
 import type { UnplacedReason } from './day-planner.ts';
 import type { FocusPhase } from './focus.ts';
@@ -152,6 +153,8 @@ export const QUICK_ADD_KIND: Record<'date' | 'time' | 'duration' | 'priority' | 
 export const VIEW_SECTION = {
   overdue: 'Zaległe',
   today: 'Dziś',
+  lateToday: 'Dziś, godzina minęła',
+  earlier: 'Wcześniejsze dni',
   ongoing: 'Trwające',
   habits: 'Cykliczne na dziś',
   done: 'Ukończone',
@@ -211,7 +214,7 @@ export const LOGIN_INVITE_NOTE = 'Dostęp na zaproszenie — zaloguj się adrese
 
 /** Ustawienia → „Usuń konto” (web i telefon, Edge Function `account-delete`). */
 export const ACCOUNT_DELETE_NOTE =
-  'Usuwa konto i wszystkie dane na serwerze: zadania, listy, zadania cykliczne, załączniki i połączone kalendarze. Przestrzenie, które udostępniasz innym, znikną także u nich; z cudzych przestrzeni po prostu wychodzisz. Tego nie da się cofnąć — jeśli chcesz zachować dane, najpierw zrób kopię zapasową. Wpisz adres e-mail konta, żeby potwierdzić.';
+  'Usuwa konto i wszystkie dane na serwerze: zadania, listy, zadania cykliczne, załączniki i połączone kalendarze. Przestrzenie, które udostępniasz innym, znikną także u nich, chyba że mają jeszcze innego właściciela — wtedy przejdą na niego; z cudzych przestrzeni po prostu wychodzisz. Tego nie da się cofnąć — jeśli chcesz zachować dane, najpierw zrób kopię zapasową. Wpisz adres e-mail konta, żeby potwierdzić.';
 
 export const AUTH_ERROR: Record<string, string> = {
   // GoTrue zwraca `otp_expired` także dla błędnie wpisanego kodu („Token has expired or is invalid”).
@@ -252,6 +255,12 @@ export const FOCUS_PHASE: Record<FocusPhase, string> = {
   ready: 'Przerwa skończona',
   stopwatch: 'Stoper',
 };
+
+/** Sposób przypominania na telefonie (ustawienie urządzenia). */
+export const REMINDER_MODE = {
+  banner: 'Powiadomienie na belce',
+  alarm: 'Alarm na cały ekran',
+} as const satisfies Record<ReminderMode, string>;
 
 /** Decyzje przeglądu (M16) z klawiszami 1–6 na webie. */
 export const REVIEW_ACTION = {
@@ -382,7 +391,7 @@ export const AI_ACCOUNT_STATUS: Record<AiAccountStatus, { label: string; tone: '
 
 /** Wstęp karty „Asystent AI”. */
 export const AI_INTRO =
-  'Funkcje ✨ („Rozbij na kroki” przy podzadaniach, „Ułóż z AI” w „Planie dnia” i „Opisz tydzień” w przeglądzie tygodnia) korzystają z Twojego własnego klucza AI — '
+  'Funkcje ✨ („Rozbij na kroki” przy podzadaniach, „Ułóż z AI” w „Planie dnia”, „Opisz tydzień” w przeglądzie tygodnia i „Streść” przy dodawaniu strony z zakładki) korzystają z Twojego własnego klucza AI — '
   + 'aplikacja nie ma wspólnego klucza, a koszt i limity zapytań są po stronie Twojego projektu u dostawcy. Bez podpiętego konta '
   + 'wszystko inne działa jak dotąd.';
 
@@ -391,7 +400,7 @@ export const AI_BILLING_STATEMENT = 'Klucz pochodzi z projektu Google z włączo
 
 /** Dokąd idą dane przy funkcjach AI. */
 export const aiDataNote = (provider: AiProvider): string =>
-  `Przy użyciu funkcji ✨ dane potrzebnych zadań (tytuły, skrócone opisy, daty, czasy; osoby tylko skrótami, bez e-maili) idą do ${AI_PROVIDER[provider].company}. `
+  `Przy użyciu funkcji ✨ dane potrzebnych zadań (tytuły, skrócone opisy, daty, czasy; osoby tylko skrótami, bez e-maili), a przy „Streść” wycinek strony, idą do ${AI_PROVIDER[provider].company}. `
   + 'Klucz jest przechowywany zaszyfrowany na serwerze (Supabase Vault) i nigdy nie trafia do przeglądarki ani telefonu.';
 
 /** Zmiany konta AI wymagają serwera. */
@@ -399,6 +408,29 @@ export const AI_OFFLINE_NOTE = 'Konto AI zmienia się tylko online.';
 
 /** Przycisk ✨ bez sieci. */
 export const AI_NEEDS_NETWORK = 'Wymaga połączenia z internetem.';
+
+/** Opis z wycinka strony w oknie szybkiego dodawania (zakładka „+ Task Planner”). */
+export const WEB_CLIP = {
+  description: 'Opis',
+  placeholder: 'Opis zadania (Markdown, opcjonalnie)',
+  quoted: 'Zaznaczony fragment strony jako cytat — popraw go albo usuń przed dodaniem.',
+  page: 'Na stronie nic nie było zaznaczone. Zaznacz fragment przed kliknięciem zakładki, żeby trafił do opisu jako cytat.',
+  add: 'Dodaj zadanie',
+} as const;
+
+/** „✨ Streść” w oknie szybkiego dodawania (wycinek strony z zakładki). */
+export const AI_CLIP = {
+  button: '✨ Streść',
+  again: '✨ Streść ponownie',
+  busy: 'AI streszcza stronę…',
+  undo: 'Cofnij streszczenie',
+  proposal: 'Propozycja tytułu:',
+  use: 'Użyj',
+} as const;
+
+/** Dokąd idą dane przy „Streść”. */
+export const aiClipNote = (provider: AiProvider, selected: boolean): string =>
+  `Tytuł i domena strony oraz ${selected ? 'zaznaczony fragment' : 'jej widoczny tekst'} (do 8000 znaków) idą do ${AI_PROVIDER[provider].company} na Twoim kluczu; adresy e-mail są zasłaniane, pełny adres strony nie wychodzi. Wynik tylko wypełnia pola — nic się nie zapisze, dopóki nie dodasz zadania.`;
 
 /** „✨ Rozbij na kroki” (panel zadania na webie, ekran zadania na telefonie). */
 export const AI_BREAKDOWN = {

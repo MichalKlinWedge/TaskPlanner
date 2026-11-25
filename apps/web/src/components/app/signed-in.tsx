@@ -10,18 +10,9 @@ import { closeStore, storeFor, useLocalQuery, useStaleLeader, useStoreStatus } f
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useTheme } from "@/lib/theme";
 
-import { AccountCard } from "./account-card";
-import { AiCard } from "./ai-card";
-import { BackupCard } from "./backup-card";
-import { CalendarsCard } from "./calendars-card";
-import { CaptureCard } from "./capture-card";
-import { ErrorsCard } from "./errors-card";
 import { ProfileForm, type ProfileValues } from "./profile-form";
-import { InvitesCard } from "./invites-card";
-import { PluginsCard } from "./plugins-card";
-import { InstallCard, OfflineCard } from "./pwa-cards";
-import { RemindersCard } from "./reminders-card";
 import { ScopeInvites } from "./sharing";
+import { SettingsScreen } from "./settings-screen";
 import { Shell } from "./shell";
 import { Card, Notice, Splash } from "./ui";
 import { WorkspacesScreen } from "./workspaces-screen";
@@ -90,11 +81,14 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
         store={store}
         userId={userId}
         settings={parseSettings(settings)}
-        manage={<WorkspacesScreen store={store} />}
+        manage={<WorkspacesScreen store={store} email={email} />}
         settingsView={
-          <>
-            <h1 className="mb-4 text-xl font-semibold">Ustawienia</h1>
-            <Card>
+          <SettingsScreen
+            store={store}
+            userId={userId}
+            email={email}
+            timeZone={parseSettings(settings).timeZone}
+            general={
               <ProfileForm
                 key={profile?.settings ?? ""}
                 initial={{ displayName: profile?.display_name ?? null, settings }}
@@ -103,19 +97,8 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
                   await store.mutate("profiles", userId, { display_name: displayName || null, settings: { ...next, onboarded: true } });
                 }}
               />
-            </Card>
-            <RemindersCard store={store} userId={userId} />
-            <CalendarsCard store={store} timeZone={parseSettings(settings).timeZone} />
-            <PluginsCard store={store} userId={userId} />
-            <AiCard store={store} />
-            <BackupCard store={store} userId={userId} timeZone={parseSettings(settings).timeZone} />
-            <CaptureCard />
-            <InstallCard />
-            <ErrorsCard />
-            <OfflineCard />
-            <InvitesCard />
-            <AccountCard email={email} />
-          </>
+            }
+          />
         }
       />
     </div>
@@ -222,7 +205,8 @@ function AppHeader({ store, email, settingsLink }: { store: TabStore; email: str
     }
     if (left > 0 && !window.confirm(`${left} zmian nie zostało jeszcze wysłanych na serwer. Wylogować mimo to? Zostaną w tej przeglądarce do następnego logowania.`)) return;
     closeStore();
-    await supabaseBrowser().auth.signOut();
+    // Tylko ta przeglądarka: domyślny zakres (`global`) kończyłby też sesję na telefonie.
+    await supabaseBrowser().auth.signOut({ scope: "local" });
   };
 
   const label = !online

@@ -51,7 +51,7 @@ export default function UpcomingScreen() {
       sections={sections}
       header={
         <ScreenHeader subtitle="14 dni, dalej tygodniami · przesuń zadanie w lewo, żeby zmienić termin">
-          <FilterBar query={filter} onChange={setFilter} />
+          <FilterBar query={filter} onChange={setFilter} save />
         </ScreenHeader>
       }
       quickAdd={{ listId: inbox, dueDate: today }}

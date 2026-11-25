@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { markdownContinueList, markdownEdit, type MarkdownAction } from '../markdown-edit.ts';
+import { applyMarkdownEdit, markdownContinueList, markdownEdit, markdownNewline, type MarkdownAction } from '../markdown-edit.ts';
 
 /** Tekst ze znacznikami `«` `»` zaznaczenia (albo `‸` kursora) → wynik w tym samym zapisie. */
 function apply(marked: string, action: MarkdownAction): string {
@@ -118,5 +118,27 @@ describe('Markdown: Enter w liście', () => {
     expect(enter('- [ ] ‸')).toBe('‸');
     expect(enter('tekst‸')).toBe('zwykły Enter');
     expect(enter('-‸ a')).toBe('zwykły Enter');
+  });
+});
+
+describe('Markdown: Enter rozpoznany po zmianie tekstu (telefon)', () => {
+  it('nowy wiersz w liście dostaje znacznik, kursor za nim', () => {
+    expect(markdownNewline('- a', '- a\n', 3)).toEqual({ text: '- a\n- ', cursor: 6 });
+    expect(markdownNewline('1. a\nb', '1. a\n\nb', 4)).toEqual({ text: '1. a\n2. \nb', cursor: 8 });
+    expect(markdownNewline('- a\n- ', '- a\n- \n', 6)).toEqual({ text: '- a\n', cursor: 4 });
+  });
+
+  it('nieaktualny kursor — miejsce z porównania tekstów', () => {
+    expect(markdownNewline('- ab', '- a\nb', 0)).toEqual({ text: '- a\n- b', cursor: 6 });
+  });
+
+  it('inna zmiana niż jeden nowy wiersz albo poza listą — null', () => {
+    expect(markdownNewline('- a', '- ab', 3)).toBeNull();
+    expect(markdownNewline('- a', '- a\n\n', 3)).toBeNull();
+    expect(markdownNewline('a', 'a\n', 1)).toBeNull();
+  });
+
+  it('applyMarkdownEdit', () => {
+    expect(applyMarkdownEdit('a b', markdownEdit('a b', 2, 3, 'bold'))).toBe('a **b**');
   });
 });

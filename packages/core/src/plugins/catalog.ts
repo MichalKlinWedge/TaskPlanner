@@ -105,7 +105,7 @@ const GITLAB: PluginDef = {
   description:
     'Zadanie jako issue w projekcie GitLab (gitlab.com albo własny serwer https). Issue jest powiązane z zadaniem: ' +
     'ukończenie i kosz je zamykają, przywrócenie otwiera, zmiana terminu ustawia termin (pole „Termin issue”), tag zmienia etykiety, zmiana odpowiedzialnego — przypisanych, ' +
-    'komentarz dodaje notatkę, ponowne „Wyślij do…” aktualizuje tytuł i opis. Token: Personal / Project Access Token z zakresem „api”.',
+    'komentarz dodaje notatkę, ponowne „Wyślij do…” aktualizuje tytuł, opis i szacowany czas. Token: Personal / Project Access Token z zakresem „api”.',
   configSchema: z.object({
     baseUrl: HttpUrl.default('https://gitlab.com'),
     project: z.string().trim().min(1, 'Podaj projekt (ścieżkę albo numer).').max(255, 'Projekt: najwyżej 255 znaków.'),
@@ -132,6 +132,12 @@ const GITLAB: PluginDef = {
       .max(100, 'Termin: najwyżej 100 znaków.')
       .refine((v) => /^\s*(\{\{\s*[a-z_]+\s*\}\}|\d{4}-\d{2}-\d{2})?\s*$/.test(v), 'Termin issue: pole szablonu (np. {{due}}) albo data RRRR-MM-DD.')
       .optional(),
+    estimate: z
+      .string()
+      .max(100, 'Szacowany czas: najwyżej 100 znaków.')
+      .refine((v) => !/\{\{\s*time\s*\}\}/.test(v), 'Szacowany czas: {{time}} to godzina zadania — czas w minutach to {{duration}}.')
+      .refine((v) => /^\s*(\{\{\s*duration\s*\}\}|\d{1,6}|(\d+(mo|w|d|h|m)\s*)+)?\s*$/i.test(v), 'Szacowany czas: {{duration}}, minuty (np. 90) albo zapis GitLaba (np. 1h 30m).')
+      .optional(),
     assignees: z.string().max(500, 'Przypisani: najwyżej 500 znaków.').optional(),
   }),
   actionFields: [
@@ -147,6 +153,16 @@ const GITLAB: PluginDef = {
       defaultValue: '{{due}}',
       singleLine: true,
       help: 'Domyślnie termin zadania ({{due}}); można wpisać stałą datę RRRR-MM-DD. Zadanie bez terminu — issue bez terminu.',
+    },
+    {
+      key: 'estimate',
+      label: 'Szacowany czas (Estimate)',
+      kind: 'template',
+      optional: true,
+      placeholder: '{{duration}}',
+      defaultValue: '{{duration}}',
+      singleLine: true,
+      help: 'Domyślnie pole „Czas (min)” zadania ({{duration}}); można wpisać stałą wartość w minutach (90) albo jak w GitLabie (1h 30m), 0 — nie wysyłaj. Ustawiany przy nowym issue i przy ponownym „Wyślij do…”; zadanie bez czasu nie zmienia estymaty w GitLabie.',
     },
     {
       key: 'assignees',

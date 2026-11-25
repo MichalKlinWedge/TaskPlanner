@@ -47,16 +47,16 @@ export function SyncDot() {
   const p = usePalette();
   const status = useSyncStatus();
   const online = sessionUser().online;
-  const color = !online ? p.muted : status.error ? p.bad : status.lastAt ? p.ok : p.muted;
+  const color = !online || status.offline ? p.muted : status.error ? p.bad : status.lastAt ? p.ok : p.muted;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={!online ? 'Tryb offline bez konta' : status.syncing ? 'Synchronizacja trwa' : status.error ? `Błąd synchronizacji: ${status.error}` : 'Zsynchronizowano'}
+      accessibilityLabel={!online ? 'Tryb offline bez konta' : status.offline ? 'Offline — zmiany czekają na telefonie' : status.syncing ? 'Synchronizacja trwa' : status.error ? `Błąd synchronizacji: ${status.error}` : 'Zsynchronizowano'}
       hitSlop={10}
       onPress={() => router.push('/settings')}
       style={styles.dotWrap}
     >
-      {status.syncing ? <ActivityIndicator size="small" color={p.accent} /> : <View style={[styles.dot, { backgroundColor: color }]} />}
+      {status.syncing && !status.offline ? <ActivityIndicator size="small" color={p.accent} /> : <View style={[styles.dot, { backgroundColor: color }]} />}
     </Pressable>
   );
 }

@@ -24,8 +24,8 @@ export interface RuntimeContext {
 }
 
 export type DeliveryResult =
-  /** `skipped` = nic do zrobienia (powód trafia do historii jako „Pominięte”). */
-  | { ok: true; externalId?: string; externalUrl?: string; httpStatus?: number; skipped?: string }
+  /** `skipped` = nic do zrobienia (powód trafia do historii jako „Pominięte”); `note` = wysłane z uwagą (do historii). */
+  | { ok: true; externalId?: string; externalUrl?: string; httpStatus?: number; skipped?: string; note?: string }
   | { ok: false; retryable: boolean; retryAfterSec?: number; disable?: boolean; error: string; httpStatus?: number };
 
 /** Jedna wysyłka dla pluginu. */

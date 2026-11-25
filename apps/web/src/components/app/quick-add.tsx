@@ -5,12 +5,13 @@
  * (klik cofa rozpoznanie), podgląd tytułu i listy docelowej, wiele linii naraz (wklejenie).
  * Ten sam komponent w widokach (pole na górze) i w oknie wywoływanym klawiszem `Q` / `Ctrl+Spacja`.
  */
-import { findUrl, linkName, localDateTimeAt, parseQuickAdd, withLinkOps, plural, quickAddChip, quickAddTaskOps, suppressToken, taskTagOps, type LocalDate, type TaskOp, type QuickAddContext, type QuickAddTokenKind } from "@taskplanner/core";
+import { clipQuote, findUrl, linkName, localDateTimeAt, parseQuickAdd, withLinkOps, plural, quickAddChip, quickAddTaskOps, suppressToken, taskTagOps, type LocalDate, type TaskOp, type QuickAddContext, type QuickAddTokenKind, type WebClip } from "@taskplanner/core";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 
 import { lastSortKey, useAppEnv } from "./app-env";
 import { useTaskActions } from "./task-item";
 import { inputClass } from "./ui";
+import { ClipFieldset } from "./web-clip";
 
 const KIND_STYLE: Record<QuickAddTokenKind, string> = {
   date: "bg-blue-100 text-blue-900 dark:bg-blue-900/50 dark:text-blue-100",
@@ -41,12 +42,18 @@ export interface QuickAddProps {
   initialText?: string;
   /** Adres z udostępnienia / zakładki — załącznik i źródło `link` pierwszego zadania (Etap 10). */
   link?: { url: string; shared: true };
+  /** Wycinek strony z zakładki: edytowalny opis (cytat zaznaczenia) i „✨ Streść” — tylko pierwsze zadanie. */
+  clip?: WebClip;
 }
 
-export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dodaj zadanie", autoFocus, onAdded, onCancel, initialText, link }: QuickAddProps) {
+export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dodaj zadanie", autoFocus, onAdded, onCancel, initialText, link: sharedLink, clip: initialClip }: QuickAddProps) {
   const { data, userId, timeZone, today, workspaceId } = useAppEnv();
   const { run, notify } = useTaskActions();
   const [text, setText] = useState(initialText ?? "");
+  // Wycinek (opis i link) należy do pierwszego zadania — po dodaniu okno z Ctrl+Enter zostaje już bez niego.
+  const [clip, setClip] = useState(initialClip);
+  const [description, setDescription] = useState(() => (initialClip ? clipQuote(initialClip) : ""));
+  const link = initialClip && !clip ? undefined : sharedLink;
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -96,7 +103,7 @@ export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dod
       const parsed = parse(line);
       if (!parsed.title.trim()) continue;
       const base = scope(defaultListId);
-      const result = quickAddTaskOps(parsed, line, { ...base, lastSortKey: (id) => keys.get(id) ?? base.lastSortKey(id) });
+      const result = quickAddTaskOps(parsed, line, { ...base, lastSortKey: (id) => keys.get(id) ?? base.lastSortKey(id), description: clip && !added.length ? description : null });
       keys.set(parent?.id ?? result.listId, result.ops[0]!.patch.sort_key as string);
       if (defaults?.status) Object.assign(result.ops[0]!.patch, { status: defaults.status }, defaults.status === "done" ? { completed_at: new Date().toISOString() } : {});
       if (defaults?.priority && !parsed.fields.priority) result.ops[0]!.patch.priority = defaults.priority;
@@ -114,6 +121,8 @@ export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dod
       undo: added.map((a) => ({ table: "tasks" as const, id: a.taskId, patch: { deleted_at: at } })),
     });
     setText("");
+    setClip(undefined);
+    setDescription("");
     onAdded?.(more);
   };
 
@@ -190,6 +199,18 @@ export function QuickAdd({ listId, dueDate, parent, defaults, placeholder = "Dod
           <span className="ml-auto text-[var(--muted)]">Enter — dodaj{onAdded ? " · Ctrl+Enter — dodaj i pisz dalej" : ""}</span>
         </div>
       ) : null}
+      {clip ? (
+        <ClipFieldset
+          clip={clip}
+          initialTitle={initialText ?? ""}
+          title={text}
+          setTitle={setText}
+          description={description}
+          setDescription={setDescription}
+          focusTitle={() => input.current?.focus()}
+          add={() => void (text.trim() && add([text], false))}
+        />
+      ) : null}
     </div>
   );
 }
@@ -199,7 +220,7 @@ export function QuickAddDialog({ open, onClose, ...props }: QuickAddProps & { op
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-[15vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label="Szybkie dodawanie" className="w-full max-w-xl rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3 shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label="Szybkie dodawanie" className="max-h-[80vh] w-full max-w-xl overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3 shadow-2xl">
         <QuickAdd {...props} autoFocus onAdded={(more) => !more && onClose()} onCancel={onClose} />
         <p className="px-1 text-xs text-[var(--muted)]">
           Np. „Zapłacić rachunek jutro o 10 #dom !wysoki @telefon ~15m” · Esc — zamknij

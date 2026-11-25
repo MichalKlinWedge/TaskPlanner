@@ -2,32 +2,65 @@
 
 /**
  * Współdzielenie przestrzeni (v1.x): panel „Osoby” w karcie przestrzeni (`SharingPanel`) i zaproszenia
- * do zalogowanego (`ScopeInvites` — pasek pod nagłówkiem, także przyjęcie z linku `/?invite=`).
+ * do zalogowanego (`ScopeInvites` — pasek pod nagłówkiem, także przyjęcie z linku `/?invite=` i zgoda na
+ * rolę właściciela). Rolę właściciela proponuje się członkowi; działa dopiero po jego potwierdzeniu.
  * Dane na serwerze (RPC z `lib/sharing.ts`) — wymaga sieci; po przyjęciu albo opuszczeniu przestrzeni
  * `store.sync()` pobiera (albo usuwa z urządzenia) jej dane.
  */
-import { GUEST_ACCESS, GUEST_ACCESS_HINT, GUEST_ACCESS_NOTE, inviteLink, plural, SCOPE_ROLE, SCOPE_ROLE_HINT, shareEmail, WORKSPACE_SHARE_NOTE, type GuestAccess, type ShareRole } from "@taskplanner/core";
+import {
+  canManageMember,
+  GUEST_ACCESS,
+  GUEST_ACCESS_HINT,
+  GUEST_ACCESS_NOTE,
+  inviteLink,
+  memberRoleLabel,
+  OWNER_AFTER,
+  OWNER_OFFER_NOTE,
+  ownerOfferQuestion,
+  ownerResignQuestion,
+  ownershipAcceptQuestion,
+  ownershipHeirs,
+  ownershipOfferText,
+  plural,
+  SCOPE_ROLE,
+  SCOPE_ROLE_HINT,
+  shareEmail,
+  WORKSPACE_SHARE_NOTE,
+  type GuestAccess,
+  type OwnerAfter,
+  type OwnershipOffer,
+  type ScopeRole,
+  type ShareRole,
+  type SpaceMember,
+} from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import {
   acceptInvite,
   acceptLinkInvite,
+  answerOwnershipOffer,
+  cancelOwnershipOffer,
   declineInvite,
   myInvites,
+  myOwnershipOffers,
+  offerOwnership,
   removeMember,
+  resignOwner,
   revokeInvite,
   setMemberRole,
   shareWorkspace,
   workspaceSharing,
   type MyInvite,
   type PendingInvite,
+  type PendingOwnerOffer,
   type WorkspaceSharing,
 } from "@/lib/sharing";
 
 import { Button, Input, Notice, Select } from "./ui";
 
 const ROLES: ShareRole[] = ["editor", "viewer"];
+const AFTER: OwnerAfter[] = ["editor", "viewer", "leave"];
 const ACCESS: GuestAccess[] = ["edit", "view", "hidden"];
 const date = (iso: string) => new Date(iso).toLocaleDateString("pl-PL", { dateStyle: "medium" });
 const offlineText = "Udostępnianie wymaga połączenia z internetem.";
@@ -76,6 +109,10 @@ export function SharingPanel({
 
   useEffect(() => {
     void Promise.resolve().then(load);
+    // Zgoda drugiej osoby zmienia role poza tym oknem — odśwież po powrocie do karty.
+    const refresh = () => void load();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
   }, [load]);
 
   const act = async (work: () => Promise<unknown>, done?: string) => {
@@ -94,6 +131,32 @@ export function SharingPanel({
 
   const normalized = shareEmail(email);
   const owner = sharing?.role === "owner";
+  const me = sharing?.members.find((m) => m.me);
+  const offers = sharing?.offers ?? [];
+
+  const propose = (member: SpaceMember, after: OwnerAfter | null) => {
+    if (!window.confirm(ownerOfferQuestion(member.email, workspaceName, after))) return;
+    void act(
+      () => offerOwnership(workspaceId, member.userId, after),
+      `Propozycja dla ${member.email} czeka w aplikacji tej osoby — ${after ? "przestrzeń przejdzie na nią" : "rola właściciela zacznie działać"} po jej potwierdzeniu.`,
+    );
+  };
+
+  const changeRole = (member: SpaceMember, next: ScopeRole) => {
+    if (next === member.role) return;
+    if (next === "owner") return propose(member, null);
+    if (member.role === "owner" && !window.confirm(`Odebrać ${member.email} rolę właściciela przestrzeni „${workspaceName}”? Ta osoba zostanie z rolą ${SCOPE_ROLE[next]}.`)) return;
+    void act(() => setMemberRole(workspaceId, member.userId, next));
+  };
+
+  const resign = (after: OwnerAfter) => {
+    if (!window.confirm(ownerResignQuestion(workspaceName, after))) return;
+    void act(async () => {
+      await store.sync().catch(() => undefined); // zmiany zapisane jeszcze jako właściciel
+      await resignOwner(workspaceId, after);
+      await store.sync().catch(() => undefined);
+    });
+  };
 
   const invite = (event: FormEvent) => {
     event.preventDefault();
@@ -112,7 +175,6 @@ export function SharingPanel({
   const leave = () => {
     if (!window.confirm(`Opuścić przestrzeń „${workspaceName}”? Jej zadania znikną z Twoich urządzeń; wrócisz tylko z nowym zaproszeniem.`)) return;
     void act(async () => {
-      const me = sharing?.members.find((m) => m.me);
       if (me) await removeMember(workspaceId, me.userId);
       await store.sync().catch(() => undefined);
     });
@@ -153,15 +215,16 @@ export function SharingPanel({
                 {m.email}
                 {m.me ? <span className="ml-1 opacity-60">(Ty)</span> : null}
               </span>
-              {owner && m.role !== "owner" ? (
+              {canManageMember(me, m) ? (
                 <>
                   <Select
                     aria-label={`Rola ${m.email}`}
                     value={m.role}
                     disabled={busy}
-                    onChange={(e) => void act(() => setMemberRole(workspaceId, m.userId, e.target.value as ShareRole))}
+                    onChange={(e) => changeRole(m, e.target.value as ScopeRole)}
                     className="w-32"
                   >
+                    <option value="owner">{m.role === "owner" ? SCOPE_ROLE.owner : `${SCOPE_ROLE.owner}…`}</option>
                     {ROLES.map((r) => (
                       <option key={r} value={r}>
                         {SCOPE_ROLE[r]}
@@ -179,9 +242,12 @@ export function SharingPanel({
                   </Button>
                 </>
               ) : (
-                <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs">{SCOPE_ROLE[m.role]}</span>
+                <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs">{memberRoleLabel(m, sharing.members)}</span>
               )}
             </li>
+          ))}
+          {offers.map((o) => (
+            <OfferRow key={o.id} offer={o} canCancel={owner && (o.mine || !!me?.primary)} busy={busy} onCancel={() => void act(() => cancelOwnershipOffer(o.id), "Propozycja wycofana.")} />
           ))}
           {sharing.invites.map((i) => (
             <InviteRow key={i.id} invite={i} busy={busy} onRevoke={() => void act(() => revokeInvite(i.id))} onCopied={setInfo} />
@@ -214,6 +280,15 @@ export function SharingPanel({
           </ul>
         </div>
       ) : null}
+      {owner && me && sharing.members.length > 1 ? (
+        <OwnershipSection
+          members={sharing.members}
+          primary={!!me.primary}
+          busy={busy}
+          onHandOver={(member, after) => propose(member, after)}
+          onResign={resign}
+        />
+      ) : null}
       {sharing && !owner ? (
         <div className="mt-2 flex items-center gap-2">
           <span className="flex-1 text-xs opacity-70">
@@ -235,6 +310,83 @@ export function SharingPanel({
           <Notice tone="error">{error}</Notice>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** Propozycja roli właściciela / przekazania, która czeka na zgodę adresata. */
+function OfferRow({ offer, canCancel, busy, onCancel }: { offer: PendingOwnerOffer; canCancel: boolean; busy: boolean; onCancel: () => void }) {
+  return (
+    <li className="flex flex-wrap items-center gap-2 py-2" data-testid="owner-offer">
+      <span className="min-w-0 flex-1">
+        {offer.after ? "Przekazanie przestrzeni" : "Rola właściciela"} dla {offer.email}
+        <span className="ml-2 text-xs opacity-60">
+          {offer.mine ? "" : `od ${offer.offeredBy}, `}
+          {offer.expired ? "propozycja wygasła" : `czeka na zgodę do ${date(offer.expiresAt)}`}
+        </span>
+      </span>
+      {canCancel ? (
+        <Button kind="ghost" disabled={busy} onClick={onCancel}>
+          Wycofaj
+        </Button>
+      ) : null}
+    </li>
+  );
+}
+
+/** Zrzeczenie się roli właściciela: przekazanie wybranej osobie (za jej zgodą), a współwłaściciel także bez następcy. */
+function OwnershipSection({
+  members,
+  primary,
+  busy,
+  onHandOver,
+  onResign,
+}: {
+  members: SpaceMember[];
+  primary: boolean;
+  busy: boolean;
+  onHandOver: (member: SpaceMember, after: OwnerAfter) => void;
+  onResign: (after: OwnerAfter) => void;
+}) {
+  const [heirId, setHeirId] = useState("");
+  const [after, setAfter] = useState<OwnerAfter>("editor");
+  const heirs = ownershipHeirs(members);
+  const heir = heirs.find((m) => m.userId === heirId);
+  return (
+    <div className="mt-3 border-t border-[var(--line)] pt-3" data-testid="ownership">
+      <p className="mb-1 font-medium">Zrzeczenie się roli właściciela</p>
+      <p className="mb-2 text-xs opacity-60">
+        {primary
+          ? "Przestrzeń przejmie wybrana osoba — ze wszystkimi Twoimi uprawnieniami, gdy potwierdzi przejęcie."
+          : "Możesz zrezygnować z roli (zostaje główny właściciel) albo przekazać ją innej osobie — gdy ją przyjmie."}{" "}
+        {OWNER_OFFER_NOTE}
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs">
+          Przejmuje
+          <Select value={heir ? heirId : ""} onChange={(e) => setHeirId(e.target.value)} disabled={busy}>
+            <option value="">{primary ? "wybierz osobę" : "bez następcy"}</option>
+            {heirs.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.email} ({memberRoleLabel(m, members).toLowerCase()})
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs">
+          Twoja rola potem
+          <Select value={after} onChange={(e) => setAfter(e.target.value as OwnerAfter)} disabled={busy} className="w-44">
+            {AFTER.map((a) => (
+              <option key={a} value={a}>
+                {OWNER_AFTER[a]}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <Button disabled={busy || (primary && !heir)} onClick={() => (heir ? onHandOver(heir, after) : onResign(after))}>
+          {heir || primary ? "Przekaż przestrzeń…" : "Zrzeknij się roli…"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -265,16 +417,19 @@ function InviteRow({ invite, busy, onRevoke, onCopied }: { invite: PendingInvite
   );
 }
 
-/** Zaproszenia do zalogowanego: przyjęcie z linku po zalogowaniu i lista do przyjęcia / odrzucenia. */
+/** Zaproszenia i propozycje własności do zalogowanego: przyjęcie z linku po zalogowaniu i lista do przyjęcia / odrzucenia. */
 export function ScopeInvites({ store }: { store: TabStore }) {
   const [invites, setInvites] = useState<MyInvite[]>([]);
+  const [offers, setOffers] = useState<OwnershipOffer[]>([]);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setInvites(await myInvites());
+      const [nextInvites, nextOffers] = await Promise.all([myInvites(), myOwnershipOffers()]);
+      setInvites(nextInvites);
+      setOffers(nextOffers);
     } catch {
       // Offline albo chwilowy błąd — lista wróci przy następnej próbie.
     }
@@ -322,7 +477,25 @@ export function ScopeInvites({ store }: { store: TabStore }) {
     setBusy(false);
   };
 
-  if (!invites.length && !info && !error) return null;
+  const answer = async (offer: OwnershipOffer, accept: boolean) => {
+    if (accept && !window.confirm(`Potwierdź przejęcie. ${ownershipAcceptQuestion(offer)}`)) return;
+    setBusy(true);
+    setError(null);
+    setInfo(null);
+    try {
+      await answerOwnershipOffer(offer.id, accept);
+      if (accept) {
+        setInfo(`Jesteś teraz właścicielem przestrzeni „${offer.workspace}”.`);
+        await store.sync().catch(() => undefined);
+      }
+    } catch (e) {
+      setError(message(e));
+    }
+    await load();
+    setBusy(false);
+  };
+
+  if (!invites.length && !offers.length && !info && !error) return null;
   return (
     <section aria-label="Zaproszenia do przestrzeni" className="border-b border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-sm" data-testid="scope-invites">
       {invites.length ? (
@@ -340,6 +513,17 @@ export function ScopeInvites({ store }: { store: TabStore }) {
             </Button>
             <Button kind="ghost" disabled={busy} onClick={() => void respond(i, false)}>
               Odrzuć
+            </Button>
+          </li>
+        ))}
+        {offers.map((o) => (
+          <li key={o.id} className="flex flex-wrap items-center gap-2" data-testid="ownership-offer">
+            <span className="min-w-0 flex-1">{ownershipOfferText(o)}</span>
+            <Button kind="primary" disabled={busy} onClick={() => void answer(o, true)}>
+              {o.after ? "Przejmij…" : "Przyjmij…"}
+            </Button>
+            <Button kind="ghost" disabled={busy} onClick={() => void answer(o, false)}>
+              Odmów
             </Button>
           </li>
         ))}

@@ -19,6 +19,7 @@ export interface Command {
 export const COMMANDS: readonly Command[] = [
   { id: 'view.inbox', kind: 'view', label: 'Inbox', keys: ['G', 'I'], keywords: ['skrzynka'] },
   { id: 'view.today', kind: 'view', label: 'Dziś', keys: ['G', 'T'], keywords: ['dzisiaj'] },
+  { id: 'view.overdue', kind: 'view', label: 'Zaległe', keys: ['G', 'Z'], keywords: ['po terminie', 'spóźnione'] },
   { id: 'view.upcoming', kind: 'view', label: 'Nadchodzące', keys: ['G', 'U'], keywords: ['tydzień', 'plan'] },
   { id: 'view.kanban', kind: 'view', label: 'Kanban', keys: ['G', 'K'], keywords: ['tablica'] },
   { id: 'view.calendar', kind: 'view', label: 'Kalendarz', keys: ['G', 'C'] },

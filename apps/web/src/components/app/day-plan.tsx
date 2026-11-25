@@ -3,18 +3,21 @@
 /**
  * „Plan dnia” obok „Dziś” (M9, M11): oś godzin z blokami zadań (z godziną) i spotkaniami z kalendarzy
  * zewnętrznych, wolne okna w godzinach pracy, linia „teraz”, wiersz „cały dzień” i lista konfliktów.
- * Wszystko z `core/time-blocking.ts` (`blocksForDay`, `conflicts`, `freeSlots`, `blockLanes`); układanie
- * bloków przeciąganiem — w kalendarzu (`#/calendar`), automatyczne — „Ułóż dzień” (`day-planner.tsx`, szkic
+ * Wszystko z `core/time-blocking.ts` (`blocksForDay`, `conflicts`, `freeSlots`, `blockLanes`). Blok zadania
+ * przeciąga się na inną godzinę, a zadanie z wiersza „cały dzień” — na oś (`plan-drag.ts`,
+ * `scheduleBlockPatch`); układanie automatyczne — „Ułóż dzień” (`day-planner.tsx`, szkic
  * jako przerywane bloki do „Zastosuj”). Przełącznik „Dziś | Jutro” wybiera dzień, chyba że ekran podaje `date`.
  */
-import { addDays, blockLanes, blocksForDay, conflictIds, conflicts, DAY_PLANNER, dayLabel, freeSlots, habitSlots, isOpen, localDateTimeAt, plural, PRIORITY, withDraft, withoutBlock, zonedInstant, type Block, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
-import { useEffect, useMemo, useState } from "react";
+import { addDays, blockLanes, blocksForDay, conflictIds, conflicts, DAY_PLANNER, dayLabel, freeSlots, habitSlots, isOpen, localDateTimeAt, plural, PRIORITY, relativeDay, scheduleBlockPatch, withDraft, withoutBlock, zonedInstant, type Block, type LocalDate, type ProfileSettings, type ViewContext, type ViewTask } from "@taskplanner/core";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { AppData } from "@/lib/app-data";
+import { listEditable, type AppData } from "@/lib/app-data";
 import { useCalendarEvents } from "@/lib/calendar-events";
 
 import { useAppEnv } from "./app-env";
 import { DayPlanner, type PlanPreview } from "./day-planner";
+import { usePlanDrag } from "./plan-drag";
+import { useTaskActions } from "./task-item";
 import { navLinkClass } from "./ui";
 
 /** Pikseli na minutę osi (48 px na godzinę). */
@@ -73,7 +76,27 @@ export function DayPlan({ data, ctx, settings, date: fixed }: { data: AppData; c
   const first = Math.min(toMin(settings.workHours.start), ...day.timed.map((b) => b.startMin));
   const last = Math.max(toMin(settings.workHours.end), ...day.timed.map((b) => b.endMin));
   const from = Math.max(0, Math.floor(first / HOUR) * HOUR);
-  const to = Math.min(day.dayMinutes, Math.ceil(last / HOUR) * HOUR);
+  const axisEnd = Math.min(day.dayMinutes, Math.ceil(last / HOUR) * HOUR);
+
+  const { run } = useTaskActions();
+  const axis = useRef<HTMLDivElement>(null);
+  /** Godzina zegara ściennego w minucie osi (przy zmianie czasu minuty od północy ≠ zegar). */
+  const wallAt = (min: number) => localDateTimeAt(new Date(dayStart + min * 60_000), timeZone).slice(11);
+  /** Przyszłe wystąpienia serii, zadania zamknięte i z list tylko do podglądu stoją w miejscu. */
+  const movable = (task: ViewTask | undefined): task is ViewTask => !!task && isOpen(task) && task.dueDate === date && listEditable(data, task.listId);
+  const schedule = (id: string, startMin: number) => {
+    const task = taskById.get(id);
+    if (!movable(task)) return;
+    const patch = scheduleBlockPatch(task, date, toMin(wallAt(startMin)), { defaultDurationMin: settings.defaultDurationMin });
+    const before: Record<string, unknown> = { start_date: task.startDate, due_date: task.dueDate, due_time: task.dueTime, duration_min: task.durationMin };
+    const undo = Object.fromEntries(Object.keys(patch).map((k) => [k, before[k] ?? null]));
+    void run([{ table: "tasks", id, patch }], { text: `„${task.title}” → ${relativeDay(date, today)} ${String(patch.due_time)}`, undo: [{ table: "tasks", id, patch: undo }] });
+  };
+  const { drag, start, wasDragged } = usePlanDrag(axis, { from, to: day.dayMinutes, px: PX }, schedule);
+  // W trakcie przeciągania oś sięga do północy — zadanie da się położyć też po godzinach pracy.
+  const to = drag ? day.dayMinutes : axisEnd;
+  const dragged = drag ? taskById.get(drag.id) : undefined;
+  const dragEnd = drag && drag.startMin !== null ? drag.startMin + (dragged?.durationMin ?? settings.defaultDurationMin) : 0;
   const y = (min: number) => (Math.min(Math.max(min, from), to) - from) * PX;
   const hours = Array.from({ length: (to - from) / HOUR + 1 }, (_, i) => from + i * HOUR);
   const clock = (b: Pick<Block, "startAt">) => localDateTimeAt(b.startAt, timeZone).slice(11);
@@ -130,7 +153,17 @@ export function DayPlan({ data, ctx, settings, date: fixed }: { data: AppData; c
           {day.allDay.slice(0, 8).map((item) => (
             <li key={`${item.kind}:${item.id}`} className={`max-w-full truncate rounded px-1.5 py-0.5 ${item.kind === "event" ? "tp-plan-event border border-[var(--line)]" : "bg-black/5 dark:bg-white/10"}`}>
               {item.kind === "task" ? (
-                <button type="button" className="truncate" onClick={() => open(item.id)}>
+                <button
+                  type="button"
+                  className={`max-w-full truncate ${movable(taskById.get(item.id)) ? "cursor-grab" : ""} ${drag?.id === item.id ? "opacity-40" : ""}`}
+                  title={movable(taskById.get(item.id)) ? `${item.title}\nPrzeciągnij na godzinę` : item.title}
+                  onPointerDown={(e) => {
+                    if (movable(taskById.get(item.id))) start(e, item.id, null);
+                  }}
+                  onClick={(e) => {
+                    if (!wasDragged(e.detail)) open(item.id);
+                  }}
+                >
                   {item.title}
                 </button>
               ) : (
@@ -142,7 +175,7 @@ export function DayPlan({ data, ctx, settings, date: fixed }: { data: AppData; c
         </ul>
       ) : null}
 
-      <div className="relative ml-10 border-l border-[var(--line)]" style={{ height: (to - from) * PX }}>
+      <div ref={axis} className="relative ml-10 border-l border-[var(--line)]" data-testid="plan-axis" style={{ height: (to - from) * PX }}>
         {hours.map((h) => (
           <div key={h} className="absolute right-0 left-0 border-t border-[var(--line)]" style={{ top: y(h) }}>
             <span className="absolute -left-10 -translate-y-1/2 text-[10px] text-[var(--muted)]">{String(Math.floor(h / 60) % 24).padStart(2, "0")}:00</span>
@@ -185,7 +218,19 @@ export function DayPlan({ data, ctx, settings, date: fixed }: { data: AppData; c
               </div>
             );
           return b.kind === "task" ? (
-            <button key={`task:${b.id}`} type="button" className={cls} style={style} title={title} onClick={() => open(b.id)}>
+            <button
+              key={`task:${b.id}`}
+              type="button"
+              className={`${cls} ${movable(task) ? "cursor-grab" : ""} ${drag?.id === b.id ? "opacity-40" : ""}`}
+              style={style}
+              title={movable(task) ? `${title}\nPrzeciągnij na inną godzinę` : title}
+              onPointerDown={(e) => {
+                if (movable(task)) start(e, b.id, b.startMin);
+              }}
+              onClick={(e) => {
+                if (!wasDragged(e.detail)) open(b.id);
+              }}
+            >
               {hot ? "⚠ " : ""}
               {label}
             </button>
@@ -196,9 +241,18 @@ export function DayPlan({ data, ctx, settings, date: fixed }: { data: AppData; c
             </div>
           );
         })}
+        {drag && dragged && drag.startMin !== null ? (
+          <div
+            className="pointer-events-none absolute right-0.5 left-0.5 z-20 overflow-hidden rounded border border-l-4 border-[var(--accent)] bg-[var(--surface)] px-1 text-[11px] leading-tight shadow-lg"
+            style={{ top: y(drag.startMin), height: Math.max(14, y(dragEnd) - y(drag.startMin) - 1), borderLeftColor: PRIORITY[dragged.priority]?.color }}
+            data-testid="plan-drag"
+          >
+            <strong>{wallAt(drag.startMin)}</strong> {dragged.title}
+          </div>
+        ) : null}
         {nowMin >= from && nowMin <= to ? <div className="pointer-events-none absolute right-0 -left-1 z-10 border-t-2 border-[var(--danger)]" style={{ top: y(nowMin) }} aria-label="Teraz" /> : null}
       </div>
-      {!day.timed.length ? <p className="mt-2 text-xs text-[var(--muted)]">Brak bloków z godziną — „{DAY_PLANNER.button}” albo przeciągnij zadania na godziny w kalendarzu.</p> : null}
+      {!day.timed.length ? <p className="mt-2 text-xs text-[var(--muted)]">Brak bloków z godziną — „{DAY_PLANNER.button}” albo przeciągnij zadania na godziny (tu z wiersza „cały dzień” lub w kalendarzu).</p> : null}
     </aside>
   );
 }

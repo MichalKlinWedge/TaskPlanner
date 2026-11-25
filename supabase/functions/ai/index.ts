@@ -12,6 +12,8 @@
  *                                          propozycja godzin — sprawdza ją klient, funkcja niczego nie zapisuje
  *   POST week-summary      (użytkownik) → {accountId, from, today, facts, tasks, hint} → „✨ Opisz tydzień” → {sentences, suggestions, model};
  *                                          zdania ze znacznikami zamiast liczb — podstawia i sprawdza je klient, funkcja niczego nie zapisuje
+ *   POST clip              (użytkownik) → {accountId, title, site, text} → „✨ Streść” → {title, points, model};
+ *                                          treść obcej strony to dane, nie polecenia; funkcja niczego nie zapisuje
  *
  * Konto wraca do klientów zwykłą synchronizacją (`pull_changes`, `ai_accounts` tylko do odczytu, bez klucza).
  * Klucz nigdy nie wychodzi z funkcji: do Google jedzie nagłówkiem `x-goog-api-key` (`packages/ai`).
@@ -19,11 +21,13 @@
  */
 import { AiAccountCreate, AiAccountRef, AiAccountUpdate, type AiAccountStatus, type AiModelEntry, type AiProvider, aiKeyHint } from '../../../packages/core/src/ai.ts';
 import { AiBreakdownRequest } from '../../../packages/core/src/ai-breakdown.ts';
+import { AiClipRequest } from '../../../packages/core/src/ai-clip.ts';
 import { AiDayPlanRequest } from '../../../packages/core/src/ai-day-plan.ts';
 import { AiWeekSummaryRequest } from '../../../packages/core/src/ai-week-summary.ts';
 import { AiError } from '../../../packages/ai/src/index.ts';
 import { aiClient, type AiEndpoints, checkAiKey, modelProblem, testPatch } from '../_shared/ai/accounts.ts';
 import { aiErrorStatus, runBreakdown } from '../_shared/ai/breakdown.ts';
+import { runClip } from '../_shared/ai/clip.ts';
 import { runDayPlan } from '../_shared/ai/day-plan.ts';
 import { runWeekSummary } from '../_shared/ai/week-summary.ts';
 import { admin, HttpError, json, optionalEnv, requireUser, route, serve } from '../_shared/runtime.ts';
@@ -171,6 +175,12 @@ async function weekSummary(req: Request): Promise<Response> {
   return json(await askOn(await ownAccount(user.id, input.accountId), (client) => runWeekSummary(client, input)));
 }
 
+async function clip(req: Request): Promise<Response> {
+  const user = await requireUser(req);
+  const input = parse(AiClipRequest, await body(req, MAX_CONTEXT));
+  return json(await askOn(await ownAccount(user.id, input.accountId), (client) => runClip(client, input)));
+}
+
 serve(async (req, url) => {
   const path = route(url, FN);
   if (req.method !== 'POST') throw new HttpError(405, 'Tylko POST');
@@ -181,5 +191,6 @@ serve(async (req, url) => {
   if (path === 'breakdown') return breakdown(req);
   if (path === 'day-plan') return dayPlan(req);
   if (path === 'week-summary') return weekSummary(req);
+  if (path === 'clip') return clip(req);
   throw new HttpError(404, `Nieznana ścieżka ${path}`);
 });

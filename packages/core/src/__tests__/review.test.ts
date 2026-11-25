@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { REVIEW_ACTION } from '../labels.ts';
-import { dailyReviewQueue, dailySummary, reschedulePatch, reviewBulkAction, reviewFinishOp, reviewStartOp, reviewsDue, ReviewStats, reviewStats, weeklyReview, type ReviewAction, type ReviewList } from '../review.ts';
+import { dailyReviewQueue, dailySummary, reschedulePatch, reviewBulkAction, reviewFinishOp, reviewFireTimes, reviewStartOp, reviewsDue, ReviewStats, reviewStats, weeklyReview, type ReviewAction, type ReviewList } from '../review.ts';
 import { bulkTaskOps } from '../tasks.ts';
 import type { ViewContext, ViewTask } from '../views.ts';
 
@@ -181,6 +181,22 @@ describe('asystent przeglądu (Etap 9)', () => {
     expect(reviewsDue(schedule, new Date('2026-11-18T19:05:00Z'), { ...zone, last: { daily: '2026-11-18', weekly: '2026-11-18' } })).toEqual([]);
     expect(reviewsDue(schedule, new Date('2026-11-19T19:05:00Z'), { ...zone, last: { daily: '2026-11-18' } })).toEqual(['daily']);
     expect(reviewsDue({ ...schedule, dailyReview: { enabled: false, time: '20:00' } }, new Date('2026-11-19T19:05:00Z'), zone)).toEqual([]);
+  });
+
+  it('chwile przypomnień o przeglądach (powiadomienia telefonu)', () => {
+    const zone = { timeZone: 'Europe/Warsaw' };
+    const schedule = { dailyReview: { enabled: true, time: '20:00' as const }, weeklyReview: { enabled: true, weekday: 5, time: '18:00' as const } };
+    const list = (over: Parameters<typeof reviewFireTimes>[2] = {}, now = '2026-11-18T10:00:00Z', s: Parameters<typeof reviewFireTimes>[0] = schedule) =>
+      reviewFireTimes(s, new Date(now), { ...zone, days: 3, ...over }).map((f) => `${f.kind} ${f.at.toISOString()}`);
+    expect(list()).toEqual(['daily 2026-11-18T19:00:00.000Z', 'daily 2026-11-19T19:00:00.000Z', 'weekly 2026-11-20T17:00:00.000Z', 'daily 2026-11-20T19:00:00.000Z']);
+    // Po porze dziś już nie; skończona dziś sesja zdejmuje tylko dziś.
+    expect(list({}, '2026-11-18T19:30:00Z')[0]).toBe('daily 2026-11-19T19:00:00.000Z');
+    expect(list({ last: { daily: '2026-11-18' } })[0]).toBe('daily 2026-11-19T19:00:00.000Z');
+    // Ta sama pora — w dzień przeglądu tygodnia tylko tydzień; wyłączone nie przypominają.
+    expect(list({}, undefined, { ...schedule, weeklyReview: { enabled: true, weekday: 3, time: '20:00' } })[0]).toBe('weekly 2026-11-18T19:00:00.000Z');
+    expect(list({}, undefined, { dailyReview: { enabled: false, time: '20:00' }, weeklyReview: { enabled: false, weekday: 5, time: '18:00' } })).toEqual([]);
+    // Zmiana czasu 25.10.2026: pora to czas ścienny.
+    expect(list({ days: 2 }, '2026-10-24T10:00:00Z')).toEqual(['daily 2026-10-24T18:00:00.000Z', 'daily 2026-10-25T19:00:00.000Z']);
   });
 
   it('podsumowanie dnia: ukończone dziś i plan na jutro', () => {

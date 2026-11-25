@@ -147,7 +147,8 @@ export async function deleteAccount(email: string): Promise<void> {
 
 export async function signOut() {
   await supabaseClient()
-    .auth.signOut()
+    // Tylko ten telefon: domyślny zakres (`global`) kończyłby też sesję w przeglądarce.
+    .auth.signOut({ scope: 'local' })
     .catch(() => undefined);
   await resetLocal().catch(() => undefined);
   saveSessionUser(null);

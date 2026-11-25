@@ -4,7 +4,7 @@
  * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
  * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { assigneeOf, collaboratorBadge, columnDate, completeTaskOps, descendants, describeRecurrence, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, LIST_COLUMN, type ListColumn, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { assigneeOf, columnDate, completeTaskOps, descendants, describeRecurrence, formatMinutes, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, LIST_COLUMN, type ListColumn, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
@@ -13,7 +13,9 @@ import { clampWidth, type ColumnWidths, type WidthColumn } from "@/lib/list-widt
 import { onRejectedOps } from "@/lib/local-store";
 
 import { useAppEnv } from "./app-env";
+import { PeopleBadges } from "./people-badges";
 import { TAG_CHIP, tagChipStyle } from "./tag-chip";
+import { EyeIcon } from "./ui";
 
 // ── Akcje ────────────────────────────────────────────────────────────────────────────────────
 
@@ -158,6 +160,10 @@ export interface TaskItemProps {
   columns?: readonly ListColumn[];
   /** „+” przy tytule: dodanie podzadania (widok listy ustawia górne pole na to zadanie). */
   onAddSubtask?: () => void;
+  /** Przycisk „→ Jutro” po prawej (widok „Dziś”: zaległe i dzisiejsze); ukryty przy zadaniu tylko do podglądu. */
+  onTomorrow?: () => void;
+  /** Ile minut po godzinie zadania (`minutesLate`, widok „Dziś”) — wyróżnia wiersz i godzinę; 0 / brak = w czasie. */
+  lateMin?: number;
   /** Tagi pokazywane w kolumnie „Tagi” (`view_prefs.columnTags`); `null` / brak = wszystkie. */
   columnTags?: ReadonlySet<string> | null;
   /** Szerokości kolumn ustawione w nagłówku (`useListWidths`); brak = domyślne. */
@@ -240,20 +246,55 @@ export function TaskColumnsHeader({ columns, widths = {}, onResize }: { columns:
   );
 }
 
-export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, columnTags, widths = {} }: TaskItemProps) {
+function TagChips({ tags }: { tags: readonly { id: string; name: string; color: string | null }[] }) {
+  return tags.map((tag) => (
+    <span key={tag.id} className={`max-w-full truncate px-1.5 py-px text-[11px] ${TAG_CHIP}`} style={tagChipStyle(tag.color)} title={`@${tag.name}`} data-tag={tag.id}>
+      {tag.name}
+    </span>
+  ));
+}
+
+/** Kółko ukończenia w kolorze priorytetu (wiersz zadania, karta tablicy). */
+export function DoneCircle({ task, closed, readOnly, onToggle, className = "" }: { task: ViewTask; closed: boolean; readOnly: boolean; onToggle: () => void; className?: string }) {
+  const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={closed}
+      aria-label={closed ? `Przywróć „${task.title}”` : `Ukończ „${task.title}”`}
+      disabled={readOnly}
+      title={readOnly ? "Tylko podgląd" : undefined}
+      onClick={(e) => {
+        // Na karcie tablicy klik w kartę otwiera zadanie.
+        e.stopPropagation();
+        onToggle();
+      }}
+      className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 text-[11px] text-white transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+      style={{ borderColor: color, background: closed ? color : `${color}14` }}
+    >
+      {closed ? "✓" : ""}
+    </button>
+  );
+}
+
+export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, onTomorrow, lateMin = 0, columnTags, widths = {} }: TaskItemProps) {
   const { toggle } = useTaskActions();
-  const { openTask, selectedIds, select, data } = useAppEnv();
-  const selected = selectedIds.has(task.id);
+  const { openTask, openTaskId, openTaskMode, selectedIds, select, data, trashed } = useAppEnv();
+  const inTrash = trashed?.has(task.id) ?? false;
+  const selected = !inTrash && selectedIds.has(task.id);
   const attachments = data.attachments.get(task.id)?.length ?? 0;
   const assignee = assigneeOf(task.assigneeId, data.collaborators);
   const closed = task.kind === "habit" ? Boolean(habitDone) : !isOpen(task);
-  // Przestrzeń albo lista udostępniona do podglądu: zadanie da się otworzyć, ale nie odhaczyć.
-  const readOnly = !listEditable(data, task.listId);
+  // Przestrzeń albo lista udostępniona do podglądu, zadanie w koszu: da się otworzyć, ale nie odhaczyć.
+  const readOnly = inTrash || !listEditable(data, task.listId);
   const date = virtualDate ?? task.dueDate;
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
   // Kolumna „Koniec” / „Odpowiedzialny” zastępuje to samo w szarym wierszu pod tytułem.
   const onOpen = (e: MouseEvent) => {
+    // Zadań z kosza nie zaznacza się do operacji grupowych.
+    if (inTrash) return openTask(task.id);
     // Ctrl / Shift + klik — zaznaczanie wielu (operacje grupowe), zwykły klik — panel.
     if (e.ctrlKey || e.metaKey) return select(task.id, "toggle");
     if (e.shiftKey) return select(task.id, "range");
@@ -261,25 +302,19 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
     openTask(task.id);
   };
   const dueColumn = columns.includes("due");
-  const tags = columns.includes("tags") ? task.tagIds.filter((id) => !columnTags || columnTags.has(id)).flatMap((id) => data.tags.filter((t) => t.id === id)) : [];
-  // Osoby przy tytule: odpowiedzialny (pełny znaczek), potem uczestnicy (obrys); nieznani pominięci.
-  const people = [
-    ...(assignee ? [{ person: assignee, role: "Odpowiedzialny" }] : []),
-    ...(data.participants.get(task.id) ?? [])
-      .filter((id) => id !== task.assigneeId)
-      .map((id) => assigneeOf(id, data.collaborators))
-      .filter((c) => c !== null)
-      .map((person) => ({ person, role: "Uczestnik" })),
-  ];
+  // Tagi: w kolumnie „Tagi” (wybrane), a bez niej — w szarym wierszu pod tytułem.
+  const tagsColumn = columns.includes("tags");
+  const tags = task.tagIds.filter((id) => !tagsColumn || !columnTags || columnTags.has(id)).flatMap((id) => data.tags.find((t) => t.id === id) ?? []);
 
   return (
     <li
       ref={dnd?.ref}
-      className={`group relative flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""} ${selected ? "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]" : "bg-[var(--background)]"} ${dnd?.dragging ? "z-10 opacity-80 shadow-lg" : ""}`}
+      className={`group relative flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""} ${selected ? "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]" : lateMin > 0 ? "bg-[color-mix(in_srgb,var(--danger)_7%,var(--background))] shadow-[inset_3px_0_0_var(--danger)]" : "bg-[var(--background)]"} ${dnd?.dragging ? "z-10 opacity-80 shadow-lg" : ""}`}
       style={{ ...dnd?.style, paddingLeft: depth * 20 }}
       data-task-id={task.id}
       data-virtual={virtualDate ? "" : undefined}
       data-selected={selected || undefined}
+      data-late={lateMin > 0 || undefined}
     >
       {dnd ? (
         <button
@@ -302,19 +337,7 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
       {virtualDate ? (
         <span className="mt-0.5 h-[18px] w-[18px] shrink-0 rounded-full border border-dashed" style={{ borderColor: color }} title="Przyszłe wystąpienie serii" />
       ) : (
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={closed}
-          aria-label={closed ? `Przywróć „${task.title}”` : `Ukończ „${task.title}”`}
-          disabled={readOnly}
-          title={readOnly ? "Tylko podgląd" : undefined}
-          onClick={() => void toggle(task, { habitDone })}
-          className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 text-[11px] text-white transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ borderColor: color, background: closed ? color : `${color}14` }}
-        >
-          {closed ? "✓" : ""}
-        </button>
+        <DoneCircle task={task} closed={closed} readOnly={readOnly} onToggle={() => void toggle(task, { habitDone })} className="mt-0.5" />
       )}
       <div
         className="flex min-w-0 flex-1 cursor-pointer items-start gap-1"
@@ -329,7 +352,15 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
         <span className={`block break-words ${closed ? "line-through opacity-50" : ""}`}>{task.title}</span>
         <span className="flex flex-wrap items-center gap-x-2 text-xs text-[var(--muted)]">
           {showDate && date && !dueColumn ? <span className={overdue ? "font-medium text-[var(--danger)]" : ""}>{relativeDay(date, today)}</span> : null}
-          {task.dueTime && !dueColumn ? <span>{task.dueTime}</span> : null}
+          {task.dueTime && !dueColumn ? (
+            lateMin > 0 ? (
+              <span className="font-semibold text-[var(--danger)]" data-testid="task-late">
+                {task.dueTime} · {formatMinutes(lateMin)} po czasie
+              </span>
+            ) : (
+              <span>{task.dueTime}</span>
+            )
+          ) : null}
           {task.recurrence ? <span title={describeRecurrence(task.recurrence)}>↻ {describeRecurrence(task.recurrence)}</span> : null}
           {needsDecision(task) && !closed ? (
             <span className="text-amber-700 dark:text-amber-300" title="Przesuwane 3 razy lub więcej — zrób, zmniejsz albo usuń">
@@ -344,33 +375,24 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           {task.status === "in_progress" || task.status === "waiting" ? <span>{task.status === "in_progress" ? "w trakcie" : "oczekuje"}</span> : null}
           {attachments ? <span title={`Załączniki: ${attachments}`}>📎 {attachments}</span> : null}
           {listName ? <span className="truncate">{listName}</span> : null}
+          {tagsColumn ? null : <TagChips tags={tags} />}
         </span>
       </button>
-      {people.length ? (
-        <span className="mt-0.5 flex shrink-0 items-center gap-0.5" data-testid="task-people">
-          {people.slice(0, 4).map(({ person, role }) => (
-            <span
-              key={person.id}
-              title={`${role}: ${person.name}`}
-              className={`inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold ${
-                role === "Odpowiedzialny"
-                  ? "bg-sky-100 text-sky-900 dark:bg-sky-900/60 dark:text-sky-100"
-                  : "border border-sky-300 text-sky-800 dark:border-sky-700 dark:text-sky-200"
-              }`}
-            >
-              {collaboratorBadge(person)}
-              <span className="sr-only">
-                {role}: {person.name}
-              </span>
-            </span>
-          ))}
-          {people.length > 4 ? (
-            <span className="text-[10px] text-[var(--muted)]" title={people.slice(4).map(({ person }) => person.name).join(", ")}>
-              +{people.length - 4}
-            </span>
-          ) : null}
-        </span>
-      ) : null}
+      <PeopleBadges task={task} className="mt-0.5" />
+      <button
+        type="button"
+        aria-label={`Podgląd zadania „${task.title}”`}
+        title="Podgląd zadania"
+        aria-pressed={openTaskId === task.id && openTaskMode === "preview"}
+        onClick={() => {
+          if (!inTrash) select(task.id);
+          openTask(task.id, "preview");
+        }}
+        className="mt-px flex h-5 shrink-0 items-center rounded px-1 text-[var(--muted)] opacity-50 group-hover:opacity-100 hover:bg-[var(--hover)] hover:text-[var(--accent)] focus:opacity-100 aria-pressed:text-[var(--accent)] aria-pressed:opacity-100"
+        data-testid="task-preview-open"
+      >
+        <EyeIcon />
+      </button>
       {onAddSubtask ? (
         <button
           type="button"
@@ -397,16 +419,7 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           ) : c === "tags" ? (
             tags.length ? (
               <span className="flex flex-wrap gap-1">
-                {tags.map((tag) => (
-                  <span
-                    key={tag.id}
-                    className={`max-w-full truncate px-1.5 py-px text-[11px] ${TAG_CHIP}`}
-                    style={tagChipStyle(tag.color)}
-                    title={`@${tag.name}`}
-                  >
-                    {tag.name}
-                  </span>
-                ))}
+                <TagChips tags={tags} />
               </span>
             ) : (
               <span className="text-[var(--muted)]">—</span>
@@ -427,6 +440,18 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           )}
         </span>
       ))}
+      {onTomorrow && !readOnly ? (
+        <button
+          type="button"
+          aria-label={`Przesuń „${task.title}” na jutro`}
+          title="Przesuń na jutro"
+          onClick={onTomorrow}
+          className="mt-px shrink-0 rounded-md px-2 py-0.5 text-xs whitespace-nowrap text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
+          data-testid="task-tomorrow"
+        >
+          → Jutro
+        </button>
+      ) : null}
     </li>
   );
 }

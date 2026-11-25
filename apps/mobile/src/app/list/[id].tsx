@@ -17,6 +17,7 @@ import {
   orderedColumns,
   plural,
   progress,
+  READONLY_LIST_NOTE,
   SORT_BY,
   sortTasks,
   tagsForWorkspace,
@@ -40,7 +41,7 @@ import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
 import { TaskColumnsHeader } from '@/components/task-row';
 import { usePalette } from '@/components/ui';
-import { useListShareBadge, useView } from '@/lib/app-data';
+import { useListEditable, useListShareBadge, useView } from '@/lib/app-data';
 import { usePerfReady } from '@/lib/perf';
 import { rowMaker } from '@/lib/rows';
 import { mutate } from '@/lib/sync';
@@ -74,6 +75,7 @@ export default function ListScreen() {
   const list = data.lists.find((l) => l.id === id);
   // Ikona udostępnienia przy tytule: właściciel — ustawienie listy dla gości, gość — jego dostęp.
   const share = useListShareBadge(id);
+  const editable = useListEditable(id);
   const sortBy: SortBy = list?.prefs.sortBy ?? 'manual';
   const groupBy: GroupBy = list?.prefs.groupBy ?? 'none';
   const completed: CompletedMode = list?.prefs.completed ?? 'today';
@@ -169,6 +171,7 @@ export default function ListScreen() {
         sections={sections}
         header={
           <ScreenHeader subtitle={`${LIST_KIND[list.kind]}${workspace ? ` · ${workspace}` : ''} · ${plural(tasks.filter(isOpen).length, OPEN)}`}>
+            {editable ? null : <Text style={{ color: p.muted, fontSize: 13, paddingHorizontal: 12, paddingTop: 6 }}>{READONLY_LIST_NOTE}</Text>}
             <View style={styles.prefs}>
               <Pref label="Sortowanie" value={sortBy} labels={SORT_BY} onChange={(v) => setPrefs({ sortBy: v })} />
               <Pref label="Grupy" value={groupBy} labels={GROUP_BY} onChange={(v) => setPrefs({ groupBy: v })} />
@@ -211,12 +214,13 @@ export default function ListScreen() {
               ) : null}
             </View>
             {savingTemplate && list.kind === 'project' ? <SaveTemplateBar listId={list.id} listName={list.name} onClose={() => setSavingTemplate(false)} /> : null}
-            <FilterBar query={filter ?? {}} onChange={setFilter} hide={['lists']} />
+            <FilterBar query={filter ?? {}} onChange={setFilter} hide={['lists']} save />
             {tasks.length ? <TaskColumnsHeader columns={columns} /> : null}
           </ScreenHeader>
         }
         empty="Brak zadań."
-        quickAdd={{ listId: list.id }}
+        quickAdd={editable ? { listId: list.id } : null}
+        reorder={tree && editable ? sections[0]?.data.map((r) => r.task.id) : undefined}
       />
     </>
   );

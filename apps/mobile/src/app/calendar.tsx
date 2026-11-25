@@ -2,8 +2,8 @@
  * Kalendarz na telefonie (Etap 5, M11; D16 — własna oś dnia, bez calendar-kit): dzień / tydzień (agenda)
  * / miesiąc nad `core/time-blocking.ts`, jak `#/calendar` na webie. Dzień: wiersz „cały dzień”,
  * konflikty, oś z przeciąganiem bloków zadań (przytrzymanie → przesunięcie, uchwyt → długość),
- * „Zaplanuj…” dla zadań bez godziny (`scheduleBlockPatch`), menu bloku (godzina, czas trwania, „Bez
- * godziny” — `unscheduleBlockPatch`). Tydzień: `calendarEntries` → `agendaDays`. Miesiąc: `monthWeeks`
+ * „Zaplanuj…” dla zadań bez godziny (`scheduleBlockPatch`), menu bloku i pozycji „cały dzień” (otwórz, godzina,
+ * inny dzień, czas trwania, „Bez godziny” — `unscheduleBlockPatch`), „+” = nowe zadanie na oglądany dzień. Tydzień: `calendarEntries` → `agendaDays`. Miesiąc: `monthWeeks`
  * z liczbą pozycji, dotknięcie dnia → agenda dnia. Wydarzenia: kalendarze połączone na serwerze
  * i wybrane kalendarze telefonu (`lib/calendar-events.ts`). Wszystkie zmiany z „Cofnij”. Chipy filtra
  * zawężają zadania we wszystkich widokach (wydarzenia i nawyki zostają); bez terminu i godziny, bo o nich
@@ -17,6 +17,7 @@ import {
   applyFilter,
   calendarEntries,
   capitalized,
+  datesPatch,
   dayLabel,
   formatMinutes,
   habitSlots,
@@ -55,9 +56,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTaskActions } from '@/components/actions';
 import { DayTimeline } from '@/components/day-timeline';
 import { FilterBar, type FilterField } from '@/components/filter-bar';
-import { pickMany, pickOption, pickTime, type Option } from '@/components/pickers';
+import { pickAmount, pickDate, pickMany, pickOption, pickTime, type Option } from '@/components/pickers';
+import { Fab, openQuickAdd } from '@/components/task-list';
 import { Chip, usePalette } from '@/components/ui';
-import { useView, type AppData } from '@/lib/app-data';
+import { listEditable, useView, type AppData } from '@/lib/app-data';
 import { deviceCalendars, setDeviceCalendarIds, useCalendarEvents, useDeviceCalendarIds, type EventInfo } from '@/lib/calendar-events';
 import { useDayPlan, useNowMinute } from '@/lib/day-plan';
 import { perfMeasure, usePerfReady } from '@/lib/perf';
@@ -108,6 +110,8 @@ export default function CalendarScreen() {
   };
   const shift = (dir: 1 | -1) => setDate((d) => (mode === 'day' ? addDays(d, dir) : mode === 'week' ? addDays(d, 7 * dir) : addMonths(d, dir)));
   const weekFrom = weekStart(date, firstDay);
+  // „+” dodaje na oglądany dzień; w tygodniu — dziś, gdy jest widoczny, inaczej jego pierwszy dzień.
+  const addDate = mode !== 'week' ? date : today >= weekFrom && today < addDays(weekFrom, 7) ? today : weekFrom;
   const title = mode === 'day' ? capitalized(dayLabel(date)) : mode === 'week' ? `${shortDate(weekFrom)} – ${shortDate(addDays(weekFrom, 6))}` : capitalized(monthLabel(date));
 
   const chooseCalendars = async () => {
@@ -161,6 +165,7 @@ export default function CalendarScreen() {
       ) : (
         <MonthView data={data} date={date} today={today} workspaceId={workspaceId} onSelect={setDate} onDay={openDay} bottom={insets.bottom} />
       )}
+      <Fab label={`Dodaj zadanie: ${dayLabel(addDate)}`} bottom={insets.bottom + 16} onPress={() => openQuickAdd({ dueDate: addDate })} />
     </View>
   );
 }
@@ -198,11 +203,36 @@ function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; da
   };
   const setDuration = async (task: ViewTask) => {
     const current = task.durationMin ?? defaultDurationMin;
-    const minutes = await pickOption<number>(
+    const minutes = await pickAmount(
       `Czas trwania: „${task.title}”`,
       [...new Set([...DURATIONS, current])].sort((a, b) => a - b).map((m) => ({ label: formatMinutes(m), value: m, selected: m === current })),
+      { value: current, min: 5, max: 1440, unit: 'min' },
     );
     if (minutes) schedule(task, resizeBlockPatch(0, minutes), `— ${formatMinutes(minutes)}`);
+  };
+
+  // Inny dzień: godzina i długość bloku zostają (jak przeciągnięcie między dniami na webie).
+  const setDay = async (task: ViewTask) => {
+    const day = await pickDate({ title: `Dzień: „${task.title}”`, value: task.dueDate, today, firstDayOfWeek: data.settings.firstDayOfWeek });
+    if (!day || day === task.dueDate) return;
+    const patch = task.dueTime ? scheduleBlockPatch(task, day, toMin(task.dueTime), { defaultDurationMin }) : datesPatch(task, { due_date: day });
+    schedule(task, patch, `→ ${relativeDay(day, today)}${task.dueTime ? ` ${task.dueTime}` : ''}`);
+  };
+  const openTask = (task: ViewTask) => router.push({ pathname: '/task/[id]', params: { id: task.id } });
+  const canChange = (task: ViewTask) => isOpen(task) && listEditable(data, task.listId);
+  // Zadanie z dniem bez godziny: wiersz „cały dzień”.
+  const onAllDay = async (task: ViewTask) => {
+    // Przyszłe wystąpienie serii: wiersz zadania ma termin bieżącego — bez zmian z tego dnia.
+    const virtual = task.dueDate !== date && !(task.startDate && task.dueDate && task.startDate <= date && date <= task.dueDate);
+    if (virtual || !canChange(task)) return openTask(task);
+    const choice = await pickOption<'open' | 'time' | 'day'>(task.title, [
+      { label: 'Otwórz', value: 'open' },
+      { label: 'Zaplanuj godzinę…', value: 'time' },
+      { label: 'Zmień dzień…', value: 'day' },
+    ]);
+    if (choice === 'open') openTask(task);
+    else if (choice === 'time') await setTime(task);
+    else if (choice === 'day') await setDay(task);
   };
 
   const onBlock = async (block: Block) => {
@@ -213,11 +243,12 @@ function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; da
     }
     const task = plan.tasks.get(block.id);
     if (!task) return;
-    const options: Option<'open' | 'time' | 'duration' | 'unschedule'>[] = [{ label: 'Otwórz', value: 'open' }];
-    if (!block.virtual && isOpen(task)) options.push({ label: 'Zmień godzinę…', value: 'time' }, { label: 'Czas trwania…', value: 'duration' }, { label: 'Bez godziny', value: 'unschedule', hint: 'Dzień zostaje' });
+    const options: Option<'open' | 'time' | 'day' | 'duration' | 'unschedule'>[] = [{ label: 'Otwórz', value: 'open' }];
+    if (!block.virtual && canChange(task)) options.push({ label: 'Zmień godzinę…', value: 'time' }, { label: 'Zmień dzień…', value: 'day' }, { label: 'Czas trwania…', value: 'duration' }, { label: 'Bez godziny', value: 'unschedule', hint: 'Dzień zostaje' });
     const choice = options.length > 1 ? await pickOption(`${clock(block)} ${task.title}`, options) : 'open';
-    if (choice === 'open') router.push({ pathname: '/task/[id]', params: { id: task.id } });
+    if (choice === 'open') openTask(task);
     else if (choice === 'time') await setTime(task);
+    else if (choice === 'day') await setDay(task);
     else if (choice === 'duration') await setDuration(task);
     else if (choice === 'unschedule') schedule(task, unscheduleBlockPatch(), '— bez godziny');
   };
@@ -256,7 +287,7 @@ function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; da
   return (
     <ScrollView
       ref={scroll}
-      contentContainerStyle={{ paddingBottom: bottom + 24 }}
+      contentContainerStyle={{ paddingBottom: bottom + 88 }}
       onScrollBeginDrag={() => {
         touched.current = true;
       }}
@@ -286,7 +317,7 @@ function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; da
                 );
               const task = plan.tasks.get(t.id);
               return (
-                <Pressable key={`task:${t.id}`} accessibilityRole="button" accessibilityLabel={`Zaplanuj „${t.title}”`} onPress={() => task && void setTime(task)} style={[styles.allDay, { borderColor: p.border, backgroundColor: p.card }]}>
+                <Pressable key={`task:${t.id}`} accessibilityRole="button" accessibilityLabel={`„${t.title}” — otwórz albo zaplanuj`} onPress={() => task && void onAllDay(task)} style={[styles.allDay, { borderColor: p.border, backgroundColor: p.card }]}>
                   <Text style={{ color: task && !isOpen(task) ? p.muted : p.fg, fontSize: 12, textDecorationLine: task && !isOpen(task) ? 'line-through' : 'none' }} numberOfLines={1}>
                     {t.title}
                   </Text>
@@ -395,7 +426,7 @@ function RangeAgenda({ data, from, to, today, workspaceId, onDay, bottom }: { da
   const { entries, info, tasks } = useEntries(data, from, to, today, workspaceId);
   const days = useMemo(() => perfMeasure('kalendarz: agenda', () => agendaDays(entries, from, to)), [entries, from, to]);
   return (
-    <ScrollView contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: bottom + 24 }}>
+    <ScrollView contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: bottom + 88 }}>
       {days.map((d) => (
         <View key={d.date} style={[styles.dayCard, { borderColor: d.date === today ? p.accent : p.border, backgroundColor: p.card }]}>
           <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz dzień ${dayLabel(d.date)}`} onPress={() => onDay(d.date)} style={styles.row}>
@@ -420,7 +451,7 @@ function MonthView({ data, date, today, workspaceId, onSelect, onDay, bottom }: 
   const month = date.slice(0, 7);
   const selected = days.get(date) ?? [];
   return (
-    <ScrollView contentContainerStyle={{ padding: 8, gap: 10, paddingBottom: bottom + 24 }}>
+    <ScrollView contentContainerStyle={{ padding: 8, gap: 10, paddingBottom: bottom + 88 }}>
       <View>
         <View style={styles.week}>
           {weeks[0]!.map((d) => (

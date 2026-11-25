@@ -11,7 +11,7 @@
  * „teraz” to zegar ścienny strefy z ustawień.
  */
 import plLocale from "@fullcalendar/core/locales/pl";
-import type { DatesSetArg, EventClickArg, EventDropArg, EventInput } from "@fullcalendar/core";
+import type { CalendarOptions, DatesSetArg, EventClickArg, EventDropArg, EventInput } from "@fullcalendar/core";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin, { Draggable, type DropArg, type EventDragStopArg, type EventResizeDoneArg } from "@fullcalendar/interaction";
 import FullCalendar from "@fullcalendar/react";
@@ -20,6 +20,8 @@ import {
   applyFilter,
   calendarEntries,
   habitSlots,
+  isEmptyFilter,
+  matchesFilter,
   datesPatch,
   freeSlotTimes,
   isOpen,
@@ -31,19 +33,21 @@ import {
   selectInbox,
   selectToday,
   unscheduleBlockPatch,
+  type FilterQuery,
   type LocalDate,
   type ProfileSettings,
   type TaskOp,
   type ViewContext,
   type ViewTask,
 } from "@taskplanner/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import type { AppData } from "@/lib/app-data";
 import { useCalendarEvents } from "@/lib/calendar-events";
 import { useRoute } from "@/lib/route";
 
 import { useAppEnv } from "./app-env";
+import { FilterBar, type Field as FilterField } from "./filter-bar";
 import { useTaskActions } from "./task-item";
 import { Select } from "./ui";
 
@@ -61,6 +65,8 @@ function readPanelClosed(): boolean {
     return false;
   }
 }
+/** Termin i godzina to sama treść kalendarza. */
+const HIDDEN_FILTERS: readonly FilterField[] = ["due", "hasTime"];
 /** Ile zadań panel rysuje (reszta — zawęź źródło albo filtr). */
 const PANEL_LIMIT = 100;
 
@@ -96,6 +102,18 @@ function panelTasks(source: string, data: AppData, ctx: ViewContext): ViewTask[]
   return filter ? applyFilter(data.tasks, filter.query, ctx.today).filter((t) => noTime(t) && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId)) : [];
 }
 
+/**
+ * FullCalendar zamrożony na czas przeciągania / rozciągania bloku. Nowe opcje (każdy render ekranu, np. po
+ * synchronizacji) wymieniają jego kontekst, a upuszczenie z innym kontekstem niż przy ostatnim ruchu myszy
+ * traktuje jak przeniesienie do innego kalendarza: blok się przesuwa, ale `eventDrop` nie przychodzi i zapis ginie.
+ */
+const HeldCalendar = memo(
+  function HeldCalendar({ calendarRef, options }: { calendarRef: RefObject<FullCalendar | null>; held: RefObject<boolean>; options: CalendarOptions }) {
+    return <FullCalendar ref={calendarRef} {...options} />;
+  },
+  (_, next) => next.held.current,
+);
+
 export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: ViewContext; settings: ProfileSettings }) {
   const { openTask, select, store } = useAppEnv();
   const [, navigate] = useRoute();
@@ -103,17 +121,37 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
   const [view, setView] = useState<CalendarView>(readView);
   const [range, setRange] = useState<{ from: LocalDate; to: LocalDate } | null>(null);
   const [source, setSource] = useState("today");
+  // Filtr ukrywa bloki zadań i pozycje panelu; kolizje i wolne okna liczą się z całości.
+  const [filter, setFilter] = useState<FilterQuery>({});
+  const shown = useMemo(() => (isEmptyFilter(filter) ? null : matchesFilter(filter, ctx.today)), [filter, ctx.today]);
   // Przy wejściu: zwinięty, gdy zwinięto go ręcznie albo wszystkie źródła są puste (potem nie znika sam,
   // np. po przeciągnięciu ostatniego zadania — wtedy nadal przyjmuje blok do zdjęcia godziny).
   const [panelOpen, setPanelOpen] = useState(() => !readPanelClosed() && PANEL_SOURCES(data).some((s) => panelTasks(s, data, ctx).length));
   const panel = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const calendar = useRef<FullCalendar>(null);
+  const held = useRef(false);
+  const [, setReleases] = useState(0);
+  const hold = () => {
+    held.current = true;
+  };
+  // Po obsłużeniu upuszczenia (`eventDrop` / `eventResize` przychodzi zaraz po „stop”): render ze zmianami z czasu przeciągania.
+  const release = () => {
+    setTimeout(() => {
+      held.current = false;
+      setReleases((n) => n + 1);
+    }, 0);
+  };
   const timeZone = ctx.timeZone;
   const duration = settings.defaultDurationMin;
 
   const tasks = useMemo(() => data.tasks.filter((t) => t.kind === "task" && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId)), [data.tasks, ctx.workspaceId]);
   const byId = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
+  // Obsługa upuszczenia pochodzi sprzed zamrożenia kalendarza, a zadanie mogło się w międzyczasie zmienić.
+  const latest = useRef(byId);
+  useEffect(() => {
+    latest.current = byId;
+  }, [byId]);
   // Nawyki z porą — bloki do odczytu (odhacza się je w „Dziś” / „Cykliczne”); klik otwiera nawyk.
   const habits = useMemo(
     () => (range ? habitSlots(data.tasks.filter((t) => !ctx.workspaceId || t.workspaceId === ctx.workspaceId), data.habitCompletions, range.from, range.to, ctx.today) : []),
@@ -126,7 +164,8 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
   const events = useMemo<EventInput[]>(() => {
     if (!range) return [];
     const entries = calendarEntries(tasks, calendarEvents.list, range.from, range.to, { timeZone, defaultDurationMin: duration, habits });
-    const out: EventInput[] = entries.map((e) => {
+    const visible = shown ? entries.filter((e) => e.kind !== "task" || (byId.has(e.id) && shown(byId.get(e.id)!))) : entries;
+    const out: EventInput[] = visible.map((e) => {
       const task = e.kind === "task" ? byId.get(e.id) : undefined;
       const source = e.kind === "event" ? calendarEvents.info.get(e.id) : undefined;
       const color = task ? (PRIORITY[task.priority]?.color ?? PRIORITY[4].color) : (source?.color ?? undefined);
@@ -151,10 +190,13 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
       }
     }
     return out;
-  }, [range, tasks, byId, habits, calendarEvents, timeZone, duration, view, settings.workHours]);
+  }, [range, tasks, byId, shown, habits, calendarEvents, timeZone, duration, view, settings.workHours]);
 
   const conflictCount = useMemo(() => events.filter((e) => e.extendedProps?.conflict).length, [events]);
-  const candidates = useMemo(() => panelTasks(source, data, ctx), [source, data, ctx]);
+  const candidates = useMemo(() => {
+    const all = panelTasks(source, data, ctx);
+    return shown ? all.filter(shown) : all;
+  }, [source, data, ctx, shown]);
   const togglePanel = () => {
     setPanelOpen(!panelOpen);
     try {
@@ -191,12 +233,12 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
   };
 
   const onDrop = (info: DropArg) => {
-    const task = byId.get(info.draggedEl.getAttribute("data-task") ?? "");
+    const task = latest.current.get(info.draggedEl.getAttribute("data-task") ?? "");
     if (task) schedule(task, info.date, info.allDay);
   };
 
   const onEventDrop = (info: EventDropArg) => {
-    const task = byId.get(String(info.event.extendedProps.taskId));
+    const task = latest.current.get(String(info.event.extendedProps.taskId));
     if (!task || !info.event.start) return info.revert();
     // Z wiersza „cały dzień” na godzinę — szacunek / domyślny czas; między godzinami — długość bloku zostaje.
     const length = info.event.end && !info.oldEvent.allDay ? Math.round((info.event.end.getTime() - info.event.start.getTime()) / 60_000) : undefined;
@@ -205,7 +247,7 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
   };
 
   const onResize = (info: EventResizeDoneArg) => {
-    const task = byId.get(String(info.event.extendedProps.taskId));
+    const task = latest.current.get(String(info.event.extendedProps.taskId));
     const { start, end } = info.event;
     if (!task || !start || !end) return info.revert();
     const patch = resizeBlockPatch(0, Math.round((end.getTime() - start.getTime()) / 60_000));
@@ -214,10 +256,11 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
 
   // Blok upuszczony na panel → bez godziny (dzień i szacunek zostają).
   const onDragStop = (info: EventDragStopArg) => {
+    release();
     const box = panel.current?.getBoundingClientRect();
     const { clientX: x, clientY: y } = info.jsEvent;
     if (!box || x < box.left || x > box.right || y < box.top || y > box.bottom) return;
-    const task = byId.get(String(info.event.extendedProps.taskId));
+    const task = latest.current.get(String(info.event.extendedProps.taskId));
     if (!task?.dueTime) return;
     void run([{ table: "tasks", id: task.id, patch: unscheduleBlockPatch() }], { text: `„${task.title}” — bez godziny`, undo: [{ table: "tasks", id: task.id, patch: { due_time: task.dueTime } }] });
   };
@@ -312,40 +355,47 @@ export function CalendarScreen({ data, ctx, settings }: { data: AppData; ctx: Vi
       </aside>
       )}
       <div className="tp-calendar min-w-0 flex-1" data-testid="calendar">
+        <FilterBar query={filter} onChange={setFilter} hide={HIDDEN_FILTERS} />
         {conflictCount ? (
           <p className="mb-2 text-xs text-[var(--danger)]" role="status">
             ⚠ Nakładające się bloki w widocznym zakresie: {conflictCount}
           </p>
         ) : null}
-        <FullCalendar
-          ref={calendar}
-          plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
-          initialView={view}
-          initialDate={ctx.today}
-          timeZone="UTC"
-          now={() => localDateTimeAt(new Date(), timeZone)}
-          headerToolbar={{ left: "prev,next today", center: "title", right: "timeGridDay,timeGridWeek,dayGridMonth" }}
-          locale={plLocale}
-          firstDay={ctx.firstDayOfWeek ?? 1}
-          height="calc(100dvh - 9rem)"
-          scrollTime={`${settings.workHours.start}:00`}
-          businessHours={{ daysOfWeek: settings.workHours.days.map((d) => d % 7), startTime: settings.workHours.start, endTime: settings.workHours.end }}
-          snapDuration="00:15:00"
-          nowIndicator
-          editable
-          droppable
-          dayMaxEvents={4}
-          events={events}
-          datesSet={onDates}
-          drop={onDrop}
-          eventDrop={onEventDrop}
-          eventResize={onResize}
-          eventDragStop={onDragStop}
-          eventClick={onClick}
-          eventDidMount={(info) => {
-            const hint = info.event.extendedProps.hint as string | null;
-            info.el.title = hint ? `${info.event.title}
+        <HeldCalendar
+          calendarRef={calendar}
+          held={held}
+          options={{
+            plugins: [timeGridPlugin, dayGridPlugin, interactionPlugin],
+            initialView: view,
+            initialDate: ctx.today,
+            timeZone: "UTC",
+            now: () => localDateTimeAt(new Date(), timeZone),
+            headerToolbar: { left: "prev,next today", center: "title", right: "timeGridDay,timeGridWeek,dayGridMonth" },
+            locale: plLocale,
+            firstDay: ctx.firstDayOfWeek ?? 1,
+            height: "calc(100dvh - 11rem)",
+            scrollTime: `${settings.workHours.start}:00`,
+            businessHours: { daysOfWeek: settings.workHours.days.map((d) => d % 7), startTime: settings.workHours.start, endTime: settings.workHours.end },
+            snapDuration: "00:15:00",
+            nowIndicator: true,
+            editable: true,
+            droppable: true,
+            dayMaxEvents: 4,
+            events,
+            datesSet: onDates,
+            drop: onDrop,
+            eventDrop: onEventDrop,
+            eventResize: onResize,
+            eventDragStart: hold,
+            eventDragStop: onDragStop,
+            eventResizeStart: hold,
+            eventResizeStop: release,
+            eventClick: onClick,
+            eventDidMount: (info) => {
+              const hint = info.event.extendedProps.hint as string | null;
+              info.el.title = hint ? `${info.event.title}
 ${hint}` : info.event.title;
+            },
           }}
         />
       </div>

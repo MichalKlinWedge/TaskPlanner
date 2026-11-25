@@ -10,6 +10,8 @@ import { startOfflineSupport } from "@/lib/service-worker";
 // Przy imporcie: token z linku zaproszenia do przestrzeni (`/?invite=`) — zapamiętany przed logowaniem.
 import { clearInviteParam } from "@/lib/sharing";
 import { storedUser, supabaseBrowser } from "@/lib/supabase-browser";
+// Przy imporcie: wycinek strony z zakładki (`/#share?…`) — zdjęty z adresu, zanim odczyta go ktoś inny.
+import { clearClipHash } from "@/lib/web-clip";
 
 import { LoginScreen } from "./login-screen";
 import { SignedIn } from "./signed-in";
@@ -30,7 +32,10 @@ export function AppRoot() {
     installErrorLog();
     startOfflineSupport();
     // Po efektach routera Next (ten przy hydratacji przywraca adres z `?invite=`).
-    const clearInvite = setTimeout(clearInviteParam, 0);
+    const clearInvite = setTimeout(() => {
+      clearInviteParam();
+      clearClipHash();
+    }, 0);
     const supabase = supabaseBrowser();
     void supabase.auth.getSession().then(({ data, error }) => {
       const offline = !data.session && error && isAuthRetryableFetchError(error) ? storedUser() : null;

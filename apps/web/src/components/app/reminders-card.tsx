@@ -11,7 +11,8 @@ import { useState } from "react";
 import { useLocalQuery } from "@/lib/local-store";
 import { browserDeviceId, enableBrowserReminders, forgetDevice, pushSupport, setDeviceReminders } from "@/lib/push";
 
-import { Button, Card, Notice } from "./ui";
+import { SettingsSection } from "./settings-section";
+import { Button, Notice } from "./ui";
 
 interface DeviceRow extends Record<string, string | number | null> {
   id: string;
@@ -52,8 +53,7 @@ export function RemindersCard({ store, userId }: { store: TabStore; userId: stri
   };
 
   return (
-    <Card className="mt-4">
-      <h2 className="mb-1 text-sm font-semibold">Przypomnienia</h2>
+    <SettingsSection title="Przypomnienia">
       <p className="mb-3 text-xs text-[var(--muted)]">Przypomnienie (i koniec etapu skupienia przy zamkniętej karcie) przychodzi tylko na urządzenia z włączonymi przypomnieniami.</p>
 
       <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
@@ -102,6 +102,6 @@ export function RemindersCard({ store, userId }: { store: TabStore; userId: stri
           })}
         </ul>
       ) : null}
-    </Card>
+    </SettingsSection>
   );
 }

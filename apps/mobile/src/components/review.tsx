@@ -22,11 +22,12 @@ import {
   type ViewTask,
 } from '@taskplanner/core';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAppData, useToday } from '@/lib/app-data';
 import { useLocalQuery } from '@/lib/local-query';
+import { dismissReview, dismissedReviews, onDismissedReviews } from '@/lib/review-nudge';
 import { mutateMany } from '@/lib/sync';
 
 import { useTaskActions } from './actions';
@@ -122,26 +123,32 @@ export function useLastReviews(today: LocalDate, timeZone?: string): Partial<Rec
   return last;
 }
 
-/** „Pora na przegląd dnia / tygodnia” w „Dziś” (pory z Ustawień → „Przeglądy”, wspólne z webem). */
+/** „Pora na przegląd dnia / tygodnia” w „Dziś” (pory z Ustawień → „Profil”, wspólne z webem) z „Nie dziś”. */
 export function ReviewNudge() {
   const p = usePalette();
   const data = useAppData();
   const { timeZone } = data.settings;
   const today = useToday(timeZone);
   const last = useLastReviews(today, timeZone);
-  const due = reviewsDue(data.settings, new Date(), { timeZone, last });
+  const dismissed = useSyncExternalStore(onDismissedReviews, dismissedReviews);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  const due = reviewsDue(data.settings, now, { timeZone, last }).filter((kind) => dismissed[kind] !== today);
   if (!due.length) return null;
   return (
     <View style={styles.nudges}>
       {due.map((kind) => (
-        <Pressable
-          key={kind}
-          accessibilityRole="link"
-          onPress={() => router.push(kind === 'daily' ? '/review/daily' : '/review/weekly')}
-          style={({ pressed }) => [styles.nudge, { backgroundColor: pressed ? p.border : p.selected }]}
-        >
-          <Text style={{ color: p.fg, fontSize: 14 }}>{kind === 'daily' ? '🌙 Pora na przegląd dnia →' : '🗓 Pora na przegląd tygodnia →'}</Text>
-        </Pressable>
+        <View key={kind} style={[styles.nudge, { backgroundColor: p.selected }]}>
+          <Pressable accessibilityRole="link" onPress={() => router.push(kind === 'daily' ? '/review/daily' : '/review/weekly')} style={({ pressed }) => [styles.nudgeText, { opacity: pressed ? 0.6 : 1 }]}>
+            <Text style={{ color: p.fg, fontSize: 14 }}>{kind === 'daily' ? '🌙 Pora na przegląd dnia →' : '🗓 Pora na przegląd tygodnia →'}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" hitSlop={10} onPress={() => dismissReview(kind, today)}>
+            <Text style={{ color: p.muted, fontSize: 13 }}>Nie dziś</Text>
+          </Pressable>
+        </View>
       ))}
     </View>
   );
@@ -152,5 +159,6 @@ const styles = StyleSheet.create({
   button: { width: '31.5%', borderWidth: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   compact: { borderWidth: 1, borderRadius: 14, paddingVertical: 5, paddingHorizontal: 9 },
   nudges: { gap: 6, paddingHorizontal: 12, paddingTop: 8 },
-  nudge: { borderRadius: 10, padding: 10 },
+  nudge: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 10, padding: 10 },
+  nudgeText: { flex: 1 },
 });

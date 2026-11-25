@@ -238,6 +238,8 @@ export interface QuickAddScope {
   newId?: () => string;
   /** Podzadanie: lista rodzica, wskazanie listy we wpisie jest pomijane. */
   parent?: { id: string; listId: string };
+  /** Opis zadania (Markdown, np. wycinek strony z zakładki); pusty = bez opisu. */
+  description?: string | null;
 }
 
 export interface QuickAddOps {
@@ -290,6 +292,7 @@ export function quickAddTaskOps(result: QuickAddResult, text: string, scope: Qui
       sort_key: keyBetween(scope.lastSortKey(scope.parent?.id ?? listId)),
       source: { kind: 'quick_add', text: text.slice(0, 1000) },
       postpone_count: 0,
+      ...(scope.description?.trim() ? { description_md: scope.description.trim() } : {}),
     },
   });
 
@@ -597,6 +600,9 @@ export function deleteTaskOps(tasks: readonly TreeTask[], id: string, now: Date 
   return [id, ...descendants(tasks, id).map((d) => d.id)].map((taskId) => ({ table: 'tasks', id: taskId, patch: { deleted_at: at } }));
 }
 
+/** Usunięte razem: ten sam moment (lokalnie `…000Z`, po powrocie z serwera `…+00:00`). */
+export const sameDeletion = (a: string | null, b: string | null): boolean => a === b || (a !== null && b !== null && Date.parse(a) === Date.parse(b));
+
 /** Z kosza: zadanie i podzadania usunięte razem z nim; rodzic wciąż w koszu → zadanie główne. */
 export function restoreTaskOps(
   trashed: readonly (TreeTask & { deletedAt: string | null })[],
@@ -608,7 +614,7 @@ export function restoreTaskOps(
   return [
     { table: 'tasks', id, patch: task.parentId && !parentAlive ? { deleted_at: null, parent_id: null } : { deleted_at: null } },
     ...descendants(trashed, id)
-      .filter((d) => d.deletedAt === task.deletedAt)
+      .filter((d) => sameDeletion(d.deletedAt, task.deletedAt))
       .map((d): TaskOp => ({ table: 'tasks', id: d.id, patch: { deleted_at: null } })),
   ];
 }
@@ -777,4 +783,29 @@ export function dropTaskOps(
   }
   if (patch.list_id) ops.push(...descendants(tasks, draggedId).map((d): TaskOp => ({ table: 'tasks', id: d.id, patch: { list_id: target.listId } })));
   return ops;
+}
+
+/** Krok w drzewie listy bez przeciągania (telefon): wyżej / niżej wśród rodzeństwa, w głąb poprzedniego, poziom wyżej. */
+export type TaskNudge = 'up' | 'down' | 'in' | 'out';
+
+/**
+ * Przesunięcie zadania o krok — reguły jak `dropTaskOps`. `visible` — wiersze w kolejności na ekranie
+ * (ukryte ukończone się nie liczą). `null` = w tym kierunku się nie da (skraj, 4 poziomy).
+ */
+export function nudgeTaskOps(tasks: readonly SubtaskTask[], visible: readonly string[], id: string, move: TaskNudge): TaskOp[] | null {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const task = byId.get(id);
+  if (!task) return null;
+  if (move === 'out') return task.parentId ? dropTaskOps(tasks, id, task.parentId, 'after') : null;
+  const siblings = visible.filter((v) => byId.get(v)?.parentId === task.parentId);
+  const at = siblings.indexOf(id);
+  if (at < 0) return null;
+  if (move === 'down') return siblings[at + 1] ? dropTaskOps(tasks, id, siblings[at + 1]!, 'after') : null;
+  const previous = siblings[at - 1];
+  if (!previous) return null;
+  if (move === 'up') return dropTaskOps(tasks, id, previous, 'before');
+  // W głąb: na koniec podzadań poprzedniego (też ukrytych), w jego liście.
+  const children = tasks.filter((t) => t.parentId === previous).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : a.id < b.id ? -1 : 1));
+  const last = children.at(-1);
+  return last ? dropTaskOps(tasks, id, last.id, 'after') : (reparentTaskOps(tasks, id, previous)?.ops ?? null);
 }

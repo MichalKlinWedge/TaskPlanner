@@ -1,7 +1,7 @@
 /**
  * Podgląd opisu zadania (`description_md`) na telefonie: Markdown → bloki do narysowania
  * natywnymi komponentami. Podzbiór, który zapisuje edytor webu (TipTap + `@tiptap/markdown`):
- * nagłówki, akapity, listy (także zagnieżdżone i z polami `[ ]`/`[x]`), cytaty, bloki kodu,
+ * nagłówki, akapity, listy (także zagnieżdżone i z polami `[ ]`/`[x]`), cytaty, bloki kodu, tabele GFM,
  * linia pozioma; w tekście pogrubienie, kursywa, przekreślenie, kod i linki. Tekst, którego
  * składnia nie obejmuje, zostaje dosłownie — nic nie znika z podglądu.
  */
@@ -28,12 +28,16 @@ export interface MdListItem {
   line: number;
 }
 
+export type MdAlign = 'left' | 'center' | 'right';
+
 export type MdBlock =
   | { kind: 'heading'; level: 1 | 2 | 3 | 4 | 5 | 6; spans: MdSpan[] }
   | { kind: 'paragraph'; spans: MdSpan[] }
   | { kind: 'list'; items: MdListItem[] }
   | { kind: 'quote'; spans: MdSpan[] }
   | { kind: 'code'; text: string }
+  /** Wiersze mają tyle komórek, ile nagłówek (brakujące puste, nadmiarowe odcięte — jak GFM). */
+  | { kind: 'table'; align: (MdAlign | null)[]; header: MdSpan[][]; rows: MdSpan[][][] }
   | { kind: 'rule' };
 
 const LIST_ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(?:\[([ xX])\]\s+)?(.*)$/;
@@ -60,7 +64,7 @@ export function parseInline(text: string): MdSpan[] {
     };
     while (i < src.length) {
       const rest = src.slice(i);
-      if (rest[0] === '\\' && rest.length > 1 && /[\\`*_~[\]()#!+\-.]/.test(rest[1]!)) {
+      if (rest[0] === '\\' && rest.length > 1 && /[\\`*_~[\]()#!+\-.<>&|]/.test(rest[1]!)) {
         plain += rest[1];
         i += 2;
         continue;
@@ -95,6 +99,48 @@ export function parseInline(text: string): MdSpan[] {
   };
   walk(text, {});
   return out;
+}
+
+const TABLE_DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+
+/** Komórki wiersza tabeli: podział na `|` (bez `\|`), skrajne kreski opcjonalne. */
+function tableCells(line: string): string[] {
+  const cells: string[] = [];
+  let cell = '';
+  const text = line.trim().replace(/^\|/, '');
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\\' && text[i + 1] === '|') {
+      cell += '|';
+      i++;
+    } else if (text[i] === '|') {
+      cells.push(cell.trim());
+      cell = '';
+    } else cell += text[i];
+  }
+  if (cell.trim()) cells.push(cell.trim());
+  return cells;
+}
+
+const cellAlign = (cell: string): MdAlign | null =>
+  cell.startsWith(':') ? (cell.endsWith(':') && cell.length > 1 ? 'center' : 'left') : cell.endsWith(':') ? 'right' : null;
+
+/** Tabela zaczynająca się w linii `n` (nagłówek + linia `---`) albo `null`; `next` — pierwsza linia za tabelą. */
+function tableAt(lines: readonly string[], n: number): { block: MdBlock; next: number } | null {
+  const head = lines[n]!;
+  const delimiter = lines[n + 1];
+  if (!head.includes('|') || !delimiter || !TABLE_DELIMITER.test(delimiter)) return null;
+  const header = tableCells(head);
+  const align = tableCells(delimiter).map(cellAlign);
+  if (!header.length || header.length !== align.length) return null;
+  const rows: MdSpan[][][] = [];
+  let next = n + 2;
+  for (; next < lines.length; next++) {
+    const line = lines[next]!;
+    if (!line.trim() || FENCE.test(line) || HEADING.test(line) || RULE.test(line) || LIST_ITEM.test(line) || /^\s*>/.test(line)) break;
+    const cells = tableCells(line);
+    rows.push(header.map((_, i) => parseInline(cells[i] ?? '')));
+  }
+  return { block: { kind: 'table', align, header: header.map(parseInline), rows }, next };
 }
 
 /** Markdown → bloki. Puste linie rozdzielają akapity; kolejne linie akapitu łączą się spacją. */
@@ -134,6 +180,13 @@ export function parseMarkdown(source: string | null | undefined): MdBlock[] {
     if (heading) {
       flush();
       blocks.push({ kind: 'heading', level: heading[1]!.length as 1, spans: parseInline(heading[2]!) });
+      continue;
+    }
+    const table = tableAt(lines, n);
+    if (table && !LIST_ITEM.test(line) && !/^\s*>/.test(line)) {
+      flush();
+      blocks.push(table.block);
+      n = table.next - 1;
       continue;
     }
     if (RULE.test(line) && !paragraph.length) {

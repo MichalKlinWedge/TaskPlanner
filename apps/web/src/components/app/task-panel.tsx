@@ -32,7 +32,6 @@ import {
   editCommentOps,
   MAX_COMMENT_LENGTH,
   removeParticipantOps,
-  sortComments,
   deleteTaskOps,
   descendants,
   endSeriesOps,
@@ -59,43 +58,53 @@ import {
   taskLinks,
   tagsForWorkspace,
   MARKDOWN_SHORTCUTS,
+  htmlToMarkdown,
   markdownContinueList,
   markdownEdit,
+  markdownPaste,
   reorderTaskTagOps,
   taskTagId,
   taskTagOps,
+  trashListLabel,
+  trashPreview,
   uuidv7,
   type LocalDate,
   type LocalTime,
   type MarkdownAction,
   type MarkdownTextEdit,
+  type PastedMarkdown,
   type Priority,
   type Recurrence,
   type TaskLink,
   type TaskStatus,
+  type TrashedTask,
+  type TrashPreview,
   type ViewTask,
 } from "@taskplanner/core";
-import { EditorContent, useEditor } from "@tiptap/react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { listEditable } from "@/lib/app-data";
 import { useDependencies } from "@/lib/dependencies";
-import { descriptionExtensions, descriptionMarkdown } from "@/lib/editor";
 import { useLocalQuery } from "@/lib/local-store";
 import { usePlugins } from "@/lib/plugins";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { useTaskComments, useTaskDescription, useTaskReminders } from "@/lib/task-details";
+import { useTrash } from "@/lib/trash";
 
 import { BreakdownField } from "./ai-breakdown";
-import { useAppEnv } from "./app-env";
+import { AppEnvProvider, useAppEnv } from "./app-env";
 import { AttachmentsField } from "./attachments";
 import { TaskTimeField } from "./focus";
+import { MarkdownPreview } from "./markdown-preview";
+import { PurgeButton } from "./purge-button";
 import { QuickAdd } from "./quick-add";
 import { RecurrenceEditor } from "./recurrence-editor";
 import { TAG_CHIP, TagColorPicker, tagChipStyle } from "./tag-chip";
 import { TaskItem, useTaskActions } from "./task-item";
-import { PanelSection } from "./panel-section";
-import { Button, CommitInput, IconButton, Input, inputClass, navLinkClass, Select } from "./ui";
+import { LockedSections, PanelSection, useSectionsLocked } from "./panel-section";
+import { TaskPreview } from "./task-preview";
+import { Button, CommitInput, EyeIcon, IconButton, Input, inputClass, navLinkClass, Select } from "./ui";
 
 type Row = Record<string, string | number | null>;
 
@@ -112,8 +121,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
- * Część panelu, którą da się zmieniać. W przestrzeni udostępnionej do podglądu `fieldset disabled`
- * wyszarza i blokuje wszystkie pola i przyciski w środku (zapis i tak odrzuciłby silnik).
+ * Część panelu, którą da się zmieniać (wiersz tytułu; sekcje — `EditableSections`). W przestrzeni udostępnionej do
+ * podglądu i w koszu `fieldset disabled` wyszarza i blokuje wszystkie pola i przyciski w środku.
  */
 function Editable({ readOnly, className = "", children }: { readOnly: boolean; className?: string; children: ReactNode }) {
   return (
@@ -121,6 +130,11 @@ function Editable({ readOnly, className = "", children }: { readOnly: boolean; c
       {children}
     </fieldset>
   );
+}
+
+/** Sekcje, których treść jest zablokowana w podglądzie — nagłówki (zwijanie) działają dalej. */
+function EditableSections({ readOnly, children }: { readOnly: boolean; children: ReactNode }) {
+  return <LockedSections value={readOnly}>{children}</LockedSections>;
 }
 
 /** Zwijana sekcja panelu; klucz = tytuł bez licznika („Podzadania · 2/3” → „Podzadania”). */
@@ -133,36 +147,132 @@ function Block({ id, title, children }: { id?: string; title: string; children: 
   );
 }
 
+/**
+ * Panel zadania: formularz albo podgląd (`TaskPreview`), przełącznik w nagłówku; zadanie w koszu — ten sam panel
+ * tylko do odczytu, z przywróceniem.
+ */
 export function TaskPanel({ taskId }: { taskId: string }) {
-  const { data, userId, settings, today, timeZone, openTask } = useAppEnv();
-  const { run, toggle } = useTaskActions();
+  const { data, openTask } = useAppEnv();
   const task = data.tasks.find((t) => t.id === taskId);
 
-  // Escape zamyka panel (poza polami tekstowymi i edytorem).
+  // Escape zamyka panel (poza polami tekstowymi i edytorem); `preventDefault` — żeby przegląd pod spodem nie wyszedł.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const el = event.target as HTMLElement | null;
-      if (event.key === "Escape" && !(el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)))) openTask(null);
+      if (event.key === "Escape" && !(el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)))) {
+        event.preventDefault();
+        openTask(null);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [openTask]);
 
-  if (!task) {
+  return task ? <TaskFrame task={task} /> : <TrashedTaskPanel taskId={taskId} />;
+}
+
+/** Zadanie spoza widoków: w koszu tego urządzenia → podgląd, inaczej komunikat. */
+function TrashedTaskPanel({ taskId }: { taskId: string }) {
+  const env = useAppEnv();
+  const { data, store, openTask } = env;
+  const { tasks: trashed, alive, loaded } = useTrash(store, data);
+  const preview = useMemo(() => trashPreview(trashed, taskId, alive), [trashed, taskId, alive]);
+  // Zadania z kosza obok żywych: sekcje (podzadania, zależności, zadanie nadrzędne) czytają je z `data.tasks`.
+  const value = useMemo(() => ({ ...env, data: { ...data, tasks: [...data.tasks, ...trashed] }, trashed: new Map(trashed.map((t) => [t.id, t])) }), [env, data, trashed]);
+
+  if (!preview) {
     return (
       <PanelFrame onClose={() => openTask(null)}>
-        <p className="text-sm text-[var(--muted)]">Tego zadania już nie ma (usunięte albo w zarchiwizowanej liście).</p>
+        <p className="text-sm text-[var(--muted)]">{loaded ? "Tego zadania już nie ma (usunięte na stałe, nie ma go na tym urządzeniu albo jest w zarchiwizowanej liście)." : "Wczytywanie…"}</p>
       </PanelFrame>
     );
   }
+  return (
+    <AppEnvProvider value={value}>
+      <TaskFrame task={preview.task} trash={preview} />
+    </AppEnvProvider>
+  );
+}
+
+/** Ramka panelu z przełącznikiem trybu i treścią wybranego trybu. */
+function TaskFrame({ task, trash }: { task: ViewTask; trash?: TrashPreview<TrashedTask> }) {
+  const { data, openTask, openTaskMode } = useAppEnv();
+  const preview = openTaskMode === "preview";
+  const listReadOnly = !listEditable(data, task.listId);
+  const editable = !trash && !listReadOnly;
+  const label = !preview ? "Podgląd zadania (tylko wypełnione dane)" : editable ? "Edytuj zadanie" : "Wszystkie pola zadania";
+  return (
+    <PanelFrame
+      onClose={() => openTask(null)}
+      actions={
+        <Button className="px-2 py-0.5 text-xs" title={label} aria-label={label} data-testid="task-mode-switch" onClick={() => openTask(task.id, preview ? "edit" : "preview")}>
+          {preview ? (
+            editable ? "✎ Edytuj" : "Wszystkie pola"
+          ) : (
+            <>
+              <EyeIcon /> Podgląd
+            </>
+          )}
+        </Button>
+      }
+    >
+      {preview ? (
+        <>
+          {trash ? <TrashBar preview={trash} readOnly={listReadOnly} /> : null}
+          <TaskPreview task={task} trash={trash} />
+        </>
+      ) : (
+        <TaskDetails task={task} trash={trash} />
+      )}
+    </PanelFrame>
+  );
+}
+
+/** Pasek zadania w koszu: od kiedy, z czym usunięte i „Przywróć”. */
+function TrashBar({ preview, readOnly }: { preview: TrashPreview<TrashedTask>; readOnly: boolean }) {
+  const { today, timeZone } = useAppEnv();
+  const { run } = useTaskActions();
+  const { task, root, parent, count, inside, restore, restoreAlone } = preview;
+  return (
+    <div className="mb-2 flex flex-col gap-2 rounded-md bg-[var(--hover)] px-2 py-2 text-xs text-[var(--muted)]" data-testid="task-trashed">
+      <p>
+        🗑️ W koszu od {commentTime(task.deletedAt, today, timeZone)}
+        {parent ? ` (usunięte razem z „${root.title}”)` : ""} — tylko podgląd. Żeby coś zmienić, przywróć zadanie.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          kind="primary"
+          disabled={readOnly}
+          title={count ? `Razem z ${plural(count, ["podzadaniem", "podzadaniami", "podzadaniami"])} usuniętymi naraz` : undefined}
+          onClick={() => void run(restore, { text: `Przywrócono „${root.title}”` })}
+        >
+          {parent ? `Przywróć całość („${root.title.length > 30 ? `${root.title.slice(0, 30)}…` : root.title}”)` : "Przywróć"}
+        </Button>
+        {restoreAlone ? (
+          <Button disabled={readOnly} title="Jako zadanie główne tej samej listy" onClick={() => void run(restoreAlone, { text: `Przywrócono „${task.title}” jako zadanie główne` })}>
+            Przywróć tylko to
+          </Button>
+        ) : null}
+        <PurgeButton task={task} inside={inside} />
+      </div>
+      {readOnly ? <p>Lista jest udostępniona Ci tylko do podglądu — zadania nie da się przywrócić ani usunąć.</p> : null}
+    </div>
+  );
+}
+
+function TaskDetails({ task, trash }: { task: ViewTask; trash?: TrashPreview<TrashedTask> }) {
+  const { data, userId, settings, today, timeZone, openTask } = useAppEnv();
+  const { run, toggle } = useTaskActions();
 
   const update = (patch: Record<string, unknown>) => run([{ table: "tasks", id: task.id, patch }]);
   const boardColumnDefs = data.lists.find((l) => l.id === task.listId)?.boardColumns ?? [];
   const parent = task.parentId ? data.tasks.find((t) => t.id === task.parentId) : undefined;
-  const children = data.tasks.filter((t) => t.parentId === task.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
+  const children = trash ? trash.children : data.tasks.filter((t) => t.parentId === task.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
   const workspaceName = new Map(data.workspaces.map((w) => [w.id, w.name]));
   const scopeReadOnly = !canEditScope(data.workspaces.find((w) => w.id === task.workspaceId)?.role);
-  const readOnly = !listEditable(data, task.listId);
+  const listReadOnly = !listEditable(data, task.listId);
+  // Zadanie w koszu: wszystko zablokowane, da się je tylko przywrócić.
+  const readOnly = listReadOnly || !!trash;
 
   const remove = () => {
     const ops = deleteTaskOps(data.tasks, task.id, new Date());
@@ -171,13 +281,15 @@ export function TaskPanel({ taskId }: { taskId: string }) {
   };
 
   return (
-    <PanelFrame onClose={() => openTask(null)}>
+    <>
       {parent ? (
         <button type="button" className="mb-2 block max-w-full truncate text-left text-xs text-[var(--muted)] hover:text-[var(--accent)]" onClick={() => openTask(parent.id)}>
           ↑ {parent.title}
         </button>
       ) : null}
-      {readOnly ? (
+      {trash ? (
+        <TrashBar preview={trash} readOnly={listReadOnly} />
+      ) : readOnly ? (
         <p className="mb-2 rounded-md bg-[var(--hover)] px-2 py-1 text-xs text-[var(--muted)]" data-testid="task-read-only">
           {scopeReadOnly
             ? `Przestrzeń „${workspaceName.get(task.workspaceId)}” jest udostępniona Ci tylko do podglądu — zadania nie da się zmienić.`
@@ -200,9 +312,9 @@ export function TaskPanel({ taskId }: { taskId: string }) {
           </button>
           <TitleField key={`${task.id}:${task.title}`} value={task.title} onSave={(title) => void update({ title })} />
         </Editable>
-        <SendToField taskId={task.id} />
+        {trash ? null : <SendToField taskId={task.id} />}
       </div>
-      <Editable readOnly={readOnly}>
+      <EditableSections readOnly={readOnly}>
 
         <Block id="details" title="Szczegóły">
         <div className="grid grid-cols-2 gap-3 @xl:grid-cols-3">
@@ -229,6 +341,8 @@ export function TaskPanel({ taskId }: { taskId: string }) {
               value={task.listId}
               onChange={(e) => void run(moveTaskOps(data.tasks, task.id, e.target.value))}
             >
+              {/* Zadanie w koszu: jego listy może już nie być w widokach. */}
+              {trash && !data.lists.some((l) => l.id === task.listId) ? <option value={task.listId}>{trashListLabel(trash.task)}</option> : null}
               {data.workspaces.map((w) => (
                 <optgroup key={w.id} label={w.name}>
                   {data.lists
@@ -284,7 +398,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
         </div>
         </Block>
 
-        {task.kind === "habit" ? (
+        {task.kind === "habit" && !trash ? (
           <Block id="Nawyk" title="Cykliczne">
             <a href={`#/habit/${task.id}`} className={`self-start ${navLinkClass}`}>
               Statystyki, harmonogram i cel →
@@ -301,7 +415,7 @@ export function TaskPanel({ taskId }: { taskId: string }) {
         <CommentsField key={`com:${task.id}`} task={task} />
 
         {task.kind === "task" ? <ParentField key={`parent:${task.id}`} task={task} parent={parent} /> : null}
-      </Editable>
+      </EditableSections>
 
       <Block title={`Podzadania${children.length ? ` · ${children.filter((c) => c.status === "done").length}/${children.filter((c) => c.status !== "cancelled").length}` : ""}`}>
         {children.length ? (
@@ -322,21 +436,21 @@ export function TaskPanel({ taskId }: { taskId: string }) {
         )}
       </Block>
 
-      <Editable readOnly={readOnly}>
+      <EditableSections readOnly={readOnly}>
         <DependenciesField key={`dep:${task.id}`} task={task} />
 
         <TagsField task={task} userId={userId} />
-      </Editable>
+      </EditableSections>
 
       <AttachmentsField key={`att:${task.id}`} task={task} readOnly={readOnly} />
 
-      <Editable readOnly={readOnly}>
+      <EditableSections readOnly={readOnly}>
         <RemindersField key={`rem:${task.id}`} task={task} />
 
         <RecurrenceField key={`rec:${task.id}`} task={task} onSave={(patch) => void update(patch)} timeZone={timeZone} today={today} />
 
         {settings.focus.enabled ? <TaskTimeField task={task} /> : null}
-      </Editable>
+      </EditableSections>
 
       <History
         key={`hist:${task.id}`}
@@ -347,11 +461,13 @@ export function TaskPanel({ taskId }: { taskId: string }) {
 
       <div className="mt-4 flex items-center justify-between border-t border-[var(--line)] pt-3 text-xs text-[var(--muted)]">
         <span>Dodano {task.createdAt.startsWith("1970") ? "teraz (jeszcze nie wysłane)" : shortDate(task.createdAt.slice(0, 10))}</span>
-        <Button kind="danger" disabled={readOnly} onClick={remove}>
-          Przenieś do kosza
-        </Button>
+        {trash ? null : (
+          <Button kind="danger" disabled={readOnly} onClick={remove}>
+            Przenieś do kosza
+          </Button>
+        )}
       </div>
-    </PanelFrame>
+    </>
   );
 }
 
@@ -702,14 +818,7 @@ function PeopleField({ task }: { task: ViewTask }) {
 function CommentsField({ task }: { task: ViewTask }) {
   const { store, userId, today, timeZone } = useAppEnv();
   const { run, notify } = useTaskActions();
-  const { rows } = useLocalQuery<Row>(store, "select id, body, posted_at, edited_at, created_by from task_comments where task_id = ? and deleted_at is null", [task.id], ["task_comments"]);
-  const comments = useMemo(
-    () =>
-      sortComments(
-        rows.map((r) => ({ id: String(r.id), taskId: task.id, body: String(r.body), postedAt: String(r.posted_at), editedAt: (r.edited_at as string | null) ?? null, authorId: (r.created_by as string | null) ?? null })),
-      ),
-    [rows, task.id],
-  );
+  const comments = useTaskComments(store, task.id);
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
 
@@ -835,7 +944,7 @@ function storedPanelWidth() {
  * Panel po prawej (na telefonie pełny ekran). Na szerokim ekranie lewą krawędź da się przeciągnąć
  * (albo strzałkami po jej zaznaczeniu) — szerokość zostaje w `localStorage`, dwuklik przywraca domyślną.
  */
-function PanelFrame({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+function PanelFrame({ onClose, actions, children }: { onClose: () => void; actions?: ReactNode; children: ReactNode }) {
   const [width, setWidth] = useState(storedPanelWidth);
   // Pełny widok: panel zajmuje miejsce widoku (do menu po lewej), sekcje jako kafelki obok siebie.
   const [full, setFull] = useState(() => {
@@ -903,7 +1012,8 @@ function PanelFrame({ onClose, children }: { onClose: () => void; children: Reac
         className={`@container min-w-0 flex-1 overflow-y-auto p-4 lg:p-5 ${full ? "" : "lg:w-[var(--tp-panel-width)] lg:flex-none"}`}
         style={{ "--tp-panel-width": `${clampPanelWidth(width)}px` } as CSSProperties}
       >
-        <div className="mb-1 flex justify-end gap-1">
+        <div className="mb-1 flex items-center justify-end gap-1">
+          {actions ? <span className="mr-auto">{actions}</span> : null}
           <IconButton label={full ? "Zwykły panel" : "Pełny widok — wszystkie sekcje obok siebie"} className="hidden lg:inline-flex" aria-pressed={full} onClick={toggleFull}>
             {full ? "⤡" : "⤢"}
           </IconButton>
@@ -1020,6 +1130,8 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
   const [coloring, setColoring] = useState<string | null>(null);
   // Przeciąganie chipów zmienia kolejność tagów zadania (pierwszy kolorowy = kolor karteczki).
   const [dragged, setDragged] = useState<number | null>(null);
+  // W podglądzie chipów nie da się przeciągać (`fieldset disabled` nie blokuje przeciągania).
+  const sortable = !useSectionsLocked() && task.tagIds.length > 1;
   const byId = new Map(data.tags.map((t) => [t.id, t]));
   const colored = coloring && task.tagIds.includes(coloring) ? byId.get(coloring) : undefined;
   // Cudzy tag (kopia z przestrzeni) — bez zmiany koloru, zmienia go autor.
@@ -1036,10 +1148,10 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
         {task.tagIds.map((id, index) => (
           <span
             key={id}
-            className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs ${TAG_CHIP} ${task.tagIds.length > 1 ? "cursor-grab" : ""} ${dragged === index ? "opacity-50" : ""}`}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs ${TAG_CHIP} ${sortable ? "cursor-grab" : ""} ${dragged === index ? "opacity-50" : ""}`}
             style={tagChipStyle(byId.get(id)?.color)}
-            draggable={task.tagIds.length > 1}
-            title={task.tagIds.length > 1 ? "Przeciągnij, aby zmienić kolejność — pierwszy kolorowy tag nadaje kolor karteczce" : undefined}
+            draggable={sortable}
+            title={sortable ? "Przeciągnij, aby zmienić kolejność — pierwszy kolorowy tag nadaje kolor karteczce" : undefined}
             data-testid="task-tag-chip"
             onDragStart={(e) => {
               setDragged(index);
@@ -1108,9 +1220,9 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
 }
 
 function RemindersField({ task }: { task: ViewTask }) {
-  const { store } = useAppEnv();
+  const { store, today } = useAppEnv();
   const { run } = useTaskActions();
-  const { rows } = useLocalQuery<Row>(store, "select id, kind, offset_min, at_date, at_time from reminders where task_id = ? and deleted_at is null order by kind, offset_min, at_date, at_time", [task.id], ["reminders"]);
+  const rows = useTaskReminders(store, task.id, today);
   const [choice, setChoice] = useState("");
   const [at, setAt] = useState({ date: task.dueDate ?? "", time: "09:00" });
 
@@ -1120,9 +1232,9 @@ function RemindersField({ task }: { task: ViewTask }) {
     <Block title="Przypomnienia">
       <ul className="mb-2 flex flex-col gap-1 text-sm">
         {rows.map((r) => (
-          <li key={String(r.id)} className="flex items-center gap-2">
-            <span>🔔 {r.kind === "relative" ? reminderOffset(Number(r.offset_min)) : `${relativeDay(String(r.at_date) as LocalDate, task.dueDate ?? (String(r.at_date) as LocalDate))} ${String(r.at_time).slice(0, 5)}`}</span>
-            <IconButton label="Usuń przypomnienie" onClick={() => void run([{ table: "reminders", id: String(r.id), patch: { deleted_at: new Date().toISOString() } }])}>
+          <li key={r.id} className="flex items-center gap-2">
+            <span>🔔 {r.label}</span>
+            <IconButton label="Usuń przypomnienie" onClick={() => void run([{ table: "reminders", id: r.id, patch: { deleted_at: new Date().toISOString() } }])}>
               ×
             </IconButton>
           </li>
@@ -1174,28 +1286,6 @@ function RemindersField({ task }: { task: ViewTask }) {
 /** Tryb opisu zapamiętany na urządzeniu: tekst Markdown albo podgląd. */
 const DESCRIPTION_MODE_KEY = "tp-description-mode";
 
-const PREVIEW_CLASS =
-  "text-sm [&_.tiptap]:outline-none [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-4 [&_blockquote]:pl-3 [&_pre]:bg-black/10 [&_pre]:p-2 [&_code]:rounded [&_code]:bg-black/10 [&_code]:px-1 [&_h1]:mt-2 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-2 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-1 [&_h3]:font-semibold [&_a]:text-[var(--accent)] [&_a]:underline [&_hr]:my-2 [&_hr]:border-[var(--line)] [&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0 [&_ul[data-type=taskList]_li]:flex [&_ul[data-type=taskList]_li]:items-start [&_ul[data-type=taskList]_li]:gap-2 [&_ul[data-type=taskList]_label]:mt-1.5 [&_ul[data-type=taskList]_p]:my-0.5 [&_li[data-checked=true]>div]:text-[var(--muted)] [&_li[data-checked=true]>div]:line-through [&_table]:my-2 [&_table]:border-collapse [&_td]:border [&_td]:border-[var(--line)] [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-[var(--line)] [&_th]:bg-[var(--hover)] [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_td_p]:my-0 [&_th_p]:my-0";
-
-/** Markdown opisu wyrenderowany przez TipTap tylko do odczytu (ten sam GFM co wcześniej w edytorze). */
-function MarkdownPreview({ markdown, onEdit }: { markdown: string; onEdit?: () => void }) {
-  const editor = useEditor({
-    extensions: descriptionExtensions,
-    content: "",
-    immediatelyRender: false,
-    editable: false,
-    editorProps: { attributes: { "aria-label": "Podgląd opisu" } },
-  });
-  useEffect(() => {
-    if (editor && descriptionMarkdown(editor).trim() !== markdown.trim()) editor.commands.setContent(markdown, { contentType: "markdown" });
-  }, [editor, markdown]);
-  return (
-    <div className={PREVIEW_CLASS} onDoubleClick={onEdit} title={onEdit ? "Dwuklik — edycja Markdown" : undefined} data-testid="description-preview">
-      {markdown.trim() ? <EditorContent editor={editor} /> : <p className="text-[var(--muted)]">Brak opisu.</p>}
-    </div>
-  );
-}
-
 /** Przyciski formatowania nad polem Markdown (grupy rozdziela `sep`). */
 const FORMAT_BUTTONS: { action: MarkdownAction; label: string; icon: ReactNode; sep?: true }[] = [
   { action: "bold", label: "Pogrubienie (Ctrl+B)", icon: <b>B</b> },
@@ -1228,12 +1318,13 @@ function applyTextEdit(area: HTMLTextAreaElement, edit: MarkdownTextEdit, setTex
  * Opis zadania w Markdown — w panelu i w trybie skupienia. Edycja = tekst źródłowy (GFM) z przyciskami
  * formatowania (core `markdownEdit`, skróty Ctrl+B/I/K, Enter kontynuuje listę), przełącznik „Podgląd”
  * pokazuje wynik, „⛶” otwiera opis na pełnym ekranie (Esc wraca). Zapis przy opuszczeniu pola.
+ * Wklejanie z formatowaniem (core `htmlToMarkdown`): przycisk „📋” czyta schowek, a po zwykłym Ctrl+V
+ * sformatowanego tekstu pod polem jest „Zamień na Markdown” (działa też bez zgody na odczyt schowka).
  */
 export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string; readOnly?: boolean }) {
   const { store } = useAppEnv();
   const { run } = useTaskActions();
-  const { rows } = useLocalQuery<Row>(store, "select description_md from tasks where id = ?", [taskId], ["tasks"]);
-  const saved = (rows[0]?.description_md as string | null) ?? "";
+  const saved = useTaskDescription(store, taskId);
   const [draft, setDraft] = useState(saved);
   const [base, setBase] = useState(saved);
   const [editing, setEditing] = useState(false);
@@ -1310,6 +1401,56 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
     }
   };
 
+  // Ostatnio wklejony tekst, który da się zamienić na Markdown — do pierwszej zmiany treści.
+  const [pasted, setPasted] = useState<{ text: string; from: number; to: number; result: PastedMarkdown } | null>(null);
+  const [pasteNote, setPasteNote] = useState<string | null>(null);
+  const insertText = (el: HTMLTextAreaElement, from: number, to: number, insert: string) =>
+    applyTextEdit(el, { from, to, insert, selStart: from + insert.length, selEnd: from + insert.length }, setDraft);
+  const onAreaPaste = (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    setPasteNote(null);
+    setPasted(null);
+    const html = e.clipboardData.getData("text/html");
+    const result = html ? htmlToMarkdown(html) : null;
+    const plain = e.clipboardData.getData("text/plain").replace(/\r\n?/g, "\n");
+    if (!result?.formatted || !plain) return;
+    e.preventDefault();
+    const from = Math.min(el.selectionStart, el.selectionEnd);
+    insertText(el, from, Math.max(el.selectionStart, el.selectionEnd), plain);
+    setPasted({ text: el.value, from, to: from + plain.length, result });
+  };
+  const convertPasted = () => {
+    const el = area.current;
+    if (el && pasted && el.value === pasted.text) applyTextEdit(el, markdownPaste(el.value, pasted.from, pasted.to, pasted.result), setDraft);
+    setPasted(null);
+  };
+  const pasteFormatted = async () => {
+    const el = area.current;
+    if (!el) return;
+    setPasteNote(null);
+    setPasted(null);
+    let html = "";
+    let plain = "";
+    try {
+      // Chrome: bez czyszczenia HTML zostają listy Worda; inne przeglądarki pomijają opcję.
+      const read = navigator.clipboard.read as (options?: { unsanitized: string[] }) => Promise<ClipboardItem[]>;
+      for (const item of await read.call(navigator.clipboard, { unsanitized: ["text/html"] })) {
+        if (!html && item.types.includes("text/html")) html = await (await item.getType("text/html")).text();
+        if (!plain && item.types.includes("text/plain")) plain = await (await item.getType("text/plain")).text();
+      }
+    } catch {
+      setPasteNote("Przeglądarka nie dała dostępu do schowka — wklej przez Ctrl+V, a potem wybierz „Zamień na Markdown” pod polem.");
+      return;
+    }
+    // Okno zgody mogło zabrać fokus, a w tym czasie panel mógł się zamknąć.
+    if (!el.isConnected) return;
+    const result = html ? htmlToMarkdown(html) : null;
+    // Bez formatowania lepszy jest zwykły tekst (np. skopiowane źródło Markdown — bez ukośników).
+    if (result && (result.formatted || !plain)) applyTextEdit(el, markdownPaste(el.value, el.selectionStart, el.selectionEnd, result), setDraft);
+    else if (plain) insertText(el, el.selectionStart, el.selectionEnd, plain.replace(/\r\n?/g, "\n"));
+    else setPasteNote("W schowku nie ma tekstu.");
+  };
+
   const toolbar = (
     <div className="flex flex-wrap items-center gap-1">
       {readOnly ? null : (
@@ -1338,6 +1479,10 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
               </IconButton>
             </span>
           ))}
+          <span aria-hidden className="mx-1 h-4 w-px bg-[var(--line)]" />
+          <IconButton label="Wklej z formatowaniem (zamiana na Markdown)" onMouseDown={(e) => e.preventDefault()} onClick={() => void pasteFormatted()}>
+            📋
+          </IconButton>
         </div>
       )}
       <span className="flex-1" />
@@ -1365,6 +1510,7 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
         autoFocus={fullScreen}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={onAreaKey}
+        onPaste={onAreaPaste}
         onFocus={() => setEditing(true)}
         onBlur={() => {
           save();
@@ -1378,12 +1524,36 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
       />
     );
 
+  const offer = !preview && pasted?.text === draft;
+  const pasteBar =
+    preview || (!offer && !pasteNote) ? null : (
+      <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]" role="status" data-testid="description-paste">
+        <span>{offer ? "Wklejono zwykły tekst." : pasteNote}</span>
+        {offer ? (
+          <Button className="px-2 py-0.5 text-xs" onMouseDown={(e) => e.preventDefault()} onClick={convertPasted}>
+            Zamień na Markdown
+          </Button>
+        ) : null}
+        <IconButton
+          label="Ukryj"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            setPasted(null);
+            setPasteNote(null);
+          }}
+        >
+          ✕
+        </IconButton>
+      </div>
+    );
+
   return (
     <div className="flex flex-col gap-2">
       {full ? <p className="text-xs text-[var(--muted)]">Opis jest otwarty na pełnym ekranie.</p> : (
         <>
           {toolbar}
           {body(false)}
+          {pasteBar}
         </>
       )}
       {full
@@ -1392,6 +1562,7 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
               <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-3">
                 {toolbar}
                 {body(true)}
+                {pasteBar}
               </div>
             </div>,
             document.body,

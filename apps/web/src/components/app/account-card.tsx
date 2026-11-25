@@ -12,7 +12,8 @@ import { deleteAccount } from "@/lib/account";
 import { closeStore } from "@/lib/local-store";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-import { Button, Card, Input, Notice } from "./ui";
+import { SettingsSection } from "./settings-section";
+import { Button, Input, Notice } from "./ui";
 
 export function AccountCard({ email }: { email: string | null }) {
   const [typed, setTyped] = useState("");
@@ -36,8 +37,7 @@ export function AccountCard({ email }: { email: string | null }) {
   };
 
   return (
-    <Card className="mt-4">
-      <h2 className="mb-1 text-sm font-semibold">Usuń konto</h2>
+    <SettingsSection title="Usuń konto">
       <p className="mb-3 text-sm opacity-70">{ACCOUNT_DELETE_NOTE}</p>
       <form onSubmit={(e) => void submit(e)} className="flex flex-wrap items-center gap-2">
         <Input
@@ -58,6 +58,6 @@ export function AccountCard({ email }: { email: string | null }) {
           <Notice tone="error">{error}</Notice>
         </div>
       ) : null}
-    </Card>
+    </SettingsSection>
   );
 }

@@ -10,7 +10,8 @@ import { useCallback, useEffect, useState } from "react";
 import { APP_VERSION, flushErrors, queuedErrors, reportError } from "@/lib/error-log";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-import { Button, Card, Notice } from "./ui";
+import { SettingsSection } from "./settings-section";
+import { Button, Notice } from "./ui";
 
 interface ErrorRow {
   id: number;
@@ -28,6 +29,14 @@ const dateTime = (iso: string) => new Date(iso).toLocaleString("pl-PL", { dateSt
 const PLATFORM: Record<string, string> = { web: "przeglądarka", android: "telefon" };
 
 export function ErrorsCard() {
+  return (
+    <SettingsSection title="Błędy aplikacji">
+      <ErrorsLog />
+    </SettingsSection>
+  );
+}
+
+function ErrorsLog() {
   const [rows, setRows] = useState<ErrorRow[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [queued, setQueued] = useState(0);
@@ -48,7 +57,7 @@ export function ErrorsCard() {
   }, []);
 
   useEffect(() => {
-    // Wczytanie przy pokazaniu karty (zapytanie do serwera, nie do lokalnej bazy).
+    // Wczytanie przy pierwszym otwarciu sekcji (zapytanie do serwera, nie do lokalnej bazy).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
@@ -62,8 +71,7 @@ export function ErrorsCard() {
   };
 
   return (
-    <Card className="mt-4">
-      <h2 className="mb-1 text-sm font-semibold">Błędy aplikacji</h2>
+    <>
       <p className="mb-3 text-xs text-[var(--muted)]">
         Błędy z tej przeglądarki i telefonu trafiają do własnego dziennika na serwerze (90 dni, bez treści zadań). Wersja: {APP_VERSION}.
         {queued ? ` Czeka na wysłanie: ${plural(queued, ["wpis", "wpisy", "wpisów"])}.` : ""}
@@ -98,6 +106,6 @@ export function ErrorsCard() {
           ))}
         </ul>
       ) : null}
-    </Card>
+    </>
   );
 }

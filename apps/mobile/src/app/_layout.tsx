@@ -1,3 +1,4 @@
+import { inviteTokenFrom, isTransientError } from '@taskplanner/core';
 import * as Haptics from 'expo-haptics';
 import { NavigationBar } from 'expo-navigation-bar';
 import * as Notifications from 'expo-notifications';
@@ -7,21 +8,27 @@ import { useEffect, useRef } from 'react';
 import { AppState, ScrollView, Text } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { TaskActionsProvider } from '@/components/actions';
+import { TaskActionsProvider, useTaskActions } from '@/components/actions';
 import { PickerHost } from '@/components/pickers';
 import { Button, usePalette } from '@/components/ui';
 
+import { handleAlarmActions } from '@/lib/alarm-actions';
 import { onAppData, type AppData } from '@/lib/app-data';
 import { registerBackgroundSync } from '@/lib/background-sync';
 import { sessionUser } from '@/lib/config';
+import { startDevice } from '@/lib/device';
 import { flushErrors, reportError, setErrorRoute } from '@/lib/error-log';
 import { startCapture } from '@/lib/files';
-import { startFocusWork } from '@/lib/focus';
+import { startFocusWork, syncFocusNotifications } from '@/lib/focus';
 import { loadProfile, onboardingGateHeld, onOnboardingGateRelease } from '@/lib/profile';
 import { handleResponse, setupNotifications } from '@/lib/reminders';
 import { scheduleReminders } from '@/lib/scheduler';
+import { acceptLinkInvite } from '@/lib/sharing';
 import { localEngine, onSessionChange, onSynced, startOnlineSync } from '@/lib/sync';
+import { applySavedTheme, applyTheme } from '@/lib/theme';
 import { refreshWidgets } from '@/widget/refresh';
+
+applySavedTheme();
 
 /** Głęboki link (skrót aplikacji, powiadomienie) do ekranu nad zakładkami — pod spodem zawsze zakładki. */
 export const unstable_settings = { anchor: '(tabs)' };
@@ -52,7 +59,8 @@ function ErrorRoute() {
 
 /** Udostępnienie z innej aplikacji (Chrome → „Udostępnij”) → ekran szybkiego dodawania. */
 function ShareRedirect() {
-  const { hasShareIntent } = useShareIntentContext();
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
+  const invite = inviteTokenFrom((hasShareIntent && shareIntent.webUrl) || '');
   const segments = useSegments();
   // Tylko odczyt w efekcie: wyjście z ekranu bez dodania nie może go otworzyć ponownie.
   const onShare = useRef(false);
@@ -64,8 +72,12 @@ function ShareRedirect() {
     if (!hasShareIntent || onShare.current) return;
     // Otwarte okno (np. szybkie dodawanie jako arkusz) zasłoniłoby ekran udostępniania.
     if (router.canDismiss()) router.dismissAll();
-    router.push('/share');
-  }, [hasShareIntent]);
+    // Udostępniony link zaproszenia to zaproszenie, nie zadanie.
+    if (invite) {
+      resetShareIntent();
+      router.push({ pathname: '/invite', params: { invite } });
+    } else router.push('/share');
+  }, [hasShareIntent, invite, resetShareIntent]);
   return null;
 }
 
@@ -142,13 +154,14 @@ function BackgroundWork() {
     };
     const offData = onAppData((data) => {
       if (!data.loaded) return;
+      applyTheme(data.settings.theme);
       if (AppState.currentState !== 'active') return run(data);
       if (pending) clearTimeout(pending.timer);
       pending = { data, timer: setTimeout(() => run(data), 1500) };
     });
     const sub = AppState.addEventListener('change', (next) => {
       // Uprawnienia mogły się zmienić w ustawieniach systemu.
-      if (next === 'active') void scheduleReminders();
+      if (next === 'active') void handleAlarmActions().then(() => scheduleReminders());
       else if (pending) run(pending.data);
     });
     return () => {
@@ -165,7 +178,7 @@ function useAppStart() {
     let alive = true;
     let stopFocus: (() => void) | undefined;
     const ready = setupNotifications().catch((error) => console.warn('powiadomienia', error));
-    void ready.then(() => scheduleReminders());
+    void ready.then(handleAlarmActions).then(() => scheduleReminders());
     // Timer skupienia (po kanałach powiadomień): powiadomienia, koniec etapu w chwili końca, porzucone wpisy.
     void ready.then(() => {
       if (alive) stopFocus = startFocusWork(() => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined));
@@ -177,6 +190,11 @@ function useAppStart() {
     void flushErrors();
     startCapture();
     const offSynced = onSynced(() => void flushErrors());
+    // Telefon na liście urządzeń; wyłączone przypomnienia (tu albo na webie) i skończony przegląd działają od razu.
+    const stopDevice = startDevice(() => {
+      void scheduleReminders();
+      void syncFocusNotifications();
+    });
     // Akcja z powiadomienia, gdy aplikacja jest na wierzchu (w tle obsługuje ją zadanie z index.ts).
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       void handleResponse(response, 'foreground');
@@ -185,9 +203,30 @@ function useAppStart() {
       alive = false;
       sub.remove();
       offSynced();
+      stopDevice();
       stopFocus?.();
     };
   }, []);
+}
+
+/** Zaproszenie z linku otwartego przed zalogowaniem: przyjęte po zalogowaniu (i po powrocie do aplikacji, gdy nie było sieci). */
+function InviteLink() {
+  const { notify } = useTaskActions();
+  useEffect(() => {
+    const accept = () =>
+      void acceptLinkInvite()
+        .then((accepted) => accepted && notify('Dołączono do udostępnionej przestrzeni — jej zadania pobierają się na telefon.'))
+        .catch((e: unknown) => !isTransientError(e) && notify(`Nie udało się przyjąć zaproszenia z linku: ${e instanceof Error ? e.message : String(e)}`));
+    const offSession = onSessionChange(accept);
+    const sub = AppState.addEventListener('change', (next) => next === 'active' && accept());
+    // Start z linku obsługuje ekran `/invite`; tu zaległy token z poprzedniego uruchomienia.
+    accept();
+    return () => {
+      offSession();
+      sub.remove();
+    };
+  }, [notify]);
+  return null;
 }
 
 /** Dotknięcie powiadomienia (nie przycisku): timer → ekran skupienia, nawyk → „Cykliczne”, zadanie → szczegóły. */
@@ -199,8 +238,9 @@ function NotificationTap() {
     const key = `${response.notification.request.identifier}:${response.notification.date}`;
     if (handled.current === key) return;
     handled.current = key;
-    const data = (response.notification.request.content.data ?? {}) as { focus?: boolean; taskId?: string; habit?: boolean; batch?: string };
+    const data = (response.notification.request.content.data ?? {}) as { focus?: boolean; review?: 'daily' | 'weekly'; taskId?: string; habit?: boolean; batch?: string };
     if (data.focus) router.push('/focus');
+    else if (data.review) router.push(data.review === 'weekly' ? '/review/weekly' : '/review/daily');
     else if (data.habit) router.push('/habits');
     else if (data.taskId && !data.batch) router.push({ pathname: '/task/[id]', params: { id: data.taskId } });
   }, [response]);
@@ -219,6 +259,7 @@ export default function RootLayout() {
           <OnboardingGate />
           <BackgroundWork />
           <NotificationTap />
+          <InviteLink />
           {/* Systemowy pasek nawigacji schowany; przesunięcie od dolnej krawędzi pokazuje go na chwilę. */}
           <NavigationBar hidden />
           <Stack screenOptions={{ headerStyle: { backgroundColor: p.card }, headerTintColor: p.fg, contentStyle: { backgroundColor: p.bg } }}>
@@ -247,6 +288,7 @@ export default function RootLayout() {
             <Stack.Screen name="dev" options={{ title: 'Narzędzia PoC' }} />
             <Stack.Screen name="widget" options={{ title: 'Dziś i widżet (PoC-4)' }} />
             <Stack.Screen name="reminders" options={{ title: 'Przypomnienia (PoC-4)' }} />
+            <Stack.Screen name="invite" options={{ title: 'Zaproszenie' }} />
             <Stack.Screen name="share" options={{ title: 'Udostępnione' }} />
             <Stack.Screen name="selftest" options={{ title: 'Samosprawdzenie (Hermes)' }} />
           </Stack>

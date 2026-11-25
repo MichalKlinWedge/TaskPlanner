@@ -4,16 +4,17 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, tagsForWorkspace, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type ViewContext } from "@taskplanner/core";
+import { applyFilter, BOARD_BY, bulkTaskOps, sharedText, habitsForDay, isEmptyFilter, isOpen, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, tagsForWorkspace, VIEW_SECTION, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type ViewContext, type WebClip } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
-import { useAppData, useToday, type List, type Workspace } from "@/lib/app-data";
+import { useAppData, useLateCount, useToday, type List, type Workspace } from "@/lib/app-data";
 import { GOOGLE_RETURN_PARAM } from "@/lib/calendars";
 import { DEFAULT_ROUTE, routeHash, useRoute, type Route } from "@/lib/route";
+import { dropClip, pendingClip } from "@/lib/web-clip";
 
-import { AppEnvProvider, useAppEnv, visibleTaskIds } from "./app-env";
+import { AppEnvProvider, useAppEnv, visibleTaskIds, type TaskPanelMode } from "./app-env";
 import { Board } from "./board";
 import { CalendarScreen } from "./calendar";
 import { DayPlan } from "./day-plan";
@@ -28,10 +29,11 @@ import { CollaboratorsView } from "./collaborators";
 import { HabitDetail, HabitNotificationActions, HabitsView } from "./habits";
 import { DeliveryLogScreen } from "./plugins-card";
 import { QuickAddDialog } from "./quick-add";
+import { ReminderNotificationActions } from "./reminder-actions";
 import { TaskPanel } from "./task-panel";
 import { TaskActionsProvider, useTaskActions } from "./task-item";
 import { Select, Splash } from "./ui";
-import { InboxView, ListView, TodayView, TrashView, UpcomingView } from "./views";
+import { InboxView, ListView, OverdueView, TodayView, TrashView, UpcomingView } from "./views";
 
 // Oś czasu (SVAR Gantt) — osobny kawałek kodu, dociągany w wolnej chwili po starcie i przy pierwszym otwarciu.
 const loadTimeline = () => import("./timeline");
@@ -121,8 +123,9 @@ export function Shell({
       window.removeEventListener("keydown", onKey, true);
     };
   }, [peek]);
-  // Etap 10: udostępnienie (Web Share Target) i zakładka: `/?share_title=…&share_text=…&share_url=…`.
-  const [shared, setShared] = useState(() => (typeof window !== "undefined" ? readShare(new URLSearchParams(window.location.search)) : null));
+  // Etap 10: udostępnienie (Web Share Target) i starsza zakładka: `/?share_title=…&share_text=…&share_url=…`;
+  // nowa zakładka: wycinek z `/#share?…` (zdjęty z adresu w `lib/web-clip.ts`).
+  const [shared, setShared] = useState(() => (typeof window !== "undefined" ? (sharedClip(pendingClip()) ?? readShare(new URLSearchParams(window.location.search))) : null));
   // Skrót „Szybkie dodawanie” z ikony aplikacji: `/?quick=1`.
   const [quickOpen, setQuickOpen] = useState(() => typeof window !== "undefined" && (new URLSearchParams(window.location.search).has("quick") || shared !== null));
   useEffect(() => {
@@ -136,13 +139,19 @@ export function Shell({
     if (url.searchParams.has(GOOGLE_RETURN_PARAM)) {
       url.searchParams.delete(GOOGLE_RETURN_PARAM);
       url.searchParams.delete("account");
-      url.hash = "#/settings";
+      url.hash = "#/settings/calendars";
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     }
   }, []);
   // Klik w przypomnienie przy zamkniętej karcie: `/?task=<id>` (Service Worker, M8).
   const [openTaskId, setOpenTaskId] = useState<string | null>(() => (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("task") : null));
+  // Panel jako formularz (domyślnie) albo podgląd (ikona oka w wierszu zadania).
+  const [openTaskMode, setOpenTaskMode] = useState<TaskPanelMode>("edit");
+  const openTask = useCallback((id: string | null, mode: TaskPanelMode = "edit") => {
+    setOpenTaskId(id);
+    setOpenTaskMode(mode);
+  }, []);
   // Klik poza panelem zadania zamyka go — po obsłudze kliknięcia (zamknięcie przy `pointerdown` przesunęłoby
   // układ pod kursorem), chyba że to kliknięcie otworzyło inne zadanie. Bez zamykania: wiersze i karty zadań
   // (zaznaczanie, odhaczanie, przeciąganie), okna dialogowe, komunikat z „Cofnij”, pasek boczny (zamyka sam)
@@ -187,11 +196,11 @@ export function Shell({
     }
     if (!("serviceWorker" in navigator)) return;
     const onMessage = (event: MessageEvent) => {
-      if (event.data?.type === "open-task" && typeof event.data.taskId === "string") setOpenTaskId(event.data.taskId);
+      if (event.data?.type === "open-task" && typeof event.data.taskId === "string") openTask(event.data.taskId);
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
     return () => navigator.serviceWorker.removeEventListener("message", onMessage);
-  }, []);
+  }, [openTask]);
 
   const [palette, setPalette] = useState<PaletteMode | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -229,8 +238,10 @@ export function Shell({
     }
     const perFilter = new Map(data.savedFilters.map((f) => [f.id, filterCount(data.tasks, f.query, ctx)]));
     const habits = habitsForDay(data.tasks, data.habitCompletions, ctx.today, ctx.today, ctx.workspaceId).filter((h) => !h.settled).length;
-    return { inbox: selectInbox(data.tasks, inboxIds, ctx).length, today: view.overdue.length + view.today.length, overdue: view.overdue.length, habits, perList, perTag, perFilter };
+    return { inbox: selectInbox(data.tasks, inboxIds, ctx).length, today: view.overdue.length + view.today.length, overdue: view.overdue.length, todayTasks: view.today, habits, perList, perTag, perFilter };
   }, [data.tasks, data.lists, data.savedFilters, data.habitCompletions, ctx]);
+
+  const overdueCount = counts.overdue + useLateCount(counts.todayTasks, settings.timeZone);
 
   // Kryterium kolumn tablicy `#/board` — per przeglądarka (tablica listy ma je w `view_prefs`).
   const [boardBy, setBoardByState] = useState<BoardBy>(() => {
@@ -283,7 +294,7 @@ export function Shell({
   const list = route.view === "list" ? data.lists.find((l) => l.id === route.id) : undefined;
   const tag = route.view === "tag" ? data.tags.find((t) => t.id === route.id) : undefined;
   const savedFilter = route.view === "filter" ? data.savedFilters.find((f) => f.id === route.id) : undefined;
-  const filterable = ["inbox", "today", "upcoming", "list", "board"].includes(route.view);
+  const filterable = ["inbox", "today", "overdue", "upcoming", "list", "board"].includes(route.view);
   const wide = route.view === "board" || route.view === "calendar" || route.view === "timeline" || list?.prefs.view === "kanban" || list?.prefs.view === "canvas";
   // Widoki dostają zadania po filtrze doraźnym; liczniki paska bocznego liczą się z pełnych danych.
   const query = list ? (list.prefs.filter ?? {}) : adhoc;
@@ -302,6 +313,8 @@ export function Shell({
       <InboxView {...props} />
     ) : route.view === "today" ? (
       <TodayView {...props} aside={<DayPlan key={`${today}:${workspaceId ?? ""}`} data={data} ctx={ctx} settings={settings} />} />
+    ) : route.view === "overdue" ? (
+      <OverdueView {...props} />
     ) : route.view === "upcoming" ? (
       <UpcomingView {...props} />
     ) : route.view === "board" ? (
@@ -336,7 +349,7 @@ export function Shell({
       <HabitDetail key={route.id} id={route.id} data={data} ctx={ctx} navigate={navigate} />
     ) : route.view === "timeline" ? null : route.view === "focus" && !settings.focus.enabled ? (
       <p className="p-6 text-sm text-[var(--muted)]" data-testid="focus-disabled">
-        Tryb skupienia jest wyłączony — włącz go w <a href="#/settings" className="text-[var(--accent)] underline">Ustawieniach</a>.
+        Tryb skupienia jest wyłączony — włącz go w <a href="#/settings/general" className="text-[var(--accent)] underline">Ustawieniach</a>.
       </p>
     ) : route.view === "focus" ? (
       <FocusScreen key={route.id ?? ""} taskId={route.id ?? null} ctx={ctx} onExit={() => navigate(lastRoute)} navigate={navigate} />
@@ -353,7 +366,7 @@ export function Shell({
     ) : route.view === "deliveries" ? (
       <DeliveryLogScreen />
     ) : route.view === "trash" ? (
-      <TrashView data={data} store={store} />
+      <TrashView data={data} store={store} today={today} />
     ) : route.view === "people" ? (
       <CollaboratorsView />
     ) : list ? (
@@ -392,6 +405,7 @@ export function Shell({
   const mainNav: NavEntry[] = [
     { route: { view: "inbox" }, icon: "📥", label: "Inbox", count: counts.inbox },
     { route: { view: "today" }, icon: "☀️", label: "Dziś", count: counts.today, alert: counts.overdue > 0 },
+    { route: { view: "overdue" }, icon: "⏰", label: VIEW_SECTION.overdue, count: overdueCount || undefined, alert: overdueCount > 0 },
     { route: { view: "upcoming" }, icon: "📅", label: "Nadchodzące" },
     { route: { view: "board" }, icon: "▦", label: "Tablica" },
     { route: { view: "calendar" }, icon: "🗓", label: "Kalendarz" },
@@ -415,12 +429,13 @@ export function Shell({
   const quickDefaults = list ? { listId: list.id } : route.view === "today" ? { listId: targetInbox?.id, dueDate: today } : { listId: targetInbox?.id };
 
   return (
-    <AppEnvProvider value={{ store, data, userId, timeZone: settings.timeZone, settings, today, workspaceId, openTask: setOpenTaskId, openTaskId, selectedIds, select }}>
+    <AppEnvProvider value={{ store, data, userId, timeZone: settings.timeZone, settings, today, workspaceId, openTask, openTaskId, openTaskMode, selectedIds, select }}>
       <TaskActionsProvider store={store} userId={userId} timeZone={settings.timeZone} tasks={data.tasks}>
         <AttachmentsProvider store={store} userId={userId}>
         <FocusProvider store={store} userId={userId} settings={settings}>
         <ReminderToasts />
         <HabitNotificationActions />
+        <ReminderNotificationActions />
         <Keyboard
           blocked={quickOpen || palette !== null || shortcutsOpen || route.view === "focus" || route.view === "review"}
           selected={selected}
@@ -547,7 +562,7 @@ export function Shell({
             </div>
           </aside>
           <main ref={mainRef} className="@container min-w-0 flex-1 overflow-y-auto lg:[&:has(~[data-task-panel=full])]:hidden">
-            <div className={`mx-auto w-full p-4 pb-20 [--tp-pad:1rem] sm:p-6 sm:[--tp-pad:1.5rem] ${wide ? "" : route.view === "today" ? "max-w-5xl" : list?.prefs.columns?.length ? "max-w-6xl" : "max-w-3xl"}`}>{content}</div>
+            <div className={route.view === "settings" ? "h-full" : `mx-auto w-full p-4 pb-20 [--tp-pad:1rem] sm:p-6 sm:[--tp-pad:1.5rem] ${wide ? "" : route.view === "today" ? "max-w-5xl" : list?.prefs.columns?.length ? "max-w-6xl" : "max-w-3xl"}`}>{content}</div>
           </main>
           {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>
@@ -557,9 +572,10 @@ export function Shell({
           onClose={() => {
             setQuickOpen(false);
             setShared(null);
+            dropClip();
           }}
           {...quickDefaults}
-          {...(shared && { initialText: shared.text, link: shared.url ? { url: shared.url, shared: true } : undefined, placeholder: "Zadanie z udostępnionego linku" })}
+          {...(shared && { initialText: shared.text, link: shared.url ? { url: shared.url, shared: true } : undefined, clip: shared.clip, placeholder: "Zadanie z udostępnionego linku" })}
         />
         {palette ? (
           <PaletteHost
@@ -770,13 +786,23 @@ const focusRoute = (taskId: string | null | undefined): Route => (taskId ? { vie
 /** Parametry udostępnienia (manifest `share_target`, zakładka w „Ustawieniach”). */
 export const SHARE_PARAMS = ["share_title", "share_text", "share_url"] as const;
 
-function readShare(params: URLSearchParams): { text: string; url: string | null } | null {
+interface Shared {
+  text: string;
+  url: string | null;
+  clip?: WebClip;
+}
+
+function sharedClip(clip: WebClip | null): Shared | null {
+  return clip && { ...sharedText({ title: clip.title, url: clip.url }), clip };
+}
+
+function readShare(params: URLSearchParams): Shared | null {
   if (!SHARE_PARAMS.some((p) => params.get(p))) return null;
   const result = sharedText({ title: params.get("share_title"), text: params.get("share_text"), url: params.get("share_url") });
   return result.text ? result : null;
 }
 
-const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" }, h: { view: "habits" } };
+const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, z: { view: "overdue" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" }, h: { view: "habits" } };
 
 /** Akcja na zaznaczonych z dymkiem „Cofnij”. */
 function useBulk(selected: readonly string[]) {
@@ -828,7 +854,9 @@ function Keyboard({
   openShortcuts: () => void;
   toggleSidebar: () => void;
 }) {
-  const { openTask, openTaskId } = useAppEnv();
+  const { openTask, openTaskId, openTaskMode, data } = useAppEnv();
+  // Otwarte zadanie z kosza (podgląd) nie wchodzi do trybu skupienia.
+  const focusTaskId = selected.at(-1) ?? (data.tasks.some((t) => t.id === openTaskId) ? openTaskId : null);
   const focusOn = useFocus().settings.enabled;
   const bulk = useBulk(selected);
   const pendingG = useRef(0);
@@ -869,7 +897,8 @@ function Keyboard({
           const range = anchor <= end ? ids.slice(anchor, end + 1) : ids.slice(end, anchor + 1).reverse();
           setSelected(range);
         } else setSelected([next]);
-        if (openTaskId) openTask(next);
+        // J / K przy otwartym panelu zostaje w jego trybie.
+        if (openTaskId) openTask(next, openTaskMode);
         document.querySelector(`main [data-task-id="${next}"]`)?.scrollIntoView({ block: "nearest" });
       };
 
@@ -892,7 +921,7 @@ function Keyboard({
         "2": () => bulk({ kind: "priority", priority: 2 }, "Priorytet wysoki"),
         "3": () => bulk({ kind: "priority", priority: 3 }, "Priorytet średni"),
         "4": () => bulk({ kind: "priority", priority: 4 }, "Priorytet niski"),
-        ...(focusOn && { f: () => navigate(focusRoute(selected.at(-1) ?? openTaskId)) }),
+        ...(focusOn && { f: () => navigate(focusRoute(focusTaskId)) }),
       };
       const handler = handlers[key];
       // Enter bez zaznaczenia zostaje przyciskom i linkom.
@@ -902,7 +931,7 @@ function Keyboard({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [blocked, selected, setSelected, navigate, openQuick, openPalette, openShortcuts, toggleSidebar, openTask, openTaskId, bulk, focusOn]);
+  }, [blocked, selected, setSelected, navigate, openQuick, openPalette, openShortcuts, toggleSidebar, openTask, openTaskId, openTaskMode, focusTaskId, bulk, focusOn]);
 
   return null;
 }
@@ -968,6 +997,7 @@ function PaletteHost({
     const actions: Record<string, () => void> = {
       "view.inbox": () => then(() => navigate({ view: "inbox" })),
       "view.today": () => then(() => navigate({ view: "today" })),
+      "view.overdue": () => then(() => navigate({ view: "overdue" })),
       "view.upcoming": () => then(() => navigate({ view: "upcoming" })),
       "view.kanban": () => then(() => navigate({ view: "board" })),
       "view.calendar": () => then(() => navigate({ view: "calendar" })),

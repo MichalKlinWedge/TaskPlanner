@@ -23,7 +23,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { lastSortKey, listLabel, targetInbox, useAppData, useWorkspace } from '@/lib/app-data';
 
-import { confirm, useTaskActions } from './actions';
+import { choose, useTaskActions } from './actions';
 import { usePalette } from './ui';
 
 const KIND_COLOR: Record<QuickAddTokenKind, string> = {
@@ -126,10 +126,12 @@ export function QuickAddField({ listId, dueDate, parent, placeholder = 'Dodaj za
       .map((l) => l.trim())
       .filter(Boolean);
     if (!lines.length) return;
-    if (lines.length > 1 && !(await confirm('Kilka linii', `Dodać ${plural(lines.length, ['zadanie', 'zadania', 'zadań'])} (każda linia osobno)?`, 'Osobno', 'Jedno'))) {
-      return add([lines.join(' ')]);
-    }
-    await add(lines);
+    if (lines.length === 1) return add(lines);
+    const mode = await choose<'one' | 'each'>('Kilka linii', `Dodać ${plural(lines.length, ['zadanie', 'zadania', 'zadań'])} (każda linia osobno) czy jedno?`, [
+      { label: 'Jedno', value: 'one' },
+      { label: 'Osobno', value: 'each' },
+    ]);
+    if (mode) await add(mode === 'one' ? [lines.join(' ')] : lines);
   };
 
   let target: string | null = null;
