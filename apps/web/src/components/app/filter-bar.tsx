@@ -8,6 +8,7 @@
 import { ASSIGNEE_CREATOR, ASSIGNEE_CREATOR_LABEL, collaboratorsByStatus, collaboratorsForWorkspace, DUE_PRESETS, duePreset, filterChips, isEmptyFilter, LIST_KIND, PRIORITY, tagsForWorkspace, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from "@taskplanner/core";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { useClickOutside } from "@/lib/use-click-outside";
 import { useAppEnv } from "./app-env";
 
 export type Field = "tags" | "priorities" | "lists" | "statuses" | "assignees" | "due" | "hasTime";
@@ -27,22 +28,23 @@ const toggle = <T,>(list: readonly T[] | undefined, value: T): T[] | undefined =
   return next.length ? next : undefined;
 };
 
+/** Okienko obok przycisku we wspólnym elemencie — klik w przycisk nie liczy się jako „poza”, przełącza go sam przycisk. */
 export function Popover({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const anchor = useRef<HTMLElement>(null);
   useEffect(() => {
-    const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
+    anchor.current = ref.current?.parentElement ?? null;
+  }, []);
+  useClickOutside(true, onClose, anchor);
+  useEffect(() => {
     // Esc zamyka samo okienko (nie paletę, przegląd ani panel pod nim) — stąd faza przechwytywania.
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.stopPropagation();
       onClose();
     };
-    document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey, true);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey, true);
-    };
+    return () => document.removeEventListener("keydown", onKey, true);
   }, [onClose]);
   return (
     <div ref={ref} className="absolute top-full left-0 z-20 mt-1 max-h-72 w-64 overflow-y-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 text-sm shadow-lg">
@@ -167,7 +169,15 @@ export function FilterBar({ query, onChange, hide = [], children }: { query: Fil
           <button type="button" className="py-0.5 pr-1 pl-2.5" aria-expanded={open === chip.field} onClick={() => setOpen(open === chip.field ? null : (chip.field as Field))}>
             {chip.label}
           </button>
-          <button type="button" aria-label={`Usuń filtr: ${chip.label}`} className="py-0.5 pr-2 pl-1 opacity-60 hover:opacity-100" onClick={() => set({ [chip.field]: undefined })}>
+          <button
+            type="button"
+            aria-label={`Usuń filtr: ${chip.label}`}
+            className="py-0.5 pr-2 pl-1 opacity-60 hover:opacity-100"
+            onClick={() => {
+              setOpen(null);
+              set({ [chip.field]: undefined });
+            }}
+          >
             ×
           </button>
           {open === chip.field ? <Popover onClose={() => setOpen(null)}>{editor(chip.field as Field)}</Popover> : null}

@@ -2,9 +2,10 @@
 
 import { canEditScope, COLORS, GUEST_ACCESS, GUEST_ACCESS_HINT, inboxId, keyBetween, LIST_KIND, listAccess, listKindPatch, plural, reorderPatches, SCOPE_ROLE, TRASH_DAYS, uuidv7, type GuestAccess, type ListKind, type ProjectStatus, type ScopeRole } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
 import { useLocalQuery } from "@/lib/local-store";
+import { useClickOutside } from "@/lib/use-click-outside";
 
 import { ProjectStatusSelect } from "./project-status";
 import { SharingPanel } from "./sharing";
@@ -380,8 +381,10 @@ function EditableName({ value, max, onSave, className = "" }: { value: string; m
 
 function ColorPicker({ value, onChange, label }: { value: string | null; onChange: (color: string) => void; label: string }) {
   const [open, setOpen] = useState(false);
+  const root = useRef<HTMLSpanElement>(null);
+  useClickOutside(open, () => setOpen(false), root);
   return (
-    <span className="relative inline-flex">
+    <span ref={root} className="relative inline-flex">
       <button
         type="button"
         aria-label={label}

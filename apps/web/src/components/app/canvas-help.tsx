@@ -4,8 +4,9 @@
  * „? Pomoc” w pasku Karteczek: okienko z opisem sterowania (mysz, klawisze). Zastępuje podpowiedź, która
  * nie mieściła się w pasku. Zamyka je klik poza okienkiem, Esc albo ponowny klik w przycisk.
  */
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
+import { useClickOutside } from "@/lib/use-click-outside";
 import { Button } from "./ui";
 
 const HELP: { title: string; rows: [string, string][] }[] = [
@@ -45,15 +46,7 @@ const keepOnScreen = (el: HTMLElement | null) => {
 export function CanvasHelpButton() {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const down = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    // Faza przechwytywania: karty i strzałki zatrzymują zdarzenie, zanim dotrze do okna.
-    window.addEventListener("pointerdown", down, true);
-    return () => window.removeEventListener("pointerdown", down, true);
-  }, [open]);
+  useClickOutside(open, () => setOpen(false), root);
 
   return (
     <span

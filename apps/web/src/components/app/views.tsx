@@ -64,11 +64,12 @@ import {
   type ListShareBadge,
 } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 
 import { listEditable, useLocalMinute, type AppData, type List } from "@/lib/app-data";
 import { useListWidths } from "@/lib/list-widths";
 import { useTrash } from "@/lib/trash";
+import { useClickOutside } from "@/lib/use-click-outside";
 
 import { useAppEnv } from "./app-env";
 import { Board } from "./board";
@@ -513,8 +514,11 @@ function ColumnsPicker({
   tagValue: readonly string[];
   onTagsChange: (next: string[]) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDetailsElement>(null);
+  useClickOutside(open, () => setOpen(false), root);
   return (
-    <details className="relative" data-testid="list-columns">
+    <details ref={root} open={open} onToggle={(e) => setOpen(e.currentTarget.open)} className="relative" data-testid="list-columns">
       <summary className="cursor-pointer list-none rounded-md border border-[var(--line)] px-2 py-1 text-xs hover:bg-[var(--hover)]">
         Kolumny{value.length ? ` (${value.length})` : ""} ▾
       </summary>

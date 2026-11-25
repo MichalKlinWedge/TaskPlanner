@@ -26,6 +26,11 @@ test('Inbox, Dziś, Zaległe i Nadchodzące: kolumny, tablica i XLSX', async ({ 
     await page.getByTestId('list-columns').locator('summary').click();
     await page.getByRole('checkbox', { name: 'Koniec', exact: true }).click();
     await expect(page.getByTestId('list-columns-header').locator('[data-header="due"]')).toBeVisible();
+    // Zaznaczanie nie zwija listy, klik poza nią — tak.
+    const due = page.getByRole('checkbox', { name: 'Koniec', exact: true });
+    await expect(due).toBeVisible();
+    await page.getByRole('heading', { level: 1 }).click();
+    await expect(due).toBeHidden();
   }
   // Kolumna stoi równo z nagłówkiem, także przy przyciskach „→ Dziś” / „→ Jutro”.
   await page.goto('/#/overdue');
@@ -78,4 +83,19 @@ test('Inbox, Dziś, Zaległe i Nadchodzące: kolumny, tablica i XLSX', async ({ 
   // Zadania na dziś nie mogą zostać: kalendarz innych testów schowałby swoje pod „+więcej”.
   const { error } = await server.client.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('created_by', server.userId).in('title', [now, old, added]);
   expect(error).toBeNull();
+});
+
+test('Rozwijane listy: klik poza listą i ponowny klik w przycisk ją zamykają', async ({ page }) => {
+  await openApp(page);
+  await page.goto('/#/calendar');
+  const filters = page.getByRole('button', { name: '+ Filtr' });
+  const option = page.getByRole('button', { name: 'Priorytet', exact: true });
+  await filters.click();
+  await expect(option).toBeVisible();
+  await filters.click();
+  await expect(option).toBeHidden();
+  await filters.click();
+  await expect(option).toBeVisible();
+  await page.getByRole('complementary', { name: 'Zadania bez godziny' }).locator('p').click();
+  await expect(option).toBeHidden();
 });

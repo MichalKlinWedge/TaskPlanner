@@ -70,6 +70,7 @@ import {
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { listEditable, type AppData, type List, type Tag } from "@/lib/app-data";
 import { useDependencies } from "@/lib/dependencies";
+import { useClickOutside } from "@/lib/use-click-outside";
 import { useAppEnv } from "./app-env";
 import { CanvasArrangeButton } from "./canvas-arrange";
 import { CanvasExportButton } from "./canvas-export";
@@ -1693,6 +1694,9 @@ function GroupFrame({
   const h = Math.max(1, group.h + (resize?.row ?? 0));
   const color = group.color ?? "var(--muted)";
   const input = useRef<HTMLInputElement>(null);
+  const colorDot = useRef<HTMLButtonElement>(null);
+  const colorMenu = useRef<HTMLDivElement>(null);
+  useClickOutside(coloring, () => onColoring(false), colorDot, colorMenu);
   const commit = editing && Boolean(draft?.commit);
   useEffect(() => {
     if (commit) input.current?.blur();
@@ -1721,6 +1725,7 @@ function GroupFrame({
       >
         {editable ? (
           <button
+            ref={colorDot}
             type="button"
             aria-label={`Kolor grupy ${group.name}`}
             className="h-2.5 w-2.5 shrink-0 rounded-full border border-current"
@@ -1756,7 +1761,7 @@ function GroupFrame({
         ) : null}
       </div>
       {coloring ? (
-        <div className="absolute left-2 z-30 rounded-md border border-[var(--line)] bg-[var(--surface)] p-2 shadow-lg" style={{ top: 2 }} onPointerDown={(e) => e.stopPropagation()}>
+        <div ref={colorMenu} className="absolute left-2 z-30 rounded-md border border-[var(--line)] bg-[var(--surface)] p-2 shadow-lg" style={{ top: 2 }} onPointerDown={(e) => e.stopPropagation()}>
           <TagColorPicker value={group.color} label={`Kolor grupy ${group.name}`} onChange={onColor} />
         </div>
       ) : null}

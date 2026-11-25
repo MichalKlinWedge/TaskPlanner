@@ -19,6 +19,7 @@ import {
 } from "@taskplanner/core";
 import { useEffect, useRef, useState } from "react";
 
+import { useClickOutside } from "@/lib/use-click-outside";
 import { Button } from "./ui";
 
 interface ArrangePrefs {
@@ -104,18 +105,7 @@ export function CanvasArrangeButton<T extends CanvasArrangeTask>({
     setHover(null);
     previewRef.current(null);
   };
-  useEffect(() => {
-    if (!open) return;
-    const down = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) {
-        setOpen(false);
-        setHover(null);
-        previewRef.current(null);
-      }
-    };
-    window.addEventListener("pointerdown", down);
-    return () => window.removeEventListener("pointerdown", down);
-  }, [open]);
+  useClickOutside(open, close, root);
   // Bez edycji (offline, gość) menu znika razem z podglądem.
   const shown = open && editable;
   useEffect(() => {

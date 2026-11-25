@@ -6,11 +6,12 @@
  * więc działa offline i dla gościa z podglądem. Opcje pamiętane na urządzeniu (`tp-canvas-export`).
  */
 import { exportFileName, plural, type CanvasArrow, type CanvasExportPerson, type CanvasExportTask, type CanvasExportThemeName, type CanvasGroup, type CanvasPdfMode, type LocalDate, type PdfOrientation, type PdfPaper, type PlacedCard } from "@taskplanner/core";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { canvasPdf, canvasPng, exportScene } from "@/lib/canvas-export";
 import type { Tag } from "@/lib/app-data";
 import { reportError } from "@/lib/error-log";
+import { useClickOutside } from "@/lib/use-click-outside";
 
 import { downloadBlob } from "./export";
 import { useTaskActions } from "./task-item";
@@ -112,14 +113,7 @@ export function CanvasExportButton({
   const [busy, setBusy] = useState(false);
   const [prefs, setPrefs] = useState<ExportPrefs>(loadPrefs);
   const root = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener("pointerdown", close);
-    return () => window.removeEventListener("pointerdown", close);
-  }, [open]);
+  useClickOutside(open, () => setOpen(false), root);
 
   const update = (patch: Partial<ExportPrefs>) =>
     setPrefs((p) => {
