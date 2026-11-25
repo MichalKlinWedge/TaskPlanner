@@ -25,7 +25,7 @@ export function PeopleBadges({ task, className = "" }: { task: ViewTask; classNa
         <span
           key={person.id}
           title={`${role}: ${person.name}`}
-          className={`inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold ${
+          className={`relative inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold ${
             role === "Odpowiedzialny"
               ? "bg-sky-100 text-sky-900 dark:bg-sky-900/60 dark:text-sky-100"
               : "border border-sky-300 text-sky-800 dark:border-sky-700 dark:text-sky-200"
