@@ -10,7 +10,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-import { Button, Card, Input, Notice } from "./ui";
+import { CollapsibleCard } from "./collapsible-card";
+import { Button, Input, Notice } from "./ui";
 
 interface Invite {
   pattern: string;
@@ -85,8 +86,7 @@ export function InvitesCard() {
   };
 
   return (
-    <Card className="mt-4">
-      <h2 className="mb-1 text-sm font-semibold">Zaproszenia</h2>
+    <CollapsibleCard id="invites" title="Zaproszenia">
       <p className="mb-3 text-sm opacity-70">
         Konto może założyć tylko adres z tej listy albo dowolny adres z wpisanej domeny („@firma.pl”, bez subdomen). Usunięcie z listy nie usuwa konta,
         które już powstało. Widzisz tę kartę jako administrator.
@@ -133,6 +133,6 @@ export function InvitesCard() {
           <Notice tone="error">{error}</Notice>
         </div>
       ) : null}
-    </Card>
+    </CollapsibleCard>
   );
 }

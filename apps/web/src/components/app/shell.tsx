@@ -26,6 +26,7 @@ import { DailyReview, ReviewNudge, WeeklyReview } from "./review";
 import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-views";
 import { AttachmentsProvider } from "./attachments";
 import { CollaboratorsView } from "./collaborators";
+import { openSettingsSection } from "./collapsible-card";
 import { HabitDetail, HabitNotificationActions, HabitsView } from "./habits";
 import { DeliveryLogScreen } from "./plugins-card";
 import { QuickAddDialog } from "./quick-add";
@@ -140,6 +141,7 @@ export function Shell({
       url.searchParams.delete(GOOGLE_RETURN_PARAM);
       url.searchParams.delete("account");
       url.hash = "#/settings";
+      openSettingsSection("calendars");
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     }

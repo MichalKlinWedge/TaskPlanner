@@ -47,8 +47,9 @@ import { createPluginConnection, deletePluginConnection, retryPluginDelivery, te
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 import { useAppEnv } from "./app-env";
+import { CollapsibleCard } from "./collapsible-card";
 import { FilterBar } from "./filter-bar";
-import { Button, Card, Field, Input, Notice, Select } from "./ui";
+import { Button, Field, Input, Notice, Select } from "./ui";
 
 type Message = { tone: "error" | "ok"; text: string } | null;
 
@@ -74,8 +75,7 @@ export function PluginsCard({ store, userId }: { store: TabStore; userId: string
   };
 
   return (
-    <Card className="mt-4">
-      <h2 className="mb-1 text-sm font-semibold">Integracje</h2>
+    <CollapsibleCard id="plugins" title="Integracje" alert={connections.some((c) => c.status === "error")}>
       <p className="mb-3 text-xs text-[var(--muted)]">
         Wysyłaj zadania do innych usług: połączenie mówi dokąd, reguła — kiedy i co wysłać. Regułę ręczną wybierasz przy zadaniu („Wyślij do…” w panelu albo paletą), zdarzeniowa
         wysyła sama, gdy np. zadanie dostanie tag. Bez sieci zmiany czekają i wychodzą z serwera po synchronizacji. Nieudane wysyłki serwer ponawia przez kilkanaście godzin.
@@ -98,7 +98,7 @@ export function PluginsCard({ store, userId }: { store: TabStore; userId: string
       <Rules store={store} userId={userId} rules={rules} connections={connections} setMessage={setMessage} />
 
       <DeliveriesSection rules={rules} connections={connections} />
-    </Card>
+    </CollapsibleCard>
   );
 }
 
