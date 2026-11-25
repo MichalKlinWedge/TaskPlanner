@@ -11,7 +11,7 @@ Task Planner to codzienny planer zadań: listy i projekty, tablica kanban, kalen
 1. [Pierwsze kroki](#1-pierwsze-kroki)
 2. [Okno aplikacji](#2-okno-aplikacji)
 3. [Dodawanie zadań](#3-dodawanie-zadań)
-4. [Widoki dnia: Inbox, Dziś, Nadchodzące](#4-widoki-dnia-inbox-dziś-nadchodzące)
+4. [Widoki dnia: Inbox, Dziś, Zaległe, Nadchodzące](#4-widoki-dnia-inbox-dziś-zaległe-nadchodzące)
 5. [Praca z zadaniami](#5-praca-z-zadaniami)
 6. [Panel zadania](#6-panel-zadania)
 7. [Listy i projekty](#7-listy-i-projekty)
@@ -75,7 +75,7 @@ Po pierwszym logowaniu aplikacja pyta o podstawowe ustawienia. Każde z nich zmi
 | 2 | ⚙ Ustawienia | obok: wylogowanie |
 | 3 | Przełącznik przestrzeni | jedna przestrzeń albo „Wszystkie przestrzenie” |
 | 4 | Dodaj zadanie | okno szybkiego dodawania (<kbd>Q</kbd>) |
-| 5 | Widoki | Inbox, Dziś, Nadchodzące, Tablica, Kalendarz, Oś czasu, Cykliczne |
+| 5 | Widoki | Inbox, Dziś, Zaległe, Nadchodzące, Tablica, Kalendarz, Oś czasu, Cykliczne |
 | 6 | Listy i projekty | pogrupowane według przestrzeni; niżej filtry, tagi, przeglądy i kosz |
 | 7 | Treść widoku | tu pracujesz z zadaniami |
 | 8 | Plan dnia | oś godzin na dziś lub jutro |
@@ -120,11 +120,11 @@ Wskazówki:
 - Wklejenie kilku wierszy tworzy kilka zadań (aplikacja poprosi o potwierdzenie).
 - Wklejony adres strony trafia do załączników, a jego tytuł uzupełnia się sam.
 
-Zadania dodasz też z dowolnej strony internetowej — patrz [Dodawanie z innych miejsc](#dodawanie-z-innych-miejsc).
+Zadania dodasz też z dowolnej strony internetowej, razem z jej fragmentem — patrz [Dodawanie z innych miejsc](#dodawanie-z-innych-miejsc).
 
 ---
 
-## 4. Widoki dnia: Inbox, Dziś, Nadchodzące
+## 4. Widoki dnia: Inbox, Dziś, Zaległe, Nadchodzące
 
 ### Inbox
 
@@ -138,7 +138,7 @@ Zadania jeszcze nieprzypisane do listy. Najlepiej opróżniać go raz na jakiś 
 Wszystko, co wymaga uwagi dzisiaj:
 
 - **Zaległe** — termin już minął; znaczek `⇥ N×` mówi, że zadanie przekładano co najmniej 3 razy,
-- **Dziś** — termin na dziś,
+- **Dziś** — termin na dziś; zadanie, którego godzina minęła, jest podświetlone i pokazuje, ile minęło (np. „52 min po czasie”),
 - **Trwające** — zadania, których okres (początek–koniec) obejmuje dzisiaj,
 - **Cykliczne na dziś** — patrz [Cykliczne](#13-cykliczne),
 - **Ukończone** — zrobione dzisiaj.
@@ -146,9 +146,16 @@ Wszystko, co wymaga uwagi dzisiaj:
 ![Widok Dziś](img/04-dzis.png)\
 *„Dziś” z planem dnia po prawej.*
 
+Przycisk **→ Jutro** przy zadaniu zaległym lub dzisiejszym przenosi je na jutro. Działa „Cofnij”.
+
 ### Plan dnia i „Ułóż dzień”
 
 Panel po prawej pokazuje dzień godzina po godzinie: zadania z godziną, spotkania z [połączonych kalendarzy](#połączone-kalendarze) (kreskowane) i zadania cykliczne. Zielone tło to wolny czas w godzinach pracy, ⚠ — dwie rzeczy naraz. Zadania bez godziny są nad osią.
+
+Zadanie można **przeciągnąć myszą**: znad osi na wybraną godzinę albo z jednej godziny na inną (co 15 minut). Puszczenie poza osią lub <kbd>Esc</kbd> niczego nie zmienia.
+
+![Przeciąganie w planie dnia](img/74-przeciaganie-planu.png)\
+*Zadanie bez godziny przeciągane na 14:45.*
 
 **Ułóż dzień** proponuje godziny dla zadań, które ich nie mają:
 
@@ -161,6 +168,13 @@ Panel po prawej pokazuje dzień godzina po godzinie: zadania z godziną, spotkan
 *Propozycja planu: bloki przerywane to jeszcze niezapisane zadania.*
 
 Układanie działa bez sieci. „✨ Ułóż z AI” wymaga podłączonego [asystenta AI](#asystent-ai).
+
+### Zaległe
+
+Wszystko po terminie w jednym miejscu (<kbd>G</kbd> <kbd>Z</kbd>): najpierw dzisiejsze, których godzina już minęła, potem zadania z wcześniejszych dni. Licznik przy „Zaległe” w panelu bocznym jest czerwony, gdy coś zalega.
+
+![Zaległe](img/73-zalegle.png)\
+*Zaległe z dziś i z wcześniejszych dni.*
 
 ### Nadchodzące
 
@@ -176,7 +190,8 @@ Najbliższe 14 dni, dalej tygodnie. Zadanie przeciągnięte na inny dzień dosta
 ### Na liście
 
 - **Ukończenie** — kliknij kółko przy zadaniu albo naciśnij <kbd>E</kbd>. Kolor kółka oznacza priorytet. „Cofnij” w dymku na dole przywraca zadanie.
-- **Otwarcie** — kliknij tytuł albo naciśnij <kbd>Enter</kbd>.
+- **Otwarcie** — kliknij tytuł albo naciśnij <kbd>Enter</kbd>. Ikona oka otwiera [podgląd](#podgląd-zadania).
+- **Tagi i osoby** — tagi są pod tytułem, skróty osób obok niego.
 - **Kolejność i podzadania** — przeciągnij za uchwyt ⋮⋮ (przy sortowaniu „Ręcznie”). Upuszczone obok podzadania staje się podzadaniem tego samego zadania.
 
 ### Wiele zadań naraz
@@ -188,7 +203,7 @@ Zaznaczaj przez <kbd>Ctrl</kbd>+klik, <kbd>Shift</kbd>+klik (zakres) albo <kbd>J
 
 ### Paleta i wyszukiwanie
 
-<kbd>Ctrl</kbd>+<kbd>K</kbd> otwiera paletę: znajdziesz w niej zadania, listy, widoki i polecenia. Polskie znaki nie mają znaczenia. Znak `>` na początku ogranicza wyniki do poleceń, a <kbd>/</kbd> otwiera od razu wyszukiwanie.
+<kbd>Ctrl</kbd>+<kbd>K</kbd> otwiera paletę: znajdziesz w niej zadania, listy, widoki i polecenia. Polskie znaki nie mają znaczenia. Wyszukiwanie obejmuje też opisy zadań, a „+ Filtr” zawęża wyniki. Znak `>` na początku ogranicza wyniki do poleceń, a <kbd>/</kbd> otwiera od razu wyszukiwanie.
 
 ![Paleta poleceń](img/10-paleta.png)\
 *Wyszukiwanie w palecie.*
@@ -207,10 +222,15 @@ Priorytety: **Krytyczny**, **Wysoki**, **Średni**, **Niski** (klawisze <kbd>1</
 
 ### Kosz
 
-Usunięte zadania trafiają do kosza na **30 dni**. Do tego czasu można je przywrócić.
+Usunięte zadania trafiają do kosza na **30 dni**. Do tego czasu można je przywrócić. Kliknięcie zadania pokazuje jego szczegóły tylko do odczytu.
 
 ![Kosz](img/18-kosz.png)\
 *Kosz.*
+
+![Zadanie z kosza](img/75-kosz-podglad.png)\
+*Szczegóły zadania z kosza.*
+
+**Usuń na stałe** kasuje zadanie (z podzadaniami usuniętymi razem z nim) od razu i dla wszystkich osób w przestrzeni. Wymaga sieci i potwierdzenia, a **cofnąć się tego nie da**.
 
 ### Eksport do Excela
 
@@ -228,7 +248,16 @@ Kliknięcie zadania otwiera panel po prawej. Szerokość zmienisz, przeciągają
 ![Pełny widok zadania](img/20-panel-pelny.png)\
 *To samo zadanie w pełnym widoku.*
 
-**Szczegóły** to status, priorytet, lista, początek, termin z godziną, czas trwania i — na tablicach z własnymi kolumnami — kolumna.
+### Podgląd zadania
+
+Ikona oka w wierszu zadania otwiera krótkie podsumowanie — tylko wypełnione dane, bez formularza. Między podglądem a formularzem przełączają przyciski **Podgląd** i **✎ Edytuj** na górze panelu.
+
+![Podgląd zadania](img/76-podglad-zadania.png)\
+*Podgląd zadania.*
+
+### Szczegóły
+
+Szczegóły to status, priorytet, lista, początek, termin z godziną, czas trwania i — na tablicach z własnymi kolumnami — kolumna.
 
 ### Opis
 
@@ -236,6 +265,11 @@ Opis zapisuje się w Markdownie: nagłówki, listy, pola wyboru, tabele, linki. 
 
 ![Opis zadania](img/21-opis.png)\
 *Opis z paskiem formatowania.*
+
+**Wklejanie z formatowaniem** (np. ze strony lub z Worda): przycisk 📋 w pasku wkleja zawartość schowka zamienioną na Markdown. Po zwykłym <kbd>Ctrl</kbd>+<kbd>V</kbd> pod polem pojawia się „Zamień na Markdown”.
+
+![Wklejanie z formatowaniem](img/77-wklejanie.png)\
+*Po wklejeniu zwykłego tekstu można odzyskać formatowanie.*
 
 ### Osoby i komentarze
 
@@ -322,6 +356,8 @@ Wybierz gotową regułę, ustaw szczegóły albo wpisz słowami (np. „co drugi
 | 4 | Kolumny | dodatkowe kolumny po prawej stronie |
 | 5 | + Filtr | zawężenie listy |
 
+W projekcie obok jest też **status**: Aktywny, Wstrzymany albo Zakończony. Przegląd tygodnia pyta tylko o projekty aktywne.
+
 ### Kolumny
 
 Do wyboru: Odpowiedzialny, Początek, Koniec, Tagi (można wskazać, które). Szerokość zmienisz, przeciągając krawędź nagłówka; dwuklik przywraca domyślną.
@@ -354,7 +390,7 @@ Zadania pogrupujesz według priorytetu, listy, terminu, tagu lub statusu.
 
 ### Filtrowanie
 
-„+ Filtr” zawęża widok według tagu, priorytetu, listy, statusu, osoby, terminu lub godziny. Warunki można łączyć.
+„+ Filtr” jest w widokach zadań, kalendarzu, cyklicznych, koszu, palecie i przeglądzie tygodnia. Zawęża według tagu, priorytetu, listy, statusu, osoby, terminu lub godziny. Warunki można łączyć.
 
 ![Filtr](img/15-filtr.png)\
 *Widok z warunkami filtra.*
@@ -375,7 +411,7 @@ Kliknięcie tagu w panelu bocznym pokazuje wszystkie zadania z tym tagiem. Na g�
 
 ## 9. Tablica
 
-Tablica układa zadania w kolumnach według **statusu, priorytetu, dnia tygodnia, tagu, listy** lub **własnych kolumn**. Przeciągnięcie karty zmienia odpowiednie pole zadania.
+Tablica układa zadania w kolumnach według **statusu, priorytetu, dnia tygodnia, tagu, listy** lub **własnych kolumn**. Przeciągnięcie karty zmienia odpowiednie pole zadania. Kółko na karcie ukończy zadanie, a obok tytułu widać przypisane osoby.
 
 ![Tablica](img/31-tablica.png)\
 *Tablica przestrzeni Praca według statusu.*
@@ -529,6 +565,9 @@ Aplikacja pokazuje po jednym zadaniu na dziś i zaległym. Decyzja to jeden klaw
 | <kbd>6</kbd> | Usuń |
 | <kbd>→</kbd> / <kbd>Spacja</kbd> | pomiń |
 | <kbd>←</kbd> | wróć |
+| <kbd>Enter</kbd> | otwórz zadanie w panelu po prawej |
+
+Ikony ✎ i oka otwierają zadanie do edycji albo podglądu bez wychodzenia z przeglądu — także w przeglądzie tygodnia.
 
 ![Przegląd dnia](img/45-przeglad-dnia.png)\
 *Zadanie przekładane kilka razy ma podpowiedź.*
@@ -556,7 +595,7 @@ Podsumowanie zbiera liczby z tygodnia. „✨ Opisz tydzień” (wymaga [asysten
 
 ### Przestrzenie i listy
 
-W panelu bocznym → **Przestrzenie i listy** dodajesz, nazywasz, kolorujesz, porządkujesz i archiwizujesz przestrzenie, listy i projekty.
+W panelu bocznym → **Przestrzenie i listy** dodajesz, nazywasz, kolorujesz, porządkujesz i archiwizujesz przestrzenie, listy i projekty. Listę zamienisz tu w projekt i odwrotnie, zmienisz status projektu, a pustą listę usuniesz.
 
 ![Przestrzenie i listy](img/49-przestrzenie.png)\
 *Zarządzanie przestrzeniami.*
@@ -583,6 +622,24 @@ W panelu bocznym → **Przestrzenie i listy** dodajesz, nazywasz, kolorujesz, po
 
 Przestrzeń może usunąć tylko właściciel; gość może ją opuścić. Przypomnienia dostaje wyłącznie ten, kto je ustawił.
 
+### Kilku właścicieli i przekazanie przestrzeni
+
+Przestrzeń może mieć kilku właścicieli z tymi samymi uprawnieniami. Jeden z nich jest **głównym właścicielem** — tylko on może odebrać rolę pozostałym.
+
+- **Dodanie właściciela** — w „Udostępnij” wybierz przy osobie rolę „Właściciel…”.
+- **Przekazanie** — w części „Zrzeczenie się roli właściciela” wskaż osobę i to, co stanie się z Tobą: Edytor, Podgląd albo opuszczenie przestrzeni.
+
+Zmiana zaczyna działać dopiero wtedy, gdy ta osoba ją przyjmie w aplikacji (14 dni). Do tego czasu możesz się wycofać.
+
+### Eksport i import przestrzeni
+
+**Eksportuj** przy przestrzeni zapisuje do jednego pliku JSON jej listy, zadania, komentarze, historię cyklicznych, załączniki, współpracowników i role.
+
+**Import przestrzeni** na dole ekranu odtwarza ją jako **nową** przestrzeń — istniejące się nie zmienią. Przed importem sprawdzasz nazwę i decydujesz, kogo zaprosić. Oba wymagają sieci; kosz, historia zmian, integracje i szablony nie są w pliku.
+
+![Import przestrzeni](img/72-import-przestrzeni.png)\
+*Podgląd przed importem.*
+
 ### Współpracownicy
 
 Osoby, które wskazujesz jako odpowiedzialne lub uczestników. Każda ma imię, opcjonalny e-mail i akronim (do 5 znaków) widoczny przy zadaniu. Niżej są osoby z udostępnionych przestrzeni.
@@ -594,17 +651,19 @@ Osoby, które wskazujesz jako odpowiedzialne lub uczestników. Każda ma imię, 
 
 ## 17. Ustawienia
 
-Otwórz je ikoną ⚙ w nagłówku. Pierwsza część to te same pola co przy [pierwszym uruchomieniu](#pierwsze-uruchomienie).
+Otwórz je ikoną ⚙ w nagłówku i wybierz sekcję z menu po lewej; aplikacja pamięta ostatnią. Czerwona kropka przy sekcji oznacza, że coś wymaga uwagi. „Ogólne” to te same pola co przy [pierwszym uruchomieniu](#pierwsze-uruchomienie).
 
 ![Ustawienia](img/55-ustawienia.png)\
-*Ustawienia podstawowe.*
+*Ustawienia — menu sekcji i „Ogólne”.*
 
 ### Przypomnienia w przeglądarce
 
 Kliknij „Włącz powiadomienia” i zezwól na nie w przeglądarce. Przypomnienia przychodzą także przy zamkniętej karcie. Ustawienie dotyczy każdej przeglądarki osobno.
 
+W powiadomieniu o zadaniu są przyciski **Ukończ** i **Odłóż 10 min**, które działają bez otwierania aplikacji.
+
 ![Przypomnienia](img/56-powiadomienia.png)\
-*Karta „Przypomnienia”.*
+*Sekcja „Przypomnienia”.*
 
 ### Połączone kalendarze
 
@@ -623,7 +682,7 @@ Wysyłają zadania do innych narzędzi: **webhook** (np. n8n, Make) lub **GitLab
 - **ręczna** — pozycja „Wyślij do…” w zadaniu,
 - **zdarzeniowa** — wysyła sama, np. po dodaniu tagu. Krótkie opóźnienie pozwala cofnąć pomyłkę przed wysłaniem.
 
-„Po udanej wysyłce zmień zadanie” może dodać lub usunąć tag albo zmienić status. Nieudaną wysyłkę ponowisz w historii.
+W GitLabie „Czas (min)” zadania może trafić do pola Estimate. „Po udanej wysyłce zmień zadanie” może dodać lub usunąć tag albo zmienić status. Nieudaną wysyłkę ponowisz w historii.
 
 ![Integracje](img/58-integracje.png)\
 *Połączenia, reguły i historia wysyłek.*
@@ -640,17 +699,29 @@ Funkcje ✨ korzystają z **Twojego** klucza Gemini (Google). Wklej klucz z proj
 
 ### Kopia zapasowa
 
-„Eksportuj do pliku” zapisuje dane w JSON (bez plików załączników i połączonych kalendarzy). „Importuj z pliku…” przywraca je — powtórny import niczego nie podwaja.
+„Eksportuj do pliku” zapisuje dane w JSON (bez plików załączników i połączonych kalendarzy). „Importuj z pliku…” przywraca je — powtórny import niczego nie podwaja. Jedną przestrzeń razem z załącznikami zapiszesz w [Przestrzenie i listy](#eksport-i-import-przestrzeni).
 
 ![Kopia zapasowa](img/60-kopia.png)\
 *Kopia zapasowa.*
 
 ### Dodawanie z innych miejsc
 
-Przeciągnij przycisk na pasek zakładek. Kliknięty na dowolnej stronie otwiera szybkie dodawanie z jej tytułem i adresem. Na telefonie z Androidem działa „Udostępnij” → Task Planner.
+1. Przeciągnij przycisk „+ Task Planner” na pasek zakładek (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> pokazuje pasek).
+2. Na dowolnej stronie zaznacz fragment, jeśli ma trafić do opisu, i kliknij zakładkę.
+3. Otworzy się szybkie dodawanie z tytułem i adresem strony, a zaznaczenie będzie cytatem w opisie. Popraw, co trzeba, i dodaj zadanie.
+
+Zakładka dodana przed tą zmianą nadal działa, ale przekazuje sam tytuł i adres — usuń ją i przeciągnij nową. Zakładka nie działa na stronach samej przeglądarki (np. `chrome://`). Na telefonie z Androidem użyj „Udostępnij” → Task Planner.
 
 ![Dodawanie z innych miejsc](img/61-przechwytywanie.png)\
 *Zakładka i udostępnianie.*
+
+![Wycinek strony](img/70-wycinek.png)\
+*Zaznaczony fragment strony jako cytat.*
+
+**✨ Streść** (wymaga [asystenta AI](#asystent-ai)) proponuje tytuł i opis w punktach z zaznaczenia, a gdy nic nie zaznaczono — z tekstu strony. Wynik tylko wypełnia pola; „Cofnij streszczenie” przywraca poprzednią treść.
+
+![Streszczenie strony](img/71-stresc.png)\
+*Tytuł i punkty zaproponowane przez AI.*
 
 ### Aplikacja na pulpicie
 
@@ -668,7 +739,7 @@ Jasny, ciemny lub zgodny z systemem.
 
 ### Usunięcie konta
 
-Usuwa konto i wszystkie dane z serwera; przestrzenie, które udostępniasz, znikną też u innych osób. **Nie da się tego cofnąć** — najpierw zrób kopię zapasową.
+Usuwa konto i wszystkie dane z serwera; przestrzenie, które udostępniasz, znikną też u innych osób, chyba że mają jeszcze innego właściciela. **Nie da się tego cofnąć** — najpierw zrób kopię zapasową.
 
 ![Usunięcie konta](img/64-konto.png)\
 *Usunięcie konta wymaga wpisania adresu e-mail.*
@@ -682,10 +753,10 @@ Bez internetu możesz dalej dodawać, zmieniać i planować zadania. Stan widać
 ![Stan offline](img/65-offline.png)\
 *Zmiany czekają na wysłanie.*
 
-Po odzyskaniu połączenia wyślą się same. Jeśli to samo pole zmieniono na dwóch urządzeniach, zostaje późniejsza zmiana. Zanim pierwszy raz pojedziesz bez zasięgu, otwórz aplikację raz z siecią i sprawdź kartę **Praca bez sieci** — znajdziesz tam też listę rzeczy, które wymagają połączenia.
+Po odzyskaniu połączenia wyślą się same. Jeśli to samo pole zmieniono na dwóch urządzeniach, zostaje późniejsza zmiana. Zanim pierwszy raz pojedziesz bez zasięgu, otwórz aplikację raz z siecią i sprawdź Ustawienia → **Praca bez sieci** — znajdziesz tam też listę rzeczy, które wymagają połączenia.
 
 ![Praca bez sieci](img/63-offline.png)\
-*Karta „Praca bez sieci” w Ustawieniach.*
+*Ustawienia → „Praca bez sieci”.*
 
 ---
 
@@ -704,7 +775,7 @@ Listę w aplikacji otwiera <kbd>?</kbd>. Skróty jednoklawiszowe nie działają 
 
 | Skrót | Działanie |
 | --- | --- |
-| <kbd>G</kbd> <kbd>I</kbd> / <kbd>T</kbd> / <kbd>U</kbd> | Inbox / Dziś / Nadchodzące |
+| <kbd>G</kbd> <kbd>I</kbd> / <kbd>T</kbd> / <kbd>Z</kbd> / <kbd>U</kbd> | Inbox / Dziś / Zaległe / Nadchodzące |
 | <kbd>G</kbd> <kbd>K</kbd> / <kbd>C</kbd> / <kbd>O</kbd> / <kbd>H</kbd> | Tablica / Kalendarz / Oś czasu / Cykliczne |
 | <kbd>Q</kbd>, <kbd>Ctrl</kbd>+<kbd>Spacja</kbd> | szybkie dodawanie (drugi także w polu tekstowym) |
 | <kbd>E</kbd> | ukończ |
@@ -748,7 +819,7 @@ Podłącz i sprawdź klucz w Ustawieniach → Asystent AI.
 Masz rolę „Podgląd” albo lista jest udostępniona tylko do podglądu. Poproś właściciela przestrzeni o zmianę.
 
 **Coś usunięto przez pomyłkę.**\
-Kliknij „Cofnij” w dymku na dole, a później — przywróć z Kosza (30 dni).
+Kliknij „Cofnij” w dymku na dole, a później — przywróć z Kosza (30 dni). Zadania usuniętego na stałe nie da się odzyskać.
 
 **Czy wylogowanie usuwa dane?**\
 Nie. Dane zostają na serwerze, a niewysłane zmiany — w tej przeglądarce do następnego logowania (aplikacja o nich ostrzeże).

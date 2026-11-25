@@ -16,7 +16,7 @@ export default defineConfig({
   timeout: 120_000,
   reporter: [['list']],
   globalSetup: './docs/setup.ts',
-  use: { ...base.use, storageState: '.auth/docs-anna.json', timezoneId: demoZone(), viewport, deviceScaleFactor: 1.5, colorScheme: 'light', screenshot: 'off', trace: 'off', permissions: ['notifications'] },
+  use: { ...base.use, storageState: '.auth/docs-anna.json', timezoneId: demoZone(), viewport, deviceScaleFactor: 1.5, colorScheme: 'light', screenshot: 'off', trace: 'off', permissions: ['notifications', 'clipboard-read', 'clipboard-write'] },
   // Zainstalowany Chrome (tymczasowy profil) z `--lang`: pola daty i godziny po polsku (headless shell ma zawsze format angielski).
   projects: [{ name: 'chromium', use: { browserName: 'chromium', channel: 'chrome', viewport, launchOptions: { args: ['--lang=pl-PL'] } } }],
 });

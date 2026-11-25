@@ -92,6 +92,9 @@ test('okno aplikacji i widoki dnia', async ({ page }) => {
   await shot(page, '04-dzis', { of: main(page), pad: 0 });
   await go(page, '#/inbox');
   await shot(page, '05-inbox', { of: main(page), pad: 0, maxHeight: 420 });
+  await go(page, '#/overdue');
+  await page.waitForTimeout(400);
+  await shot(page, '73-zalegle', { of: main(page), pad: 0, maxHeight: 420 });
   await go(page, '#/upcoming');
   await shot(page, '06-nadchodzace', { of: main(page), pad: 0 });
 
@@ -111,6 +114,17 @@ test('okno aplikacji i widoki dnia', async ({ page }) => {
   await page.waitForTimeout(500);
   await shot(page, '08-uloz-dzien', { of: plan, pad: 8 });
   await plan.getByRole('button', { name: 'Zamknij układanie dnia' }).click();
+  // Przeciąganie zadania „cały dzień” na oś (puszczone poza osią — bez zmian).
+  const chip = plan.getByRole('button', { name: 'Przygotować raport miesięczny' }).first();
+  const from = (await chip.boundingBox())!;
+  const axis = (await page.getByTestId('plan-axis').boundingBox())!;
+  await page.mouse.move(from.x + 20, from.y + 6);
+  await page.mouse.down();
+  await page.mouse.move(axis.x + 60, axis.y + 60, { steps: 6 });
+  await page.mouse.move(axis.x + 60, axis.y + axis.height * 0.72, { steps: 8 });
+  await shot(page, '74-przeciaganie-planu', { of: plan, pad: 8, maxHeight: 620 });
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
   await page.setViewportSize({ width: 1360, height: 860 });
 
   // Zaznaczanie wielu zadań, paleta, skróty.
@@ -174,7 +188,11 @@ test('listy, filtry, tagi', async ({ page, ids }) => {
   await page.waitForTimeout(400);
   await closeToast(page);
   await go(page, '#/trash');
-  await shot(page, '18-kosz', { of: main(page), pad: 0, maxHeight: 220 });
+  await shot(page, '18-kosz', { of: main(page), pad: 0, maxHeight: 260 });
+  await main(page).getByText('Stara lista życzeń').first().click();
+  await expect(panel(page)).toBeVisible();
+  await page.waitForTimeout(500);
+  await shot(page, '75-kosz-podglad', { of: panel(page), pad: 0, maxHeight: 330 });
 });
 
 test('panel zadania', async ({ page, ids }) => {
@@ -182,6 +200,11 @@ test('panel zadania', async ({ page, ids }) => {
   await openTask(page, 'Projekt graficzny');
   await page.waitForTimeout(600);
   await shot(page, '19-panel');
+  await row(page, 'Projekt graficzny').getByTestId('task-preview-open').click();
+  await page.waitForTimeout(800);
+  await shot(page, '76-podglad-zadania', { of: panel(page), pad: 0 });
+  await panel(page).getByTestId('task-mode-switch').click();
+  await page.waitForTimeout(400);
   await panel(page).getByRole('button', { name: /Pełny widok/ }).click();
   await page.waitForTimeout(900);
   await shot(page, '20-panel-pelny');
@@ -232,6 +255,30 @@ test('panel zadania', async ({ page, ids }) => {
   await page.waitForTimeout(1000);
   await sub.evaluate((el) => el.scrollIntoView({ block: 'start' }));
   await shot(page, '29-rozbij-na-kroki', { of: sub, pad: 8 });
+  await panel(page).getByRole('button', { name: /Zamknij panel/ }).click();
+
+  // Wklejenie sformatowanego tekstu do opisu.
+  await openTask(page, 'Teksty na stronę');
+  const pasteInto = section(page, 'Opis');
+  await pasteInto.getByRole('button', { name: 'Markdown', exact: true }).click();
+  const area = pasteInto.locator('textarea');
+  await page.evaluate(async () => {
+    const part = (type: string, text: string) => new Blob([text], { type });
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'text/plain': part('text/plain', 'Ustalenia\nStrona główna do piątku\nOferta w przyszłym tygodniu'),
+        'text/html': part('text/html', '<h2>Ustalenia</h2><ul><li><b>Strona główna</b> do piątku</li><li>Oferta w przyszłym tygodniu</li></ul>'),
+      }),
+    ]);
+  });
+  await area.click();
+  await page.keyboard.press('Control+v');
+  await page.waitForTimeout(600);
+  const convert = pasteInto.getByRole('button', { name: 'Zamień na Markdown' });
+  if (await convert.count()) {
+    await pasteInto.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    await shot(page, '77-wklejanie', { of: pasteInto, pad: 8 });
+  } else console.log('brak: Zamień na Markdown');
   await panel(page).getByRole('button', { name: /Zamknij panel/ }).click();
 
   // Powtarzanie.
@@ -391,42 +438,76 @@ test('przestrzenie, osoby, szablony', async ({ page, ids }) => {
 });
 
 test('ustawienia', async ({ page }) => {
-  await openApp(page, '#/settings');
+  await openApp(page, '#/settings/general');
   await page.waitForTimeout(1500);
   await showWarsaw(page);
-  await shot(page, '55-ustawienia', { of: main(page), pad: 0 });
-  const headings = await main(page).locator('h2').allTextContents();
-  console.log('karty ustawień:', headings.join(' | '));
-  const cards: [string, RegExp][] = [
-    ['56-powiadomienia', /^(Przypomnienia|Powiadomienia|Urządzenia)/],
-    ['57-kalendarze', /^Połączone kalendarze/],
-    ['58-integracje', /^Integracje/],
-    ['59-asystent', /^Asystent AI/],
-    ['60-kopia', /^Kopia zapasowa/],
-    ['61-przechwytywanie', /dodawanie|Dodawanie|przechwyt/i],
-    ['62-instalacja', /instal|Aplikacja na/i],
-    ['63-offline', /^Praca bez sieci/],
-    ['64-konto', /^Usuń konto/],
+  await shot(page, '55-ustawienia');
+  const cards: [string, string][] = [
+    ['56-powiadomienia', 'reminders'],
+    ['57-kalendarze', 'calendars'],
+    ['58-integracje', 'plugins'],
+    ['59-asystent', 'ai'],
+    ['60-kopia', 'backup'],
+    ['61-przechwytywanie', 'capture'],
+    ['62-instalacja', 'install'],
+    ['63-offline', 'offline'],
+    ['64-konto', 'account'],
   ];
-  const history = main(page).getByRole('button', { name: 'Historia wysyłek' });
-  if (await history.count()) await history.click();
-  await page.waitForTimeout(1200);
-  for (const [name, title] of cards) {
-    const heading = main(page).locator('h2').filter({ hasText: title }).first();
-    if (!(await heading.count())) {
-      console.log(`brak karty: ${name}`);
-      continue;
+  const settings = (id: string) => page.locator(`[data-settings-section="${id}"]`);
+  for (const [name, id] of cards) {
+    await go(page, `#/settings/${id}`);
+    await page.waitForTimeout(800);
+    if (id === 'plugins') {
+      await settings(id).getByRole('button', { name: 'Historia wysyłek' }).click();
+      await page.waitForTimeout(1200);
     }
-    const card = heading.locator('xpath=ancestor::*[contains(@class,"rounded")][1]');
-    await card.evaluate((el) => el.scrollIntoView({ block: 'start' }));
-    await page.waitForTimeout(300);
-    await shot(page, name, { of: card, pad: 6 });
+    // Trwała pamięć zależy od przeglądarki testowej — karta pokazana taka, jaka jest.
+    await shot(page, name, { of: settings(id), pad: 10 });
   }
   // Edytor reguły zdarzeniowej.
-  await main(page).getByRole('button', { name: 'Edytuj' }).last().click();
-  const editor = main(page).getByLabel('Reguła', { exact: true });
+  await go(page, '#/settings/plugins');
+  await settings('plugins').getByRole('button', { name: 'Edytuj' }).last().click();
+  const editor = settings('plugins').getByLabel('Reguła', { exact: true });
   await editor.evaluate((el) => el.scrollIntoView({ block: 'start' }));
   await shot(page, '69-regula', { of: editor, pad: 6 });
+});
+
+test('wycinek strony z zakładki', async ({ page }) => {
+  await page.route('**/functions/v1/ai/clip', (r) =>
+    r.fulfill({
+      headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' },
+      json: { model: 'gemini-flash-lite-latest', title: 'Przygotować stoisko na targi', points: ['Rezerwacja miejsca do końca stycznia', 'Wymiary stoiska: 3 × 2 m', 'Prąd trzeba zamówić osobno'] },
+    }),
+  );
+  const clip = new URLSearchParams({
+    title: 'Poradnik wystawcy — przykładowe targi',
+    url: 'https://example.com/poradnik-wystawcy',
+    selection: 'Miejsca rezerwujemy do końca stycznia. Standardowe stoisko ma 3 × 2 m.\nPrzyłącze prądu zamawia się osobno.',
+  });
+  await page.goto(`/#share?${clip}`);
+  const dialog = page.getByRole('dialog', { name: 'Szybkie dodawanie' });
+  await expect(dialog).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('sync-status')).toHaveText('Zsynchronizowano', { timeout: 30_000 });
+  await page.waitForTimeout(600);
+  await shot(page, '70-wycinek', { of: dialog, pad: 14 });
+  await dialog.getByRole('button', { name: /Streść/ }).click();
+  await page.waitForTimeout(900);
+  await shot(page, '71-stresc', { of: dialog, pad: 14 });
+});
+
+test('eksport i import przestrzeni', async ({ page }, testInfo) => {
+  await openApp(page, '#/manage');
+  await page.waitForTimeout(1000);
+  const download = page.waitForEvent('download', { timeout: 30_000 });
+  await page.getByTestId('workspace-export').last().click();
+  const file = testInfo.outputPath('remont.json');
+  await (await download).saveAs(file);
+  await page.waitForTimeout(800);
+  await page.getByTestId('workspace-import-file').setInputFiles(file);
+  const preview = page.getByTestId('workspace-import-preview');
+  await expect(preview).toBeVisible({ timeout: 20_000 });
+  await preview.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await shot(page, '72-import-przestrzeni', { of: preview, pad: 12 });
 });
 
 test('offline i motyw', async ({ page, context }) => {
