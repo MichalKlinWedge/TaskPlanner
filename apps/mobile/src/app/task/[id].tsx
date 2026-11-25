@@ -17,6 +17,7 @@ import {
   assigneeChoices,
   assigneeOf,
   assigneeReminderNote,
+  assignSelfOps,
   assignTaskOps,
   attachSubtaskOps,
   canAddSubtask,
@@ -35,6 +36,8 @@ import {
   editCommentOps,
   MAX_COMMENT_LENGTH,
   removeParticipantOps,
+  selfCollaborator,
+  selfName,
   sortComments,
   descendants,
   describeRecurrence,
@@ -93,6 +96,7 @@ import { TaskRow } from '@/components/task-row';
 import { Button, usePalette } from '@/components/ui';
 import { listEditable, listLabel, useView, type AppData } from '@/lib/app-data';
 import { spentMinutes, useFocusData } from '@/lib/focus';
+import { sessionUser } from '@/lib/config';
 import { useDependencies } from '@/lib/dependencies';
 import { useLocalQuery } from '@/lib/local-query';
 import { useSendableRules } from '@/lib/plugins';
@@ -582,15 +586,22 @@ function PeopleField({ task, data }: { task: ViewTask; data: AppData }) {
   const p = usePalette();
   const { run, notify } = useTaskActions();
   const info = useLocalQuery(
-    ['task_participants', 'tasks'],
+    ['task_participants', 'tasks', 'profiles', 'scope_collaborators'],
     async (engine) => {
-      const [parts, creator] = await Promise.all([
+      const [parts, creator, profile, linked] = await Promise.all([
         engine.db.all<{ collaborator_id: string }>('select collaborator_id from task_participants where task_id = ? and deleted_at is null order by rowid', [task.id]),
         engine.db.all<{ created_by: string | null }>('select created_by from tasks where id = ?', [task.id]),
+        engine.db.all<{ display_name: string | null }>('select display_name from profiles where id = ?', [engine.userId]),
+        engine.db.all<{ collaborator_id: string }>('select collaborator_id from scope_collaborators where scope_id = ? and user_id = ?', [task.workspaceId, engine.userId]),
       ]);
-      return { participants: parts.map((r) => r.collaborator_id), createdBy: creator[0]?.created_by ?? null };
+      return {
+        participants: parts.map((r) => r.collaborator_id),
+        createdBy: creator[0]?.created_by ?? null,
+        displayName: profile[0]?.display_name ?? null,
+        linked: linked.map((r) => r.collaborator_id),
+      };
     },
-    [task.id],
+    [task.id, task.workspaceId],
   );
   const [name, setName] = useState('');
   const byId = new Map(data.collaborators.map((c) => [c.id, c]));
@@ -612,13 +623,24 @@ function PeopleField({ task, data }: { task: ViewTask; data: AppData }) {
     const { ops, undo } = removeParticipantOps(task.id, id, new Date());
     void run(ops, { text: `Usunięto z uczestników: ${byId.get(id)?.name ?? ''}`, undo });
   };
+  // „Ja”: jawne wskazanie siebie (znaczek przy zadaniu); wpis powstaje przy pierwszym wyborze.
+  const account = { userId: data.userId, email: sessionUser().email, displayName: info?.displayName };
+  const me = selfCollaborator(data.collaborators, account, info?.linked);
+  const meValue = me?.id ?? 'self';
+  const assign = (id: string) => {
+    if (id !== meValue) return void run(assignTaskOps(task.id, id || null));
+    const result = assignSelfOps(data.collaborators, account, task.id, info?.linked);
+    if (!result.ok) return notify(result.error);
+    void run(result.ops, result.created ? { text: `Nowy współpracownik: „${result.created}” — akronim zmienisz we „Współpracownikach”` } : undefined);
+  };
   const pickAssignee = () =>
     then(
       pickOption<string>('Odpowiedzialny', [
         { label: `${creator} (twórca zadania)`, value: '', selected: !assignee },
-        ...assigneeChoices(people, assignee?.id).map((c) => ({ label: c.archivedAt ? `${c.name} (nieaktywny)` : c.name, value: c.id, hint: c.email ?? undefined, selected: c.id === assignee?.id })),
+        { label: `Ja — ${selfName(data.collaborators, account, info?.linked)}`, value: meValue, hint: account.email ?? undefined, selected: !!assignee && assignee.id === meValue },
+        ...assigneeChoices(people, assignee?.id).filter((c) => c.id !== meValue).map((c) => ({ label: c.archivedAt ? `${c.name} (nieaktywny)` : c.name, value: c.id, hint: c.email ?? undefined, selected: c.id === assignee?.id })),
       ]),
-      (id) => id !== undefined && id !== (assignee?.id ?? '') && run(assignTaskOps(task.id, id || null)),
+      (id) => id !== undefined && id !== (assignee?.id ?? '') && assign(id),
     );
 
   return (

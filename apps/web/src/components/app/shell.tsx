@@ -71,12 +71,14 @@ const isTyping = (target: EventTarget | null) =>
 export function Shell({
   store,
   userId,
+  email,
   settings,
   manage,
   settingsView,
 }: {
   store: TabStore;
   userId: string;
+  email: string | null;
   settings: ProfileSettings;
   manage: ReactNode;
   settingsView: ReactNode;
@@ -437,7 +439,7 @@ export function Shell({
   const quickDefaults = list ? { listId: list.id } : route.view === "today" ? { listId: targetInbox?.id, dueDate: today } : { listId: targetInbox?.id };
 
   return (
-    <AppEnvProvider value={{ store, data, userId, timeZone: settings.timeZone, settings, today, workspaceId, openTask, openTaskId, openTaskMode, selectedIds, select }}>
+    <AppEnvProvider value={{ store, data, userId, email, timeZone: settings.timeZone, settings, today, workspaceId, openTask, openTaskId, openTaskMode, selectedIds, select }}>
       <TaskActionsProvider store={store} userId={userId} timeZone={settings.timeZone} tasks={data.tasks}>
         <AttachmentsProvider store={store} userId={userId}>
         <FocusProvider store={store} userId={userId} settings={settings}>

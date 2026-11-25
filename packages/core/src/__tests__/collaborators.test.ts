@@ -5,6 +5,7 @@ import {
   addParticipantOps,
   assigneeChoices,
   assigneeOf,
+  assignSelfOps,
   collaboratorBadge,
   collaboratorFields,
   collaboratorsByStatus,
@@ -19,6 +20,8 @@ import {
   nameFromEmail,
   ownCollaborators,
   removeParticipantOps,
+  selfCollaborator,
+  selfName,
   sortCollaborators,
   spacePeople,
   withSharedCollaborators,
@@ -248,5 +251,46 @@ describe('osoby z przestrzeni (konta i zaproszenia)', () => {
   it('nazwa z adresu', () => {
     expect(nameFromEmail('jan.kowalski@firma.pl')).toBe('Jan Kowalski');
     expect(nameFromEmail('ola_m-n@x.pl')).toBe('Ola M N');
+  });
+});
+
+describe('„Ja” jako odpowiedzialny', () => {
+  const self = { userId: USER, email: 'Jan.Kowal@Example.com', displayName: 'Jan' };
+  const assign = (id: string) => ({ table: 'tasks', id: TASK, patch: { assignee_id: id } });
+  const jan = (over: Partial<Collaborator> = {}): Collaborator => ({ id: collaboratorId(USER, 'Jan'), name: 'Jan', email: null, ...over });
+
+  it('bez wpisu: nowy współpracownik z profilu i e-maila, potem wskazanie', () => {
+    const id = collaboratorId(USER, 'Jan');
+    expect(assignSelfOps(people, self, TASK)).toEqual({
+      ok: true,
+      collaboratorId: id,
+      created: 'Jan',
+      ops: [{ table: 'collaborators', id, patch: { scope_id: USER, name: 'Jan', email: self.email, archived_at: null, deleted_at: null } }, assign(id)],
+    });
+    expect(selfName(people, self)).toBe('Jan');
+    expect(selfName(people, { ...self, displayName: ' ' })).toBe('Jan Kowal');
+    expect(selfName(people, { ...self, displayName: null, email: null })).toBe('Ja');
+  });
+
+  it('wpis z e-mailem konta (bez wielkości liter): samo wskazanie; nieaktywny wraca', () => {
+    const me = jan({ id: 'me', name: 'Szef', email: 'jan.kowal@example.com' });
+    expect(selfCollaborator([...people, me], self)?.id).toBe('me');
+    expect(assignSelfOps([...people, me], self, TASK)).toEqual({ ok: true, collaboratorId: 'me', created: null, ops: [assign('me')] });
+    const result = assignSelfOps([{ ...me, archivedAt: '2026-11-01T00:00:00Z' }], self, TASK);
+    expect(result.ok && result.ops).toEqual([{ table: 'collaborators', id: 'me', patch: { archived_at: null } }, assign('me')]);
+  });
+
+  it('ta sama nazwa: bez e-maila — uzupełniony, z innym — inna osoba', () => {
+    const same = assignSelfOps([jan({ acronym: 'JK' })], self, TASK);
+    expect(same.ok && same.ops).toEqual([{ table: 'collaborators', id: jan().id, patch: { email: self.email } }, assign(jan().id)]);
+    const other = assignSelfOps([jan({ email: 'inny@example.com' })], self, TASK);
+    expect(other).toMatchObject({ ok: true, created: 'Jan (ja)', collaboratorId: collaboratorId(USER, 'Jan (ja)') });
+  });
+
+  it('cudzy wpis połączony z kontem w przestrzeni — bez własnej kopii; własny wygrywa', () => {
+    const shared = jan({ id: 'shared', shared: true, workspaceIds: ['w1'] });
+    expect(assignSelfOps([shared], self, TASK, ['shared'])).toMatchObject({ ok: true, created: null, collaboratorId: 'shared' });
+    expect(assignSelfOps([shared], self, TASK)).toMatchObject({ ok: true, created: 'Jan' });
+    expect(selfCollaborator([shared, jan({ id: 'me', email: self.email })], self, ['shared'])?.id).toBe('me');
   });
 });

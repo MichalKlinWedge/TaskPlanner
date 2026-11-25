@@ -267,6 +267,55 @@ export const collaboratorsByStatus = <T extends Collaborator>(collaborators: rea
 export const assigneeChoices = <T extends Collaborator>(collaborators: readonly T[], currentId: string | null | undefined): T[] =>
   sortCollaborators(collaborators.filter((c) => isActiveCollaborator(c) || c.id === currentId));
 
+/** Własne konto przy wyborze odpowiedzialnego. */
+export interface SelfAccount {
+  userId: string;
+  email: string | null;
+  /** Nazwa z profilu. */
+  displayName?: string | null;
+}
+
+/**
+ * „Ja” wśród współpracowników: własny wpis z e-mailem konta (aktywny pierwszy), potem cudzy wpis
+ * połączony z tym kontem w przestrzeni zadania (`linked` — id z `scope_collaborators.user_id`).
+ */
+export function selfCollaborator<T extends Collaborator>(collaborators: readonly T[], self: Pick<SelfAccount, 'email'>, linked: readonly string[] = []): T | null {
+  const email = self.email?.trim().toLowerCase();
+  const own = email ? ownCollaborators(collaborators).filter((c) => c.email?.trim().toLowerCase() === email) : [];
+  return own.find(isActiveCollaborator) ?? own[0] ?? collaborators.find((c) => c.shared && isActiveCollaborator(c) && linked.includes(c.id)) ?? null;
+}
+
+/** Nazwa własnego wpisu: istniejącego albo tego, który powstanie (z profilu, potem z e-maila). */
+export const selfName = (collaborators: readonly Collaborator[], self: SelfAccount, linked: readonly string[] = []): string =>
+  selfCollaborator(collaborators, self, linked)?.name ?? (self.displayName?.trim() || (self.email && nameFromEmail(self.email)) || 'Ja').slice(0, 100);
+
+/**
+ * Jawne wskazanie siebie jako odpowiedzialnego. Bez własnego wpisu powstaje współpracownik z nazwą
+ * z profilu i e-mailem konta (po nim serwer łączy wpis z kontem — automatyczne przypomnienia);
+ * wpis o tej nazwie bez e-maila dostaje go, a o tej nazwie z innym adresem to inna osoba.
+ * Nieaktywny własny wpis wraca do aktywnych.
+ */
+export function assignSelfOps(
+  collaborators: readonly Collaborator[],
+  self: SelfAccount,
+  taskId: string,
+  linked: readonly string[] = [],
+  now: Date | string = new Date(),
+): Result<{ collaboratorId: string; /** Nazwa nowego wpisu; `null` — już był. */ created: string | null; ops: TaskOp[] }> {
+  const done = (id: string, ops: TaskOp[], created: string | null = null) => ({ ok: true as const, collaboratorId: id, created, ops: [...ops, ...assignTaskOps(taskId, id)] });
+  const me = selfCollaborator(collaborators, self, linked);
+  if (me) return done(me.id, isActiveCollaborator(me) ? [] : [{ table: 'collaborators', id: me.id, patch: { archived_at: null } }]);
+  let name = selfName(collaborators, self, linked);
+  const twin = findCollaborator(ownCollaborators(collaborators), name);
+  if (twin && (!twin.email || !self.email)) {
+    const saved = collaboratorSaveOps(self.userId, collaborators, { name: twin.name, email: twin.email ?? self.email, acronym: twin.acronym, active: true }, twin, now);
+    return saved.ok ? done(twin.id, saved.ops) : saved;
+  }
+  if (twin) name = `${name.slice(0, 95)} (ja)`;
+  const saved = collaboratorSaveOps(self.userId, collaborators, { name, email: self.email, active: true }, undefined, now);
+  return saved.ok ? done(saved.id, saved.ops, name) : saved;
+}
+
 /** Inicjały do znaczka na wierszu zadania: „Anna Nowak” → „AN”, „ania” → „A”. */
 export function initials(name: string): string {
   const words = name.trim().split(/\s+/u).filter(Boolean);

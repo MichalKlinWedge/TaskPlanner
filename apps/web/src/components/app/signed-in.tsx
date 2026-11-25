@@ -80,6 +80,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
       <Shell
         store={store}
         userId={userId}
+        email={email}
         settings={parseSettings(settings)}
         manage={<WorkspacesScreen store={store} email={email} />}
         settingsView={

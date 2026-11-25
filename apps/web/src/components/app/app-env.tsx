@@ -18,6 +18,8 @@ export interface AppEnv {
   /** Podgląd zadania z kosza: zadania w koszu (są wtedy też w `data.tasks`) — tylko do odczytu. */
   trashed?: ReadonlyMap<string, TrashedTask>;
   userId: string;
+  /** E-mail konta (wpis „Ja” wśród współpracowników). */
+  email: string | null;
   timeZone?: string;
   /** Ustawienia profilu (sparsowane, z domyślnymi). */
   settings: ProfileSettings;

@@ -15,6 +15,7 @@ import {
   addParticipantByNameOps,
   addParticipantOps,
   assigneeChoices,
+  assignSelfOps,
   assignTaskOps,
   attachSubtaskOps,
   canAddSubtask,
@@ -32,6 +33,8 @@ import {
   editCommentOps,
   MAX_COMMENT_LENGTH,
   removeParticipantOps,
+  selfCollaborator,
+  selfName,
   deleteTaskOps,
   descendants,
   endSeriesOps,
@@ -741,15 +744,20 @@ function DependenciesField({ task }: { task: ViewTask }) {
   );
 }
 
+/** Wartość „Ja”, zanim powstanie własny wpis wśród współpracowników. */
+const SELF = "self";
+
 /**
  * Odpowiedzialny (domyślnie twórca) i uczestnicy zadania — tylko do informacji, bez dostępu dla
  * tych osób. Nowa nazwa w polu „+ osoba” dopisuje współpracownika (Ustawienia → „Współpracownicy”).
  */
 function PeopleField({ task }: { task: ViewTask }) {
-  const { store, data, userId } = useAppEnv();
+  const { store, data, userId, email } = useAppEnv();
   const { run, notify } = useTaskActions();
   const participants = useLocalQuery<Row>(store, "select collaborator_id from task_participants where task_id = ? and deleted_at is null order by rowid", [task.id], ["task_participants"]);
   const creator = useLocalQuery<Row>(store, "select created_by from tasks where id = ?", [task.id], ["tasks"]);
+  const profile = useLocalQuery<Row>(store, "select display_name from profiles where id = ?", [userId], ["profiles"]);
+  const linked = useLocalQuery<Row>(store, "select collaborator_id from scope_collaborators where scope_id = ? and user_id = ?", [task.workspaceId, userId], ["scope_collaborators"]);
   const [name, setName] = useState("");
   const byId = new Map(data.collaborators.map((c) => [c.id, c]));
   const chosen = participants.rows.map((r) => String(r.collaborator_id)).filter((id) => byId.has(id));
@@ -757,6 +765,18 @@ function PeopleField({ task }: { task: ViewTask }) {
   // Osoby z przestrzeni zadania (+ obecny odpowiedzialny, żeby wybór go pokazał).
   const people = collaboratorsForWorkspace(data.collaborators, task.workspaceId, [assignee]);
   const suggestions = collaboratorMatches(people, "", chosen, 100);
+  // „Ja”: jawne wskazanie siebie (znaczek przy zadaniu); wpis powstaje przy pierwszym wyborze.
+  const account = { userId, email, displayName: (profile.rows[0]?.display_name as string | null | undefined) ?? null };
+  const linkedIds = linked.rows.map((r) => String(r.collaborator_id));
+  const me = selfCollaborator(data.collaborators, account, linkedIds);
+  const meValue = me?.id ?? SELF;
+
+  const assign = (value: string) => {
+    if (value !== meValue) return void run(assignTaskOps(task.id, value || null));
+    const result = assignSelfOps(data.collaborators, account, task.id, linkedIds);
+    if (!result.ok) return notify(result.error);
+    void run(result.ops, result.created ? { text: `Nowy współpracownik: „${result.created}” — akronim zmienisz we „Współpracownikach”` } : undefined);
+  };
 
   const add = (event: FormEvent) => {
     event.preventDefault();
@@ -774,9 +794,10 @@ function PeopleField({ task }: { task: ViewTask }) {
     <Block title="Osoby">
       <div className="flex flex-col gap-3">
         <Field label="Odpowiedzialny">
-          <Select value={assignee} onChange={(e) => void run(assignTaskOps(task.id, e.target.value || null))}>
+          <Select value={assignee} onChange={(e) => assign(e.target.value)}>
             <option value="">{creatorLabel(creator.rows[0]?.created_by as string | null | undefined, userId)} (twórca zadania)</option>
-            {assigneeChoices(people, assignee).map((c) => (
+            <option value={meValue}>Ja — {selfName(data.collaborators, account, linkedIds)}</option>
+            {assigneeChoices(people, assignee).filter((c) => c.id !== meValue).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.archivedAt ? `${c.name} (nieaktywny)` : c.name}
               </option>
