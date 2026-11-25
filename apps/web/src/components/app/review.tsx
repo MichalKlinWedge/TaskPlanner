@@ -6,6 +6,8 @@
  * wejściu, koniec ze statystykami). Przegląd dnia: kolejka zaległych i dzisiejszych ustalona na
  * starcie, klawisze 1–6, na końcu podsumowanie i plan jutra. Przegląd tygodnia: kroki liczone na
  * żywo (załatwione znikają), na koniec Inbox pusty i każdy aktywny projekt z następnym krokiem.
+ * Zadanie otwiera się w prawym panelu jak na listach (tytuł, ✎, oko, Enter); `data-task-id` na wierszu
+ * trzyma panel otwarty przy klikaniu decyzji, a Esc najpierw zamyka panel.
  */
 import {
   addDays,
@@ -59,7 +61,7 @@ import { DayPlan } from "./day-plan";
 import { FilterBar } from "./filter-bar";
 import { QuickAdd } from "./quick-add";
 import { useTaskActions } from "./task-item";
-import { Button, Input, navLinkClass, Select } from "./ui";
+import { Button, EyeIcon, Input, navLinkClass, Select } from "./ui";
 import { WeekSummaryStep } from "./week-summary";
 
 type Kind = ReviewAction["kind"];
@@ -73,6 +75,48 @@ interface LogEntry {
 
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+
+/** Klawisz nie dla przeglądu: pole tekstowe, panel zadania, okno dialogowe albo panel na całe miejsce widoku. */
+const notForReview = (event: KeyboardEvent) =>
+  event.defaultPrevented ||
+  event.ctrlKey ||
+  event.metaKey ||
+  event.altKey ||
+  isTyping(event.target) ||
+  (event.target instanceof Element && event.target.closest("[data-task-panel], [role=dialog]") !== null) ||
+  document.querySelector('[data-task-panel="full"]') !== null;
+
+/** Enter na przycisku albo linku zostaje jemu. */
+const onControl = (target: EventTarget | null) => target instanceof Element && target.closest("button, a, summary, [role=button]") !== null;
+
+/** Wiersz zadania otwartego w panelu. */
+const openRowClass = "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]";
+
+/** Ikony przy tytule: edycja i podgląd zadania w prawym panelu. */
+function OpenButtons({ task, className = "" }: { task: ViewTask; className?: string }) {
+  const { openTask, openTaskId, openTaskMode } = useAppEnv();
+  return (
+    <span className={`flex shrink-0 items-center ${className}`}>
+      {(["edit", "preview"] as const).map((mode) => {
+        const label = mode === "edit" ? "Edytuj zadanie" : "Podgląd zadania";
+        return (
+          <button
+            key={mode}
+            type="button"
+            aria-label={`${label} „${task.title}”`}
+            title={label}
+            aria-pressed={openTaskId === task.id && openTaskMode === mode}
+            onClick={() => openTask(task.id, mode)}
+            className="flex h-5 items-center rounded px-1 text-sm font-normal text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--accent)] aria-pressed:text-[var(--accent)]"
+            data-testid={mode === "edit" ? "review-edit" : "review-preview"}
+          >
+            {mode === "edit" ? "✎" : <EyeIcon />}
+          </button>
+        );
+      })}
+    </span>
+  );
+}
 
 /** Sesja `review_sessions`: początek przy wejściu (raz), koniec ze statystykami. */
 function useReviewSession(kind: ReviewKind) {
@@ -187,7 +231,7 @@ function Frame({ title, kind, onExit, navigate, children }: { title: string; kin
 // ── Przegląd dnia ────────────────────────────────────────────────────────────────────────────
 
 export function DailyReview({ ctx, settings, onExit, navigate }: { ctx: ViewContext; settings: ProfileSettings; onExit: () => void; navigate: (route: Route) => void }) {
-  const { data, openTask } = useAppEnv();
+  const { data, openTask, openTaskId, openTaskMode } = useAppEnv();
   const decide = useDecide();
   const finish = useReviewSession("daily");
   // Kolejka ustalona na starcie — przesunięte na jutro nie wracają, a „Wstecz” trafia w to samo zadanie.
@@ -200,13 +244,18 @@ export function DailyReview({ ctx, settings, onExit, navigate }: { ctx: ViewCont
   const task = item ? (data.tasks.find((t) => t.id === item.task.id) ?? item.task) : undefined;
   const list = task ? data.lists.find((l) => l.id === task.listId) : undefined;
 
+  // Otwarty panel idzie za kolejką (w swoim trybie), po ostatnim zadaniu się zamyka.
+  const go = (to: number) => {
+    setIndex(to);
+    if (openTaskId) openTask(queue[to]?.task.id ?? null, openTaskMode);
+  };
   const apply = (action: ReviewAction) => {
     if (!task) return;
     setPicking(false);
     const decided = decide(task, action);
     if (decided === null) return;
     if (decided || action.kind === "today") setLog((l) => [...l, { task: item!.task, action }]);
-    setIndex((i) => i + 1);
+    go(index + 1);
   };
   const pick = (kind: Kind) => (kind === "date" ? setPicking(true) : apply({ kind } as ReviewAction));
 
@@ -214,15 +263,18 @@ export function DailyReview({ ctx, settings, onExit, navigate }: { ctx: ViewCont
     if (done) finish(log);
   }, [done, finish, log]);
 
-  const latest = useRef({ pick, done, picking, onExit });
+  const open = () => task && openTask(task.id);
+  const latest = useRef({ pick, done, picking, onExit, go, index, open, openTaskId });
   useEffect(() => {
-    latest.current = { pick, done, picking, onExit };
+    latest.current = { pick, done, picking, onExit, go, index, open, openTaskId };
   });
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.ctrlKey || event.metaKey || event.altKey || isTyping(event.target)) return;
-      const { pick: p, done: d, picking: pk, onExit: exit } = latest.current;
+      if (notForReview(event)) return;
+      const { pick: p, done: d, picking: pk, onExit: exit, go: to, index: i, open: o, openTaskId: panel } = latest.current;
       if (event.key === "Escape") {
+        // Najpierw zamyka się panel zadania (sam), dopiero kolejny Esc wychodzi z przeglądu.
+        if (panel) return;
         event.preventDefault();
         return exit();
       }
@@ -234,10 +286,13 @@ export function DailyReview({ ctx, settings, onExit, navigate }: { ctx: ViewCont
       }
       if (event.key === "ArrowRight" || event.key === "j" || event.key === " ") {
         event.preventDefault();
-        setIndex((i) => i + 1);
+        to(i + 1);
       } else if (event.key === "ArrowLeft" || event.key === "k") {
         event.preventDefault();
-        setIndex((i) => Math.max(0, i - 1));
+        if (i > 0) to(i - 1);
+      } else if (event.key === "Enter" && !onControl(event.target)) {
+        event.preventDefault();
+        o();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -261,15 +316,16 @@ export function DailyReview({ ctx, settings, onExit, navigate }: { ctx: ViewCont
         </button>
       </div>
       {task ? (
-        <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5" aria-label="Zadanie do decyzji">
+        <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5" aria-label="Zadanie do decyzji" data-task-id={task.id}>
           <p className={`mb-1 text-xs font-semibold tracking-wide uppercase ${item!.section === "overdue" ? "text-[var(--danger)]" : "text-[var(--muted)]"}`}>
             {item!.section === "overdue" ? `Zaległe · ${plural(overdueDays, ["dzień", "dni", "dni"])}` : "Na dziś"}
           </p>
           <h2 className="flex items-start gap-2 text-xl font-semibold" data-testid="review-task">
             <span className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: PRIORITY[task.priority].color }} />
-            <button type="button" className="text-left hover:underline" onClick={() => openTask(task.id)}>
+            <button type="button" className="min-w-0 flex-1 text-left break-words hover:underline" onClick={() => openTask(task.id)}>
               {task.title}
             </button>
+            <OpenButtons task={task} className="mt-1" />
           </h2>
           <p className="mt-1 text-sm text-[var(--muted)]">
             {list ? (list.kind === "inbox" ? "Inbox" : list.name) : ""}
@@ -291,13 +347,13 @@ export function DailyReview({ ctx, settings, onExit, navigate }: { ctx: ViewCont
           </div>
         </section>
       ) : null}
-      <p className="text-xs text-[var(--muted)]">Klawisze 1–6 — decyzja, → / spacja — pomiń, ← — wstecz, Esc — wyjście. „Cofnij” w dymku cofa ostatnią decyzję.</p>
+      <p className="text-xs text-[var(--muted)]">Klawisze 1–6 — decyzja, → / spacja — pomiń, ← — wstecz, Enter — edycja zadania, Esc — zamknięcie panelu / wyjście. „Cofnij” w dymku cofa ostatnią decyzję.</p>
     </Frame>
   );
 }
 
 function DailyDone({ ctx, settings, log, total, onExit, navigate }: { ctx: ViewContext; settings: ProfileSettings; log: LogEntry[]; total: number; onExit: () => void; navigate: (route: Route) => void }) {
-  const { data } = useAppEnv();
+  const { data, openTask, openTaskId } = useAppEnv();
   const stats = reviewStats(log, ctx);
   const summary = useMemo(() => dailySummary(data.tasks, ctx), [data.tasks, ctx]);
   const tomorrow = addDays(ctx.today, 1);
@@ -314,7 +370,7 @@ function DailyDone({ ctx, settings, log, total, onExit, navigate }: { ctx: ViewC
         <Stat label="Usunięte" value={String(stats.deleted)} />
       </section>
       {stats.needsDecision ? <p className="text-sm text-[var(--muted)]">{plural(stats.needsDecision, ["zadanie było przesuwane", "zadania były przesuwane", "zadań było przesuwanych"])} 3 razy lub więcej.</p> : null}
-      <section aria-label={day === "today" ? "Plan na dziś" : "Plan na jutro"} className="grid gap-4 lg:grid-cols-[1fr_16rem]">
+      <section aria-label={day === "today" ? "Plan na dziś" : "Plan na jutro"} className="grid gap-4 @2xl:grid-cols-[1fr_16rem]">
         <div>
           <div className="mb-2 flex items-center gap-2">
             <h2 className="text-sm font-semibold">
@@ -337,10 +393,13 @@ function DailyDone({ ctx, settings, log, total, onExit, navigate }: { ctx: ViewC
           {planTasks.length ? (
             <ul className="divide-y divide-[var(--line)] rounded-md border border-[var(--line)] text-sm">
               {planTasks.map((t) => (
-                <li key={t.id} className="flex items-center gap-2 px-3 py-1.5">
+                <li key={t.id} className={`flex items-center gap-2 px-3 py-1.5 ${openTaskId === t.id ? openRowClass : ""}`} data-task-id={t.id}>
                   <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: PRIORITY[t.priority].color }} />
-                  <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                  <button type="button" className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => openTask(t.id)}>
+                    {t.title}
+                  </button>
                   {t.dueTime ? <span className="text-xs text-[var(--muted)]">{t.dueTime}</span> : null}
+                  <OpenButtons task={t} />
                 </li>
               ))}
             </ul>
@@ -394,7 +453,7 @@ const DAY_STATE: Record<DayState, { cls: string; label: string }> = {
 const FILTERED: readonly Step[] = ["inbox", "overdue", "waiting", "upcoming"];
 
 export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onExit: () => void; navigate: (route: Route) => void }) {
-  const { data, store, openTask } = useAppEnv();
+  const { data, store, openTask, openTaskId } = useAppEnv();
   const decide = useDecide();
   const { run } = useTaskActions();
   const finish = useReviewSession("weekly");
@@ -466,25 +525,31 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
   };
   const pickFor = (task: ViewTask) => (kind: Kind) => (kind === "date" ? setPicking(task.id) : act(task, { kind } as ReviewAction));
 
-  // Klawisze 1–6 działają na pierwszym nierozstrzygniętym zadaniu kroku (Inbox, zaległe).
+  // Klawisze 1–6 działają na zadaniu otwartym w panelu, a bez niego na pierwszym nierozstrzygniętym kroku (Inbox, zaległe).
   const keyed = step === "inbox" ? review.inbox : step === "overdue" ? review.overdue : [];
-  const latest = useRef({ keyed, pickFor, onExit, picking });
+  const latest = useRef({ keyed, pickFor, onExit, picking, openTask, openTaskId });
   useEffect(() => {
-    latest.current = { keyed, pickFor, onExit, picking };
+    latest.current = { keyed, pickFor, onExit, picking, openTask, openTaskId };
   });
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.ctrlKey || event.metaKey || event.altKey || isTyping(event.target)) return;
-      const { keyed: k, pickFor: p, onExit: exit, picking: pk } = latest.current;
+      if (notForReview(event)) return;
+      const { keyed: k, pickFor: p, onExit: exit, picking: pk, openTask: open, openTaskId: panel } = latest.current;
       if (event.key === "Escape") {
+        if (panel) return;
         event.preventDefault();
         return exit();
       }
       const kind = KEY_TO_KIND.get(event.key as "1");
-      const f = kind ? k.find((t) => !decided.current.has(t.id)) : undefined;
-      if (kind && f && !pk) {
+      const left = k.filter((t) => !decided.current.has(t.id));
+      const f = left.find((t) => t.id === panel) ?? left[0];
+      if (!f || pk) return;
+      if (kind) {
         event.preventDefault();
         p(f)(kind);
+      } else if (event.key === "Enter" && !onControl(event.target)) {
+        event.preventDefault();
+        open(f.id);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -514,7 +579,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
   }
 
   const row = (task: ViewTask, extra?: ReactNode) => (
-    <li key={task.id} className="flex flex-col gap-1.5 px-3 py-2" data-task-row={task.id}>
+    <li key={task.id} className={`flex flex-col gap-1.5 px-3 py-2 ${openTaskId === task.id ? openRowClass : ""}`} data-task-row={task.id} data-task-id={task.id}>
       <div className="flex items-center gap-2 text-sm">
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: PRIORITY[task.priority].color }} />
         <button type="button" className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => openTask(task.id)}>
@@ -522,6 +587,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
         </button>
         {task.dueDate ? <span className={`text-xs ${task.dueDate < ctx.today ? "text-[var(--danger)]" : "text-[var(--muted)]"}`}>{relativeDay(task.dueDate, ctx.today)}</span> : null}
         {needsDecision(task) ? <span className="rounded bg-amber-100 px-1 text-xs text-amber-900 dark:bg-amber-900/40 dark:text-amber-100" title="Przesuwane 3 razy lub więcej">{task.postponeCount}× przesuwane</span> : null}
+        <OpenButtons task={task} />
       </div>
       {picking === task.id ? (
         <DatePick initial={addDays(ctx.today, 2)} onPick={(date) => act(task, { kind: "date", date })} onCancel={() => setPicking(null)} />
@@ -618,8 +684,11 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
                     {open.length ? (
                       <ul className="mb-2 divide-y divide-[var(--line)] rounded-md border border-[var(--line)]">
                         {open.slice(0, 5).map((t) => (
-                          <li key={t.id} className="flex flex-wrap items-center gap-2 px-3 py-1.5 text-sm">
-                            <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                          <li key={t.id} className={`flex flex-wrap items-center gap-2 px-3 py-1.5 text-sm ${openTaskId === t.id ? openRowClass : ""}`} data-task-id={t.id}>
+                            <button type="button" className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => openTask(t.id)}>
+                              {t.title}
+                            </button>
+                            <OpenButtons task={t} />
                             <span className="text-xs text-[var(--muted)]">następny krok:</span>
                             <Button className="px-2 py-0.5 text-xs" onClick={() => act(t, { kind: "today" })}>
                               Dziś
@@ -669,10 +738,13 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
                   {d.items.length ? (
                     <ul className="flex flex-col gap-0.5">
                       {d.items.map((it) => (
-                        <li key={`${it.task.id}:${it.date}`} className={`flex items-center gap-2 ${it.virtual ? "opacity-60" : ""}`}>
+                        <li key={`${it.task.id}:${it.date}`} className={`flex items-center gap-2 ${it.virtual ? "opacity-60" : ""} ${openTaskId === it.task.id ? openRowClass : ""}`} data-task-id={it.task.id} data-virtual={it.virtual ? "" : undefined}>
                           <span className="h-1.5 w-1.5 rounded-full" style={{ background: PRIORITY[it.task.priority].color }} />
-                          <span className="min-w-0 flex-1 truncate">{it.task.title}</span>
+                          <button type="button" className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => openTask(it.task.id)}>
+                            {it.task.title}
+                          </button>
                           {it.task.dueTime ? <span className="text-xs text-[var(--muted)]">{it.task.dueTime}</span> : null}
+                          <OpenButtons task={it.task} />
                         </li>
                       ))}
                     </ul>
@@ -692,14 +764,21 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
           <table className="text-sm">
             <tbody>
               {review.habits.map(({ task, days }) => (
-                <tr key={task.id}>
-                  <td className="max-w-48 truncate py-1 pr-3">{task.title}</td>
+                <tr key={task.id} data-task-id={task.id}>
+                  <td className="max-w-48 truncate py-1 pr-3">
+                    <button type="button" className="max-w-full truncate text-left hover:underline" onClick={() => openTask(task.id)}>
+                      {task.title}
+                    </button>
+                  </td>
                   {days.map((d) => (
                     <td key={d.date} className="px-0.5 py-1">
                       <span className={`block h-5 w-5 rounded ${DAY_STATE[d.state].cls}`} title={`${d.date}: ${DAY_STATE[d.state].label}`} />
                     </td>
                   ))}
                   <td className="pl-2 text-xs text-[var(--muted)]">{days.filter((d) => d.state === "done").length}/7</td>
+                  <td className="pl-2">
+                    <OpenButtons task={task} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -729,7 +808,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
             Zakończ przegląd
           </Button>
         )}
-        {step === "inbox" || step === "overdue" ? <span className="text-xs text-[var(--muted)]">Klawisze 1–6 — decyzja przy pierwszym zadaniu.</span> : null}
+        {step === "inbox" || step === "overdue" ? <span className="text-xs text-[var(--muted)]">Klawisze 1–6 — decyzja przy zadaniu otwartym w panelu albo pierwszym, Enter — edycja.</span> : null}
       </div>
     </Frame>
   );

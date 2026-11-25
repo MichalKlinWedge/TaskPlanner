@@ -198,7 +198,7 @@ export function WeekSummaryStep({ ctx, review, summary, onSummary, onAct, start,
           {suggestions.length ? (
             <ul className="flex flex-col gap-2" aria-label={WEEK_SUMMARY.suggestions}>
               {suggestions.map((s) => (
-                <li key={s.taskId} className="flex flex-wrap items-center gap-2" data-suggestion={s.taskId}>
+                <li key={s.taskId} className="flex flex-wrap items-center gap-2" data-suggestion={s.taskId} data-task-id={s.taskId}>
                   <span className="min-w-0 flex-1 basis-60">
                     <button type="button" className="max-w-full truncate text-left font-medium hover:underline" onClick={() => openTask(s.taskId)}>
                       {s.task.title}

@@ -155,11 +155,14 @@ export function TaskPanel({ taskId }: { taskId: string }) {
   const { data, openTask } = useAppEnv();
   const task = data.tasks.find((t) => t.id === taskId);
 
-  // Escape zamyka panel (poza polami tekstowymi i edytorem).
+  // Escape zamyka panel (poza polami tekstowymi i edytorem); `preventDefault` — żeby przegląd pod spodem nie wyszedł.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const el = event.target as HTMLElement | null;
-      if (event.key === "Escape" && !(el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)))) openTask(null);
+      if (event.key === "Escape" && !(el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)))) {
+        event.preventDefault();
+        openTask(null);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
