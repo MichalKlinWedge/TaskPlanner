@@ -23,6 +23,7 @@ export const themed = (view: (palette: Palette) => ReactElement) => ({ light: vi
 export const APP_URI = {
   today: 'taskplanner:///',
   inbox: 'taskplanner:///inbox',
+  habits: 'taskplanner://habits',
   quickAdd: 'taskplanner://quick-add',
   voice: 'taskplanner://quick-add?voice=1',
 } as const;

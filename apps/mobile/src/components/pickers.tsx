@@ -10,6 +10,8 @@ import { useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAppData } from '@/lib/app-data';
+
 import { usePalette } from './ui';
 
 export interface Option<T> {
@@ -23,7 +25,7 @@ export interface Option<T> {
 type Request =
   | { kind: 'option'; title: string; options: Option<unknown>[]; resolve: (value: unknown) => void }
   | { kind: 'many'; title: string; options: Option<unknown>[]; resolve: (value: unknown[] | undefined) => void }
-  | { kind: 'date'; title: string; value: LocalDate | null; today: LocalDate; allowNone: boolean; firstDayOfWeek: number; resolve: (value: LocalDate | null | undefined) => void }
+  | { kind: 'date'; title: string; value: LocalDate | null; today: LocalDate; allowNone: boolean; resolve: (value: LocalDate | null | undefined) => void }
   | { kind: 'time'; title: string; value: LocalTime | null; allowNone: boolean; resolve: (value: LocalTime | null | undefined) => void }
   | { kind: 'number'; title: string; value: number | null; min: number; max: number; unit?: string; resolve: (value: number | undefined) => void };
 
@@ -50,8 +52,8 @@ export const pickMany = <T,>(title: string, options: Option<T>[]): Promise<T[] |
   open<T[] | undefined>({ kind: 'many', title, options: options as Option<unknown>[] });
 
 /** `null` = „Bez terminu” (gdy `allowNone`), `undefined` = zamknięte bez wyboru. */
-export const pickDate = (opts: { title: string; value: LocalDate | null; today: LocalDate; allowNone?: boolean; firstDayOfWeek?: number }): Promise<LocalDate | null | undefined> =>
-  open<LocalDate | null | undefined>({ kind: 'date', allowNone: false, firstDayOfWeek: 1, ...opts });
+export const pickDate = (opts: { title: string; value: LocalDate | null; today: LocalDate; allowNone?: boolean }): Promise<LocalDate | null | undefined> =>
+  open<LocalDate | null | undefined>({ kind: 'date', allowNone: false, ...opts });
 
 export const pickTime = (opts: { title: string; value: LocalTime | null; allowNone?: boolean }): Promise<LocalTime | null | undefined> =>
   open<LocalTime | null | undefined>({ kind: 'time', allowNone: false, ...opts });
@@ -203,7 +205,8 @@ function Pill({ label, onPress, selected, tone }: { label: string; onPress: () =
 
 function DatePicker({ request }: { request: Extract<Request, { kind: 'date' }> }) {
   const p = usePalette();
-  const { today, value, firstDayOfWeek } = request;
+  const { today, value } = request;
+  const { firstDayOfWeek } = useAppData().settings;
   const [month, setMonth] = useState(() => `${(value ?? today).slice(0, 7)}-01` as LocalDate);
   const nextMonday = addDays(today, ((8 - isoWeekday(today)) % 7) || 7);
   const presets: { label: string; date: LocalDate }[] = [

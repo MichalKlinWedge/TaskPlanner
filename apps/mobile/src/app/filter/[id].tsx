@@ -47,7 +47,7 @@ export default function FilterScreen() {
             <EditNameBar
               name={filter.name}
               label="Nazwa filtra"
-              onSave={(name) => update({ name: name.slice(0, 100) })}
+              onSave={(name) => update({ name: name.slice(0, 60) })}
               onDelete={() => {
                 update({ deleted_at: new Date().toISOString() });
                 router.back();

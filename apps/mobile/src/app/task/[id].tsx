@@ -265,7 +265,7 @@ export default function TaskScreen() {
               value={task.dueDate ? relativeDay(task.dueDate, today) : 'Bez terminu'}
               tone={task.dueDate && task.dueDate < today && !closed ? p.bad : undefined}
               onPress={() =>
-                then(pickDate({ title: 'Termin', value: task.dueDate, today, allowNone: true, firstDayOfWeek: data.settings.firstDayOfWeek }), 
+                then(pickDate({ title: 'Termin', value: task.dueDate, today, allowNone: true }), 
                   (d) => d !== undefined && d !== task.dueDate && update(datesPatch(task, { due_date: d })),
                 )
               }
@@ -281,7 +281,7 @@ export default function TaskScreen() {
               value={task.startDate ? relativeDay(task.startDate, today) : '—'}
               disabled={!task.dueDate}
               onPress={() =>
-                then(pickDate({ title: 'Początek (zakres do terminu)', value: task.startDate, today, allowNone: true, firstDayOfWeek: data.settings.firstDayOfWeek }), 
+                then(pickDate({ title: 'Początek (zakres do terminu)', value: task.startDate, today, allowNone: true }), 
                   (d) => d !== undefined && d !== task.startDate && update(datesPatch(task, { start_date: d })),
                 )
               }

@@ -9,6 +9,8 @@ import { Button, ColorDot, ColorPicker, Field, Row, usePalette } from './ui';
 
 export interface EditableItemProps {
   name: string;
+  /** Limit nazwy w bazie (przestrzeń 100, lista 200). */
+  maxLength: number;
   color: string | null;
   subtitle: string;
   onOpen?: () => void;
@@ -71,7 +73,7 @@ export function EditableItem(props: EditableItemProps) {
           {props.onSave ? (
             <Row>
               <View style={{ flex: 1, minWidth: 160 }}>
-                <Field label="Nazwa" value={name} onChangeText={setName} maxLength={200} />
+                <Field label="Nazwa" value={name} onChangeText={setName} maxLength={props.maxLength} />
               </View>
               <View style={{ justifyContent: 'flex-end' }}>
                 <Button

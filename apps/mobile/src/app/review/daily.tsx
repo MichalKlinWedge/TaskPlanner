@@ -61,7 +61,7 @@ export default function DailyReviewScreen() {
   };
   const pick = async (kind: ReviewKindKey) => {
     if (kind !== 'date') return apply({ kind } as ReviewAction);
-    const date = await pickDate({ title: 'Nowy termin', value: addDays(today, 2), today, firstDayOfWeek: data.settings.firstDayOfWeek });
+    const date = await pickDate({ title: 'Nowy termin', value: addDays(today, 2), today });
     if (date) apply({ kind: 'date', date });
   };
 

@@ -80,11 +80,12 @@ export default function Workspace() {
 
   const row = (l: ListItem, index: number, group: ListItem[]) =>
     !listEditable(l) ? (
-      <EditableItem key={l.id} name={l.name} color={l.color} subtitle={subtitle(l)} archived={!!l.archived_at} onError={onError} />
+      <EditableItem key={l.id} name={l.name} maxLength={200} color={l.color} subtitle={subtitle(l)} archived={!!l.archived_at} onError={onError} />
     ) : (
       <EditableItem
         key={l.id}
         name={l.name}
+        maxLength={200}
         color={l.color}
         subtitle={subtitle(l)}
         archived={!!l.archived_at}
@@ -148,7 +149,7 @@ export default function Workspace() {
       ) : null}
 
       {inbox ? (
-        <EditableItem name={inbox.name} color={inbox.color} subtitle={subtitle(inbox)} onColor={listEditable(inbox) ? (c) => updateList(inbox, { color: c }) : undefined} onError={onError}>
+        <EditableItem name={inbox.name} maxLength={200} color={inbox.color} subtitle={subtitle(inbox)} onColor={listEditable(inbox) ? (c) => updateList(inbox, { color: c }) : undefined} onError={onError}>
           <P muted>Inbox jest jeden na przestrzeń — nie zmienia nazwy i nie da się go usunąć.</P>
           {access(inbox)}
         </EditableItem>

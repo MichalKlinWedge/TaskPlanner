@@ -5,16 +5,17 @@ Stan kodu: 24.11.2026, commit `73e5983` (gałąź `claude/selfhost-docs`; kod ap
 ## Podsumowanie
 
 - **Rdzeń jest w parytecie**: pola zadania, powtarzanie, filtry i ich warunki, sortowanie / grupowanie / kolumny, kosz, nawyki (liczenie), przeglądy (kolejka i decyzje), udostępnianie przestrzeni, szablony, asystent AI, parser szybkiego dodawania (pełna lista w § „Sprawdzone, bez różnic”).
-- **P1 zrobione w kodzie 24.11.2026 (A-01…A-05, razem z nimi A-07), czekają na wydanie APK i próbę na urządzeniu.** **P2 dla APK zrobione w kodzie tego samego dnia (A-06, A-08…A-25, R-03, R-04 i telefonowa część R-01).** Było w P1: ryzyko utraty danych albo mylące zachowanie na telefonie: opis gubi się po „Wstecz” (A-01), wylogowanie wyrzuca niewysłane zmiany (A-02), wyłączenie przypomnienia w nawyku kasuje wszystkie, także dodane na webie (A-03), ustawień profilu nie da się zmienić po kreatorze (A-04), telefon nie jest w „urządzeniach” i dubluje przypomnienia z przeglądarką (A-05).
-- **P2 dla webu zrobione w kodzie 24.11.2026 (W-01…W-03, W-05…W-08, R-01, R-02), czeka na wdrożenie webu.** Z P2 zostaje W-04 (odhaczanie pól w podglądzie opisu).
+- **P1 zrobione w kodzie 24.11.2026 (A-01…A-05, razem z nimi A-07), w wydanych APK od 0.1.27, próba na urządzeniu zostaje.** **P2 dla APK zrobione w kodzie tego samego dnia (A-06, A-08…A-25, R-03, R-04 i telefonowa część R-01).** Było w P1: ryzyko utraty danych albo mylące zachowanie na telefonie: opis gubi się po „Wstecz” (A-01), wylogowanie wyrzuca niewysłane zmiany (A-02), wyłączenie przypomnienia w nawyku kasuje wszystkie, także dodane na webie (A-03), ustawień profilu nie da się zmienić po kreatorze (A-04), telefon nie jest w „urządzeniach” i dubluje przypomnienia z przeglądarką (A-05).
+- **P2 dla webu zrobione w kodzie 24.11.2026 (W-01…W-03, W-05…W-08, R-01, R-02), wdrożone.** Z P2 zostaje W-04 (odhaczanie pól w podglądzie opisu).
+- **P3 zrobione 25.11.2026:** A-47, A-48, R-15 i telefonowa część W-24 (czekają na APK po 0.1.30), W-24 na webie (czeka na wdrożenie), W-19 (naprawione wcześniej w `bee9469`, wdrożone).
 - **Celowe** (nie do nadrabiania): Karteczki, edycja osi czasu, kalendarz tygodnia i miesiąca bez przeciągania, historia zmian, konfiguracja integracji — § „Różnice celowe”.
 - **Baza:** żadna pozycja nie wymaga migracji. Prawie wszystkie pozycje „A” wymagają nowego APK (bez OTA, D17), pozycje „W” tylko wdrożenia webu.
 
 | | P1 | P2 | P3 | razem |
 |---|---|---|---|---|
-| A — do nadrobienia w APK | 0 (5 zrobionych) | 0 (20 zrobionych) | 27 | 27 |
-| W — do nadrobienia na webie | 0 | 1 (7 zrobionych) | 16 | 17 |
-| R — działa inaczej, do ujednolicenia | 0 | 0 (4 zrobione) | 12 | 12 |
+| A — do nadrobienia w APK | 0 (5 zrobionych) | 0 (20 zrobionych) | 25 (2 zrobione) | 25 |
+| W — do nadrobienia na webie | 0 | 1 (7 zrobionych) | 14 (2 zrobione) | 15 |
+| R — działa inaczej, do ujednolicenia | 0 | 0 (4 zrobione) | 11 (1 zrobiona) | 11 |
 
 ### Proponowana kolejność
 
@@ -37,7 +38,7 @@ Stan kodu: 24.11.2026, commit `73e5983` (gałąź `claude/selfhost-docs`; kod ap
 
 ### P1
 
-✅ = zrobione w kodzie telefonu, jeszcze nie w wydanym APK; opis pozycji to stan sprzed zmiany.
+✅ = zrobione w kodzie (stan wydania w § „Podsumowanie”); opis pozycji to stan sprzed zmiany.
 
 | ID | Obszar | Web | APK | Co zrobić | Dowód | Dlaczego | Szac. | Mig. / APK |
 |---|---|---|---|---|---|---|---|---|
@@ -97,8 +98,8 @@ Stan kodu: 24.11.2026, commit `73e5983` (gałąź `claude/selfhost-docs`; kod ap
 | A-44 | Wybór listy | Szukanie w „Przenieś do…” | Przewijana lista bez pola | Pole szukania w `pickList` | `W/command-palette.tsx:169-176`; `M/components/task-menus.ts:35-43` | Przy wielu listach | S | — / APK |
 | A-45 | Szybkie dodawanie — link | Chip „🔗 domena — trafi do załączników” | Zapis działa, podglądu brak (jest w `/share`) | Chip w `quick-add-field.tsx` | `W/quick-add.tsx:167-171`; `M/components/quick-add-field.tsx:109,163-189` | Drobne | S | — / APK |
 | A-46 | Załączniki — drobne | Ikona strony linku, przyczyna błędu wysyłki, ✕ | Stałe 🔗, bez przyczyny, usuwanie tylko przytrzymaniem | Ikona, przyczyna, widoczne menu | `W/attachments.tsx:338-408`; `M/components/attachments-field.tsx:179-183,250-280` | Drobne | S | — / APK |
-| A-47 | Pierwszy dzień tygodnia (błąd) | Natywne pola daty | Gest „Termin”, przypomnienie, koniec serii, szablon, formularz nawyku — zawsze poniedziałek | Domyślnie `data.settings.firstDayOfWeek` w `pickDate` | `M/components/pickers.tsx:53`, `M/components/task-menus.ts:14`; poprawnie: `task/[id].tsx` Termin / Początek | Drobne | S | — / APK |
-| A-48 | Nazwy — limity (błąd) | 60 (filtr), 100 (przestrzeń) | Pole filtra 100, przestrzeni / listy 200 | Limity jak w bazie (`saved_filters.name` ≤ 60) | `M/components/edit-name-bar.tsx:31`, `M/components/editable-item.tsx:74`; `supabase/migrations/20261119100000_mvp1_model.sql:84` | Odrzucenie przez serwer do sprawdzenia | S | — / APK |
+| A-47 ✅ | Pierwszy dzień tygodnia (błąd) | Natywne pola daty | Gest „Termin”, przypomnienie, koniec serii, szablon, formularz nawyku — zawsze poniedziałek | Domyślnie `data.settings.firstDayOfWeek` w `pickDate` | `M/components/pickers.tsx:53`, `M/components/task-menus.ts:14`; poprawnie: `task/[id].tsx` Termin / Początek | Drobne | S | — / APK |
+| A-48 ✅ | Nazwy — limity (błąd) | 60 (filtr), 100 (przestrzeń) | Pole filtra 100, przestrzeni / listy 200 | Limity jak w bazie (`saved_filters.name` ≤ 60) | `M/components/edit-name-bar.tsx:31`, `M/components/editable-item.tsx:74`; `supabase/migrations/20261119100000_mvp1_model.sql:84` | Odrzucenie przez serwer do sprawdzenia | S | — / APK |
 | A-49 | Przypomnienia — odłożenie | (web: bez akcji, W-07) | „Odłóż 10 min”, „Jutro”; brak „1 h” | Trzecia akcja (Android pokazuje do 3 — do wyboru, która ustępuje) | `C/reminders.ts:183` (`1h` nieużywane); `M/lib/reminders.ts:114-118` | Specyfikacja M8 „10 min / 1 h / do jutra” | S | — / APK |
 | A-50 | Plan dnia / AI — drobne | Całodniowe zadania w planie; min/max daty kroku AI; data sprawdzenia klucza | Tylko wydarzenia całodniowe; bez ograniczeń daty (przycina core); bez daty | Wyrównać | `W/day-plan.tsx:128-143`, `W/ai-breakdown.tsx:134-156`, `W/ai-card.tsx`; `M/components/day-plan.tsx:57,98-100`, `M/components/ai-breakdown.tsx:107-110`, `M/components/ai-section.tsx:78-100` | Drobne | S | — / APK |
 | A-51 | Szczegóły w trybie podglądu | Linki w opisie działają | `pointerEvents="none"` blokuje też linki, zależności i zwijanie sekcji | Wyłączać same pola, nie cały blok | `W/task-panel.tsx:117-123`; `M/app/task/[id].tsx:105-112` | Gość nie otworzy linku z opisu | S | — / APK |
@@ -133,12 +134,12 @@ Stan kodu: 24.11.2026, commit `73e5983` (gałąź `claude/selfhost-docs`; kod ap
 | W-16 | Logowanie kodem | Tylko link | Kod z maila | Pole kodu po wysłaniu linku (`verifyOtp`) | `M/lib/auth.ts:48-52`; grep W `verifyOtp` = 0 | Mail otwarty na innym urządzeniu | S | — / web |
 | W-17 | Usunięcie nawyku | Pytanie, potem dymek **bez** „Cofnij” | „Cofnij” w dymku | Dodać `undo` (`restoreTaskOps`) | `M/app/habit/[id].tsx:77-79`; `W/habits.tsx:345-349` | Spójność | S | — / web |
 | W-18 | Przegląd — listy klikalne | „Ukończone dziś” to liczba; plan i „Nadchodzący tydzień” nieklikalne | Listy z otwieraniem i ukończeniem | Otwieranie zadania z listy | `M/app/review/daily.tsx:168-195`, `weekly.tsx:236`; `W/review.tsx:303,330,626` | Wygoda | S | — / web |
-| W-19 | Przypomnienie o porze — podpis (błąd) | Dzień liczony względem terminu zadania (bez terminu zawsze „dziś”) | Względem dziś | `relativeDay(at_date, today)` | `W/task-panel.tsx:1121`; `M/app/task/[id].tsx` `RemindersField` | Mylący opis | S | — / web |
+| W-19 ✅ | Przypomnienie o porze — podpis (błąd) | Dzień liczony względem terminu zadania (bez terminu zawsze „dziś”) | Względem dziś | `relativeDay(at_date, today)` | `W/task-panel.tsx:1121`; `M/app/task/[id].tsx` `RemindersField` | Mylący opis | S | — / web |
 | W-20 | Oś czasu — klik projektu | Nic nie robi | Otwiera listę | `navigate({ view: "list" })` | `M/app/timeline.tsx:164-167`; `W/timeline.tsx:416` | Drobne | S | — / web |
 | W-21 | Przechwytywanie — wskazówka | Karta kieruje użytkownika Androida do PWA | — | Dodać link do APK (wydanie `android-v*`) | `W/capture-card.tsx:33-35`; `M/lib/app-update.ts` | Dwie drogi na ten sam telefon | S | — / web |
 | W-22 | Wersja aplikacji | Nie widać wersji ani nowej wersji | „Aktualizacje”, baner | Wersja w Ustawieniach | `M/components/app-update.tsx`; `WL/error-log.ts:17` (tylko do dziennika); brak w UI do sprawdzenia | Drobne | S | — / web |
 | W-23 | Pomoc składni | Jedna linia przykładu | Ściąga w oknie | Rozwijana ściąga w oknie Q | `M/app/quick-add.tsx:59-62`; `W/quick-add.tsx:204-206` | Wygoda | S | — / web |
-| W-24 | Tablica „tylko podgląd” | Karty dają się chwycić, zapis odrzuca silnik | Przeciąganie zablokowane (menu „⇄” nie — też poprawić) | `useSortable({ disabled: locked })` | `M/app/board.tsx:85,458`; `W/board.tsx:63,344` | Razem z A-08 | S | — / web (+ APK) |
+| W-24 ✅ | Tablica „tylko podgląd” | Karty dają się chwycić, zapis odrzuca silnik | Przeciąganie zablokowane (menu „⇄” nie — też poprawić) | `useSortable({ disabled: locked })` | `M/app/board.tsx:85,458`; `W/board.tsx:63,344` | Razem z A-08 | S | — / web (+ APK) |
 
 ## R. Jest w obu, działa inaczej
 
@@ -158,7 +159,7 @@ Stan kodu: 24.11.2026, commit `73e5983` (gałąź `claude/selfhost-docs`; kod ap
 | R-12 | Zaznaczenie po akcji | Zostaje; czyści zmiana widoku | Czyści się po akcji; zmiana ekranu nie czyści | Ustalić (razem z A-21) | `W/shell.tsx:264,785-793`; `M/components/actions.tsx:163` | P3 | S | — / APK |
 | R-13 | Kółko zadania anulowanego | Puste | Zaznaczone | Ujednolicić | `W/task-panel.tsx:192-198`; `M/app/task/[id].tsx` (`closed`) | P3 | S | — |
 | R-14 | „Wynika z” (`derived_from`) | Widać i edytuje się tylko na Karteczkach; w panelu zadania nie ma | Nigdzie | Pole tylko do odczytu „Wynika z…” w panelu i na ekranie zadania (celowo tylko web dotyczy Karteczek) | `W/canvas.tsx:270,594`; grep M `derived` = 0, `W/task-panel.tsx` — brak | P3 — powiązanie niewidoczne poza tablicą | S | — / APK + web |
-| R-15 | Nagłówek widżetu „Nawyki” | — | Otwiera „Dziś” zamiast „Nawyki” | `APP_URI` na `/habits` | `M/widget/habits-widget.tsx:31` | P3 | S | — / APK |
+| R-15 ✅ | Nagłówek widżetu „Nawyki” | — | Otwiera „Dziś” zamiast „Nawyki” | `APP_URI` na `/habits` | `M/widget/habits-widget.tsx:31` | P3 | S | — / APK |
 | R-16 | Skupienie wyłączone | `#/focus` pokazuje komunikat | Wejście ukryte, ale `/focus` z linku działa | Komunikat na telefonie | `W/shell.tsx:337-340`; `M/app/focus.tsx` (brak warunku), `M/lib/focus.ts:312` | P3 — do sprawdzenia | S | — / APK |
 
 ## Różnice celowe (nie nadrabiać)
@@ -204,7 +205,7 @@ Stan kodu: 24.11.2026, commit `73e5983` (gałąź `claude/selfhost-docs`; kod ap
 2. A-05 na urządzeniu: wiersz telefonu na webie po synchronizacji, wyłączenie z weba kasuje alarmy po pobraniu zmiany, brak dubla z Web Push; A-07: zmiana motywu bez restartu ekranu; szukanie strefy w „Profilu” (czy Hermes ma `Intl.supportedValuesOf`).
 3. Po wdrożeniu webu: „Ukończ” i „Odłóż 10 min” w prawdziwym powiadomieniu Chrome przy zamkniętej karcie (W-07; test E2E wywołuje handlery Service Workera, nie klika systemowego przycisku); „Odłóż” na webie to jednorazowe przypomnienie (`reminders`), więc po synchronizacji zadzwoni też telefon.
 4. Na telefonie z P2: powiadomienie o przeglądzie i dotknięcie go (A-06), `adb shell pm get-app-links pl.taskplanner.app` = `verified` po instalacji APK z Actions (A-11; APK z kluczem debug nie przejdzie weryfikacji), kursor po przycisku formatowania i Enter w liście na klawiaturze Samsunga (A-14), „Udostępnij” obrazu i pliku z kolejki (A-23), przyciski ↑ ↓ ⇥ ⇤ (A-12).
-5. Odrzucenie nazwy filtra dłuższej niż 60 znaków (A-48).
+5. ~~Odrzucenie nazwy filtra dłuższej niż 60 znaków (A-48)~~ — pole ma limit bazy.
 6. Nawyk otwarty jako zwykłe zadanie na telefonie (wyszukiwarka → `/task/[id]`): brak sekcji „Nawyk” z linkiem, którą ma web (`W/task-panel.tsx:290-296`; `M/app/task/[id].tsx`). Szukaj nie odfiltrowuje nawyków (`M/app/search.tsx`).
 7. Web: pole „Dni miesiąca” w edytorze powtarzania przelicza tekst przy każdym znaku — przecinek może znikać (`W/recurrence-editor.tsx:138-156`; telefon ma bufor, `M/components/recurrence-editor.tsx:97,175`).
 8. Web: tablica przy włączonym filtrze liczy postęp i kolejność z przefiltrowanych danych (`W/shell.tsx:290-318`, `W/board.tsx:131-141`), telefon z pełnych (`M/app/board.tsx:180-208`).

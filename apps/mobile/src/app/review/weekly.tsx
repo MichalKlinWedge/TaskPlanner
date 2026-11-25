@@ -111,7 +111,7 @@ export default function WeeklyReviewScreen() {
   };
   const pickFor = (task: ViewTask) => async (kind: ReviewKindKey) => {
     if (kind !== 'date') return act(task, { kind } as ReviewAction);
-    const date = await pickDate({ title: 'Nowy termin', value: addDays(today, 2), today, firstDayOfWeek: data.settings.firstDayOfWeek });
+    const date = await pickDate({ title: 'Nowy termin', value: addDays(today, 2), today });
     if (date) act(task, { kind: 'date', date });
   };
   const move = async (task: ViewTask) => {

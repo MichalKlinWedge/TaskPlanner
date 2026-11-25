@@ -1,4 +1,4 @@
-/** Edycja nazwy (i koloru) z usunięciem po potwierdzeniu — tag, zapisany filtr. */
+/** Edycja nazwy (do 60 znaków, jak w bazie) i koloru z usunięciem po potwierdzeniu — tag, zapisany filtr. */
 import { useState } from 'react';
 import { Alert, View } from 'react-native';
 
@@ -28,7 +28,7 @@ export function EditNameBar({
     <View style={{ paddingHorizontal: 12, paddingTop: 8, gap: 8 }}>
       {editing ? (
         <>
-          <Field label={label} value={draft} onChangeText={setDraft} maxLength={100} autoFocus />
+          <Field label={label} value={draft} onChangeText={setDraft} maxLength={60} autoFocus />
           {color ? <ColorPicker value={color.value} onChange={color.onChange} onClear={color.onClear} /> : null}
           <Row>
             <Button

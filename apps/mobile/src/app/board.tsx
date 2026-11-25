@@ -455,7 +455,7 @@ export default function BoardScreen() {
               scrollEventThrottle={16}
               scrollEnabled={!drag}
               renderItem={({ item }) => (
-                <BoardCard task={item} api={dragApi} enabled={!locked}>
+                <BoardCard task={item} api={dragApi} enabled={listEditable(data, item.listId)}>
                   {insertBefore === item.id ? <View style={[styles.dropLine, { backgroundColor: p.accent }]} /> : null}
                   <View style={[styles.card, { borderColor: p.border, opacity: drag?.id === item.id ? 0.3 : 1 }]}>
                     <View style={{ flex: 1 }}>
@@ -468,9 +468,11 @@ export default function BoardScreen() {
                         tagNames={by === 'tag' ? undefined : item.tagIds.map((id) => tagName.get(id) ?? '').filter(Boolean)}
                       />
                     </View>
-                    <Pressable accessibilityRole="button" accessibilityLabel={`Przenieś „${item.title}”`} hitSlop={6} onPress={() => void moveCard(item, column)} style={styles.move}>
-                      <Text style={{ color: p.accent, fontSize: 18 }}>⇄</Text>
-                    </Pressable>
+                    {listEditable(data, item.listId) ? (
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Przenieś „${item.title}”`} hitSlop={6} onPress={() => void moveCard(item, column)} style={styles.move}>
+                        <Text style={{ color: p.accent, fontSize: 18 }}>⇄</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 </BoardCard>
               )}

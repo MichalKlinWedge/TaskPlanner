@@ -141,7 +141,7 @@ export default function HabitFormScreen() {
     ]);
     if (choice === undefined) return;
     if (choice !== 'abs') return setReminderList([...reminders, { kind: 'relative', offsetMin: choice }]);
-    const atDate = await pickDate({ title: 'Dzień przypomnienia', value: start > today ? start : today, today, firstDayOfWeek: data.settings.firstDayOfWeek });
+    const atDate = await pickDate({ title: 'Dzień przypomnienia', value: start > today ? start : today, today });
     if (!atDate) return;
     const atTime = await pickTime({ title: 'Godzina przypomnienia', value: time ?? '09:00' });
     if (atTime) setReminderList([...reminders, { kind: 'absolute', atDate, atTime }]);
@@ -157,7 +157,7 @@ export default function HabitFormScreen() {
     ]);
     if (choice === 'never') setEnd({ kind: 'never' });
     else if (choice === 'until') {
-      const date = await pickDate({ title: 'Ostatni dzień', value: end.kind === 'until' ? end.date : addDays(start, 29), today, firstDayOfWeek: data.settings.firstDayOfWeek });
+      const date = await pickDate({ title: 'Ostatni dzień', value: end.kind === 'until' ? end.date : addDays(start, 29), today });
       if (date) setEnd({ kind: 'until', date });
     } else if (choice === 'count') {
       const n = await pickNumber('Po ilu razach zakończyć', { value: end.kind === 'count' ? end.n : 30, min: 1, max: MAX_COUNT });

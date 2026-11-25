@@ -105,7 +105,7 @@ function BreakdownForm({ task, data, today, account, online, onClose }: Props & 
     if (picked !== undefined) patch(d.key, { durationMin: picked || null });
   };
   const pickDue = async (d: BreakdownDraft) => {
-    const date = await pickDate({ title: 'Termin kroku', value: d.dueDate, today, allowNone: true, firstDayOfWeek: data.settings.firstDayOfWeek });
+    const date = await pickDate({ title: 'Termin kroku', value: d.dueDate, today, allowNone: true });
     if (date !== undefined) patch(d.key, { dueDate: date });
   };
   const pickStepPriority = async (d: BreakdownDraft) => {

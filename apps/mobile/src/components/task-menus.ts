@@ -45,6 +45,6 @@ export function pickList(data: AppData, title: string, current?: string) {
 /** Pasek zaznaczenia: termin dla wielu zadań. */
 export async function bulkDate(actions: TaskActions, data: AppData) {
   const today = localDateAt(new Date(), data.settings.timeZone);
-  const date = await pickDate({ title: `Termin: ${actions.selected.size} zaznaczonych`, value: null, today, firstDayOfWeek: data.settings.firstDayOfWeek });
+  const date = await pickDate({ title: `Termin: ${actions.selected.size} zaznaczonych`, value: null, today });
   if (date) await actions.bulk({ kind: 'date', date });
 }

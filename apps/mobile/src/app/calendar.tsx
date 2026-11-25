@@ -213,7 +213,7 @@ function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; da
 
   // Inny dzień: godzina i długość bloku zostają (jak przeciągnięcie między dniami na webie).
   const setDay = async (task: ViewTask) => {
-    const day = await pickDate({ title: `Dzień: „${task.title}”`, value: task.dueDate, today, firstDayOfWeek: data.settings.firstDayOfWeek });
+    const day = await pickDate({ title: `Dzień: „${task.title}”`, value: task.dueDate, today });
     if (!day || day === task.dueDate) return;
     const patch = task.dueTime ? scheduleBlockPatch(task, day, toMin(task.dueTime), { defaultDurationMin }) : datesPatch(task, { due_date: day });
     schedule(task, patch, `→ ${relativeDay(day, today)}${task.dueTime ? ` ${task.dueTime}` : ''}`);

@@ -30,6 +30,7 @@ export default function Workspaces() {
       <EditableItem
         key={w.id}
         name={w.name}
+        maxLength={100}
         color={w.color}
         subtitle={[plural(w.lists, LISTS), shared ? `udostępniona · ${SCOPE_ROLE[w.role!].toLowerCase()}` : null].filter(Boolean).join(' · ')}
         archived={!!w.archived_at}

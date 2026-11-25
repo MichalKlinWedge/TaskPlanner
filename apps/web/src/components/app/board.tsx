@@ -62,14 +62,16 @@ interface ColumnEdit {
 const Card = memo(function Card({ task, column, by, today, tags, listName, progress }: { task: ViewTask; column: string; by: BoardBy; today: LocalDate; tags: readonly { id: string; name: string; color: string | null }[]; listName?: string; progress?: { done: number; total: number } }) {
   const { openTask, select, selectedIds, data } = useAppEnv();
   const { toggle } = useTaskActions();
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cardId(column, task.id), data: { taskId: task.id, column } satisfies CardData });
+  // Karta listy „tylko podgląd” nie daje się chwycić, ale zostaje miejscem upuszczenia innych.
+  const readOnly = !listEditable(data, task.listId);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cardId(column, task.id), data: { taskId: task.id, column } satisfies CardData, disabled: { draggable: readOnly } });
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
   const overdue = isOpen(task) && task.dueDate !== null && task.dueDate < today;
   return (
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, borderLeftColor: color }}
-      {...attributes}
+      {...(readOnly ? undefined : attributes)}
       {...listeners}
       data-card={task.id}
       onClick={(e) => {
@@ -77,12 +79,12 @@ const Card = memo(function Card({ task, column, by, today, tags, listName, progr
         select(task.id);
         openTask(task.id);
       }}
-      className={`cursor-grab rounded-md border border-l-4 border-[var(--line)] bg-[var(--surface)] px-2.5 py-2 text-sm shadow-sm ${isDragging ? "opacity-40" : ""} ${selectedIds.has(task.id) ? "ring-2 ring-[var(--accent)]" : ""}`}
+      className={`${readOnly ? "cursor-pointer" : "cursor-grab"} rounded-md border border-l-4 border-[var(--line)] bg-[var(--surface)] px-2.5 py-2 text-sm shadow-sm ${isDragging ? "opacity-40" : ""} ${selectedIds.has(task.id) ? "ring-2 ring-[var(--accent)]" : ""}`}
     >
       <div className="flex items-start gap-2">
         {/* Spacja / Enter na kółku odhacza, a nie podnosi karty. */}
         <span className="contents" onKeyDown={(e) => e.stopPropagation()}>
-          <DoneCircle task={task} closed={!isOpen(task)} readOnly={!listEditable(data, task.listId)} onToggle={() => void toggle(task)} className="mt-px" />
+          <DoneCircle task={task} closed={!isOpen(task)} readOnly={readOnly} onToggle={() => void toggle(task)} className="mt-px" />
         </span>
         <div className={`min-w-0 flex-1 break-words ${task.status === "done" ? "text-[var(--muted)] line-through" : ""}`}>{task.title}</div>
         <PeopleBadges task={task} className="mt-px" />
@@ -352,6 +354,7 @@ export function Board({
   const owner = lists.length === 1 ? lists[0] : undefined;
   // Lista tylko do podglądu (gość): bez dodawania kart i zmian kolumn.
   const locked = listId ? !listEditable(data, listId) : false;
+  const columnsLocked = owner ? !listEditable(data, owner.id) : locked;
   const defs = owner?.boardColumns ?? NO_COLUMNS;
   // Kolumny tagów: tagi przestrzeni tablicy + użyte na kartach.
   const tags = useMemo(() => tagsForWorkspace(data.tags, space, tasks.flatMap((t) => t.tagIds)), [data.tags, space, tasks]);
@@ -423,7 +426,7 @@ export function Board({
         </Select>
         {by === "status" ? <span className="text-[var(--muted)]">„Gotowe” z ostatnich 7 dni</span> : null}
         {custom && owner ? <span className="text-[var(--muted)]">Kolumny listy „{owner.kind === "inbox" ? "Inbox" : owner.name}” — przeciągnij ⠿, by zmienić kolejność</span> : null}
-        {custom && owner && !locked ? (
+        {custom && owner && !columnsLocked ? (
           <div className="ml-auto">
             <AddColumn onAdd={(name) => editColumns((current) => addBoardColumnOps(owner.id, current, name))} />
           </div>
@@ -450,7 +453,7 @@ export function Board({
           <div className="flex gap-3 sm:min-w-0 sm:flex-1 sm:overflow-x-auto sm:pb-4" data-testid="board-scroll">
           <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
             {scrolled.map((c) =>
-              custom && owner && !locked && c.key !== "none" ? (
+              custom && owner && !columnsLocked && c.key !== "none" ? (
                 <SortableColumn
                   key={c.key}
                   column={c}
