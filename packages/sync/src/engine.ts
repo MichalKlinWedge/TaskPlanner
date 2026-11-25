@@ -61,8 +61,8 @@ const chunks = <T>(items: readonly T[], size: number): T[][] => {
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
 };
-/** Wersja zestawu tabel tylko do odczytu (`2` = `scope_collaborators`, `3` = `scope_tags`, `4` = `plugin_connections`, `5` = `ai_accounts`) — zmiana wymusza ponowne pobranie zakresów. */
-const READONLY_VERSION = '5';
+/** Wersja zestawu tabel tylko do odczytu (`2` = `scope_collaborators`, `3` = `scope_tags`, `4` = `plugin_connections`, `5` = `ai_accounts`, `6` = `scope_collaborators.user_id`) — zmiana wymusza ponowne pobranie zakresów. */
+const READONLY_VERSION = '6';
 /**
  * Zestaw tabel i kolumn synchronizowanych. Starsza wersja aplikacji pomijała w `pull_changes` tabele
  * i kolumny, których nie znała, a kursory zakresów i tak szły dalej — po aktualizacji te wiersze
@@ -132,6 +132,13 @@ export class SyncEngine {
     for (const table of SYNCED_TABLES) {
       const existing = new Set((await this.db.all<{ name: string }>('select name from pragma_table_info(?)', [table])).map((c) => c.name));
       for (const column of localColumns(table)) {
+        if (!existing.has(column)) await this.db.run(`alter table ${table} add column ${column}`);
+      }
+    }
+    // To samo w tabelach tylko do odczytu (wartości przynosi ponowne pobranie — `READONLY_VERSION`).
+    for (const table of READONLY_TABLES) {
+      const existing = new Set((await this.db.all<{ name: string }>('select name from pragma_table_info(?)', [table])).map((c) => c.name));
+      for (const column of readonlyColumnsOf(table)) {
         if (!existing.has(column)) await this.db.run(`alter table ${table} add column ${column}`);
       }
     }

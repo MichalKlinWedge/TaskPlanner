@@ -60,6 +60,9 @@ describe('reminderDoneOps', () => {
     const series = task({ recurrence: daily });
     expect(reminderDoneOps(series, 'r:2026-11-20', [rel], opts)!.nextDue).toBe('2026-11-21');
     expect(reminderDoneOps(series, 'r:2026-11-19', [rel], opts)).toBeNull();
+    // Automatyczne (osoba odpowiedzialna) niesie dzień wystąpienia, choć nie ma wiersza.
+    expect(reminderDoneOps(series, 'a-t1:2026-11-20', [], opts)!.nextDue).toBe('2026-11-21');
+    expect(reminderDoneOps(series, 'a-t1:2026-11-19', [], opts)).toBeNull();
     // Jednorazowe nie zna wystąpienia: po ukończeniu (termin w przyszłości) nic.
     expect(reminderDoneOps(series, 'a:2026-11-20', [abs], opts)).not.toBeNull();
     expect(reminderDoneOps(task({ recurrence: daily, due_date: '2026-11-21' }), 'a:2026-11-20', [abs], opts)).toBeNull();

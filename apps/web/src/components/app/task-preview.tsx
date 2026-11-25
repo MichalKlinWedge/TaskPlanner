@@ -126,7 +126,7 @@ export function TaskPreview({ task, trash }: { task: ViewTask; trash?: TrashPrev
   const { store, data, userId, settings, today, timeZone, openTask } = useAppEnv();
   const description = useTaskDescription(store, task.id);
   const comments = useTaskComments(store, task.id);
-  const reminders = useTaskReminders(store, task.id, today);
+  const reminders = useTaskReminders(store, task.id, today, userId);
   const attachments = useAttachmentCount(task.id);
   const deps = useDependencies(store);
   const links = useMemo(() => taskLinks(task.id, data.tasks, deps), [task.id, data.tasks, deps]);

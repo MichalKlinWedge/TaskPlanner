@@ -33,7 +33,7 @@ export function useProjectTemplates(): ProjectTemplate[] {
 /** Migawka projektu jako szablon (nazwa istniejącego szablonu = zastąpienie). */
 export async function saveProjectAsTemplate(listId: string, name: string, templates: readonly ProjectTemplate[]): Promise<{ replaced: boolean; summary: string }> {
   const engine = await localEngine();
-  const content = projectTemplateContent(await readProjectSource(engine.db.all.bind(engine.db), listId));
+  const content = projectTemplateContent(await readProjectSource(engine.db.all.bind(engine.db), listId, engine.userId));
   const saved = saveTemplateOps(templates, name, content);
   await mutateMany(saved.ops);
   return { replaced: saved.replaced, summary: templateSummary(content) };

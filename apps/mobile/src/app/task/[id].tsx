@@ -16,6 +16,7 @@ import {
   addParticipantOps,
   assigneeChoices,
   assigneeOf,
+  assigneeReminderNote,
   assignTaskOps,
   attachSubtaskOps,
   canAddSubtask,
@@ -52,6 +53,7 @@ import {
   relativeDay,
   removeDependencyOps,
   reparentTaskOps,
+  responsibleAccount,
   shortDate,
   skipOccurrenceOps,
   TASK_STATUS,
@@ -336,7 +338,7 @@ export default function TaskScreen() {
         <AttachmentsField taskId={task.id} readOnly={readOnly} />
 
         <Editable readOnly={readOnly}>
-          <RemindersField task={task} today={today} />
+          <RemindersField task={task} data={data} today={today} />
           <RecurrenceField key={`rec:${task.id}`} task={task} data={data} today={today} timeZone={data.settings.timeZone} onSave={(patch) => void update(patch)} />
           {data.settings.focus.enabled ? <TimeField task={task} /> : null}
         </Editable>
@@ -753,16 +755,36 @@ function CommentsField({ task, data, today }: { task: ViewTask; data: AppData; t
   );
 }
 
-function RemindersField({ task, today }: { task: ViewTask; today: LocalDate }) {
+function RemindersField({ task, data, today }: { task: ViewTask; data: AppData; today: LocalDate }) {
   const p = usePalette();
   const { run } = useTaskActions();
+  // Kto dostanie automatyczne przypomnienie w chwili terminu (udostępniona przestrzeń).
+  const people = useLocalQuery(
+    ['tasks', 'scope_collaborators'],
+    async (engine) => {
+      const [creator, person] = await Promise.all([
+        engine.db.all<{ created_by: string | null }>('select created_by from tasks where id = ?', [task.id]),
+        engine.db.all<{ user_id: string | null }>('select user_id from scope_collaborators where scope_id = ? and collaborator_id = ?', [task.workspaceId, task.assigneeId ?? '']),
+      ]);
+      return { createdBy: creator[0]?.created_by ?? engine.userId, account: person[0]?.user_id ?? null };
+    },
+    [task.id, task.workspaceId, task.assigneeId ?? ''],
+  );
+  const note = people
+    ? assigneeReminderNote(task, {
+        shared: (data.workspaces.find((w) => w.id === task.workspaceId)?.members ?? 1) > 1,
+        userId: data.userId,
+        assigneeName: assigneeOf(task.assigneeId, data.collaborators)?.name ?? null,
+        account: responsibleAccount({ assigneeId: task.assigneeId, createdBy: people.createdBy }, () => people.account),
+      })
+    : null;
   const rows =
     useLocalQuery(
       ['reminders'],
       (engine) =>
         engine.db.all<{ id: string; kind: string; offset_min: number | null; at_date: string | null; at_time: string | null }>(
-          'select id, kind, offset_min, at_date, at_time from reminders where task_id = ? and deleted_at is null order by kind, offset_min, at_date, at_time',
-          [task.id],
+          'select id, kind, offset_min, at_date, at_time from reminders where task_id = ? and deleted_at is null and (created_by is null or created_by = ?) order by kind, offset_min, at_date, at_time',
+          [task.id, engine.userId],
         ),
       [task.id],
     ) ?? [];
@@ -796,6 +818,7 @@ function RemindersField({ task, today }: { task: ViewTask; today: LocalDate }) {
         </View>
       ))}
       {!rows.length ? <Text style={{ color: p.muted, fontSize: 13 }}>Brak przypomnień{task.dueDate ? '' : ' — „przed terminem” wymaga terminu'}</Text> : null}
+      {note ? <Text style={{ color: p.muted, fontSize: 13 }}>{note}</Text> : null}
     </Block>
   );
 }

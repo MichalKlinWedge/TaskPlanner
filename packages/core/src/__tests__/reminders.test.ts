@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { zonedInstant } from '../dates.ts';
-import { reminderBody, reminderFireTimes, snoozeUntil, toReminderRule, type ReminderRule, type ReminderTask } from '../reminders.ts';
+import { assigneeReminderNote, assigneeReminderRule, assigneeReminderRules, isAssigneeReminder, reminderBody, reminderFireTimes, snoozeUntil, toReminderRule, type ReminderRule, type ReminderTask } from '../reminders.ts';
 
 const WAW = 'Europe/Warsaw';
 const task = (over: Partial<ReminderTask> = {}): ReminderTask => ({ id: 't1', kind: 'task', status: 'todo', title: 'Lekarz', dueDate: '2026-11-20', dueTime: '10:00', recurrence: null, ...over });
@@ -132,5 +132,51 @@ describe('nawyki (Etap 8)', () => {
     const [fire] = reminderFireTimes([habit], [rule], win);
     expect(reminderBody(habit, fire!, '2026-11-20T06:30:00Z', WAW)).toEqual({ title: 'Woda', body: 'Cykliczne na dziś · cel 8 szklanek' });
     expect(reminderBody({ ...habit, habit: null }, fire!, '2026-11-20T06:30:00Z', WAW).body).toBe('Cykliczne na dziś — odhacz, gdy zrobisz');
+  });
+});
+
+describe('osoba odpowiedzialna (udostępniona przestrzeń)', () => {
+  const shared = (over: Partial<ReminderTask> & { assigneeId?: string | null; workspaceId?: string } = {}) => ({ ...task(over), assigneeId: over.assigneeId ?? null, workspaceId: over.workspaceId ?? 'w1' });
+  const context = {
+    userId: 'me',
+    shared: new Set(['w1']),
+    createdBy: (id: string) => (id === 'cudze' ? 'inny' : 'me'),
+    accountOf: (workspaceId: string, id: string) => (workspaceId === 'w1' && id === 'ja' ? 'me' : id === 'anna' ? 'anna-konto' : null),
+  };
+  const ids = (...tasks: ReturnType<typeof shared>[]) => assigneeReminderRules(tasks, context).map((r) => r.taskId);
+
+  it('wskazana osoba z kontem albo — bez wskazanej — twórca', () => {
+    expect(ids(shared({ id: 'cudze', assigneeId: 'ja' }), shared({ id: 'moje' }))).toEqual(['cudze', 'moje']);
+    expect(ids(shared({ id: 'cudze' }), shared({ id: 'moje', assigneeId: 'anna' }), shared({ id: 'moje2', assigneeId: 'bez-konta' }))).toEqual([]);
+  });
+
+  it('tylko udostępniona przestrzeń i otwarte zadanie z datą i godziną (bez nawyków)', () => {
+    expect(ids(shared({ workspaceId: 'w2' }), shared({ dueTime: null }), shared({ dueDate: null, dueTime: null }), shared({ status: 'done' }), shared({ kind: 'habit' }))).toEqual([]);
+  });
+
+  it('zadanie jeszcze niewysłane (bez twórcy) jest własne', () => {
+    expect(assigneeReminderRules([shared()], { ...context, createdBy: () => null })).toHaveLength(1);
+  });
+
+  it('dzwoni w chwili terminu; własne na tę samą chwilę nie jest dublowane, wcześniejsze zostaje', () => {
+    const auto = assigneeReminderRule('t1');
+    expect(isAssigneeReminder(auto.id)).toBe(true);
+    expect(reminderFireTimes([task()], [auto], win).map((f) => [f.key, f.fireAt])).toEqual([['a-t1:2026-11-20', '2026-11-20T09:00:00.000Z']]);
+    expect(reminderFireTimes([task()], [auto, rel(0)], win).map((f) => f.reminderId)).toEqual(['r0']);
+    const abs: ReminderRule = { id: 'abs', taskId: 't1', kind: 'absolute', offsetMin: null, atDate: '2026-11-20', atTime: '10:00' };
+    expect(reminderFireTimes([task()], [auto, abs], win).map((f) => f.reminderId)).toEqual(['abs']);
+    expect(reminderFireTimes([task()], [auto, rel(30)], win).map((f) => f.reminderId)).toEqual(['r30', 'a-t1']);
+    // Własne przypomnienie innego zadania o tej samej porze nic nie zmienia.
+    expect(reminderFireTimes([task(), task({ id: 't2' })], [auto, rel(0, { taskId: 't2' })], win)).toHaveLength(2);
+  });
+
+  it('objaśnienie przy przypomnieniach', () => {
+    const note = (over: Partial<Parameters<typeof assigneeReminderNote>[1]> = {}, t = task()) => assigneeReminderNote(t, { shared: true, userId: 'me', assigneeName: null, account: 'me', ...over });
+    expect(note({ shared: false })).toBeNull();
+    expect(note({}, task({ dueTime: null }))).toBe('Każdy ustawia przypomnienia dla siebie.');
+    expect(note()).toContain('Odpowiadasz za to zadanie');
+    expect(note({ account: 'anna-konto', assigneeName: 'Anna' })).toContain('Osoba odpowiedzialna (Anna) dostanie');
+    expect(note({ account: 'inny' })).toContain('(twórca zadania)');
+    expect(note({ account: null, assigneeName: 'Dorota' })).toContain('Dorota nie dostanie');
   });
 });

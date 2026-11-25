@@ -39,7 +39,9 @@ describe('szablony projektów nad lokalną bazą', () => {
       { table: 'task_dependencies', id: uuidv7(), patch: { predecessor_id: a, successor_id: b, kind: 'finish_to_start', lag_days: 1 } },
     ]);
 
-    const content = projectTemplateContent(await readProjectSource(query, list));
+    // Przypomnienie innego członka przestrzeni nie trafia do szablonu.
+    await db.run("insert into reminders (id, scope_id, task_id, kind, offset_min, created_by) values (?, ?, ?, 'relative', 5, ?)", [uuidv7(), ws, a, uuidv7()]);
+    const content = projectTemplateContent(await readProjectSource(query, list, USER));
     expect(content.project.endDay).toBe(9);
     expect(content.tasks.map((t) => t.title)).toEqual(['Analiza', 'Budowa', 'Moduł', 'Testy modułu']);
 
@@ -50,7 +52,7 @@ describe('szablony projektów nad lokalną bazą', () => {
 
     const { listId, ops } = projectFromTemplateOps(content, { userId: USER, workspaceId: ws, name: 'Wdrożenie 2', anchor: { kind: 'end', date: '2027-02-28' }, tags: [{ id: tag, name: 'klient', sortKey: 'a' }], lastListSortKey: 'b' });
     await engine.mutateMany(ops);
-    const copy = await readProjectSource(query, listId);
+    const copy = await readProjectSource(query, listId, USER);
     expect(copy.list).toMatchObject({ start_date: '2027-02-19', end_date: '2027-02-28' });
     expect(copy.tasks.find((t) => t.title === 'Budowa')).toMatchObject({ status: 'todo', start_date: '2027-02-21', due_date: '2027-02-28' });
     expect(projectTemplateContent(copy)).toEqual(content);

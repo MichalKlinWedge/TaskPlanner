@@ -95,6 +95,30 @@ describe('planPushes', () => {
   });
 });
 
+describe('planPushes — osoba odpowiedzialna', () => {
+  const { deleted_at: _deleted, ...columns } = task;
+  const assigned = (user_id: string) => [{ ...columns, user_id }];
+  const DUE = '2026-11-19T09:00:00.000Z';
+
+  it('automatyczne przypomnienie w chwili terminu, bez wiersza reminders', () => {
+    const plan = planPushes({ devices: [device('d1')], reminders: [], profiles, assigned: assigned(U) }, { now: DUE });
+    expect(plan.map((p) => [p.userId, p.fireKey, p.fireAt, p.payload.body])).toEqual([[U, 'a-t1:2026-11-19', DUE, 'Teraz (10:00)']]);
+    expect(planPushes({ devices: [device('d1')], reminders: [], profiles, assigned: assigned(U) }, { now: AT })).toEqual([]);
+    expect(planPushes({ devices: [device('d1')], reminders: [], profiles, assigned: assigned(OTHER) }, { now: DUE })).toEqual([]);
+  });
+
+  it('własne przypomnienie na tę samą chwilę — jedna wysyłka; cudze nic nie zmienia', () => {
+    const keys = (r: ReminderRow) => planPushes({ devices: [device('d1')], reminders: [r], profiles, assigned: assigned(U) }, { now: DUE }).map((p) => p.fireKey);
+    expect(keys(reminder({ offset_min: 0 }))).toEqual(['r1:2026-11-19']);
+    expect(keys(reminder({ offset_min: 0, created_by: OTHER }))).toEqual(['a-t1:2026-11-19']);
+  });
+
+  it('seria: wystąpienie po dawnym terminie', () => {
+    const series = [{ ...assigned(U)[0]!, due_date: '2026-11-10', recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY', anchor: '2026-11-01' } }];
+    expect(planPushes({ devices: [device('d1')], reminders: [], profiles, assigned: series }, { now: DUE }).map((p) => p.fireKey)).toEqual(['a-t1:2026-11-19']);
+  });
+});
+
 describe('planPushes — koniec etapu skupienia (Etap 7)', () => {
   // Praca 25 min od 08:05 UTC → koniec 08:30.
   const focus = { phase: 'focus', taskId: 't1', segmentStartedAt: '2026-11-19T08:05:00.000Z', elapsedMs: 0, paused: false, completedFocus: 0, entryId: 'e1' };

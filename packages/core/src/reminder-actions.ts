@@ -6,7 +6,7 @@
  */
 import { localDateAt, localDateTimeAt } from './dates.ts';
 import { uuidv5 } from './ids.ts';
-import { SNOOZE_MINUTES, snoozeUntil, type ReminderRule } from './reminders.ts';
+import { isAssigneeReminder, SNOOZE_MINUTES, snoozeUntil, type ReminderRule } from './reminders.ts';
 import type { LocalDate, LocalTime } from './schemas/primitives.ts';
 import { completeTaskOps, type CompleteOptions, type CompleteResult, type TaskOp } from './tasks.ts';
 import { isOpen, type ViewTask } from './views.ts';
@@ -37,7 +37,7 @@ export function reminderDoneOps(
   if (task.kind !== 'task' || !isOpen(task)) return null;
   if (task.recurrence) {
     const [reminderId, day] = key.split(':');
-    const relative = rules.find((r) => r.id === reminderId)?.kind === 'relative';
+    const relative = isAssigneeReminder(reminderId!) || rules.find((r) => r.id === reminderId)?.kind === 'relative';
     if (relative ? task.dueDate !== day : !!task.dueDate && task.dueDate > localDateAt(options.now, options.timeZone)) return null;
   }
   const result = completeTaskOps(task, options);

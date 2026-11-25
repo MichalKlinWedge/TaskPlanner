@@ -604,12 +604,12 @@ function listLabel(data: AppData, l: List) {
 }
 
 export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | null; defaultListId?: string; onDone: (id?: string) => void }) {
-  const { data, store, today } = useAppEnv();
+  const { data, store, today, userId } = useAppEnv();
   const { run } = useTaskActions();
   const { rows: reminderRows } = useLocalQuery<Row>(
     store,
-    "select id, kind, offset_min, at_date, at_time from reminders where task_id = ? and deleted_at is null order by kind desc, offset_min, at_date, at_time",
-    [task?.id ?? ""],
+    "select id, kind, offset_min, at_date, at_time from reminders where task_id = ? and deleted_at is null and (created_by is null or created_by = ?) order by kind desc, offset_min, at_date, at_time",
+    [task?.id ?? "", userId],
     ["reminders"],
   );
   const initial = useMemo(() => habitDraft(task, today), [task, today]);

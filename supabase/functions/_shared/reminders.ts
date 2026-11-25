@@ -2,7 +2,9 @@
  * Plan wysyłek Web Push (`reminders-push`, SPECYFIKACJA M8 web): z wierszy bazy liczy przypomnienia
  * należne w oknie `[now − lookback, now + lead)` tak samo jak telefon (`core/reminders.ts`), w strefie
  * i z domyślną godziną z ustawień profilu, i rozdziela je na urządzenia użytkownika, które mają włączone
- * przypomnienia i subskrypcję push. Przypomnienie dostaje autor wiersza `reminders` (`created_by`).
+ * przypomnienia i subskrypcję push. Przypomnienie dostaje autor wiersza `reminders` (`created_by`),
+ * a w udostępnionej przestrzeni osoba odpowiedzialna dodatkowo automatyczne w chwili terminu (`assigned`
+ * — RPC `assignee_reminder_tasks`, która sprawdza też członkostwo i ukryte listy).
  * Nawyk (Etap 8) przypomina o swojej porze w dni reguły, z pominięciem dni już zaliczonych / wolnych
  * (`completions`); powiadomienie ma wtedy akcję „Zrobione” (`payload.habit`, `payload.date` — Service Worker).
  * Tryb skupienia (Etap 7): koniec etapu z `profiles.focus` (`core` `focusEndPush`) — powiadomienie także
@@ -11,7 +13,7 @@
  */
 import { focusEndPush, parseFocusState } from '../../../packages/core/src/focus.ts';
 import { HabitSettings, toHabitCompletion, type HabitCompletion } from '../../../packages/core/src/habits.ts';
-import { reminderBody, reminderFireTimes, toReminderRule, type ReminderTask } from '../../../packages/core/src/reminders.ts';
+import { assigneeReminderRule, reminderBody, reminderFireTimes, toReminderRule, type ReminderTask } from '../../../packages/core/src/reminders.ts';
 import { Recurrence } from '../../../packages/core/src/recurrence.ts';
 import { ProfileSettings, PushSubscriptionJson } from '../../../packages/core/src/schemas/model.ts';
 
@@ -105,6 +107,25 @@ export interface HiddenListRow {
   scope_id: string;
 }
 
+/** Zadanie z automatycznym przypomnieniem konta `user_id` (RPC `assignee_reminder_tasks`). */
+export type AssignedTaskRow = { user_id: string } & Omit<NonNullable<ReminderRow['tasks']>, 'list_id' | 'habit' | 'deleted_at'>;
+
+const reminderTask = (t: Omit<NonNullable<ReminderRow['tasks']>, 'list_id' | 'deleted_at'>): ReminderTask => {
+  const rec = t.recurrence ? Recurrence.safeParse(t.recurrence) : null;
+  const habit = t.kind === 'habit' && t.habit ? HabitSettings.safeParse(t.habit) : null;
+  return {
+    id: t.id,
+    kind: t.kind as ReminderTask['kind'],
+    status: t.status as ReminderTask['status'],
+    title: t.title,
+    dueDate: t.due_date as ReminderTask['dueDate'],
+    dueTime: t.due_time ? (t.due_time.slice(0, 5) as ReminderTask['dueTime']) : null,
+    recurrence: rec?.success ? rec.data : null,
+    timeZone: t.time_zone,
+    habit: habit?.success ? habit.data : null,
+  };
+};
+
 export function planPushes(
   {
     devices,
@@ -113,6 +134,7 @@ export function planPushes(
     completions = [],
     memberships,
     hiddenLists = [],
+    assigned = [],
   }: {
     devices: readonly DeviceRow[];
     reminders: readonly ReminderRow[];
@@ -120,6 +142,7 @@ export function planPushes(
     completions?: readonly CompletionRow[];
     memberships?: readonly MembershipRow[];
     hiddenLists?: readonly HiddenListRow[];
+    assigned?: readonly AssignedTaskRow[];
   },
   { now, allowHttp = false }: { now: Date | string; allowHttp?: boolean },
 ): PlannedPush[] {
@@ -169,25 +192,12 @@ export function planPushes(
         (!memberships || !r.scope_id || member.has(`${r.scope_id}:${userId}`)) &&
         !hiddenFor(r.tasks.list_id, userId),
     );
-    if (!rows.length) continue;
+    const mine = assigned.filter((t) => t.user_id === userId);
+    if (!rows.length && !mine.length) continue;
     const tasks = new Map<string, ReminderTask>();
-    for (const r of rows) {
-      const t = r.tasks!;
-      const rec = t.recurrence ? Recurrence.safeParse(t.recurrence) : null;
-      const habit = t.kind === 'habit' && t.habit ? HabitSettings.safeParse(t.habit) : null;
-      tasks.set(t.id, {
-        id: t.id,
-        kind: t.kind as ReminderTask['kind'],
-        status: t.status as ReminderTask['status'],
-        title: t.title,
-        dueDate: t.due_date as ReminderTask['dueDate'],
-        dueTime: t.due_time ? (t.due_time.slice(0, 5) as ReminderTask['dueTime']) : null,
-        recurrence: rec?.success ? rec.data : null,
-        timeZone: t.time_zone,
-        habit: habit?.success ? habit.data : null,
-      });
-    }
-    const fires = reminderFireTimes([...tasks.values()], rows.map(toReminderRule), {
+    for (const t of mine) tasks.set(t.id, reminderTask(t));
+    for (const r of rows) tasks.set(r.tasks!.id, reminderTask(r.tasks!));
+    const fires = reminderFireTimes([...tasks.values()], [...rows.map(toReminderRule), ...mine.map((t) => assigneeReminderRule(t.id))], {
       from: new Date(at - LOOKBACK_MS),
       to: new Date(at + LEAD_MS),
       timeZone: s.timeZone,

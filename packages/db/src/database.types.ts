@@ -619,14 +619,14 @@ isOneToOne: false
                   ]
                 },"scope_collaborators": {
                   Row: {
-                    "acronym": string | null,"archived_at": string | null,"collaborator_id": string,"created_at": string,"deleted_at": string | null,"id": string,"name": string,"row_version": number,"scope_id": string,"updated_at": string
+                    "acronym": string | null,"archived_at": string | null,"collaborator_id": string,"created_at": string,"deleted_at": string | null,"id": string,"name": string,"row_version": number,"scope_id": string,"updated_at": string,"user_id": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "acronym"?: string | null,"archived_at"?: string | null,"collaborator_id": string,"created_at"?: string,"deleted_at"?: string | null,"id": string,"name": string,"row_version"?: number,"scope_id": string,"updated_at"?: string
+                    "acronym"?: string | null,"archived_at"?: string | null,"collaborator_id": string,"created_at"?: string,"deleted_at"?: string | null,"id": string,"name": string,"row_version"?: number,"scope_id": string,"updated_at"?: string,"user_id"?: string | null
                   }
                   Update: {
-                    "acronym"?: string | null,"archived_at"?: string | null,"collaborator_id"?: string,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"name"?: string,"row_version"?: number,"scope_id"?: string,"updated_at"?: string
+                    "acronym"?: string | null,"archived_at"?: string | null,"collaborator_id"?: string,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"name"?: string,"row_version"?: number,"scope_id"?: string,"updated_at"?: string,"user_id"?: string | null
                   }
                   Relationships: [
                     {
@@ -1001,6 +1001,11 @@ isOneToOne: false
 "answer_workspace_ownership_offer":
 { Args: { "p_accept": boolean,"p_id": string }; Returns: string
                            },
+"assignee_reminder_tasks":
+{ Args: { "p_from": string,"p_to": string,"p_users": (string)[] }; Returns: {
+              "due_date": string,"due_time": string,"id": string,"kind": string,"recurrence": Json,"status": string,"time_zone": string,"title": string,"user_id": string
+            }[]
+                           },
 "attachment_quota_bytes":
 { Args: Record<PropertyKey, never>; Returns: number
                            },
@@ -1102,6 +1107,9 @@ isOneToOne: false
       } },
 "clear_push_subscription":
 { Args: { "p_device": string,"p_endpoint": string }; Returns: undefined
+                           },
+"collaborator_account":
+{ Args: { "p_collaborator": string,"p_scope": string }; Returns: string
                            },
 "collaborator_used_in":
 { Args: { "p_collaborator": string,"p_scope": string }; Returns: boolean
@@ -1245,6 +1253,9 @@ isOneToOne: false
                            },
 "random_token":
 { Args: Record<PropertyKey, never>; Returns: string
+                           },
+"refresh_scope_accounts":
+{ Args: { "p_scope": string }; Returns: undefined
                            },
 "remove_invite":
 { Args: { "p_pattern": string }; Returns: boolean

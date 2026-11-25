@@ -8,8 +8,8 @@ import type { ProjectSource } from '@taskplanner/core';
 import type { BackupQuery } from './backup.ts';
 import { decodeRow } from './merge.ts';
 
-/** Wiersze projektu `listId`: lista, nieusunięte zadania, ich tagi z nazwami, przypomnienia i zależności. */
-export async function readProjectSource(query: BackupQuery, listId: string): Promise<ProjectSource> {
+/** Wiersze projektu `listId`: lista, nieusunięte zadania, ich tagi z nazwami, przypomnienia użytkownika i zależności. */
+export async function readProjectSource(query: BackupQuery, listId: string, userId: string): Promise<ProjectSource> {
   const [list] = await query('select * from lists where id = ? and deleted_at is null', [listId]);
   if (!list) throw new Error('Nie ma takiego projektu.');
   const tasks = (await query('select * from tasks where list_id = ? and deleted_at is null', [listId])).map((row) => decodeRow<ProjectSource['tasks'][number]>('tasks', row));
@@ -23,8 +23,9 @@ export async function readProjectSource(query: BackupQuery, listId: string): Pro
     [listId],
   );
   const reminders = await query<ProjectSource['reminders'][number]>(
-    `select task_id, kind, offset_min, at_date, at_time from reminders where deleted_at is null and task_id in (${inProject}) order by rowid`,
-    [listId],
+    `select task_id, kind, offset_min, at_date, at_time from reminders
+      where deleted_at is null and (created_by is null or created_by = ?) and task_id in (${inProject}) order by rowid`,
+    [userId, listId],
   );
   const dependencies = await query<ProjectSource['dependencies'][number]>(
     `select predecessor_id, successor_id, lag_days from task_dependencies

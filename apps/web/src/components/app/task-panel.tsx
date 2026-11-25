@@ -89,7 +89,7 @@ import { useDependencies } from "@/lib/dependencies";
 import { useLocalQuery } from "@/lib/local-store";
 import { usePlugins } from "@/lib/plugins";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { useTaskComments, useTaskDescription, useTaskReminders } from "@/lib/task-details";
+import { useAssigneeReminderNote, useTaskComments, useTaskDescription, useTaskReminders } from "@/lib/task-details";
 import { useTrash } from "@/lib/trash";
 
 import { BreakdownField } from "./ai-breakdown";
@@ -1220,9 +1220,10 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
 }
 
 function RemindersField({ task }: { task: ViewTask }) {
-  const { store, today } = useAppEnv();
+  const { store, data, today, userId } = useAppEnv();
   const { run } = useTaskActions();
-  const rows = useTaskReminders(store, task.id, today);
+  const rows = useTaskReminders(store, task.id, today, userId);
+  const note = useAssigneeReminderNote(store, data, task, userId);
   const [choice, setChoice] = useState("");
   const [at, setAt] = useState({ date: task.dueDate ?? "", time: "09:00" });
 
@@ -1279,6 +1280,7 @@ function RemindersField({ task }: { task: ViewTask }) {
         ) : null}
       </div>
       {!task.dueDate ? <p className="mt-1 text-xs text-[var(--muted)]">Przypomnienia „przed terminem” wymagają terminu.</p> : null}
+      {note ? <p className="mt-1 text-xs text-[var(--muted)]">{note}</p> : null}
     </Block>
   );
 }

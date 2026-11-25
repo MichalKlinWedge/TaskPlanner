@@ -176,7 +176,7 @@ export const READONLY: { [T in ReadonlyTable]: { columns: readonly string[]; boo
   },
   /** Kopie współpracowników użytych w przestrzeni (v1.x) — osoba widoczna dla wszystkich członków. */
   scope_collaborators: {
-    columns: readonlyColumns<'scope_collaborators'>()(['collaborator_id', 'name', 'acronym', 'archived_at', 'created_at', 'updated_at', 'row_version']),
+    columns: readonlyColumns<'scope_collaborators'>()(['collaborator_id', 'name', 'acronym', 'user_id', 'archived_at', 'created_at', 'updated_at', 'row_version']),
     bool: [],
   },
   /** Kopie tagów użytych / przypisanych w przestrzeni (v1.x) — tag widoczny dla wszystkich członków. */

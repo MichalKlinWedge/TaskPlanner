@@ -76,8 +76,8 @@ export default function HabitFormScreen() {
     async (engine) =>
       (id
         ? await engine.db.all<{ id: string; kind: string; offset_min: number | null; at_date: string | null; at_time: string | null }>(
-            'select id, kind, offset_min, at_date, at_time from reminders where task_id = ? and deleted_at is null order by kind desc, offset_min, at_date, at_time',
-            [id],
+            'select id, kind, offset_min, at_date, at_time from reminders where task_id = ? and deleted_at is null and (created_by is null or created_by = ?) order by kind desc, offset_min, at_date, at_time',
+            [id, engine.userId],
           )
         : []
       ).map(

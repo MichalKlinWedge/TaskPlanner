@@ -3,7 +3,8 @@
  *
  * Liczy należne przypomnienia z bazy tak samo jak telefon (`_shared/reminders.ts` → `core/reminders.ts`):
  * urządzenia `devices` (przeglądarka, `reminder_channel = 'enabled'`, `push_subscription`), przypomnienia
- * ich właścicieli i ustawienia profilu (strefa, domyślna godzina). Każdą wysyłkę najpierw zajmuje w
+ * ich właścicieli i ustawienia profilu (strefa, domyślna godzina), a w udostępnionych przestrzeniach także
+ * automatyczne przypomnienie osoby odpowiedzialnej w chwili terminu (`assignee_reminder_tasks`). Każdą wysyłkę najpierw zajmuje w
  * dzienniku `reminder_deliveries` (`claim_reminder_deliveries` — jedno urządzenie i wystąpienie raz, także
  * przy równoległych uruchomieniach), potem wysyła i zapisuje wynik. Subskrypcja 404/410 jest czyszczona
  * (`clear_push_subscription`), błąd przejściowy — ponowienie w następnej minucie (najwyżej 5 prób).
@@ -16,7 +17,7 @@
  */
 import * as webpush from '@negrel/webpush';
 
-import { planPushes, pushDevices, type CompletionRow, type DeviceRow, type HiddenListRow, type MembershipRow, type PlannedPush, type ProfileRow, type ReminderRow } from '../_shared/reminders.ts';
+import { planPushes, pushDevices, type AssignedTaskRow, type CompletionRow, type DeviceRow, type HiddenListRow, type MembershipRow, type PlannedPush, type ProfileRow, type ReminderRow } from '../_shared/reminders.ts';
 import { admin, env, HttpError, json, optionalEnv, requireCron, route, serve } from '../_shared/runtime.ts';
 
 let server: webpush.ApplicationServer | null = null;
@@ -58,12 +59,15 @@ serve(async (req, url) => {
   const devices = pushDevices((deviceRows ?? []) as DeviceRow[], { allowHttp });
   if (!devices.length) return json({ devices: 0, sent: 0, ms: Date.now() - started });
   const users = [...new Set(devices.map((d) => d.scope_id))];
+  /** Dzień UTC z przesunięciem — zapas na strefy przy terminach zadań. */
+  const day = (shift: number) => new Date(now.getTime() + shift * 86_400_000).toISOString().slice(0, 10);
 
   const [
     { data: reminderRows, error: remError },
     { data: profileRows, error: profError },
     { data: memberRows, error: memError },
     { data: hiddenRows, error: hiddenError },
+    { data: assignedRows, error: assignedError },
   ] = await Promise.all([
     db
       .from('reminders')
@@ -75,11 +79,13 @@ serve(async (req, url) => {
     db.from('profiles').select('id, settings, focus').in('id', users),
     db.from('scope_members').select('scope_id, user_id, role').in('user_id', users),
     db.from('lists').select('id, scope_id').eq('guest_access', 'hidden'),
+    db.rpc('assignee_reminder_tasks', { p_users: users, p_from: day(-2), p_to: day(2) }),
   ]);
   if (remError) throw remError;
   if (profError) throw profError;
   if (memError) throw memError;
   if (hiddenError) throw hiddenError;
+  if (assignedError) throw assignedError;
   const reminders = (reminderRows ?? []) as unknown as ReminderRow[];
 
   // Nawyki: wpisy od początku bieżącego tygodnia / miesiąca (cel „N razy”) w każdej strefie — z zapasem dnia.
@@ -108,6 +114,7 @@ serve(async (req, url) => {
       completions,
       memberships: (memberRows ?? []) as MembershipRow[],
       hiddenLists: (hiddenRows ?? []) as HiddenListRow[],
+      assigned: (assignedRows ?? []) as AssignedTaskRow[],
     },
     { now, allowHttp },
   );

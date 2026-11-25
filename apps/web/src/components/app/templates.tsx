@@ -57,7 +57,7 @@ function TemplateIcon({ className = "h-4 w-4" }: { className?: string }) {
 
 /** Przycisk w nagłówku projektu: nazwa szablonu (domyślnie nazwa projektu) → migawka projektu w `project_templates`. */
 export function SaveTemplateButton({ listId, listName }: { listId: string; listName: string }) {
-  const { store } = useAppEnv();
+  const { store, userId } = useAppEnv();
   const { run, notify } = useTaskActions();
   const templates = useProjectTemplates(store);
   const [name, setName] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export function SaveTemplateButton({ listId, listName }: { listId: string; listN
     if (existing && !window.confirm(`Szablon „${existing.name}” już jest. Zastąpić go tym projektem?`)) return;
     setBusy(true);
     try {
-      const content = projectTemplateContent(await readProjectSource(store.query, listId));
+      const content = projectTemplateContent(await readProjectSource(store.query, listId, userId));
       const saved = saveTemplateOps(templates, name, content);
       await run(saved.ops, { text: `${saved.replaced ? "Zastąpiono" : "Zapisano"} szablon „${name.trim()}” · ${templateSummary(content)}` });
       setName(null);
