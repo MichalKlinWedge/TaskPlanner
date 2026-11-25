@@ -25,6 +25,7 @@ import {
   matchesFilter,
   minutesLate,
   orderedColumns,
+  overdueToTodayOps,
   plural,
   progress,
   PROJECT_STATUS,
@@ -181,6 +182,15 @@ function useToTomorrow(data: AppData, ctx: ViewContext) {
   };
 }
 
+/** Przycisk „→ Dziś” w „Zaległych” (`overdueToTodayOps`); `undefined` = nie ma czego przenieść. */
+function useToToday(ctx: ViewContext, now: string) {
+  const { run } = useTaskActions();
+  return (task: ViewTask) => {
+    const move = overdueToTodayOps(task, { today: ctx.today, now });
+    return move ? () => void run(move.ops, { text: move.text, undo: move.undo }) : undefined;
+  };
+}
+
 // ── Dziś ─────────────────────────────────────────────────────────────────────────────────────
 
 /** `aside` — „Plan dnia” obok listy (na szerokim ekranie po prawej, na wąskim pod listą). */
@@ -253,6 +263,7 @@ export function OverdueView({ data, ctx, toolbar }: ViewProps) {
   const view = useMemo(() => selectOverdue(data.tasks, ctx, now), [data.tasks, ctx, now]);
   const names = listNames(data);
   const toTomorrow = useToTomorrow(data, ctx);
+  const toToday = useToToday(ctx, now);
   const count = view.today.length + view.earlier.length;
   return (
     <>
@@ -268,12 +279,12 @@ export function OverdueView({ data, ctx, toolbar }: ViewProps) {
       {toolbar}
       {view.today.length ? (
         <Section title={VIEW_SECTION.lateToday} count={view.today.length} tone="danger">
-          <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} lateMin={minutesLate(t, now)} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} />}</Paged>
+          <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} lateMin={minutesLate(t, now)} listName={names.get(t.listId)} onToday={toToday(t)} onTomorrow={() => toTomorrow(t)} />}</Paged>
         </Section>
       ) : null}
       {view.earlier.length ? (
         <Section title={VIEW_SECTION.earlier} count={view.earlier.length} tone="danger">
-          <Paged items={view.earlier}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} />}</Paged>
+          <Paged items={view.earlier}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} onToday={toToday(t)} onTomorrow={() => toTomorrow(t)} />}</Paged>
         </Section>
       ) : null}
       {count ? null : <Empty>Nic nie zalega.</Empty>}

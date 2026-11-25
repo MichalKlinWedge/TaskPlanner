@@ -160,6 +160,8 @@ export interface TaskItemProps {
   columns?: readonly ListColumn[];
   /** „+” przy tytule: dodanie podzadania (widok listy ustawia górne pole na to zadanie). */
   onAddSubtask?: () => void;
+  /** Przycisk „→ Dziś” po prawej (widok „Zaległe”); ukryty przy zadaniu tylko do podglądu. */
+  onToday?: () => void;
   /** Przycisk „→ Jutro” po prawej (widok „Dziś”: zaległe i dzisiejsze); ukryty przy zadaniu tylko do podglądu. */
   onTomorrow?: () => void;
   /** Ile minut po godzinie zadania (`minutesLate`, widok „Dziś”) — wyróżnia wiersz i godzinę; 0 / brak = w czasie. */
@@ -278,7 +280,7 @@ export function DoneCircle({ task, closed, readOnly, onToggle, className = "" }:
   );
 }
 
-export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, onTomorrow, lateMin = 0, columnTags, widths = {} }: TaskItemProps) {
+export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, onToday, onTomorrow, lateMin = 0, columnTags, widths = {} }: TaskItemProps) {
   const { toggle } = useTaskActions();
   const { openTask, openTaskId, openTaskMode, selectedIds, select, data, trashed } = useAppEnv();
   const inTrash = trashed?.has(task.id) ?? false;
@@ -440,6 +442,18 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           )}
         </span>
       ))}
+      {onToday && !readOnly ? (
+        <button
+          type="button"
+          aria-label={`Przenieś „${task.title}” na dziś`}
+          title="Przenieś na dziś; godzina, która dziś już minęła, znika"
+          onClick={onToday}
+          className="mt-px shrink-0 rounded-md px-2 py-0.5 text-xs whitespace-nowrap text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
+          data-testid="task-today"
+        >
+          → Dziś
+        </button>
+      ) : null}
       {onTomorrow && !readOnly ? (
         <button
           type="button"

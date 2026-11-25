@@ -19,6 +19,7 @@ import {
   moveTaskOps,
   nudgeTaskOps,
   openDescendants,
+  overdueToTodayOps,
   parentCandidates,
   quickAddTaskOps,
   reopenTaskPatch,
@@ -38,6 +39,7 @@ import {
   type LocalTaskRow,
   type QuickAddScope,
 } from '../tasks.ts';
+import type { ViewTask } from '../views.ts';
 
 const ID = '0190a000-0000-7000-8000-000000000001';
 
@@ -356,6 +358,42 @@ describe('podzadania, przenoszenie, kosz', () => {
     expect(listId).toBe('L1');
     expect(ops[0]!.patch).toMatchObject({ list_id: 'L1', parent_id: 'a' });
     expect((ops[0]!.patch.sort_key as string) > 'k').toBe(true);
+  });
+});
+
+describe('overdueToTodayOps', () => {
+  const at = { today: '2026-11-19' as const, now: '2026-11-19T13:00' };
+  const base = { status: 'todo' as const, kind: 'task' as const, recurrence: null, startDate: null, dueTime: null, durationMin: null, postponeCount: 0 };
+  const move = (over: Partial<ViewTask>) => overdueToTodayOps({ ...base, id: 'x', title: 'Raport', dueDate: '2026-11-17', ...over } as ViewTask, at);
+
+  it('zaległe z wcześniejszego dnia: termin na dziś, zakres w całości, „Cofnij”', () => {
+    expect(move({ startDate: '2026-11-16', postponeCount: 1 })).toEqual({
+      ops: [{ table: 'tasks', id: 'x', patch: { due_date: '2026-11-19', start_date: '2026-11-18', postpone_count: 2 } }],
+      undo: [{ table: 'tasks', id: 'x', patch: { due_date: '2026-11-17', start_date: '2026-11-16', postpone_count: 1 } }],
+      text: '„Raport” → dziś',
+    });
+  });
+
+  it('godzina, która dziś minęła, znika; przyszła i trwająca zostaje', () => {
+    const past = move({ dueTime: '09:00' });
+    expect(past).toMatchObject({ ops: [{ patch: { due_date: '2026-11-19', due_time: null } }], undo: [{ patch: { due_time: '09:00' } }] });
+    expect(past!.text).toBe('„Raport” → dziś, bez godziny (09:00 minęła)');
+    expect(move({ dueTime: '15:00' })!.ops[0]!.patch).not.toHaveProperty('due_time');
+    expect(move({ dueTime: '12:30', durationMin: 60 })!.ops[0]!.patch).not.toHaveProperty('due_time');
+  });
+
+  it('dzisiejsze po godzinie: znika tylko godzina', () => {
+    expect(move({ dueDate: '2026-11-19', dueTime: '09:00' })).toMatchObject({
+      ops: [{ table: 'tasks', id: 'x', patch: { due_time: null } }],
+      undo: [{ table: 'tasks', id: 'x', patch: { due_time: '09:00' } }],
+    });
+    expect(Object.keys(move({ dueDate: '2026-11-19', dueTime: '09:00' })!.ops[0]!.patch)).toEqual(['due_time']);
+  });
+
+  it('seria zachowuje godzinę; dzisiejszej nie ma czego zmienić', () => {
+    const recurrence = { mode: 'schedule' as const, rrule: 'FREQ=DAILY', anchor: '2026-11-01' };
+    expect(move({ dueTime: '09:00', recurrence })!.ops[0]!.patch).toEqual({ due_date: '2026-11-19', postpone_count: 1 });
+    expect(move({ dueDate: '2026-11-19', dueTime: '09:00', recurrence })).toBeNull();
   });
 });
 

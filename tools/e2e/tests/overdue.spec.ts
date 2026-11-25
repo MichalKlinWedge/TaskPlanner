@@ -32,6 +32,13 @@ test('„Zaległe” pokazuje zadania po terminie, także z dzisiaj po godzinie'
   await expect(taskRow(page, late)).toHaveCount(0);
   await expect.poll(counter).toBe(before - 1);
 
+  // „→ Dziś”: zaległe z dawna przechodzi na dziś, czyli znika stąd; „Cofnij” je przywraca.
+  await taskRow(page, old).getByTestId('task-today').click();
+  await expect(taskRow(page, old)).toHaveCount(0);
+  await server.waitForTask(old, (t) => t.due_date === today);
+  await page.getByRole('button', { name: 'Cofnij' }).last().click();
+  await expect(taskRow(page, old)).toBeVisible();
+
   // Skrót G Z.
   await page.keyboard.press('g');
   await page.keyboard.press('t');

@@ -29,6 +29,8 @@ export interface TaskRowProps {
   listName?: string;
   /** Ile minut po godzinie zadania (`minutesLate`) — wyróżnia godzinę; 0 / brak = w czasie. */
   lateMin?: number;
+  /** Przycisk „→ Dziś” po prawej (ekran „Zaległe”). */
+  onToday?: () => void;
   depth?: number;
   progress?: { done: number; total: number };
   /** `true`/`false` — węzeł z podzadaniami (zwinięty / rozwinięty); brak — bez podzadań. */
@@ -73,7 +75,7 @@ export const RowsInteractive = createContext(true);
 /** Przytrzymanie zaznacza tylko tam, gdzie jest pasek akcji (`TaskSections`); gdzie indziej dotknięcie zawsze otwiera zadanie. */
 export const RowsSelectable = createContext(false);
 
-export const TaskRow = memo(function TaskRow({ task, today, showDate = true, listName, lateMin = 0, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, tagNames, tagItems, columns }: TaskRowProps) {
+export const TaskRow = memo(function TaskRow({ task, today, showDate = true, listName, lateMin = 0, onToday, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, tagNames, tagItems, columns }: TaskRowProps) {
   const tagBubbles = columns?.includes('tags') ? (tagItems ?? (tagNames ?? []).map((name) => ({ id: name, name, color: null }))) : [];
   const p = usePalette();
   const actions = useTaskActions();
@@ -172,6 +174,17 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
           </Text>
         ) : null}
       </View>
+      {onToday && !readOnly && !selecting ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Przenieś „${task.title}” na dziś`}
+          hitSlop={10}
+          onPress={onToday}
+          style={({ pressed }) => [styles.today, { borderColor: p.border, backgroundColor: pressed ? p.border : 'transparent' }]}
+        >
+          <Text style={{ color: p.accent, fontSize: 13, fontWeight: '600' }}>→ Dziś</Text>
+        </Pressable>
+      ) : null}
       {columns?.map((c) => {
         if (c === 'tags')
           return (
@@ -244,6 +257,7 @@ const styles = StyleSheet.create({
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 3, paddingTop: 2 },
   tag: { fontSize: 11, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1, overflow: 'hidden', maxWidth: 80 },
   columnsHeader: { flexDirection: 'row', gap: 10, paddingRight: 12, paddingTop: 6, paddingBottom: 4, borderBottomWidth: StyleSheet.hairlineWidth },
+  today: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
   bad: { fontWeight: '600' },
   action: { flex: 1, justifyContent: 'center' },
   left: { alignItems: 'flex-start', paddingLeft: 20 },

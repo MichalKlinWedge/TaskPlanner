@@ -13,7 +13,7 @@ import { reschedulePatch } from './review.ts';
 import { compareText } from './format.ts';
 import { keyBetween, renumber } from './sort-key.ts';
 import type { LocalDate, LocalTime, Priority, TaskStatus } from './schemas/primitives.ts';
-import type { ViewTask } from './views.ts';
+import { minutesLate, type ViewTask } from './views.ts';
 
 /** Wiersz `tasks` z lokalnej bazy: kolumny `jsonb` jako tekst JSON albo już obiekt. */
 export interface LocalTaskRow {
@@ -721,6 +721,26 @@ export function bulkTaskOps(
     }
   }
   return { ops, undo };
+}
+
+/**
+ * „→ Dziś” w widoku „Zaległe”: termin na dziś jak w `bulkTaskOps`, a godzina, która dziś już minęła,
+ * znika — z nią zadanie zostałoby zaległe. Seria zachowuje godzinę (dotyczy też następnych wystąpień).
+ * `now` — zegar ścienny jak w `minutesLate`; `text` — dymek. `null` = nie ma czego zmienić (dzisiejsza seria).
+ */
+export function overdueToTodayOps(task: ViewTask, { today, now }: { today: LocalDate; now: string }): { ops: TaskOp[]; undo: TaskOp[]; text: string } | null {
+  const droppedTime = !task.recurrence && minutesLate({ ...task, dueDate: today }, now) > 0 ? task.dueTime : null;
+  const move = reschedulePatch(task, { kind: 'today' }, { today });
+  const patch: Record<string, unknown> = {
+    ...(move && { due_date: move.dueDate }),
+    ...(move?.startDate !== undefined && { start_date: move.startDate }),
+    ...(move?.postponeCount !== undefined && { postpone_count: move.postponeCount }),
+    ...(droppedTime && { due_time: null }),
+  };
+  if (!Object.keys(patch).length) return null;
+  const op: TaskOp = { table: 'tasks', id: task.id, patch };
+  const note = droppedTime ? `, bez godziny (${droppedTime} minęła)` : '';
+  return { ops: [op], undo: [undoOf(op, task)], text: `„${task.title}” → dziś${note}` };
 }
 
 // ── Przeciąganie w liście (kolejność ręczna, drzewo podzadań) ────────────────────────────────

@@ -3,9 +3,10 @@
  * wcześniejszych dni; reguły z `selectOverdue` (core), lista odświeża się co minutę. Chipy filtra
  * zawężają zadania; filtr trwa do opuszczenia ekranu, nie jest zapisywany.
  */
-import { applyFilter, isEmptyFilter, minutesLate, plural, selectOverdue, VIEW_SECTION, type FilterQuery } from '@taskplanner/core';
+import { applyFilter, isEmptyFilter, minutesLate, overdueToTodayOps, plural, selectOverdue, VIEW_SECTION, type FilterQuery, type ViewTask } from '@taskplanner/core';
 import { useMemo, useState } from 'react';
 
+import { useTaskActions } from '@/components/actions';
 import { FilterBar } from '@/components/filter-bar';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
@@ -21,10 +22,16 @@ export default function OverdueScreen() {
   usePerfReady('/overdue', data.loaded);
   const [filter, setFilter] = useState<FilterQuery>({});
   const view = useMemo(() => selectOverdue(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx, now), [data.tasks, filter, today, ctx, now]);
+  const { run } = useTaskActions();
   const row = rowMaker(data, today);
+  // „→ Dziś” przy wierszu; `undefined` = nie ma czego przenieść (dzisiejsza seria).
+  const toToday = (task: ViewTask) => {
+    const move = overdueToTodayOps(task, { today, now });
+    return move ? () => void run(move.ops, { text: move.text, undo: move.undo }) : undefined;
+  };
   const sections: TaskSection[] = [
-    { key: 'today', title: VIEW_SECTION.lateToday, count: view.today.length, tone: 'bad', data: view.today.map((t) => row(t, { showDate: false, withList: true, lateMin: minutesLate(t, now) })) },
-    { key: 'earlier', title: VIEW_SECTION.earlier, count: view.earlier.length, tone: 'bad', data: view.earlier.map((t) => row(t, { withList: true })) },
+    { key: 'today', title: VIEW_SECTION.lateToday, count: view.today.length, tone: 'bad', data: view.today.map((t) => row(t, { showDate: false, withList: true, lateMin: minutesLate(t, now), onToday: toToday(t) })) },
+    { key: 'earlier', title: VIEW_SECTION.earlier, count: view.earlier.length, tone: 'bad', data: view.earlier.map((t) => row(t, { withList: true, onToday: toToday(t) })) },
   ];
   return (
     <TaskSections
