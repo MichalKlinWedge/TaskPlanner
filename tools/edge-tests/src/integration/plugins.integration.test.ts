@@ -460,6 +460,18 @@ describe('po udanej wysyłce', () => {
     await new Promise((r) => setTimeout(r, 4000));
     const deliveries = ((await db.from('plugin_deliveries').select('status, error').eq('rule_id', ruleId)).data ?? []) as Record<string, unknown>[];
     expect(deliveries).toEqual([{ status: 'sent', error: null }]);
+    // Historia zadania: tag z aplikacji, tagi i status z reguły (z jej id), wysyłka — tak, jak czyta ją klient.
+    const { data: log } = await user.client.from('activity_log').select('table_name, changes, source').eq('row_id', id).order('id');
+    const bySource = { kind: 'plugin', ruleId };
+    // Reguły z wcześniejszych testów też mogą wysłać to zadanie — liczą się wpisy tej.
+    const own = (log ?? []).slice(1).filter((r) => r.table_name !== 'plugin_deliveries' || r.changes.delivery.ruleId === ruleId);
+    expect(own).toEqual([
+      { table_name: 'task_tags', changes: { tag_added: { id: report, name: `zgłoś-${report.slice(-6)}` } }, source: null },
+      { table_name: 'tasks', changes: { status: 'waiting' }, source: bySource },
+      { table_name: 'task_tags', changes: { tag_added: { id: sent, name: `wysłane-${sent.slice(-6)}` } }, source: bySource },
+      { table_name: 'task_tags', changes: { tag_removed: { id: report, name: `zgłoś-${report.slice(-6)}` } }, source: bySource },
+      { table_name: 'plugin_deliveries', changes: { delivery: expect.objectContaining({ status: 'sent', trigger: 'event', plugin: 'webhook', ruleId }) }, source: null },
+    ]);
     // Klient dostaje zmianę serwera jak z innego urządzenia.
     const { data: pulled } = await user.client.rpc('pull_changes', { p_since: {} });
     expect(pulled.tables.tasks.find((t: { id: string }) => t.id === id)).toMatchObject({ status: 'waiting' });
@@ -476,5 +488,7 @@ describe('po udanej wysyłce', () => {
     await waitFor(async () => (await delivery(deliveryId))?.status === 'sent', 20_000, 'wysłane');
     expect((await delivery(deliveryId))?.error).toBe('Po wysyłce: status serii bez zmian (ukończ ją w aplikacji)');
     expect((await taskState(id)).status).toBe('todo');
+    const { data: log } = await user.client.from('activity_log').select('changes, actor_id').eq('row_id', id).eq('changes->delivery->>trigger', 'manual');
+    expect(log).toEqual([{ changes: { delivery: { id: deliveryId, status: 'sent', trigger: 'manual', plugin: 'webhook', ruleId } }, actor_id: user.id }]);
   });
 });

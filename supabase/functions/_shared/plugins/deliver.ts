@@ -466,7 +466,7 @@ export async function deliverOne(deps: EngineDeps, d: DeliveryRow): Promise<Outc
  */
 async function afterSend(deps: EngineDeps, d: DeliveryRow, options: PluginRule['options']): Promise<string | null> {
   if (isEmptyAfterSend(options.afterSend) || !d.task_id) return null;
-  const { data, error } = await deps.db.rpc('plugin_after_send', { p_user: d.user_id, p_task: d.task_id, ...afterSendArgs(d.task_id, options.afterSend!) });
+  const { data, error } = await deps.db.rpc('plugin_after_send', { p_user: d.user_id, p_task: d.task_id, p_rule: d.rule_id, ...afterSendArgs(d.task_id, options.afterSend!) });
   if (error) {
     deps.log?.(`po wysyłce ${d.id}`, error);
     return `Po wysyłce: nie udało się zmienić zadania (${error.message})`.slice(0, 1000);

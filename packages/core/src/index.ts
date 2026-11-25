@@ -1,3 +1,4 @@
+export * from './activity.ts';
 export * from './ai.ts';
 export * from './ai-breakdown.ts';
 export * from './ai-clip.ts';

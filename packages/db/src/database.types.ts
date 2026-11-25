@@ -7,14 +7,14 @@ export type Database = {
           Tables: {
             "activity_log": {
                   Row: {
-                    "actor_id": string | null,"at": string,"changes": NonNullable<Json>,"device_id": string | null,"id": number,"row_id": string,"scope_id": string,"table_name": string
+                    "actor_id": string | null,"at": string,"changes": NonNullable<Json>,"device_id": string | null,"id": number,"row_id": string,"scope_id": string,"source": Json | null,"table_name": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "actor_id"?: string | null,"at"?: string,"changes": NonNullable<Json>,"device_id"?: string | null,"id"?: never,"row_id": string,"scope_id": string,"table_name": string
+                    "actor_id"?: string | null,"at"?: string,"changes": NonNullable<Json>,"device_id"?: string | null,"id"?: never,"row_id": string,"scope_id": string,"source"?: Json | null,"table_name": string
                   }
                   Update: {
-                    "actor_id"?: string | null,"at"?: string,"changes"?: NonNullable<Json>,"device_id"?: string | null,"id"?: never,"row_id"?: string,"scope_id"?: string,"table_name"?: string
+                    "actor_id"?: string | null,"at"?: string,"changes"?: NonNullable<Json>,"device_id"?: string | null,"id"?: never,"row_id"?: string,"scope_id"?: string,"source"?: Json | null,"table_name"?: string
                   }
                   Relationships: [
                     {
@@ -986,6 +986,12 @@ isOneToOne: false
 "account_secret_set":
 { Args: { "p_account": string,"p_secret": string }; Returns: undefined
                            },
+"activity_actor":
+{ Args: Record<PropertyKey, never>; Returns: string
+                           },
+"activity_source":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
 "add_invite":
 { Args: { "p_note"?: string,"p_pattern": string }; Returns: undefined
                            },
@@ -1174,7 +1180,7 @@ isOneToOne: false
 { Args: { "p_after"?: string,"p_scope": string,"p_user": string }; Returns: string
                            },
 "plugin_after_send":
-{ Args: { "p_add": Json,"p_remove": (string)[],"p_status": string,"p_task": string,"p_user": string }; Returns: string
+{ Args: { "p_add": Json,"p_remove": (string)[],"p_rule"?: string,"p_status": string,"p_task": string,"p_user": string }; Returns: string
                            },
 "plugin_connection_remove":
 { Args: { "p_connection": string }; Returns: undefined

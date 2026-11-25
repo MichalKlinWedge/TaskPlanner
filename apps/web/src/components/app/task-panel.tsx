@@ -8,6 +8,7 @@
  * `store.mutate` jednego pola — synchronizacja scala zmiany pól z innych urządzeń (§6).
  */
 import {
+  activityEntries,
   addCommentOps,
   BOARD_UNASSIGNED,
   canEditScope,
@@ -56,7 +57,6 @@ import {
   reparentTaskOps,
   shortDate,
   skipOccurrenceOps,
-  TASK_FIELD,
   TASK_STATUS,
   taskLinks,
   tagsForWorkspace,
@@ -72,6 +72,7 @@ import {
   trashPreview,
   uuidv7,
   VIEWER_REMINDER_NOTE,
+  type ActivityRow,
   type LocalDate,
   type LocalTime,
   type MarkdownAction,
@@ -1600,11 +1601,6 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
   );
 }
 
-interface Change {
-  at: string;
-  changes: Record<string, unknown>;
-}
-
 /** Historia zmian z serwera (`activity_log`) — tylko online; zmiany offline pojawią się po wysłaniu. */
 function History(props: { taskId: string; lists: Map<string, string>; people: Map<string, string> }) {
   return (
@@ -1616,37 +1612,27 @@ function History(props: { taskId: string; lists: Map<string, string>; people: Ma
 
 /** Wpisy `activity_log` — pobierane dopiero po rozwinięciu sekcji (zwinięta nie renderuje treści). */
 function HistoryRows({ taskId, lists, people }: { taskId: string; lists: Map<string, string>; people: Map<string, string> }) {
-  const [state, setState] = useState<{ rows: Change[]; error: string | null } | null>(null);
+  const { store } = useAppEnv();
+  const [state, setState] = useState<{ rows: ActivityRow[]; error: string | null } | null>(null);
+  const rules = useLocalQuery<Row>(store, "select id, name from plugin_rules", [], ["plugin_rules"]).rows;
   useEffect(() => {
     let alive = true;
     void supabaseBrowser()
       .from("activity_log")
-      .select("at, changes")
+      .select("id, at, changes, source")
       .eq("row_id", taskId)
       .order("at", { ascending: false })
-      .limit(50)
-      .then(({ data, error }) => alive && setState({ rows: (data as Change[] | null) ?? [], error: error ? "Historia jest dostępna online." : null }));
+      .order("id", { ascending: false })
+      .limit(100)
+      .then(({ data, error }) => alive && setState({ rows: (data as ActivityRow[] | null) ?? [], error: error ? "Historia jest dostępna online." : null }));
     return () => {
       alive = false;
     };
   }, [taskId]);
 
-  const value = useMemo(
-    () => (field: string, v: unknown): string => {
-      if (field === "deleted_at") return v ? "w koszu" : "przywrócone";
-      if (field === "assignee_id") return v ? (people.get(String(v)) ?? "usunięty współpracownik") : "twórca zadania";
-      if (v === null || v === undefined || v === "") return "—";
-      if (field === "status") return TASK_STATUS[v as TaskStatus] ?? String(v);
-      if (field === "priority") return PRIORITY[v as Priority]?.label ?? String(v);
-      if (field === "list_id") return lists.get(String(v)) ?? "inna lista";
-      if (field === "due_date" || field === "start_date") return shortDate(String(v));
-      if (field === "due_time") return String(v).slice(0, 5);
-      if (field === "completed_at") return new Date(String(v)).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
-      if (field === "recurrence" && typeof v === "object") return "zmieniona reguła";
-      if (field === "description_md") return "zmieniony";
-      return typeof v === "object" ? JSON.stringify(v) : String(v);
-    },
-    [lists, people],
+  const entries = useMemo(
+    () => activityEntries(state?.rows ?? [], { lists, people, rules: new Map(rules.map((r) => [String(r.id), String(r.name)])) }),
+    [state, lists, people, rules],
   );
 
   return state === null ? (
@@ -1654,27 +1640,20 @@ function HistoryRows({ taskId, lists, people }: { taskId: string; lists: Map<str
   ) : state.error ? (
     <p className="text-xs text-[var(--muted)]">{state.error}</p>
   ) : (
-          <ol className="flex flex-col gap-2 text-xs">
-            {state.rows.map((row, i) => {
-              // Wpis z utworzenia ma wszystkie kolumny — puste pomijamy; kolejność ręczna nie jest „zmianą”.
-              const created = "kind" in row.changes && "list_id" in row.changes && "title" in row.changes;
-              const fields = Object.entries(row.changes).filter(([f, v]) => f !== "sort_key" && f !== "board_sort_key" && !(created && (v === null || f === "kind" || f === "postpone_count")));
-              if (!fields.length) return null;
-              return (
-                <li key={i}>
-                  <span className="text-[var(--muted)]">{new Date(row.at).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" })}</span>
-                  {created ? <span> · utworzono</span> : null}
-                  <ul className="pl-3">
-                    {fields.map(([f, v]) => (
-                      <li key={f}>
-                        {TASK_FIELD[f] ?? f}: {value(f, v)}
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              );
-            })}
-            {!state.rows.length ? <li className="text-[var(--muted)]">Brak zapisanych zmian.</li> : null}
-          </ol>
+    <ol className="flex flex-col gap-2 text-xs">
+      {entries.map((entry) => (
+        <li key={entry.id}>
+          <span className="text-[var(--muted)]">{new Date(entry.at).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" })}</span>
+          {entry.created ? <span> · utworzono</span> : null}
+          {entry.by ? <span> · {entry.by}</span> : null}
+          <ul className="pl-3">
+            {entry.lines.map((line, i) => (
+              <li key={i}>{line}</li>
+            ))}
+          </ul>
+        </li>
+      ))}
+      {!entries.length ? <li className="text-[var(--muted)]">Brak zapisanych zmian.</li> : null}
+    </ol>
   );
 }
