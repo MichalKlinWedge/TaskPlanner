@@ -49,10 +49,26 @@ test('przypomnienia osobne dla każdego, automatyczne dla odpowiedzialnego', asy
     for (const p of [page, second]) await openApp(p, `#/list/${list}`);
     for (const section of [await open(page), await open(second)]) await expect(section.getByRole('button', { name: 'Usuń przypomnienie' })).toHaveCount(1);
 
+    // Druga osoba z rolą „Podgląd”: odpowiedzialna ustawia własne; odpięta widzi objaśnienie i może własne usunąć.
+    await must(db.from('scope_members').update({ role: 'viewer' }).eq('scope_id', workspace).neq('user_id', server.userId));
+    await openApp(second, `#/list/${list}`);
+    const viewing = await open(second);
+    await viewing.getByLabel('Dodaj przypomnienie').selectOption('rel:60');
+    await expect(viewing.getByRole('button', { name: 'Usuń przypomnienie' })).toHaveCount(2);
+    await expect.poll(async () => (await db.from('reminders').select('id').eq('task_id', task).neq('created_by', server.userId)).data?.length).toBe(2);
+    await must(db.from('tasks').update({ assignee_id: null }).eq('id', task));
+    await expect(viewing).toContainText('W zadaniu do podglądu możesz ustawić sobie przypomnienie');
+    await expect(viewing.getByLabel('Dodaj przypomnienie')).toBeDisabled();
+    await viewing.getByRole('button', { name: 'Usuń przypomnienie' }).first().click();
+    await expect(viewing.getByRole('button', { name: 'Usuń przypomnienie' })).toHaveCount(1);
+    await expect.poll(async () => (await db.from('reminders').select('id').eq('task_id', task).neq('created_by', server.userId).is('deleted_at', null)).data?.length).toBe(1);
+    await must(db.from('tasks').update({ assignee_id: person }).eq('id', task));
+
     const { data } = await db.rpc('assignee_reminder_tasks', { p_users: [server.userId], p_from: '2000-01-01', p_to: '2100-01-01' });
     expect((data as { id: string }[]).some((t) => t.id === task)).toBe(false);
   } finally {
     await other.close();
+    await server.resetSharedRoles(workspace);
     const deleted_at = new Date().toISOString();
     await db.from('lists').update({ deleted_at }).eq('id', list);
     await db.from('tasks').update({ deleted_at }).eq('id', task);

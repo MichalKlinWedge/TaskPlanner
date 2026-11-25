@@ -191,6 +191,16 @@ export function assigneeReminderRules(
     .map((t) => assigneeReminderRule(t.id));
 }
 
+/** Podpowiedź przy zadaniu do podglądu, w którym nie można ustawić własnego przypomnienia. */
+export const VIEWER_REMINDER_NOTE = 'W zadaniu do podglądu możesz ustawić sobie przypomnienie, gdy jesteś jego uczestnikiem albo odpowiedzialnym.';
+
+/**
+ * Czy użytkownik może ustawić sobie przypomnienie: z edycją listy zawsze, z podglądem — gdy odpowiada za zadanie
+ * albo jest jego uczestnikiem (jak `public.can_set_own_reminder` w bazie).
+ */
+export const canSetOwnReminder = (context: { editable: boolean; userId: string; responsible: string | null; participant: boolean }): boolean =>
+  context.editable || context.participant || context.responsible === context.userId;
+
 /** Objaśnienie pod przypomnieniami zadania w udostępnionej przestrzeni; `null` poza nią. */
 export function assigneeReminderNote(
   task: Pick<ReminderTask, 'kind' | 'status' | 'dueDate' | 'dueTime'>,

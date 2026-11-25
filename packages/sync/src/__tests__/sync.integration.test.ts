@@ -325,6 +325,36 @@ describe('v1.x: współdzielona przestrzeń', () => {
     expect(await viewer.engine.pendingCount()).toBe(0);
     expect((await row(viewer, 'tasks', id))?.title).toBe('Wspólne');
 
+    // Własne przypomnienie: dopiero jako uczestnik; cudzego nie rusza, własne usunie także po odpięciu.
+    const [person, participant, ownersReminder, own] = [uuidv7(), uuidv7(), uuidv7(), uuidv7()];
+    const remind = { task_id: id, kind: 'relative', offset_min: 15 };
+    await phone.engine.mutate('reminders', ownersReminder, remind);
+    await phone.engine.sync();
+    await viewer.engine.sync();
+    await expect(viewer.engine.mutate('reminders', own, remind)).rejects.toThrow(READONLY_SCOPE_MESSAGE);
+    await phone.engine.mutateMany([
+      { table: 'collaborators', id: person, patch: { name: `Podgląd ${person.slice(-6)}`, email: viewerUser.email } },
+      { table: 'task_participants', id: participant, patch: { task_id: id, collaborator_id: person } },
+    ]);
+    await phone.engine.sync();
+    await viewer.engine.sync();
+    await viewer.engine.mutate('reminders', own, remind);
+    await expect(viewer.engine.mutate('reminders', ownersReminder, { offset_min: 5 })).rejects.toThrow(READONLY_SCOPE_MESSAGE);
+    await expect(viewer.engine.mutate('tasks', id, { title: 'Podgląd' })).rejects.toThrow(READONLY_SCOPE_MESSAGE);
+    await viewer.engine.sync();
+    expect(viewer.rejected).toEqual([]);
+    const server = async () => (await phone.client.from('reminders').select('created_by, offset_min, deleted_at').eq('id', own)).data?.[0];
+    expect(await server()).toMatchObject({ created_by: viewerUser.id, offset_min: 15, deleted_at: null });
+    await phone.engine.mutate('task_participants', participant, { deleted_at: new Date().toISOString() });
+    await phone.engine.sync();
+    await viewer.engine.sync();
+    await expect(viewer.engine.mutate('reminders', own, { offset_min: 30 })).rejects.toThrow(READONLY_SCOPE_MESSAGE);
+    await viewer.engine.mutate('reminders', own, { deleted_at: new Date().toISOString() });
+    await viewer.engine.sync();
+    expect(viewer.rejected).toEqual([]);
+    expect((await server())?.deleted_at).toBeTruthy();
+    await phone.engine.mutate('collaborators', person, { deleted_at: new Date().toISOString() });
+
     // Zmiana roli na edytora odblokowuje zapis po najbliższym pobraniu.
     expect((await phone.client.rpc('set_scope_member_role', { p_scope: W, p_user: viewerUser.id, p_role: 'editor' })).error).toBeNull();
     await viewer.engine.sync();

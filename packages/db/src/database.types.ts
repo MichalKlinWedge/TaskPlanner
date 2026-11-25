@@ -1042,6 +1042,9 @@ isOneToOne: false
 "can_read_attachment":
 { Args: { "p_name": string }; Returns: boolean
                            },
+"can_set_own_reminder":
+{ Args: { "p_removing"?: boolean,"p_task": string }; Returns: boolean
+                           },
 "can_upload_attachment":
 { Args: { "p_name": string }; Returns: boolean
                            },

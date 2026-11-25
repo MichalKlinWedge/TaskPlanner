@@ -68,6 +68,7 @@ import {
   trashListLabel,
   trashPreview,
   uuidv7,
+  VIEWER_REMINDER_NOTE,
   type LocalDate,
   type LocalTime,
   type MarkdownAction,
@@ -89,7 +90,7 @@ import { useDependencies } from "@/lib/dependencies";
 import { useLocalQuery } from "@/lib/local-store";
 import { usePlugins } from "@/lib/plugins";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { useAssigneeReminderNote, useTaskComments, useTaskDescription, useTaskReminders } from "@/lib/task-details";
+import { useReminderRules, useTaskComments, useTaskDescription, useTaskReminders } from "@/lib/task-details";
 import { useTrash } from "@/lib/trash";
 
 import { BreakdownField } from "./ai-breakdown";
@@ -444,9 +445,9 @@ function TaskDetails({ task, trash }: { task: ViewTask; trash?: TrashPreview<Tra
 
       <AttachmentsField key={`att:${task.id}`} task={task} readOnly={readOnly} />
 
-      <EditableSections readOnly={readOnly}>
-        <RemindersField key={`rem:${task.id}`} task={task} />
+      <RemindersField key={`rem:${task.id}`} task={task} trashed={!!trash} />
 
+      <EditableSections readOnly={readOnly}>
         <RecurrenceField key={`rec:${task.id}`} task={task} onSave={(patch) => void update(patch)} timeZone={timeZone} today={today} />
 
         {settings.focus.enabled ? <TaskTimeField task={task} /> : null}
@@ -1219,69 +1220,73 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
   );
 }
 
-function RemindersField({ task }: { task: ViewTask }) {
+/** Własne przypomnienia — także w zadaniu do podglądu, gdy użytkownik jest uczestnikiem albo odpowiedzialnym. */
+function RemindersField({ task, trashed }: { task: ViewTask; trashed: boolean }) {
   const { store, data, today, userId } = useAppEnv();
   const { run } = useTaskActions();
   const rows = useTaskReminders(store, task.id, today, userId);
-  const note = useAssigneeReminderNote(store, data, task, userId);
+  const { note, allowed } = useReminderRules(store, data, task, userId);
   const [choice, setChoice] = useState("");
   const [at, setAt] = useState({ date: task.dueDate ?? "", time: "09:00" });
 
   const add = (patch: Record<string, unknown>) => void run([{ table: "reminders", id: uuidv7(), patch: { task_id: task.id, offset_min: null, at_date: null, at_time: null, ...patch } }]);
 
   return (
-    <Block title="Przypomnienia">
-      <ul className="mb-2 flex flex-col gap-1 text-sm">
-        {rows.map((r) => (
-          <li key={r.id} className="flex items-center gap-2">
-            <span>🔔 {r.label}</span>
-            <IconButton label="Usuń przypomnienie" onClick={() => void run([{ table: "reminders", id: r.id, patch: { deleted_at: new Date().toISOString() } }])}>
-              ×
-            </IconButton>
-          </li>
-        ))}
-        {!rows.length ? <li className="text-xs text-[var(--muted)]">Brak przypomnień</li> : null}
-      </ul>
-      <div className="flex flex-wrap items-center gap-2">
-        <Select
-          aria-label="Dodaj przypomnienie"
-          value={choice}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (value.startsWith("rel:")) add({ kind: "relative", offset_min: Number(value.slice(4)) });
-            setChoice(value === "abs" ? "abs" : "");
-          }}
-          className="py-1 text-xs"
-        >
-          <option value="">+ Dodaj przypomnienie…</option>
-          {task.dueDate
-            ? REMINDER_PRESETS.map((m) => (
-                <option key={m} value={`rel:${m}`}>
-                  {reminderOffset(m)}
-                </option>
-              ))
-            : null}
-          <option value="abs">O wybranej porze…</option>
-        </Select>
-        {choice === "abs" ? (
-          <form
-            className="flex gap-1"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!at.date || !at.time) return;
-              add({ kind: "absolute", at_date: at.date, at_time: at.time });
-              setChoice("");
+    <EditableSections readOnly={trashed || (!allowed && !rows.length)}>
+      <Block title="Przypomnienia">
+        <ul className="mb-2 flex flex-col gap-1 text-sm">
+          {rows.map((r) => (
+            <li key={r.id} className="flex items-center gap-2">
+              <span>🔔 {r.label}</span>
+              <IconButton label="Usuń przypomnienie" onClick={() => void run([{ table: "reminders", id: r.id, patch: { deleted_at: new Date().toISOString() } }])}>
+                ×
+              </IconButton>
+            </li>
+          ))}
+          {!rows.length ? <li className="text-xs text-[var(--muted)]">Brak przypomnień</li> : null}
+        </ul>
+        {!allowed && !trashed ? <p className="mb-2 text-xs text-[var(--muted)]">{VIEWER_REMINDER_NOTE}</p> : null}
+        <fieldset disabled={!allowed} className="m-0 flex min-w-0 flex-wrap items-center gap-2 border-0 p-0 disabled:opacity-60">
+          <Select
+            aria-label="Dodaj przypomnienie"
+            value={choice}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value.startsWith("rel:")) add({ kind: "relative", offset_min: Number(value.slice(4)) });
+              setChoice(value === "abs" ? "abs" : "");
             }}
+            className="py-1 text-xs"
           >
-            <Input type="date" aria-label="Dzień przypomnienia" value={at.date} onChange={(e) => setAt({ ...at, date: e.target.value })} className="py-0.5 text-xs" />
-            <Input type="time" aria-label="Godzina przypomnienia" value={at.time} onChange={(e) => setAt({ ...at, time: e.target.value })} className="py-0.5 text-xs" />
-            <Button type="submit">Dodaj</Button>
-          </form>
-        ) : null}
-      </div>
-      {!task.dueDate ? <p className="mt-1 text-xs text-[var(--muted)]">Przypomnienia „przed terminem” wymagają terminu.</p> : null}
-      {note ? <p className="mt-1 text-xs text-[var(--muted)]">{note}</p> : null}
-    </Block>
+            <option value="">+ Dodaj przypomnienie…</option>
+            {task.dueDate
+              ? REMINDER_PRESETS.map((m) => (
+                  <option key={m} value={`rel:${m}`}>
+                    {reminderOffset(m)}
+                  </option>
+                ))
+              : null}
+            <option value="abs">O wybranej porze…</option>
+          </Select>
+          {choice === "abs" ? (
+            <form
+              className="flex gap-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!at.date || !at.time) return;
+                add({ kind: "absolute", at_date: at.date, at_time: at.time });
+                setChoice("");
+              }}
+            >
+              <Input type="date" aria-label="Dzień przypomnienia" value={at.date} onChange={(e) => setAt({ ...at, date: e.target.value })} className="py-0.5 text-xs" />
+              <Input type="time" aria-label="Godzina przypomnienia" value={at.time} onChange={(e) => setAt({ ...at, time: e.target.value })} className="py-0.5 text-xs" />
+              <Button type="submit">Dodaj</Button>
+            </form>
+          ) : null}
+        </fieldset>
+        {!task.dueDate ? <p className="mt-1 text-xs text-[var(--muted)]">Przypomnienia „przed terminem” wymagają terminu.</p> : null}
+        {note ? <p className="mt-1 text-xs text-[var(--muted)]">{note}</p> : null}
+      </Block>
+    </EditableSections>
   );
 }
 

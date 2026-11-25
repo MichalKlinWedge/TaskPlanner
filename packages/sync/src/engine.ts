@@ -247,8 +247,10 @@ export class SyncEngine {
         for (const field of fields) clock[field] = stamp;
         row.field_clock = JSON.stringify(clock);
         await this.deriveScope(tx, table, row);
-        if (readOnly.size && (readOnly.has(String(row.scope_id)) || readOnly.has(String(current?.scope_id)))) throw new ReadOnlyScopeError();
-        if (guestScopes.has(String(row.scope_id)) || guestScopes.has(String(current?.scope_id))) {
+        // Własne przypomnienie zadania, za które odpowiada albo w którym uczestniczy — także z dostępem „Podgląd”.
+        const ownReminder = table === 'reminders' && guestScopes.has(String(row.scope_id)) && (await this.ownReminder(tx, row, current));
+        if (!ownReminder && readOnly.size && (readOnly.has(String(row.scope_id)) || readOnly.has(String(current?.scope_id)))) throw new ReadOnlyScopeError();
+        if (!ownReminder && (guestScopes.has(String(row.scope_id)) || guestScopes.has(String(current?.scope_id)))) {
           if (table === 'lists') {
             if ((row.guest_access ?? 'edit') !== 'edit' || (current && (current.guest_access ?? 'edit') !== 'edit')) throw new ReadOnlyScopeError(READONLY_LIST_NOTE);
           } else if (readOnlyLists.size && (await this.rowLists(tx, table, row, current)).some((list) => readOnlyLists.has(list))) {
@@ -295,6 +297,26 @@ export class SyncEngine {
     } else if (rule === 'derived') {
       row.scope_id = (await taskScope(row.task_id)) ?? row.scope_id ?? null;
     }
+  }
+
+  /**
+   * Czy to przypomnienie użytkownika, które wolno mu zapisać mimo podglądu (`can_set_own_reminder` w bazie): nie
+   * zmienia zadania, a użytkownik odpowiada za zadanie albo jest jego uczestnikiem. Własne można zawsze usunąć.
+   */
+  private async ownReminder(tx: LocalDb, row: SqlRow, current: SqlRow | undefined): Promise<boolean> {
+    if (current && ((current.created_by ?? this.userId) !== this.userId || current.task_id !== row.task_id)) return false;
+    if (current && row.deleted_at) return true;
+    const found = await tx.all(
+      `select 1 from tasks t
+        where t.id = ? and t.deleted_at is null and (
+          (t.assignee_id is null and coalesce(t.created_by, ?) = ?)
+          or exists (select 1 from scope_collaborators sc
+                      where sc.scope_id = t.scope_id and sc.user_id = ?
+                        and (sc.collaborator_id = t.assignee_id
+                             or exists (select 1 from task_participants p where p.task_id = t.id and p.collaborator_id = sc.collaborator_id and p.deleted_at is null))))`,
+      [row.task_id ?? null, this.userId, this.userId, this.userId],
+    );
+    return found.length > 0;
   }
 
   /** Listy wiersza przed i po zmianie (zadanie — jego lista, dziecko zadania — lista zadania, zależność — obu zadań). */

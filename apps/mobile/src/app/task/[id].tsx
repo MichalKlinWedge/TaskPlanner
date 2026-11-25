@@ -20,6 +20,7 @@ import {
   assignTaskOps,
   attachSubtaskOps,
   canAddSubtask,
+  canSetOwnReminder,
   subtaskCandidates,
   clampLag,
   collaboratorMatches,
@@ -64,6 +65,7 @@ import {
   trashListLabel,
   trashPreview,
   uuidv7,
+  VIEWER_REMINDER_NOTE,
   type Dependency,
   type LocalDate,
   type Recurrence,
@@ -337,8 +339,9 @@ export default function TaskScreen() {
 
         <AttachmentsField taskId={task.id} readOnly={readOnly} />
 
+        <RemindersField task={task} data={data} today={today} trashed={!!trash} />
+
         <Editable readOnly={readOnly}>
-          <RemindersField task={task} data={data} today={today} />
           <RecurrenceField key={`rec:${task.id}`} task={task} data={data} today={today} timeZone={data.settings.timeZone} onSave={(patch) => void update(patch)} />
           {data.settings.focus.enabled ? <TimeField task={task} /> : null}
         </Editable>
@@ -755,18 +758,26 @@ function CommentsField({ task, data, today }: { task: ViewTask; data: AppData; t
   );
 }
 
-function RemindersField({ task, data, today }: { task: ViewTask; data: AppData; today: LocalDate }) {
+/** Własne przypomnienia — także w zadaniu do podglądu, gdy użytkownik jest uczestnikiem albo odpowiedzialnym. */
+function RemindersField({ task, data, today, trashed }: { task: ViewTask; data: AppData; today: LocalDate; trashed: boolean }) {
   const p = usePalette();
   const { run } = useTaskActions();
-  // Kto dostanie automatyczne przypomnienie w chwili terminu (udostępniona przestrzeń).
+  // Kto dostanie automatyczne przypomnienie w chwili terminu i czy użytkownik jest uczestnikiem (udostępniona przestrzeń).
   const people = useLocalQuery(
-    ['tasks', 'scope_collaborators'],
+    ['tasks', 'scope_collaborators', 'task_participants'],
     async (engine) => {
-      const [creator, person] = await Promise.all([
+      const [creator, person, participant] = await Promise.all([
         engine.db.all<{ created_by: string | null }>('select created_by from tasks where id = ?', [task.id]),
         engine.db.all<{ user_id: string | null }>('select user_id from scope_collaborators where scope_id = ? and collaborator_id = ?', [task.workspaceId, task.assigneeId ?? '']),
+        engine.db.all(
+          'select 1 as me from task_participants p join scope_collaborators sc on sc.collaborator_id = p.collaborator_id where p.task_id = ? and p.deleted_at is null and sc.scope_id = ? and sc.user_id = ? limit 1',
+          [task.id, task.workspaceId, engine.userId],
+        ),
       ]);
-      return { createdBy: creator[0]?.created_by ?? engine.userId, account: person[0]?.user_id ?? null };
+      return {
+        responsible: responsibleAccount({ assigneeId: task.assigneeId, createdBy: creator[0]?.created_by ?? engine.userId }, () => person[0]?.user_id),
+        participant: participant.length > 0,
+      };
     },
     [task.id, task.workspaceId, task.assigneeId ?? ''],
   );
@@ -775,9 +786,10 @@ function RemindersField({ task, data, today }: { task: ViewTask; data: AppData; 
         shared: (data.workspaces.find((w) => w.id === task.workspaceId)?.members ?? 1) > 1,
         userId: data.userId,
         assigneeName: assigneeOf(task.assigneeId, data.collaborators)?.name ?? null,
-        account: responsibleAccount({ assigneeId: task.assigneeId, createdBy: people.createdBy }, () => people.account),
+        account: people.responsible,
       })
     : null;
+  const allowed = canSetOwnReminder({ editable: listEditable(data, task.listId), userId: data.userId, responsible: people?.responsible ?? null, participant: people?.participant ?? false });
   const rows =
     useLocalQuery(
       ['reminders'],
@@ -806,20 +818,23 @@ function RemindersField({ task, data, today }: { task: ViewTask; data: AppData; 
     if (time) await add({ kind: 'absolute', at_date: date, at_time: time });
   };
   return (
-    <Block title="Przypomnienia" right={<Pill label="+ Dodaj" color={p.accent} onPress={() => void addMenu()} />}>
-      {rows.map((r) => (
-        <View key={r.id} style={styles.reminder}>
-          <Text style={{ color: p.fg, fontSize: 15, flex: 1 }}>
-            🔔 {r.kind === 'relative' ? reminderOffset(Number(r.offset_min)) : `${relativeDay(r.at_date as LocalDate, today)} ${String(r.at_time).slice(0, 5)}`}
-          </Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Usuń przypomnienie" hitSlop={10} onPress={() => void run([{ table: 'reminders', id: r.id, patch: { deleted_at: new Date().toISOString() } }])}>
-            <Text style={{ color: p.muted, fontSize: 16 }}>✕</Text>
-          </Pressable>
-        </View>
-      ))}
-      {!rows.length ? <Text style={{ color: p.muted, fontSize: 13 }}>Brak przypomnień{task.dueDate ? '' : ' — „przed terminem” wymaga terminu'}</Text> : null}
-      {note ? <Text style={{ color: p.muted, fontSize: 13 }}>{note}</Text> : null}
-    </Block>
+    <Editable readOnly={trashed || (!allowed && !rows.length)}>
+      <Block title="Przypomnienia" right={allowed ? <Pill label="+ Dodaj" color={p.accent} onPress={() => void addMenu()} /> : undefined}>
+        {rows.map((r) => (
+          <View key={r.id} style={styles.reminder}>
+            <Text style={{ color: p.fg, fontSize: 15, flex: 1 }}>
+              🔔 {r.kind === 'relative' ? reminderOffset(Number(r.offset_min)) : `${relativeDay(r.at_date as LocalDate, today)} ${String(r.at_time).slice(0, 5)}`}
+            </Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Usuń przypomnienie" hitSlop={10} onPress={() => void run([{ table: 'reminders', id: r.id, patch: { deleted_at: new Date().toISOString() } }])}>
+              <Text style={{ color: p.muted, fontSize: 16 }}>✕</Text>
+            </Pressable>
+          </View>
+        ))}
+        {!rows.length ? <Text style={{ color: p.muted, fontSize: 13 }}>Brak przypomnień{task.dueDate ? '' : ' — „przed terminem” wymaga terminu'}</Text> : null}
+        {!allowed && !trashed && people ? <Text style={{ color: p.muted, fontSize: 13 }}>{VIEWER_REMINDER_NOTE}</Text> : null}
+        {note ? <Text style={{ color: p.muted, fontSize: 13 }}>{note}</Text> : null}
+      </Block>
+    </Editable>
   );
 }
 

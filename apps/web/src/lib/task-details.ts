@@ -1,11 +1,11 @@
 "use client";
 
 /** Dane jednego zadania z lokalnej bazy — wspólne dla formularza (`task-panel.tsx`) i podglądu (`task-preview.tsx`). */
-import { assigneeOf, assigneeReminderNote, relativeDay, reminderOffset, responsibleAccount, sortComments, type LocalDate, type ViewTask } from "@taskplanner/core";
+import { assigneeOf, assigneeReminderNote, canSetOwnReminder, relativeDay, reminderOffset, responsibleAccount, sortComments, type LocalDate, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useMemo } from "react";
 
-import type { AppData } from "./app-data";
+import { listEditable, type AppData } from "./app-data";
 import { useLocalQuery } from "./local-store";
 
 type Row = Record<string, string | number | null>;
@@ -41,15 +41,26 @@ export function useTaskReminders(store: TabStore, taskId: string, today: LocalDa
   }));
 }
 
-/** Kto dostanie automatyczne przypomnienie w chwili terminu (udostępniona przestrzeń); `null` — bez objaśnienia. */
-export function useAssigneeReminderNote(store: TabStore, data: AppData, task: ViewTask, userId: string): string | null {
+/**
+ * Przypomnienia w udostępnionej przestrzeni: kto dostanie automatyczne w chwili terminu (`note`, `null` — bez
+ * objaśnienia) i czy użytkownik może ustawić sobie własne (`allowed` — z podglądem tylko uczestnik / odpowiedzialny).
+ */
+export function useReminderRules(store: TabStore, data: AppData, task: ViewTask, userId: string): { note: string | null; allowed: boolean } {
   const creator = useLocalQuery<Row>(store, "select created_by from tasks where id = ?", [task.id], ["tasks"]);
   const person = useLocalQuery<Row>(store, "select user_id from scope_collaborators where scope_id = ? and collaborator_id = ?", [task.workspaceId, task.assigneeId ?? ""], ["scope_collaborators"]);
+  const participant = useLocalQuery<Row>(
+    store,
+    "select 1 as me from task_participants p join scope_collaborators sc on sc.collaborator_id = p.collaborator_id where p.task_id = ? and p.deleted_at is null and sc.scope_id = ? and sc.user_id = ? limit 1",
+    [task.id, task.workspaceId, userId],
+    ["task_participants", "scope_collaborators"],
+  );
   const createdBy = (creator.rows[0]?.created_by as string | null | undefined) ?? userId;
-  return assigneeReminderNote(task, {
+  const responsible = responsibleAccount({ assigneeId: task.assigneeId, createdBy }, () => person.rows[0]?.user_id as string | null | undefined);
+  const note = assigneeReminderNote(task, {
     shared: (data.workspaces.find((w) => w.id === task.workspaceId)?.members ?? 1) > 1,
     userId,
     assigneeName: assigneeOf(task.assigneeId, data.collaborators)?.name ?? null,
-    account: responsibleAccount({ assigneeId: task.assigneeId, createdBy }, () => person.rows[0]?.user_id as string | null | undefined),
+    account: responsible,
   });
+  return { note, allowed: canSetOwnReminder({ editable: listEditable(data, task.listId), userId, responsible: creator.rows.length ? responsible : null, participant: participant.rows.length > 0 }) };
 }

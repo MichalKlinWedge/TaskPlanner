@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { zonedInstant } from '../dates.ts';
-import { assigneeReminderNote, assigneeReminderRule, assigneeReminderRules, isAssigneeReminder, reminderBody, reminderFireTimes, snoozeUntil, toReminderRule, type ReminderRule, type ReminderTask } from '../reminders.ts';
+import { assigneeReminderNote, assigneeReminderRule, assigneeReminderRules, canSetOwnReminder, isAssigneeReminder, reminderBody, reminderFireTimes, snoozeUntil, toReminderRule, type ReminderRule, type ReminderTask } from '../reminders.ts';
 
 const WAW = 'Europe/Warsaw';
 const task = (over: Partial<ReminderTask> = {}): ReminderTask => ({ id: 't1', kind: 'task', status: 'todo', title: 'Lekarz', dueDate: '2026-11-20', dueTime: '10:00', recurrence: null, ...over });
@@ -168,6 +168,15 @@ describe('osoba odpowiedzialna (udostępniona przestrzeń)', () => {
     expect(reminderFireTimes([task()], [auto, rel(30)], win).map((f) => f.reminderId)).toEqual(['r30', 'a-t1']);
     // Własne przypomnienie innego zadania o tej samej porze nic nie zmienia.
     expect(reminderFireTimes([task(), task({ id: 't2' })], [auto, rel(0, { taskId: 't2' })], win)).toHaveLength(2);
+  });
+
+  it('własne przypomnienie: edytor zawsze, z podglądem uczestnik albo odpowiedzialny', () => {
+    const can = (over: Partial<Parameters<typeof canSetOwnReminder>[0]> = {}) => canSetOwnReminder({ editable: false, userId: 'me', responsible: null, participant: false, ...over });
+    expect(can()).toBe(false);
+    expect(can({ responsible: 'inny' })).toBe(false);
+    expect(can({ editable: true })).toBe(true);
+    expect(can({ participant: true })).toBe(true);
+    expect(can({ responsible: 'me' })).toBe(true);
   });
 
   it('objaśnienie przy przypomnieniach', () => {
