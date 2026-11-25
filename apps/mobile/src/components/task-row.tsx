@@ -8,7 +8,7 @@
  * wartości współdzielone i trzy widoki animowane na wiersz) dochodzi dopiero po pierwszym
  * narysowaniu listy (`RowsInteractive` z `TaskSections`), a metadane to jeden `Text` z jednym zagnieżdżonym.
  */
-import { assigneeOf, collaboratorBadge, columnDate, describeRecurrence, isOpen, LIST_COLUMN, needsDecision, PRIORITY, READONLY_LIST_NOTE, relativeDay, type ListColumn, type LocalDate, type ViewTask } from '@taskplanner/core';
+import { assigneeOf, collaboratorBadge, columnDate, describeRecurrence, formatMinutes, isOpen, LIST_COLUMN, needsDecision, PRIORITY, READONLY_LIST_NOTE, relativeDay, type ListColumn, type LocalDate, type ViewTask } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { createContext, memo, useContext, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -27,6 +27,8 @@ export interface TaskRowProps {
   showDate?: boolean;
   /** Nazwa listy w widokach zbiorczych. */
   listName?: string;
+  /** Ile minut po godzinie zadania (`minutesLate`) — wyróżnia godzinę; 0 / brak = w czasie. */
+  lateMin?: number;
   depth?: number;
   progress?: { done: number; total: number };
   /** `true`/`false` — węzeł z podzadaniami (zwinięty / rozwinięty); brak — bez podzadań. */
@@ -71,7 +73,7 @@ export const RowsInteractive = createContext(true);
 /** Przytrzymanie zaznacza tylko tam, gdzie jest pasek akcji (`TaskSections`); gdzie indziej dotknięcie zawsze otwiera zadanie. */
 export const RowsSelectable = createContext(false);
 
-export const TaskRow = memo(function TaskRow({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, tagNames, tagItems, columns }: TaskRowProps) {
+export const TaskRow = memo(function TaskRow({ task, today, showDate = true, listName, lateMin = 0, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, tagNames, tagItems, columns }: TaskRowProps) {
   const tagBubbles = columns?.includes('tags') ? (tagItems ?? (tagNames ?? []).map((name) => ({ id: name, name, color: null }))) : [];
   const p = usePalette();
   const actions = useTaskActions();
@@ -103,7 +105,7 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
 
   const meta = [
     showDate && date && !dueColumn ? { text: relativeDay(date, today), bad: overdue } : null,
-    task.dueTime && !dueColumn ? { text: task.dueTime } : null,
+    task.dueTime && !dueColumn ? lateMin > 0 ? { text: `${task.dueTime} · ${formatMinutes(lateMin)} po czasie`, bad: true } : { text: task.dueTime } : null,
     task.recurrence ? { text: `↻ ${describeRecurrence(task.recurrence)}` } : null,
     needsDecision(task) && !closed ? { text: `⇥ ${task.postponeCount}×` } : null,
     progress && progress.total > 0 ? { text: `☑ ${progress.done}/${progress.total}` } : null,

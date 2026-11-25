@@ -3,18 +3,18 @@
  * otwartych zadań liczonymi jak na webie (`isOpen`, `selectFiltered` z core: wszystkie poziomy drzewa,
  * bez nawyków, tagi w bieżącej przestrzeni), kosz, ustawienia, narzędzia PoC (tylko po włączeniu, `devToolsEnabled`).
  */
-import { isOpen, LIST_KIND, listShareBadge, selectFiltered, tagsForWorkspace, type ListShareBadge } from '@taskplanner/core';
+import { isOpen, LIST_KIND, listShareBadge, selectFiltered, selectOverdue, tagsForWorkspace, VIEW_SECTION, type ListShareBadge } from '@taskplanner/core';
 import { router, type Href } from 'expo-router';
 import { useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { SyncBanner } from '@/components/sync-banner';
 import { ColorDot, usePalette } from '@/components/ui';
-import { useView } from '@/lib/app-data';
+import { useLocalMinute, useView } from '@/lib/app-data';
 import { devToolsEnabled, onDevToolsChange } from '@/lib/config';
 import { perfStart, usePerfReady } from '@/lib/perf';
 
-function Item({ title, hint, count, color, href, indent, badge }: { title: string; hint?: string; count?: number; color?: string | null; href: Href; indent?: boolean; badge?: ListShareBadge | null }) {
+function Item({ title, hint, count, alert, color, href, indent, badge }: { title: string; hint?: string; count?: number; alert?: boolean; color?: string | null; href: Href; indent?: boolean; badge?: ListShareBadge | null }) {
   const p = usePalette();
   return (
     <Pressable
@@ -37,7 +37,7 @@ function Item({ title, hint, count, color, href, indent, badge }: { title: strin
           {badge.icon}
         </Text>
       ) : null}
-      {count ? <Text style={{ color: p.muted, fontSize: 14 }}>{count}</Text> : null}
+      {count ? <Text style={{ color: alert ? p.bad : p.muted, fontSize: 14, fontWeight: alert ? '600' : 'normal' }}>{count}</Text> : null}
       <Text style={{ color: p.muted, fontSize: 18 }}>›</Text>
     </Pressable>
   );
@@ -69,6 +69,11 @@ export default function BrowseScreen() {
     const byFilter = new Map(data.savedFilters.map((f) => [f.id, selectFiltered(data.tasks, f.query, ctx).length]));
     return { byList, byTag, byFilter };
   }, [data.tasks, data.savedFilters, ctx, workspaceId]);
+  const now = useLocalMinute(ctx.timeZone);
+  const overdue = useMemo(() => {
+    const view = selectOverdue(data.tasks, ctx, now);
+    return view.today.length + view.earlier.length;
+  }, [data.tasks, ctx, now]);
   const workspaces = data.workspaces.filter((w) => !workspaceId || w.id === workspaceId);
   // Jak na webie: przy „Wszystkich przestrzeniach” zakładka Inbox to suma, więc Inbox każdej przestrzeni
   // stoi na czele jej grupy; przy jednej przestrzeni zakładka Inbox jest właśnie nim — bez powtórki.
@@ -88,6 +93,7 @@ export default function BrowseScreen() {
       </Pressable>
 
       <Group title="Planowanie">
+        <Item title={VIEW_SECTION.overdue} hint="Po terminie, także dzisiejsze po godzinie" count={overdue} alert href="/overdue" />
         <Item title="Kalendarz" hint="Dzień z przeciąganiem bloków, tydzień, miesiąc" href="/calendar" />
         <Item title="Cykliczne" hint="Passa, regularność, historia" href="/habits" />
         {data.settings.focus.enabled ? <Item title="Skupienie" hint="Pomodoro i stoper, czas pracy" href="/focus" /> : null}

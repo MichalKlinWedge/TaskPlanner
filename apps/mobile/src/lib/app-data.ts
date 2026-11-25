@@ -7,7 +7,7 @@
  * Reguły widoków liczy `@taskplanner/core` — tu jest tylko mapowanie wierszy, jak na webie
  * (`apps/web/src/lib/app-data.ts`).
  */
-import { boardColumnDefs, canEditList, listShareBadge, FilterQuery, localDateAt, ProfileSettings, scopeCollaborator, scopeTag, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, withSharedCollaborators, withSharedTags, type BoardColumnDef, type Collaborator, type GuestAccess, type HabitCompletion, type ListShareBadge, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask, type ScopeRole } from '@taskplanner/core';
+import { boardColumnDefs, canEditList, listShareBadge, FilterQuery, localDateAt, localDateTimeAt, ProfileSettings, scopeCollaborator, scopeTag, tagWorkspaceIds, toHabitCompletion, toViewTask, ViewPrefs, withSharedCollaborators, withSharedTags, type BoardColumnDef, type Collaborator, type GuestAccess, type HabitCompletion, type ListShareBadge, type LocalDate, type ListKind, type LocalTaskRow, type ProjectStatus, type ViewContext, type ViewTask, type ScopeRole } from '@taskplanner/core';
 import { createTaskCache, TASK_COLUMNS, type SqlRow, type SyncEngine, type TaskCache, type TaskEntry } from '@taskplanner/sync';
 import Storage from 'expo-sqlite/kv-store';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -382,6 +382,23 @@ export function useWorkspace(data: AppData): string | null {
   const id = useSyncExternalStore(subscribeWorkspace, currentWorkspace);
   // Przestrzeń usunięta albo z innego konta — „Wszystkie”.
   return id && data.workspaces.some((w) => w.id === id) ? id : null;
+}
+
+/** Zegar ścienny w strefie użytkownika co do minuty, `RRRR-MM-DDTGG:MM` (nowa wartość tylko przy zmianie minuty). */
+export function useLocalMinute(timeZone?: string): string {
+  const [now, setNow] = useState(() => localDateTimeAt(new Date(), timeZone));
+  useEffect(() => {
+    const tick = () => setNow(localDateTimeAt(new Date(), timeZone));
+    tick();
+    const timer = setInterval(tick, 10_000);
+    // Po powrocie z tła od razu bieżąca minuta.
+    const sub = AppState.addEventListener('change', (state) => state === 'active' && tick());
+    return () => {
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, [timeZone]);
+  return now;
 }
 
 /** Dzisiejsza data w strefie użytkownika; zmienia się o północy (sprawdzenie co minutę). */

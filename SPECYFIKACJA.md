@@ -230,7 +230,7 @@ Oznaczenia: **[W]** web, **[A]** Android, **[W+A]** oba.
 Widoki stałe w pasku bocznym [W+A]:
 - **Inbox** — zadania z list `inbox` (bieżącej przestrzeni lub wszystkich). Licznik w pasku bocznym i na widżecie.
 - **Dziś** — sekcje: Zaległe, Dziś (z godziną: według godziny; bez godziny: kolejność ręczna), Trwające (zakres `start_date`–`due_date` obejmuje dziś), Cykliczne na dziś. Obok [W]: pasek „Plan dnia” z wydarzeniami kalendarza i blokami zadań.
-- **Zaległe** [W] — otwarte zadania po terminie: dzisiejsze, których godzina minęła (z czasem trwania — od końca bloku), i z wcześniejszych dni; licznik w pasku bocznym. Dzisiejsze bez godziny nie są zaległe do końca dnia.
+- **Zaległe** [W+A] — otwarte zadania po terminie: dzisiejsze, których godzina minęła (z czasem trwania — od końca bloku), i z wcześniejszych dni; licznik w pasku bocznym (telefon: Przeglądaj → „Zaległe”). Dzisiejsze bez godziny nie są zaległe do końca dnia.
 - **Nadchodzące** — kolejne 14 dni pogrupowane po dniu (z wirtualnymi wystąpieniami cyklicznych), przeciąganie między dniami zmienia `due_date`; dalej „Później” po tygodniach.
 - **Projekt / lista** — drzewo zadań z podzadaniami (zwijanie), postęp, sortowanie ręczne / priorytet / termin / data dodania.
 - **Tag, zapisany filtr** — wynik filtra.

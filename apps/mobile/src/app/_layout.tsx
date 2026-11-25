@@ -271,6 +271,7 @@ export default function RootLayout() {
             <Stack.Screen name="habit-form" options={{ title: 'Cykliczne' }} />
             <Stack.Screen name="board" options={{ title: 'Tablica' }} />
             <Stack.Screen name="calendar" options={{ title: 'Kalendarz' }} />
+            <Stack.Screen name="overdue" options={{ title: 'Zaległe' }} />
             <Stack.Screen name="review/daily" options={{ title: 'Przegląd dnia' }} />
             <Stack.Screen name="review/weekly" options={{ title: 'Przegląd tygodnia' }} />
             <Stack.Screen name="quick-add" options={{ title: 'Szybkie dodawanie', presentation: 'formSheet', sheetAllowedDetents: 'fitToContents', headerShown: false }} />
