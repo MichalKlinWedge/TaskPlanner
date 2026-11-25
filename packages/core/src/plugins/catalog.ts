@@ -90,6 +90,7 @@ const WEBHOOK: PluginDef = {
       kind: 'template',
       optional: true,
       placeholder: 'Nowe zgłoszenie: {{title}} ({{priority}}) — {{url}}',
+      help: 'Wszystkie pola szablonów są też zawsze wysyłane osobno, w obiekcie JSON „fields” (np. fields.title, fields.due).',
     },
   ],
   events: PLUGIN_EVENTS,

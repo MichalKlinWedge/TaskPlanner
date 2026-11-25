@@ -45,6 +45,7 @@ import {
   SAMPLE_TASK,
   sendableRules,
   taskUrl,
+  TEMPLATE_FIELDS,
   templateValues,
   unknownTemplateFields,
   type PluginConnection,
@@ -148,8 +149,29 @@ describe('ładunek i wysyłki', () => {
     expect(payload.task.list).toEqual({ id: SAMPLE_TASK.listId, name: 'Inbox' });
     expect(payload.task.description).toHaveLength(10_000);
     expect('message' in payload).toBe(false);
+    expect(payload.fields.description).toHaveLength(10_000);
     expect(pluginPayload({ id: 'd', events: ['task.completed'], sentAt: 'x', rule: null, task: SAMPLE_TASK, appUrl: 'a', message: 'hej' }).message).toBe('hej');
     expect(taskUrl('https://a//', 'x')).toBe('https://a/?task=x');
+  });
+
+  it('ładunek: `fields` = wszystkie pola szablonów, brak wartości = pusty napis', () => {
+    const { fields } = pluginPayload({ id: 'd', events: ['task.sent'], sentAt: 'x', rule: null, task: SAMPLE_TASK, appUrl: 'https://app' });
+    expect(Object.keys(fields)).toEqual(TEMPLATE_FIELDS.map((f) => f.key));
+    expect(fields).toEqual({
+      title: SAMPLE_TASK.title,
+      description: SAMPLE_TASK.description,
+      due: '2026-11-24',
+      time: '09:30',
+      duration: '30',
+      priority: 'Wysoki',
+      status: 'Do zrobienia',
+      list: 'Inbox',
+      workspace: 'Praca',
+      tags: 'zgłoś',
+      assignee: '',
+      url: `https://app/?task=${SAMPLE_TASK.id}`,
+      event: 'Wysłane ręcznie',
+    });
   });
 
   it('id wysyłki deterministyczne (Idempotency-Key)', () => {

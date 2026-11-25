@@ -48,7 +48,7 @@ export const unknownTemplateFields = (template: string): string[] =>
   [...new Set([...template.matchAll(PLACEHOLDER)].map((m) => m[1]!).filter((key) => !FIELD_KEYS.has(key)))];
 
 /** Wartości pól szablonu dla zadania; daty jak w bazie (systemy zewnętrzne czytają ISO), etykiety po polsku. */
-export function templateValues(task: PluginTaskData, opts: { event: PluginEvent; url: string }): TemplateValues {
+export function templateValues(task: PluginTaskData, opts: { event: PluginEvent; url: string }): Record<TemplateField, string> {
   return {
     title: task.title,
     description: task.description ?? '',

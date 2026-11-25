@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { uuidv5 } from '../ids.ts';
 import { LocalDate, LocalTime, Priority, TaskStatus } from '../schemas/primitives.ts';
 import type { PluginEvent } from './events.ts';
+import { templateValues, type TemplateField } from './template.ts';
 
 /** Rzut zadania do ładunku — kształt zwracany przez `plugin_task_context` w bazie. */
 export const PluginTaskData = z.object({
@@ -65,6 +66,8 @@ export interface PluginPayload {
     assignee: string | null;
     url: string;
   };
+  /** Wszystkie pola szablonów (`TEMPLATE_FIELDS`) z wartościami jak w `{{…}}` — niezależnie od treści reguły; brak = pusty napis. */
+  fields: Record<TemplateField, string>;
   /** Treść z szablonu reguły (jeśli jest). */
   message?: string;
   /** Ukończone wystąpienie serii (`task.completed` z `task_completions`). */
@@ -89,17 +92,19 @@ export function pluginPayload(input: {
   occurrence?: string;
   comment?: { id: string; body: string };
 }): PluginPayload {
-  const { task } = input;
+  const task = { ...input.task, description: clip(input.task.description, MAX_PAYLOAD_DESCRIPTION) };
+  const event = input.events[0] ?? 'task.sent';
+  const url = taskUrl(input.appUrl, task.id);
   return {
     id: input.id,
-    event: input.events[0] ?? 'task.sent',
+    event,
     events: [...input.events],
     sentAt: input.sentAt,
     rule: input.rule,
     task: {
       id: task.id,
       title: task.title,
-      description: clip(task.description, MAX_PAYLOAD_DESCRIPTION),
+      description: task.description,
       status: task.status,
       priority: task.priority,
       startDate: task.startDate,
@@ -111,8 +116,9 @@ export function pluginPayload(input: {
       workspace: { id: task.workspaceId, name: task.workspace },
       tags: [...task.tags],
       assignee: task.assignee,
-      url: taskUrl(input.appUrl, task.id),
+      url,
     },
+    fields: templateValues(task, { event, url }),
     ...(input.message !== undefined && input.message !== '' && { message: input.message }),
     ...(input.occurrence && { occurrence: input.occurrence }),
     ...(input.comment && { comment: { id: input.comment.id, body: clip(input.comment.body, MAX_PAYLOAD_DESCRIPTION)! } }),

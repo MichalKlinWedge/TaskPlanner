@@ -127,7 +127,7 @@ describe('Webhook — odpowiedzi odbiorcy', () => {
     const ctx = { config: { url: 'https://hooks.example.com/x' }, secrets: { signingSecret: 'sekret-podpisu-1234' }, net, now: () => NOW };
     expect((await webhook.test(ctx)).ok).toBe(true);
     const sample = JSON.parse(String(net.calls[0]!.init.body));
-    expect(sample).toMatchObject({ test: true, event: 'task.sent', task: { title: SAMPLE_TASK.title } });
+    expect(sample).toMatchObject({ test: true, event: 'task.sent', task: { title: SAMPLE_TASK.title }, fields: { title: SAMPLE_TASK.title, due: SAMPLE_TASK.dueDate } });
     expect((net.calls[0]!.init.headers as Record<string, string>)['x-taskplanner-event']).toBe('test');
 
     const payload = pluginPayload({ id: 'd-1', events: ['task.sent'], sentAt: NOW.toISOString(), rule: { id: 'r', name: 'Do n8n' }, task: SAMPLE_TASK, appUrl: 'https://app', message: 'Hej' });
