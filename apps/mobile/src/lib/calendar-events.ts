@@ -39,6 +39,7 @@ interface ServerEvent extends Record<string, string | number | null> {
   location: string | null;
   color: string | null;
   calendar: string;
+  calendar_id: string;
 }
 
 const DEVICE_KEY = 'calendar.device';
@@ -110,15 +111,18 @@ async function loadDeviceEvents(ids: readonly string[], from: Date, to: Date): P
   return { list, info };
 }
 
-/** Wydarzenia kalendarzy zewnętrznych i wybranych kalendarzy telefonu nachodzące na dni `[from, to)`. */
-export function useCalendarEvents(range: { from: LocalDate; to: LocalDate }, timeZone?: string): CalendarEvents {
+/**
+ * Wydarzenia kalendarzy zewnętrznych i wybranych kalendarzy telefonu nachodzące na dni `[from, to)`;
+ * `hidden` — id kalendarzy zewnętrznych ukrytych w „Pokaż” kalendarza.
+ */
+export function useCalendarEvents(range: { from: LocalDate; to: LocalDate }, timeZone?: string, hidden?: ReadonlySet<string>): CalendarEvents {
   const start = zonedInstant(range.from, '00:00', timeZone).toISOString();
   const end = zonedInstant(range.to, '00:00', timeZone).toISOString();
   const rows = useLocalQuery(
     ['calendar_events', 'calendars'],
     (engine) =>
       engine.db.all<ServerEvent>(
-        `select e.id, e.title, e.all_day, e.start_at, e.end_at, e.start_date, e.end_date, e.location, c.color, c.name as calendar
+        `select e.id, e.title, e.all_day, e.start_at, e.end_at, e.start_date, e.end_date, e.location, c.color, c.name as calendar, e.calendar_id
            from calendar_events e join calendars c on c.id = e.calendar_id
           where c.visible = 1 and ((e.all_day = 0 and e.start_at < ? and e.end_at > ?) or (e.all_day = 1 and e.start_date < ? and e.end_date > ?))`,
         [end, start, range.to, range.from],
@@ -147,10 +151,10 @@ export function useCalendarEvents(range: { from: LocalDate; to: LocalDate }, tim
 
   return useMemo(() => {
     const info = new Map(device.info);
-    const list: CalendarEventLike[] = (rows ?? []).map((r) => {
+    const list: CalendarEventLike[] = (rows ?? []).filter((r) => !hidden?.has(r.calendar_id)).map((r) => {
       info.set(r.id, { color: r.color, calendar: r.calendar, location: r.location, device: false });
       return { id: r.id, title: r.title || '(bez tytułu)', allDay: !!r.all_day, startAt: r.start_at, endAt: r.end_at, startDate: r.start_date as LocalDate | null, endDate: r.end_date as LocalDate | null };
     });
     return { list: [...list, ...device.list], info };
-  }, [rows, device]);
+  }, [rows, device, hidden]);
 }

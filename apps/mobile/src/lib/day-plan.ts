@@ -41,11 +41,12 @@ export interface DayPlanModel {
 
 const toMin = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
 
-export function useDayPlan(data: AppData, date: LocalDate, workspaceId: string | null, today: LocalDate): DayPlanModel {
+/** `hiddenCalendars` — kalendarze zewnętrzne ukryte w „Pokaż” kalendarza. */
+export function useDayPlan(data: AppData, date: LocalDate, workspaceId: string | null, today: LocalDate, hiddenCalendars?: ReadonlySet<string>): DayPlanModel {
   const { timeZone, defaultDurationMin, workHours } = data.settings;
   const tasks = useMemo(() => data.tasks.filter((t) => t.kind === 'task' && (!workspaceId || t.workspaceId === workspaceId)), [data.tasks, workspaceId]);
   const range = useMemo(() => ({ from: date, to: addDays(date, 1) }), [date]);
-  const events = useCalendarEvents(range, timeZone);
+  const events = useCalendarEvents(range, timeZone, hiddenCalendars);
   const habits = useMemo(
     () => habitSlots(data.tasks.filter((t) => !workspaceId || t.workspaceId === workspaceId), data.habitCompletions, date, addDays(date, 1), today),
     [data.tasks, data.habitCompletions, workspaceId, date, today],

@@ -9,7 +9,9 @@
  * i wybrane kalendarze telefonu (`lib/calendar-events.ts`). Wszystkie zmiany z „Cofnij”. Chipy filtra
  * zawężają zadania we wszystkich widokach (wydarzenia i nawyki zostają); bez terminu i godziny, bo o nich
  * decyduje kalendarz; filtr trwa do opuszczenia ekranu, nie jest zapisywany.
- * Wysokość wiersza osi dnia (15 min / 30 min / 1 h) przełącza się przy filtrze. Listy dnia w tygodniu
+ * Wysokość wiersza osi dnia (15 min / 30 min / 1 h) przełącza się przy filtrze. „Pokaż” (`lib/calendar-sources.ts`)
+ * ukrywa listy i kalendarze zewnętrzne: ich pozycji nie ma w widoku ani w konfliktach, wolnych oknach
+ * i „Zaplanuj…”. Listy dnia w tygodniu
  * i miesiącu są stronicowane (`EntryList`): przy 10 000 zadań dzień ma ~100 pozycji (`docs/WYDAJNOSC.md`).
  */
 import {
@@ -38,6 +40,7 @@ import {
   parseCalendarSlot,
   plural,
   PRIORITY,
+  projectFilterLabel,
   relativeDay,
   resizeBlockPatch,
   scheduleBlockPatch,
@@ -72,6 +75,7 @@ import { pickAmount, pickDate, pickMany, pickOption, pickTime, Sheet, type Optio
 import { Fab, openQuickAdd } from '@/components/task-list';
 import { Chip, usePalette } from '@/components/ui';
 import { listEditable, useView, type AppData } from '@/lib/app-data';
+import { useCalendarHidden, useExternalCalendars, type CalendarHidden } from '@/lib/calendar-sources';
 import { deviceCalendars, setDeviceCalendarIds, useCalendarEvents, useDeviceCalendarIds, type EventInfo } from '@/lib/calendar-events';
 import { useDayPlan, useNowMinute } from '@/lib/day-plan';
 import { perfMeasure, usePerfReady } from '@/lib/perf';
@@ -102,11 +106,14 @@ export default function CalendarScreen() {
   const { data: all, today, workspaceId } = useView();
   usePerfReady('/calendar', all.loaded);
   const [filter, setFilter] = useState<FilterQuery>({});
+  const [hidden, setHidden] = useCalendarHidden();
+  const externalCalendars = useExternalCalendars();
   const data = useMemo((): AppData => {
-    if (isEmptyFilter(filter)) return all;
-    const shown = new Set(applyFilter(all.tasks, filter, today).map((t) => t.id));
-    return { ...all, tasks: all.tasks.filter((t) => t.kind === 'habit' || shown.has(t.id)) };
-  }, [all, filter, today]);
+    const visible = hidden.lists.size ? all.tasks.filter((t) => !(t.listId && hidden.lists.has(t.listId))) : all.tasks;
+    if (isEmptyFilter(filter)) return visible === all.tasks ? all : { ...all, tasks: visible };
+    const shown = new Set(applyFilter(visible, filter, today).map((t) => t.id));
+    return { ...all, tasks: visible.filter((t) => t.kind === 'habit' || shown.has(t.id)) };
+  }, [all, filter, today, hidden.lists]);
   const { notify } = useTaskActions();
   const [mode, setModeState] = useState<Mode>(() => (params.mode as Mode | undefined) ?? (Storage.getItemSync(MODE_KEY) as Mode | null) ?? 'day');
   const [date, setDate] = useState<LocalDate>(() => (/^\d{4}-\d{2}-\d{2}$/.test(params.date ?? '') ? (params.date as LocalDate) : today));
@@ -131,6 +138,35 @@ export default function CalendarScreen() {
   // „+” dodaje na oglądany dzień; w tygodniu — dziś, gdy jest widoczny, inaczej jego pierwszy dzień.
   const addDate = mode !== 'week' ? date : today >= weekFrom && today < addDays(weekFrom, 7) ? today : weekFrom;
   const title = mode === 'day' ? capitalized(dayLabel(date)) : mode === 'week' ? `${shortDate(weekFrom)} – ${shortDate(addDays(weekFrom, 6))}` : capitalized(monthLabel(date));
+
+  // „Pokaż”: listy bieżącej przestrzeni (albo wszystkich) i kalendarze zewnętrzne; zaznaczone = widoczne.
+  const sources = useMemo(() => {
+    const lists = all.workspaces
+      .filter((w) => !workspaceId || w.id === workspaceId)
+      .flatMap((w) =>
+        all.lists
+          .filter((l) => l.workspaceId === w.id)
+          .sort((a, b) => Number(b.kind === 'inbox') - Number(a.kind === 'inbox') || (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0))
+          .map((l) => ({ id: l.id, name: l.kind === 'inbox' ? 'Inbox' : l.name, hint: w.name, list: true })),
+      );
+    return [...lists, ...externalCalendars.map((c) => ({ id: c.id, name: c.name, hint: 'Kalendarz zewnętrzny', list: false }))];
+  }, [all.workspaces, all.lists, workspaceId, externalCalendars]);
+  const sourcesLabel = projectFilterLabel(sources, new Set([...hidden.lists, ...hidden.calendars]));
+  const chooseSources = async () => {
+    const shown = await pickMany(
+      'Pokaż w kalendarzu',
+      sources.map((s) => ({ label: s.name, hint: s.hint, value: s.id, selected: !(s.list ? hidden.lists : hidden.calendars).has(s.id) })),
+    );
+    if (!shown) return;
+    const visible = new Set(shown);
+    // Ukryte spoza tej listy (inna przestrzeń) zostają ukryte.
+    const next = (kind: boolean, before: ReadonlySet<string>) => {
+      const out = new Set([...before].filter((id) => !sources.some((s) => s.id === id)));
+      for (const s of sources) if (s.list === kind && !visible.has(s.id)) out.add(s.id);
+      return out;
+    };
+    setHidden({ lists: next(true, hidden.lists), calendars: next(false, hidden.calendars) } satisfies CalendarHidden);
+  };
 
   const chooseCalendars = async () => {
     const calendars = await deviceCalendars().catch(() => null);
@@ -182,6 +218,7 @@ export default function CalendarScreen() {
           <View style={isEmptyFilter(filter) ? { flex: 1 } : { width: '100%' }}>
             <FilterBar query={filter} onChange={setFilter} hide={HIDDEN} />
           </View>
+          <Chip label={`Pokaż: ${sourcesLabel}`} selected={sourcesLabel !== 'wszystkie'} onPress={() => void chooseSources()} />
           {mode === 'day' ? (
             <View style={styles.row} accessibilityLabel="Wysokość wiersza">
               {CALENDAR_SLOTS.map((s) => (
@@ -192,11 +229,11 @@ export default function CalendarScreen() {
         </View>
       </View>
       {mode === 'day' ? (
-        <DayView key={date} slot={slot} data={data} date={date} today={today} workspaceId={workspaceId} bottom={insets.bottom} />
+        <DayView key={date} slot={slot} hiddenCalendars={hidden.calendars} data={data} date={date} today={today} workspaceId={workspaceId} bottom={insets.bottom} />
       ) : mode === 'week' ? (
-        <RangeAgenda data={data} from={weekFrom} to={addDays(weekFrom, 7)} today={today} workspaceId={workspaceId} onDay={openDay} bottom={insets.bottom} />
+        <RangeAgenda hiddenCalendars={hidden.calendars} data={data} from={weekFrom} to={addDays(weekFrom, 7)} today={today} workspaceId={workspaceId} onDay={openDay} bottom={insets.bottom} />
       ) : (
-        <MonthView data={data} date={date} today={today} workspaceId={workspaceId} onSelect={setDate} onDay={openDay} bottom={insets.bottom} />
+        <MonthView hiddenCalendars={hidden.calendars} data={data} date={date} today={today} workspaceId={workspaceId} onSelect={setDate} onDay={openDay} bottom={insets.bottom} />
       )}
       <Fab label={`Dodaj zadanie: ${dayLabel(addDate)}`} bottom={insets.bottom + 16} onPress={() => openQuickAdd({ dueDate: addDate })} />
     </View>
@@ -314,10 +351,10 @@ function ConflictNote({ count }: { count: number }) {
   );
 }
 
-function DayView({ slot, data, date, today, workspaceId, bottom }: { slot: CalendarSlot; data: AppData; date: LocalDate; today: LocalDate; workspaceId: string | null; bottom: number }) {
+function DayView({ slot, hiddenCalendars, data, date, today, workspaceId, bottom }: { slot: CalendarSlot; hiddenCalendars: ReadonlySet<string>; data: AppData; date: LocalDate; today: LocalDate; workspaceId: string | null; bottom: number }) {
   const p = usePalette();
   const { notify } = useTaskActions();
-  const plan = useDayPlan(data, date, workspaceId, today);
+  const plan = useDayPlan(data, date, workspaceId, today, hiddenCalendars);
   const nowMin = useNowMinute(plan.dayStart);
   const schedule = useSchedule();
   const { defaultDurationMin, workHours, timeZone } = data.settings;
@@ -511,10 +548,10 @@ function DayView({ slot, data, date, today, workspaceId, bottom }: { slot: Calen
 }
 
 /** Pozycje kalendarza dla `[from, to)` z wydarzeniami i nawykami bieżącej przestrzeni. */
-function useEntries(data: AppData, from: LocalDate, to: LocalDate, today: LocalDate, workspaceId: string | null): { entries: CalendarEntry[]; info: Map<string, EventInfo>; tasks: Map<string, ViewTask> } {
+function useEntries(data: AppData, from: LocalDate, to: LocalDate, today: LocalDate, workspaceId: string | null, hiddenCalendars: ReadonlySet<string>): { entries: CalendarEntry[]; info: Map<string, EventInfo>; tasks: Map<string, ViewTask> } {
   const { timeZone, defaultDurationMin } = data.settings;
   const range = useMemo(() => ({ from, to }), [from, to]);
-  const events = useCalendarEvents(range, timeZone);
+  const events = useCalendarEvents(range, timeZone, hiddenCalendars);
   const tasks = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
   const result = useMemo(() => {
     const own = data.tasks.filter((t) => !workspaceId || t.workspaceId === workspaceId);
@@ -571,9 +608,9 @@ function EntryRow({ entry, task, info }: { entry: CalendarEntry; task: ViewTask 
   );
 }
 
-function RangeAgenda({ data, from, to, today, workspaceId, onDay, bottom }: { data: AppData; from: LocalDate; to: LocalDate; today: LocalDate; workspaceId: string | null; onDay: (d: LocalDate) => void; bottom: number }) {
+function RangeAgenda({ hiddenCalendars, data, from, to, today, workspaceId, onDay, bottom }: { hiddenCalendars: ReadonlySet<string>; data: AppData; from: LocalDate; to: LocalDate; today: LocalDate; workspaceId: string | null; onDay: (d: LocalDate) => void; bottom: number }) {
   const p = usePalette();
-  const { entries, info, tasks } = useEntries(data, from, to, today, workspaceId);
+  const { entries, info, tasks } = useEntries(data, from, to, today, workspaceId, hiddenCalendars);
   const days = useMemo(() => perfMeasure('kalendarz: agenda', () => agendaDays(entries, from, to)), [entries, from, to]);
   return (
     <ScrollView contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: bottom + 88 }}>
@@ -592,13 +629,13 @@ function RangeAgenda({ data, from, to, today, workspaceId, onDay, bottom }: { da
   );
 }
 
-function MonthView({ data, date, today, workspaceId, onSelect, onDay, bottom }: { data: AppData; date: LocalDate; today: LocalDate; workspaceId: string | null; onSelect: (d: LocalDate) => void; onDay: (d: LocalDate) => void; bottom: number }) {
+function MonthView({ hiddenCalendars, data, date, today, workspaceId, onSelect, onDay, bottom }: { hiddenCalendars: ReadonlySet<string>; data: AppData; date: LocalDate; today: LocalDate; workspaceId: string | null; onSelect: (d: LocalDate) => void; onDay: (d: LocalDate) => void; bottom: number }) {
   const p = usePalette();
   const firstDay = data.settings.firstDayOfWeek;
   const weeks = useMemo(() => monthWeeks(date, firstDay), [date, firstDay]);
   const from = weeks[0]![0]!;
   const to = addDays(weeks[weeks.length - 1]![6]!, 1);
-  const { entries, info, tasks } = useEntries(data, from, to, today, workspaceId);
+  const { entries, info, tasks } = useEntries(data, from, to, today, workspaceId, hiddenCalendars);
   const days = useMemo(() => new Map(perfMeasure('kalendarz: agenda', () => agendaDays(entries, from, to)).map((d) => [d.date, d.entries])), [entries, from, to]);
   const month = date.slice(0, 7);
   const selected = days.get(date) ?? [];
