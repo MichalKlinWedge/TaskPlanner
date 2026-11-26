@@ -10,6 +10,7 @@ export const SYNCED_TABLES = [
   'workspaces', 'lists', 'tasks', 'tags', 'task_tags', 'task_completions', 'profiles', 'devices',
   'reminders', 'task_dependencies', 'time_entries', 'attachments', 'saved_filters', 'review_sessions',
   'collaborators', 'task_participants', 'task_comments', 'plugin_rules', 'plugin_requests', 'project_templates',
+  'notifications',
 ] as const;
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
 
@@ -30,6 +31,8 @@ export interface TableSpec<T extends SyncedTable = SyncedTable> {
   /** Kolumny `jsonb` — lokalnie tekst JSON. */
   json: readonly (keyof Tables<T> & string)[];
   scope: ScopeRule;
+  /** Gdy klient może zapisać tylko część kolumn (resztę pisze serwer) — te kolumny (= `writable_columns` bez `deleted_at`). */
+  client?: readonly (keyof Tables<T> & string)[];
 }
 
 type Exhaustive<T extends SyncedTable, C extends readonly string[]> =
@@ -145,6 +148,13 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     json: ['content'],
     scope: 'personal',
   },
+  /** Centrum powiadomień (v1.x): wiersze tworzy serwer, klient zaznacza tylko „przeczytane” i usuwa z listy. */
+  notifications: {
+    columns: columns<'notifications'>()(['user_id', 'kind', 'task_id', 'workspace_id', 'actor_id', 'data', 'group_key', 'at', 'read_at']),
+    json: ['data'],
+    scope: 'personal',
+    client: ['read_at'],
+  },
 };
 
 // ── Tylko do odczytu (integracje, `pulled_readonly_tables()`) ─────────────────────────────────
@@ -201,7 +211,7 @@ export const READONLY: { [T in ReadonlyTable]: { columns: readonly string[]; boo
 export const readonlyColumnsOf = (table: ReadonlyTable): readonly string[] => ['id', 'scope_id', ...READONLY[table].columns];
 
 /** Pola, które klient wysyła w `push_changes` (= `writable_columns` w bazie). */
-export const writableFields = (table: SyncedTable): readonly string[] => [...TABLES[table].columns, 'deleted_at'];
+export const writableFields = (table: SyncedTable): readonly string[] => [...((TABLES[table] as TableSpec).client ?? TABLES[table].columns), 'deleted_at'];
 
 /** Wszystkie kolumny lokalnej tabeli. */
 export const localColumns = (table: SyncedTable): readonly string[] => [

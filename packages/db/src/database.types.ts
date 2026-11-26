@@ -315,6 +315,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"notifications": {
+                  Row: {
+                    "actor_id": string | null,"at": string,"created_at": string,"created_by": string | null,"data": NonNullable<Json>,"deleted_at": string | null,"field_clock": NonNullable<Json>,"group_key": string | null,"id": string,"kind": string,"read_at": string | null,"row_version": number,"scope_id": string,"task_id": string | null,"updated_at": string,"user_id": string,"workspace_id": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "actor_id"?: string | null,"at"?: string,"created_at"?: string,"created_by"?: string | null,"data"?: NonNullable<Json>,"deleted_at"?: string | null,"field_clock"?: NonNullable<Json>,"group_key"?: string | null,"id": string,"kind": string,"read_at"?: string | null,"row_version"?: number,"scope_id": string,"task_id"?: string | null,"updated_at"?: string,"user_id": string,"workspace_id"?: string | null
+                  }
+                  Update: {
+                    "actor_id"?: string | null,"at"?: string,"created_at"?: string,"created_by"?: string | null,"data"?: NonNullable<Json>,"deleted_at"?: string | null,"field_clock"?: NonNullable<Json>,"group_key"?: string | null,"id"?: string,"kind"?: string,"read_at"?: string | null,"row_version"?: number,"scope_id"?: string,"task_id"?: string | null,"updated_at"?: string,"user_id"?: string,"workspace_id"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "notifications_scope_id_fkey"
+      columns: ["scope_id"]
+isOneToOne: false
+      referencedRelation: "sync_scopes"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"oauth_states": {
                   Row: {
                     "created_at": string,"provider": string,"redirect_to": string | null,"state": string,"user_id": string
@@ -1176,6 +1196,18 @@ isOneToOne: false
 "my_scope_invites":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"notification_actor":
+{ Args: Record<PropertyKey, never>; Returns: string
+                           },
+"notification_actor_name":
+{ Args: { "p_actor": string,"p_user": string }; Returns: string
+                           },
+"notify":
+{ Args: { "p_actor": string,"p_data": Json,"p_group"?: string,"p_kind": string,"p_task"?: string,"p_user": string,"p_workspace"?: string }; Returns: undefined
+                           },
+"notify_task":
+{ Args: { "p_actor": string,"p_data"?: Json,"p_group"?: string,"p_kind": string,"p_task": Omit<Database["public"]['Tables']["tasks"]['Row'], Database["public"]['Tables']["tasks"]['ComputedFields']>,"p_user": string }; Returns: undefined
+                           },
 "offer_workspace_ownership":
 { Args: { "p_after"?: string,"p_scope": string,"p_user": string }; Returns: string
                            },
@@ -1299,6 +1331,9 @@ isOneToOne: false
 "row_visible":
 { Args: { "p_row": Json,"p_table": string }; Returns: boolean
                            },
+"scope_has_others":
+{ Args: { "p_actor": string,"p_scope": string }; Returns: boolean
+                           },
 "scope_role":
 { Args: { "p_scope": string }; Returns: string
                            },
@@ -1329,8 +1364,14 @@ isOneToOne: false
 "tag_used_in":
 { Args: { "p_scope": string,"p_tag": string }; Returns: boolean
                            },
+"task_responsible_account":
+{ Args: { "p_assignee": string,"p_creator": string,"p_scope": string }; Returns: string
+                           },
 "task_visible":
 { Args: { "p_task": string }; Returns: boolean
+                           },
+"workspace_name":
+{ Args: { "p_scope": string }; Returns: string
                            },
 "workspace_sharing":
 { Args: { "p_scope": string }; Returns: Json

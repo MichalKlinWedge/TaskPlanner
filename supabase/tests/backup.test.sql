@@ -6,12 +6,12 @@ begin;
 create extension if not exists pgtap with schema extensions;
 select plan(5);
 
--- Kolumny `not null` z wartością domyślną w tabelach kopii (bez systemowych i `devices`, której kopia nie ma).
+-- Kolumny `not null` z wartością domyślną w tabelach kopii (bez systemowych oraz `devices` i `notifications`, których kopia nie ma).
 select is(
   array(select (table_name::text || '.' || column_name::text || ' = ' || column_default::text) collate "C"
        from information_schema.columns
       where table_schema = 'public' and is_nullable = 'NO' and column_default is not null
-        and table_name = any(public.synced_tables()) and table_name <> 'devices'
+        and table_name = any(public.synced_tables()) and table_name not in ('devices', 'notifications')
         and column_name not in ('id', 'scope_id', 'created_at', 'updated_at', 'created_by', 'row_version', 'field_clock')
       order by 1),
   array[

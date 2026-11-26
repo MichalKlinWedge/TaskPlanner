@@ -11,6 +11,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useTheme } from "@/lib/theme";
 import { APP_NUMBER } from "@/lib/version";
 
+import { NotificationBell } from "./notifications";
 import { ProfileForm, type ProfileValues } from "./profile-form";
 import { ScopeInvites } from "./sharing";
 import { SettingsScreen } from "./settings-screen";
@@ -53,7 +54,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
   const theme = parseSettings(parseJson(profile?.settings ?? null)).theme;
   useTheme(theme);
 
-  const header = <AppHeader store={store} email={email} settingsLink={isOnboarded(parseJson(profile?.settings ?? null))} />;
+  const header = <AppHeader store={store} userId={userId} email={email} settingsLink={isOnboarded(parseJson(profile?.settings ?? null))} />;
   if (ms === null || (!profile && !syncTried)) {
     return (
       <>
@@ -159,8 +160,8 @@ function Onboarding({ store, userId, initial }: { store: TabStore; userId: strin
   );
 }
 
-/** Pasek: stan synchronizacji (sieć, zmiany w kolejce, błąd), ustawienia (po onboardingu) i wylogowanie. */
-function AppHeader({ store, email, settingsLink }: { store: TabStore; email: string | null; settingsLink: boolean }) {
+/** Pasek: stan synchronizacji (sieć, zmiany w kolejce, błąd), powiadomienia i ustawienia (po onboardingu), wylogowanie. */
+function AppHeader({ store, userId, email, settingsLink }: { store: TabStore; userId: string; email: string | null; settingsLink: boolean }) {
   const status = useStoreStatus();
   const [route] = useRoute();
   const stale = useStaleLeader(store);
@@ -272,6 +273,7 @@ function AppHeader({ store, email, settingsLink }: { store: TabStore; email: str
         </button>
         <span className="flex-1" />
         {email ? <span className="hidden text-xs opacity-60 sm:inline">{email}</span> : null}
+        {settingsLink ? <NotificationBell store={store} userId={userId} /> : null}
         {settingsLink ? (
           <a
             href={routeHash({ view: "settings" })}

@@ -22,6 +22,7 @@ import { ErrorsCard } from "./errors-card";
 import { InvitesCard, useAppAdmin } from "./invites-card";
 import { PluginsCard } from "./plugins-card";
 import { InstallCard, OfflineCard } from "./pwa-cards";
+import { NotificationsCard } from "./notifications";
 import { RemindersCard } from "./reminders-card";
 import { SettingsSection } from "./settings-section";
 import { VersionCard } from "./version-card";
@@ -54,7 +55,8 @@ export function SettingsScreen({ store, userId, email, timeZone, general }: { st
 
   const sections: Section[] = [
     { id: "general", icon: "⚙️", label: "Ogólne", body: <SettingsSection title="Ogólne">{general}</SettingsSection> },
-    { id: "reminders", icon: "🔔", label: "Przypomnienia", body: <RemindersCard store={store} userId={userId} /> },
+    { id: "reminders", icon: "⏰", label: "Przypomnienia", body: <RemindersCard store={store} userId={userId} /> },
+    { id: "notifications", icon: "🔔", label: "Powiadomienia", body: <NotificationsCard store={store} userId={userId} /> },
     { id: "calendars", icon: "📆", label: "Połączone kalendarze", alert: calendarProblems > 0, body: <CalendarsCard store={store} timeZone={timeZone} /> },
     { id: "plugins", icon: "🔌", label: "Integracje", alert: connections.some((c) => c.status === "error"), body: <PluginsCard store={store} userId={userId} /> },
     { id: "ai", icon: "✨", label: "Asystent AI", alert: ai?.status === "error", body: <AiCard store={store} /> },

@@ -136,6 +136,7 @@ describe('ustawienia profilu', () => {
       taskPanel: { collapsed: {} },
       timeline: { collapsed: [] },
       views: {},
+      notifications: { tasks: 'app', sharing: 'app', toast: true },
       onboarded: false,
     });
   });

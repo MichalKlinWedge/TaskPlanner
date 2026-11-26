@@ -11,6 +11,7 @@ import { z } from 'zod';
 
 import { FocusSettings, FocusState } from '../focus.ts';
 import { HabitSettings } from '../habits.ts';
+import { NotificationData, NotificationKind, NotificationPrefs } from '../notifications.ts';
 import { PluginRuleOptions, PluginTrigger } from '../plugins/rules.ts';
 import { Recurrence } from '../recurrence.ts';
 import { ProjectTemplateContent } from '../templates.ts';
@@ -157,6 +158,8 @@ export const ProfileSettings = z.object({
   timeline: z.object({ collapsed: z.array(z.string().max(64)).max(500).default([]) }).prefault({}),
   /** Widoki zbiorcze: ustawienia widoku (uszkodzone pomijane); `tag` / `filter` — kolumny wszystkich widoków tagu / zapisanego filtra. */
   views: z.object({ inbox: smartViewPrefs, today: smartViewPrefs, overdue: smartViewPrefs, upcoming: smartViewPrefs, tag: smartViewPrefs, filter: smartViewPrefs }).prefault({}),
+  /** Centrum powiadomień (v1.x): kanał dla grupy zdarzeń i dymek przy nowym. */
+  notifications: NotificationPrefs.prefault({}),
   /** Onboarding zakończony (M1) — bez niego aplikacja po zalogowaniu pokazuje kreator. */
   onboarded: z.boolean().default(false),
 });
@@ -438,6 +441,23 @@ export const ProjectTemplateRow = z.object({
   sort_key: SortKey,
 });
 
+// ── Wiersze: powiadomienia (v1.x, zakres osobisty; tworzy serwer) ───────────────────────────
+
+/** Powiadomienie (`core/notifications.ts`); klient zmienia tylko `read_at` (i `deleted_at`). */
+export const NotificationRow = z.object({
+  id: Id,
+  /** Zakres osobisty = odbiorca. */
+  user_id: Id,
+  kind: NotificationKind,
+  task_id: Id.nullable(),
+  workspace_id: Id.nullable(),
+  actor_id: Id.nullable(),
+  data: NotificationData,
+  group_key: z.string().nullable(),
+  at: Instant,
+  read_at: Instant.nullable(),
+});
+
 /** Schemat wiersza po nazwie tabeli (formularze, walidacja operacji przed `mutate`). */
 export const MODEL = {
   workspaces: WorkspaceRow,
@@ -460,6 +480,7 @@ export const MODEL = {
   plugin_rules: PluginRuleRow,
   plugin_requests: PluginRequestRow,
   project_templates: ProjectTemplateRow,
+  notifications: NotificationRow,
 } as const;
 export type ModelTable = keyof typeof MODEL;
 export type ModelRow<T extends ModelTable> = z.infer<(typeof MODEL)[T]>;

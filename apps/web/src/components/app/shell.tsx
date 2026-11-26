@@ -14,6 +14,7 @@ import { useAppData, useLateCount, useToday, type List, type Workspace } from "@
 import { GOOGLE_RETURN_PARAM } from "@/lib/calendars";
 import { DEFAULT_ROUTE, routeHash, useRoute, type Route } from "@/lib/route";
 import { useLocalQuery } from "@/lib/local-store";
+import { OPEN_TASK_EVENT } from "@/lib/notifications";
 import { dropClip, pendingClip } from "@/lib/web-clip";
 
 import { AppEnvProvider, useAppEnv, visibleTaskIds, type TaskPanelMode } from "./app-env";
@@ -31,6 +32,7 @@ import { CollaboratorsView } from "./collaborators";
 import { HabitDetail, HabitNotificationActions, HabitsView } from "./habits";
 import { DeliveryLogScreen } from "./plugins-card";
 import { ChangelogScreen } from "./changelog";
+import { NotificationToasts } from "./notifications";
 import { QuickAddDialog } from "./quick-add";
 import { ReminderNotificationActions } from "./reminder-actions";
 import { TaskPanel } from "./task-panel";
@@ -184,7 +186,7 @@ export function Shell({
           !!target?.isConnected &&
           e.button === 0 &&
           !scrollbar &&
-          !target.closest('aside[aria-label="Zadanie"], [data-task-panel], #sidebar, [role=dialog], [role=status], [data-task-id], [data-card], [data-bulk-bar]'),
+          !target.closest('aside[aria-label="Zadanie"], [data-task-panel], #sidebar, [role=dialog], [role=status], [data-task-id], [data-card], [data-bulk-bar], [data-notifications]'),
       };
     };
     const onClick = () => {
@@ -211,6 +213,15 @@ export function Shell({
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
     return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [openTask]);
+  // Klik w powiadomienie w nagłówku (poza `Shell`).
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      const taskId = (event as CustomEvent<{ taskId?: unknown }>).detail?.taskId;
+      if (typeof taskId === "string") openTask(taskId);
+    };
+    window.addEventListener(OPEN_TASK_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_TASK_EVENT, onOpen);
   }, [openTask]);
 
   const [palette, setPalette] = useState<PaletteMode | null>(null);
@@ -464,6 +475,7 @@ export function Shell({
         <AttachmentsProvider store={store} userId={userId}>
         <FocusProvider store={store} userId={userId} settings={settings}>
         <ReminderToasts />
+        <NotificationToasts store={store} userId={userId} />
         <HabitNotificationActions />
         <ReminderNotificationActions />
         <Keyboard

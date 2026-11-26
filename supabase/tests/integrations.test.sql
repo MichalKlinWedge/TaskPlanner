@@ -120,7 +120,8 @@ select is((select array_agg(tbl order by tbl) from public.integration_tombstones
 reset role;
 select set_eq($$ select jobname || ' ' || schedule from cron.job where jobname like 'taskplanner-%' $$,
   array['taskplanner-reminders-push * * * * *', 'taskplanner-calendar-poll */10 * * * *', 'taskplanner-calendar-renew 17 3 * * *', 'taskplanner-oauth-states-cleanup 23 * * * *',
-         'taskplanner-client-errors-retention 43 3 * * *', 'taskplanner-plugins-tick * * * * *', 'taskplanner-plugins-retention 37 3 * * *'],
+         'taskplanner-client-errors-retention 43 3 * * *', 'taskplanner-plugins-tick * * * * *', 'taskplanner-plugins-retention 37 3 * * *',
+         'taskplanner-notifications-retention 47 3 * * *'],
   'zadania pg_cron');
 
 select * from finish();
