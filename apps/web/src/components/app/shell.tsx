@@ -33,7 +33,7 @@ import { HabitDetail, HabitNotificationActions, HabitsView } from "./habits";
 import { HomeView } from "./home";
 import { DeliveryLogScreen } from "./plugins-card";
 import { ChangelogScreen } from "./changelog";
-import { NotificationToasts } from "./notifications";
+import { NotificationsScreen, NotificationToasts } from "./notifications";
 import { QuickAddDialog } from "./quick-add";
 import { ReminderNotificationActions } from "./reminder-actions";
 import { TaskPanel } from "./task-panel";
@@ -405,6 +405,8 @@ export function Shell({
       settingsView
     ) : route.view === "deliveries" ? (
       <DeliveryLogScreen />
+    ) : route.view === "notifications" ? (
+      <NotificationsScreen />
     ) : route.view === "changelog" ? (
       <ChangelogScreen />
     ) : route.view === "trash" ? (

@@ -1,4 +1,5 @@
 [
+  {"version":"0.43.0.0","kind":"y","date":"2026-11-26","title":"Powiadomienia: zmiany terminów, problemy z integracjami, kalendarzem, kluczem AI i miejscem na załączniki oraz widok wszystkich powiadomień z filtrami"},
   {"version":"0.42.1.0","kind":"w","date":"2026-11-26","title":"Strona startowa: pole dodawania do Inboxu i pulpit statystyk"},
   {"version":"0.42.0.0","kind":"y","date":"2026-11-26","title":"Powiadomienia: push na komputer z centrum powiadomień, cisza nocna i licznik na ikonie aplikacji"},
   {"version":"0.41.0.0","kind":"y","date":"2026-11-26","title":"Centrum powiadomień: dzwonek 🔔 z przypisaniami, komentarzami i zdarzeniami udostępniania"},

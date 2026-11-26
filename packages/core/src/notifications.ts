@@ -1,5 +1,5 @@
 /**
- * Centrum powiadomień (v1.x, etap N1; migracja `*_v1x_notifications.sql`). Wiersze `notifications` tworzy
+ * Centrum powiadomień (v1.x, etapy N1–N3; migracje `*_v1x_notifications.sql`, `*_v1x_notification_system.sql`). Wiersze `notifications` tworzy
  * serwer (wyzwalacze) w zakresie osobistym odbiorcy; klient zaznacza tylko „przeczytane” (`read_at`) i usuwa
  * z listy (`deleted_at`). Tu: rodzaje, teksty (te same w UI i — od N2 — w treści push), cel kliknięcia,
  * filtrowanie według ustawień i grupowanie po dniach.
@@ -7,36 +7,48 @@
 import { z } from 'zod';
 
 import { addDays, localDateAt, localDateTimeAt } from './dates.ts';
-import { dayLabel, pluralForm } from './format.ts';
+import { dayChip, dayLabel, formatBytes, pluralForm } from './format.ts';
 import { LocalTime } from './schemas/primitives.ts';
 import { SCOPE_ROLE, type OwnerAfter, type ScopeRole } from './sharing.ts';
 
 export const NOTIFICATION_KINDS = [
-  'assigned', 'comment', 'participant', 'completed',
+  'assigned', 'comment', 'participant', 'completed', 'due_changed',
   'invite', 'owner_offer', 'member_joined', 'member_left', 'member_removed', 'role_changed',
+  'delivery_failed', 'connection_error', 'calendar_error', 'ai_error', 'storage_quota',
 ] as const;
 export const NotificationKind = z.enum(NOTIFICATION_KINDS);
 export type NotificationKind = z.infer<typeof NotificationKind>;
 
-/** Grupa w ustawieniach: zadania we wspólnych przestrzeniach albo udostępnianie. */
-export type NotificationGroup = 'tasks' | 'sharing';
+/** Grupa w ustawieniach: zadania we wspólnych przestrzeniach, udostępnianie, zdarzenia systemowe (N3). */
+export type NotificationGroup = 'tasks' | 'sharing' | 'system';
+export const NOTIFICATION_GROUPS: readonly NotificationGroup[] = ['tasks', 'sharing', 'system'];
 export const NOTIFICATION_GROUP: Record<NotificationKind, NotificationGroup> = {
   assigned: 'tasks',
   comment: 'tasks',
   participant: 'tasks',
   completed: 'tasks',
+  due_changed: 'tasks',
   invite: 'sharing',
   owner_offer: 'sharing',
   member_joined: 'sharing',
   member_left: 'sharing',
   member_removed: 'sharing',
   role_changed: 'sharing',
+  delivery_failed: 'system',
+  connection_error: 'system',
+  calendar_error: 'system',
+  ai_error: 'system',
+  storage_quota: 'system',
 };
 
 export const NOTIFICATION_GROUP_LABEL: Record<NotificationGroup, { title: string; hint: string }> = {
-  tasks: { title: 'Zadania we wspólnych przestrzeniach', hint: 'przypisanie, komentarz, dodanie jako uczestnik, ukończenie Twojego zadania' },
+  tasks: { title: 'Zadania we wspólnych przestrzeniach', hint: 'przypisanie, komentarz, dodanie jako uczestnik, ukończenie i zmiana terminu Twojego zadania' },
   sharing: { title: 'Udostępnianie', hint: 'zaproszenia, propozycje roli właściciela, osoby dołączające i odchodzące, zmiana Twojej roli' },
+  system: { title: 'Integracje i konto', hint: 'nieudane wysyłki integracji, wyłączone połączenie, kalendarz bez synchronizacji, odrzucony klucz AI, kończące się miejsce na załączniki' },
 };
+
+/** Krótka nazwa grupy (filtry widoku `#/notifications`). */
+export const NOTIFICATION_GROUP_SHORT: Record<NotificationGroup, string> = { tasks: 'Zadania', sharing: 'Udostępnianie', system: 'Integracje i konto' };
 
 /** `push` = w aplikacji i Web Push na przeglądarki z włączonymi przypomnieniami (etap N2). */
 export const NotificationChannel = z.enum(['off', 'app', 'push']);
@@ -52,6 +64,7 @@ export const NOTIFICATION_CHANNEL: Record<NotificationChannel, string> = {
 export const NotificationPrefs = z.object({
   tasks: NotificationChannel.catch('app').default('app'),
   sharing: NotificationChannel.catch('app').default('app'),
+  system: NotificationChannel.catch('app').default('app'),
   /** Dymek przy nowym powiadomieniu, gdy karta jest widoczna. */
   toast: z.boolean().catch(true).default(true),
   /** Cisza nocna: bez Web Push w tych godzinach (strefa z ustawień); dzwonek w aplikacji działa dalej. */
@@ -71,6 +84,17 @@ export const NotificationData = z.object({
   role: z.enum(['owner', 'editor', 'viewer']).optional().catch(undefined),
   after: z.enum(['editor', 'viewer', 'leave']).optional().catch(undefined),
   count: z.number().int().min(1).optional().catch(undefined),
+  // N3: nazwa połączenia / konta, plugin, termin (pusty tekst = brak), odwołany dostęp, zajęte miejsce.
+  label: z.string().max(200).optional().catch(undefined),
+  plugin: z.string().max(50).optional().catch(undefined),
+  due: z.string().max(10).optional().catch(undefined),
+  time: z.string().max(8).optional().catch(undefined),
+  before: z.string().max(10).optional().catch(undefined),
+  beforeTime: z.string().max(8).optional().catch(undefined),
+  revoked: z.boolean().optional().catch(undefined),
+  percent: z.number().int().min(0).max(1000).optional().catch(undefined),
+  used: z.number().int().min(0).optional().catch(undefined),
+  quota: z.number().int().min(0).optional().catch(undefined),
 });
 export type NotificationData = z.infer<typeof NotificationData>;
 
@@ -125,9 +149,13 @@ const roleName = (role: ScopeRole | undefined) => (role ? SCOPE_ROLE[role] : nul
 const afterNote = (after: OwnerAfter | undefined) =>
   after === 'leave' ? 'po przekazaniu ta osoba opuści przestrzeń' : after ? `po przekazaniu ta osoba zostanie z rolą ${SCOPE_ROLE[after]}` : 'jako kolejny właściciel';
 
+/** Termin z migawki: „pt., 20.11 14:00”, pusty = „bez terminu”. */
+const dueText = (date: string | undefined, time: string | undefined) =>
+  date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? `${dayChip(date)}${time ? ` ${time.slice(0, 5)}` : ''}` : 'bez terminu';
+
 /** Treść powiadomienia: główny tekst i linia szczegółów (autor, fragment komentarza). Bez form rodzajowych. */
 export function notificationText(n: Pick<AppNotification, 'kind' | 'data'>): { text: string; detail: string | null } {
-  const { actor, title, workspace, excerpt, role, after } = n.data;
+  const { actor, title, workspace, excerpt, role, after, label } = n.data;
   const count = n.data.count ?? 1;
   const task = quoted(title, 'zadaniu');
   // Tytuł / nazwa po spacji albo nic (migawka może być pusta).
@@ -159,6 +187,29 @@ export function notificationText(n: Pick<AppNotification, 'kind' | 'data'>): { t
       return { text: `Nie należysz już do przestrzeni${space}`, detail: from };
     case 'role_changed':
       return { text: `Nowa rola w przestrzeni${space}: ${roleName(role) ?? '—'}`, detail: from };
+    case 'due_changed':
+      return {
+        text: `Nowy termin zadania${named(title)}: ${dueText(n.data.due, n.data.time)}`,
+        detail: join(`Było: ${dueText(n.data.before, n.data.beforeTime)}`, from),
+      };
+    case 'delivery_failed': {
+      const what = count > 1 ? `${count} ${pluralForm(count, ['nieudana wysyłka', 'nieudane wysyłki', 'nieudanych wysyłek'])}` : 'Nieudana wysyłka';
+      return { text: `${what} do${named(label) || ' integracji'}`, detail: join(title ? `Zadanie: „${title}”` : null, excerpt || null) };
+    }
+    case 'connection_error':
+      return { text: `Integracja${named(label)} wyłączona — usługa odmówiła dostępu`, detail: excerpt || null };
+    case 'calendar_error':
+      return n.data.revoked
+        ? { text: `Kalendarz${named(label)} odłączony — połącz go ponownie`, detail: excerpt || null }
+        : { text: `Kalendarz${named(label)} nie synchronizuje się`, detail: excerpt || null };
+    case 'ai_error':
+      return { text: `Klucz asystenta AI${label ? ` (${label})` : ''} został odrzucony`, detail: excerpt || null };
+    case 'storage_quota': {
+      const used = n.data.used !== undefined && n.data.quota ? `Zajęte ${formatBytes(n.data.used)} z ${formatBytes(n.data.quota)}` : null;
+      return (n.data.percent ?? 0) >= 100
+        ? { text: 'Brak miejsca na nowe załączniki', detail: join(used, 'usuń na stałe zadania z plikami z kosza') }
+        : { text: `Załączniki zajmują ${n.data.percent ?? 90} % miejsca`, detail: used };
+    }
   }
 }
 
@@ -166,11 +217,18 @@ export type NotificationTarget =
   | { kind: 'task'; taskId: string }
   | { kind: 'invites' }
   | { kind: 'workspace'; workspaceId: string }
+  | { kind: 'deliveries' }
+  | { kind: 'settings'; section: 'plugins' | 'calendars' | 'ai' }
   | { kind: 'none' };
 
-/** Co otwiera kliknięcie: zadanie, pasek zaproszeń albo ekran przestrzeni. */
+/** Co otwiera kliknięcie: zadanie, pasek zaproszeń, ekran przestrzeni, dziennik wysyłek albo sekcja ustawień. */
 export function notificationTarget(n: Pick<AppNotification, 'kind' | 'taskId' | 'workspaceId'>): NotificationTarget {
   if (NOTIFICATION_GROUP[n.kind] === 'tasks') return n.taskId ? { kind: 'task', taskId: n.taskId } : { kind: 'none' };
+  if (n.kind === 'delivery_failed') return { kind: 'deliveries' };
+  if (n.kind === 'connection_error') return { kind: 'settings', section: 'plugins' };
+  if (n.kind === 'calendar_error') return { kind: 'settings', section: 'calendars' };
+  if (n.kind === 'ai_error') return { kind: 'settings', section: 'ai' };
+  if (n.kind === 'storage_quota') return { kind: 'none' };
   if (n.kind === 'invite' || n.kind === 'owner_offer') return { kind: 'invites' };
   if (n.kind === 'member_removed' || !n.workspaceId) return { kind: 'none' };
   return { kind: 'workspace', workspaceId: n.workspaceId };
@@ -191,6 +249,31 @@ export function visibleNotifications(
 
 export const unreadCount = (list: readonly AppNotification[], prefs: NotificationPrefs, now: Date): number =>
   visibleNotifications(list, prefs, now, 'unread').length;
+
+/** Filtry widoku `#/notifications` (N3); `workspaceId` dotyczy tylko powiadomień z przestrzenią. */
+export interface NotificationFilter {
+  only: 'unread' | 'all';
+  group: NotificationGroup | null;
+  workspaceId: string | null;
+}
+
+export function filterNotifications(
+  list: readonly AppNotification[],
+  prefs: NotificationPrefs,
+  now: Date,
+  { only, group, workspaceId }: NotificationFilter,
+): AppNotification[] {
+  return visibleNotifications(list, prefs, now, only).filter(
+    (n) => (!group || NOTIFICATION_GROUP[n.kind] === group) && (!workspaceId || n.workspaceId === workspaceId),
+  );
+}
+
+/** Przestrzenie, z których są powiadomienia (do listy filtra), w kolejności pierwszego wystąpienia; nazwa z migawki. */
+export function notificationWorkspaces(list: readonly AppNotification[]): { id: string; name: string }[] {
+  const out = new Map<string, string>();
+  for (const n of list) if (n.workspaceId && !out.has(n.workspaceId)) out.set(n.workspaceId, n.data.workspace ?? '');
+  return [...out].map(([id, name]) => ({ id, name }));
+}
 
 /** Sekcje listy: „Dziś”, „Wczoraj”, dalej dzień tygodnia z datą (strefa z ustawień albo urządzenia). */
 export function notificationDays(
@@ -272,7 +355,16 @@ export function notificationPush(n: AppNotification): { title: string; body: str
   return {
     title: text,
     body: detail ?? '',
-    url: target.kind === 'task' ? `/?task=${target.taskId}` : target.kind === 'workspace' ? '/#/manage' : '/',
+    url:
+      target.kind === 'task'
+        ? `/?task=${target.taskId}`
+        : target.kind === 'workspace'
+          ? '/#/manage'
+          : target.kind === 'deliveries'
+            ? '/#/deliveries'
+            : target.kind === 'settings'
+              ? `/#/settings/${target.section}`
+              : '/',
     tag: `tp-n:${n.groupKey ?? n.id}`,
     ...(target.kind === 'task' && { taskId: target.taskId }),
   };

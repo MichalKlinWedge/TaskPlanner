@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   dismissOps,
+  filterNotifications,
   freshNotifications,
   inQuietHours,
   markReadOps,
@@ -12,6 +13,7 @@ import {
   notificationTarget,
   notificationText,
   notificationTime,
+  notificationWorkspaces,
   NotificationPrefs,
   toNotification,
   unreadCount,
@@ -155,6 +157,7 @@ describe('ustawienia i wiersz', () => {
     expect(NotificationPrefs.parse({ tasks: 'głośno', sharing: 'off', toast: 'tak', quiet: { from: '25:00' } })).toEqual({
       tasks: 'app',
       sharing: 'off',
+      system: 'app',
       toast: true,
       quiet: { enabled: false, from: '22:00', to: '07:00' },
     });
@@ -207,5 +210,62 @@ describe('Web Push (N2)', () => {
     });
     expect(notificationPush(note({ kind: 'role_changed', data: { workspace: 'Dom', role: 'editor' } }))).toMatchObject({ url: '/#/manage', tag: `tp-n:${note().id}` });
     expect(notificationPush(note({ kind: 'invite', data: {} }))).toMatchObject({ url: '/', body: '' });
+  });
+});
+
+describe('zdarzenia systemowe i terminy (N3)', () => {
+  const sys = (kind: AppNotification['kind'], data: AppNotification['data']) => note({ kind, data, taskId: null, workspaceId: null, actorId: null });
+
+  it('zmiana terminu: nowy i pierwotny termin, pusty = bez terminu', () => {
+    const n = note({ kind: 'due_changed', data: { actor: 'Jan', title: 'Raport', due: '2026-11-20', time: '14:00', before: '2026-11-19', beforeTime: '' } });
+    expect(notificationText(n)).toEqual({ text: 'Nowy termin zadania „Raport”: pt., 20.11 14:00', detail: 'Było: czw., 19.11 · Od: Jan' });
+    expect(notificationText({ ...n, data: { title: 'Raport', due: '', time: '', before: '2026-11-19' } }).text).toBe('Nowy termin zadania „Raport”: bez terminu');
+    expect(notificationTarget(n)).toEqual({ kind: 'task', taskId: n.taskId });
+  });
+
+  it('teksty i cele zdarzeń systemowych', () => {
+    expect(notificationText(sys('delivery_failed', { label: 'Slack zespołu', title: 'Raport', excerpt: 'HTTP 500', count: 3 }))).toEqual({
+      text: '3 nieudane wysyłki do „Slack zespołu”',
+      detail: 'Zadanie: „Raport” · HTTP 500',
+    });
+    expect(notificationText(sys('delivery_failed', {})).text).toBe('Nieudana wysyłka do integracji');
+    expect(notificationText(sys('connection_error', { label: 'GitLab', excerpt: '401' })).text).toBe('Integracja „GitLab” wyłączona — usługa odmówiła dostępu');
+    expect(notificationText(sys('calendar_error', { label: 'Praca', revoked: true })).text).toBe('Kalendarz „Praca” odłączony — połącz go ponownie');
+    expect(notificationText(sys('calendar_error', { label: 'Praca' })).text).toBe('Kalendarz „Praca” nie synchronizuje się');
+    expect(notificationText(sys('ai_error', { label: 'Gemini' })).text).toBe('Klucz asystenta AI (Gemini) został odrzucony');
+    expect(notificationText(sys('storage_quota', { percent: 90, used: 236_000_000, quota: 262_144_000 })).text).toBe('Załączniki zajmują 90 % miejsca');
+    expect(notificationText(sys('storage_quota', { percent: 100 })).text).toBe('Brak miejsca na nowe załączniki');
+
+    expect(notificationTarget(sys('delivery_failed', {}))).toEqual({ kind: 'deliveries' });
+    expect(notificationTarget(sys('connection_error', {}))).toEqual({ kind: 'settings', section: 'plugins' });
+    expect(notificationTarget(sys('calendar_error', {}))).toEqual({ kind: 'settings', section: 'calendars' });
+    expect(notificationTarget(sys('ai_error', {}))).toEqual({ kind: 'settings', section: 'ai' });
+    expect(notificationTarget(sys('storage_quota', {}))).toEqual({ kind: 'none' });
+    expect(notificationPush(sys('connection_error', { label: 'GitLab' })).url).toBe('/#/settings/plugins');
+    expect(notificationPush(sys('delivery_failed', {})).url).toBe('/#/deliveries');
+  });
+
+  it('grupa „system” ma własny kanał (push, wyłączenie)', () => {
+    const n = sys('ai_error', {});
+    expect(visibleNotifications([n], { ...prefs, system: 'off' }, NOW)).toEqual([]);
+    expect(wantsPush({ ...n, at: '2026-11-18T11:58:00Z' }, { ...prefs, system: 'push' }, NOW, TZ)).toBe(true);
+    expect(wantsPush({ ...n, at: '2026-11-18T11:58:00Z' }, { ...prefs, tasks: 'push' }, NOW, TZ)).toBe(false);
+  });
+
+  it('filtry widoku: stan, grupa, przestrzeń; lista przestrzeni z migawki', () => {
+    const W2 = '01900000-0000-7000-8000-0000000000b2';
+    const a = note({ id: 'a', data: { workspace: 'Dom' } });
+    const b = note({ id: 'b', kind: 'invite', workspaceId: W2, data: { workspace: 'Praca' }, readAt: '2026-11-18T11:55:00Z' });
+    const c = sys('ai_error', {});
+    const list = [a, b, { ...c, id: 'c' }];
+    const ids = (f: Parameters<typeof filterNotifications>[3]) => filterNotifications(list, prefs, NOW, f).map((n) => n.id);
+    expect(ids({ only: 'all', group: null, workspaceId: null })).toHaveLength(3);
+    expect(ids({ only: 'unread', group: null, workspaceId: null }).sort()).toEqual(['a', 'c']);
+    expect(ids({ only: 'all', group: 'sharing', workspaceId: null })).toEqual(['b']);
+    expect(ids({ only: 'all', group: null, workspaceId: W2 })).toEqual(['b']);
+    expect(notificationWorkspaces(list)).toEqual([
+      { id: a.workspaceId, name: 'Dom' },
+      { id: W2, name: 'Praca' },
+    ]);
   });
 });

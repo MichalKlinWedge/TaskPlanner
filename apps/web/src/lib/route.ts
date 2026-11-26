@@ -27,6 +27,7 @@ export type Route =
   | { view: "people" }
   | { view: "settings"; id?: string }
   | { view: "deliveries" }
+  | { view: "notifications" }
   | { view: "changelog" };
 
 /** Strona startowa: po zalogowaniu (pusty `#`) i po kliknięciu „Task Planner” w nagłówku. */
@@ -48,6 +49,7 @@ export function parseRoute(hash: string): Route {
     case "trash":
     case "people":
     case "deliveries":
+    case "notifications":
     case "changelog":
       return { view };
     case "list":

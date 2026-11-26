@@ -1,27 +1,31 @@
 "use client";
 
 /**
- * Centrum powiadomień (v1.x, N1): dzwonek w nagłówku z licznikiem nieprzeczytanych i listą, dymek przy nowym
- * powiadomieniu (karta widoczna) i Ustawienia → „Powiadomienia”. Logika (teksty, cel, filtr, dni) w core
+ * Centrum powiadomień (v1.x, N1–N3): dzwonek w nagłówku z licznikiem nieprzeczytanych i listą, widok
+ * `#/notifications` z filtrami, dymek przy nowym powiadomieniu (karta widoczna) i Ustawienia → „Powiadomienia”. Logika (teksty, cel, filtr, dni) w core
  * `notifications.ts`; dane z lokalnej bazy (`lib/notifications.ts`).
  */
 import {
   dismissOps,
+  filterNotifications,
   freshNotifications,
   markReadOps,
   NOTIFICATION_CHANNEL,
   NOTIFICATION_GROUP_LABEL,
+  NOTIFICATION_GROUP_SHORT,
+  NOTIFICATION_GROUPS,
   notificationDays,
   notificationSeenKey,
   notificationTarget,
   notificationText,
   notificationTime,
+  notificationWorkspaces,
   plural,
   unreadCount,
   visibleNotifications,
   type AppNotification,
   type NotificationChannel,
-  type NotificationGroup,
+  type NotificationFilter,
   type NotificationPrefs,
 } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
@@ -33,6 +37,7 @@ import { requestOpenTask, useNotifications } from "@/lib/notifications";
 import { browserDeviceId } from "@/lib/push";
 import { routeHash } from "@/lib/route";
 
+import { useAppEnv } from "./app-env";
 import { SettingsSection } from "./settings-section";
 import { useTaskActions } from "./task-item";
 import { Notice, Select } from "./ui";
@@ -48,7 +53,62 @@ const ICON: Record<AppNotification["kind"], string> = {
   member_left: "➖",
   member_removed: "🚪",
   role_changed: "🎚️",
+  due_changed: "📅",
+  delivery_failed: "📤",
+  connection_error: "🔌",
+  calendar_error: "📆",
+  ai_error: "✨",
+  storage_quota: "📦",
 };
+
+/** Kliknięcie powiadomienia: zadanie w panelu, ekran przestrzeni, dziennik wysyłek, sekcja ustawień albo pasek zaproszeń. */
+function openTarget(n: AppNotification) {
+  const target = notificationTarget(n);
+  if (target.kind === "task") requestOpenTask(target.taskId);
+  else if (target.kind === "workspace") window.location.assign(routeHash({ view: "manage" }));
+  else if (target.kind === "deliveries") window.location.assign(routeHash({ view: "deliveries" }));
+  else if (target.kind === "settings") window.location.assign(routeHash({ view: "settings", id: target.section }));
+  else if (target.kind === "invites") window.scrollTo({ top: 0 });
+}
+
+type Ops = ReturnType<typeof markReadOps>;
+const applyOps = (store: TabStore, ops: Ops) => (ops.length ? void store.mutateMany(ops).catch(() => undefined) : undefined);
+
+/** Lista podzielona na dni (dzwonek i widok `#/notifications`). */
+function NotificationDays({ shown, now, timeZone, store, empty, onOpen }: { shown: AppNotification[]; now: Date; timeZone?: string; store: TabStore; empty: string; onOpen?: () => void }) {
+  if (!shown.length) return <p className="px-3 py-6 text-center text-sm text-[var(--muted)]">{empty}</p>;
+  return notificationDays(shown, now, timeZone).map((day) => (
+    <section key={day.label}>
+      <h3 className="sticky top-0 bg-[var(--surface)] px-3 pt-2 pb-1 text-xs font-medium text-[var(--muted)]">{day.label}</h3>
+      <ul>
+        {day.items.map((n) => (
+          <NotificationItem
+            key={n.id}
+            n={n}
+            now={now}
+            timeZone={timeZone}
+            onOpen={() => {
+              applyOps(store, markReadOps([n], new Date()));
+              onOpen?.();
+              openTarget(n);
+            }}
+            onDismiss={() => applyOps(store, dismissOps([n], new Date()))}
+          />
+        ))}
+      </ul>
+    </section>
+  ));
+}
+
+/** „Teraz” odświeżane co minutę (czas względny i retencja). */
+function useNow(): [Date, (d: Date) => void] {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  return [now, setNow];
+}
 
 /** Licznik w tytule karty: „(3) Task Planner”, a w zainstalowanej aplikacji — znaczek na ikonie (Badging API). */
 function useTitleCount(count: number) {
@@ -64,16 +124,10 @@ export function NotificationBell({ store, userId }: { store: TabStore; userId: s
   const { list, prefs, timeZone } = useNotifications(store, userId);
   const [open, setOpen] = useState(false);
   const [only, setOnly] = useState<"unread" | "all">("unread");
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useNow();
   const box = useRef<HTMLDivElement>(null);
   const count = unreadCount(list, prefs, now);
   useTitleCount(count);
-
-  // Czas względny („5 min temu”) i retencja liczone od „teraz” — odświeżane co minutę i przy otwarciu.
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -96,16 +150,7 @@ export function NotificationBell({ store, userId }: { store: TabStore; userId: s
 
   const shown = visibleNotifications(list, prefs, now, only);
   const unread = visibleNotifications(list, prefs, now, "unread");
-  const apply = (ops: ReturnType<typeof markReadOps>) => (ops.length ? void store.mutateMany(ops).catch(() => undefined) : undefined);
-
-  const activate = (n: AppNotification) => {
-    apply(markReadOps([n], new Date()));
-    const target = notificationTarget(n);
-    setOpen(false);
-    if (target.kind === "task") requestOpenTask(target.taskId);
-    else if (target.kind === "workspace") window.location.assign(routeHash({ view: "manage" }));
-    else if (target.kind === "invites") window.scrollTo({ top: 0 });
-  };
+  const apply = (ops: Ops) => applyOps(store, ops);
 
   return (
     <div ref={box} className="relative" data-notifications>
@@ -154,20 +199,14 @@ export function NotificationBell({ store, userId }: { store: TabStore; userId: s
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {shown.length ? (
-              notificationDays(shown, now, timeZone).map((day) => (
-                <section key={day.label}>
-                  <h3 className="sticky top-0 bg-[var(--surface)] px-3 pt-2 pb-1 text-xs font-medium text-[var(--muted)]">{day.label}</h3>
-                  <ul>
-                    {day.items.map((n) => (
-                      <NotificationItem key={n.id} n={n} now={now} timeZone={timeZone} onOpen={() => activate(n)} onDismiss={() => apply(dismissOps([n], new Date()))} />
-                    ))}
-                  </ul>
-                </section>
-              ))
-            ) : (
-              <p className="px-3 py-6 text-center text-sm text-[var(--muted)]">{only === "unread" ? "Wszystko przeczytane." : "Brak powiadomień."}</p>
-            )}
+            <NotificationDays
+              shown={shown}
+              now={now}
+              timeZone={timeZone}
+              store={store}
+              empty={only === "unread" ? "Wszystko przeczytane." : "Brak powiadomień."}
+              onOpen={() => setOpen(false)}
+            />
           </div>
           <div className="flex items-center gap-2 border-t border-[var(--line)] px-3 py-2 text-xs">
             <button
@@ -179,12 +218,79 @@ export function NotificationBell({ store, userId }: { store: TabStore; userId: s
               Oznacz wszystkie jako przeczytane
             </button>
             <span className="flex-1" />
+            <a href={routeHash({ view: "notifications" })} onClick={() => setOpen(false)} className="text-[var(--muted)] hover:text-[var(--foreground)]" data-testid="notifications-all">
+              Wszystkie
+            </a>
             <a href={routeHash({ view: "settings", id: "notifications" })} onClick={() => setOpen(false)} className="text-[var(--muted)] hover:text-[var(--foreground)]">
               Ustawienia
             </a>
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** Widok `#/notifications`: pełna lista z filtrami (stan, grupa, przestrzeń). */
+export function NotificationsScreen() {
+  const { store, userId, data } = useAppEnv();
+  const { list, prefs, timeZone } = useNotifications(store, userId);
+  const [now] = useNow();
+  const [filter, setFilter] = useState<NotificationFilter>({ only: "all", group: null, workspaceId: null });
+  const shown = filterNotifications(list, prefs, now, filter);
+  const unread = filterNotifications(list, prefs, now, { ...filter, only: "unread" });
+  // Nazwa przestrzeni: bieżąca, gdy jeszcze ją widzę, inaczej z migawki powiadomienia.
+  const spaces = notificationWorkspaces(list).map((w) => ({ id: w.id, name: data.workspaces.find((x) => x.id === w.id)?.name ?? (w.name || "Przestrzeń") }));
+  const groups = NOTIFICATION_GROUPS.filter((g) => prefs[g] !== "off");
+  const chip = (active: boolean) => `rounded-full border px-3 py-0.5 text-sm ${active ? "border-[var(--accent)] bg-[var(--hover)] font-medium" : "border-[var(--line)] text-[var(--muted)] hover:text-[var(--foreground)]"}`;
+  return (
+    <div className="mx-auto max-w-3xl" data-testid="notifications-screen">
+      <h1 className="mb-3 text-xl font-semibold">Powiadomienia</h1>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {(["all", "unread"] as const).map((v) => (
+          <button key={v} type="button" aria-pressed={filter.only === v} onClick={() => setFilter({ ...filter, only: v })} className={chip(filter.only === v)}>
+            {v === "unread" ? "Nieprzeczytane" : "Wszystkie"}
+          </button>
+        ))}
+        <span className="mx-1 h-5 border-l border-[var(--line)]" aria-hidden />
+        <button type="button" aria-pressed={!filter.group} onClick={() => setFilter({ ...filter, group: null })} className={chip(!filter.group)}>
+          Każdy rodzaj
+        </button>
+        {groups.map((g) => (
+          <button key={g} type="button" aria-pressed={filter.group === g} onClick={() => setFilter({ ...filter, group: g })} className={chip(filter.group === g)} data-testid={`notifications-group-${g}`}>
+            {NOTIFICATION_GROUP_SHORT[g]}
+          </button>
+        ))}
+        {spaces.length ? (
+          <Select value={filter.workspaceId ?? ""} onChange={(e) => setFilter({ ...filter, workspaceId: e.target.value || null })} aria-label="Przestrzeń" className="w-auto">
+            <option value="">Wszystkie przestrzenie</option>
+            {spaces.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
+          </Select>
+        ) : null}
+        <span className="flex-1" />
+        <button
+          type="button"
+          disabled={!unread.length}
+          onClick={() => applyOps(store, markReadOps(unread, new Date()))}
+          className="text-sm text-[var(--accent)] hover:underline disabled:cursor-default disabled:text-[var(--muted)] disabled:no-underline"
+        >
+          Oznacz jako przeczytane{unread.length ? ` (${unread.length})` : ""}
+        </button>
+      </div>
+      <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)]">
+        <NotificationDays shown={shown} now={now} timeZone={timeZone} store={store} empty={filter.only === "unread" ? "Wszystko przeczytane." : "Brak powiadomień."} />
+      </div>
+      <p className="mt-3 text-xs text-[var(--muted)]">
+        Powiadomienia starsze niż 90 dni znikają same. Które zdarzenia trafiają tutaj i jako push —{" "}
+        <a href={routeHash({ view: "settings", id: "notifications" })} className="underline">
+          Ustawienia → Powiadomienia
+        </a>
+        .
+      </p>
     </div>
   );
 }
@@ -261,14 +367,15 @@ export function NotificationsCard({ store, userId }: { store: TabStore; userId: 
     void store.mutate("profiles", userId, { settings: { ...parseSettings(raw), notifications: { ...prefs, ...patch } } }).catch((e: unknown) => setError(String(e)));
   };
   const channels: NotificationChannel[] = ["push", "app", "off"];
-  const wantsPush = prefs.tasks === "push" || prefs.sharing === "push";
+  const wantsPush = NOTIFICATION_GROUPS.some((g) => prefs[g] === "push");
   return (
     <SettingsSection title="Powiadomienia">
       <p className="mb-3 text-xs text-[var(--muted)]">
-        Dzwonek 🔔 w nagłówku zbiera zdarzenia z udostępnionych przestrzeni — to, co zrobili inni, nigdy Twoje własne zmiany. Przypomnienia o zadaniach ustawiasz osobno w „Przypomnieniach”.
+        Dzwonek 🔔 w nagłówku zbiera zdarzenia z udostępnionych przestrzeni — to, co zrobili inni, nigdy Twoje własne zmiany — i problemy z integracjami, kalendarzem, kluczem AI
+        czy miejscem na załączniki. Przypomnienia o zadaniach ustawiasz osobno w „Przypomnieniach”.
       </p>
       <div className="flex flex-col gap-3 text-sm">
-        {(Object.keys(NOTIFICATION_GROUP_LABEL) as NotificationGroup[]).map((group) => (
+        {NOTIFICATION_GROUPS.map((group) => (
           <label key={group} className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="min-w-0 flex-1">
               <span className="block font-medium">{NOTIFICATION_GROUP_LABEL[group].title}</span>
