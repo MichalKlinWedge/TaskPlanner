@@ -62,7 +62,7 @@ import { DayPlan } from "./day-plan";
 import { FilterBar } from "./filter-bar";
 import { QuickAdd } from "./quick-add";
 import { DoneCircle, useTaskActions } from "./task-item";
-import { Button, EyeIcon, Input, navLinkClass, Select } from "./ui";
+import { Button, EyeIcon, Input, navLinkClass } from "./ui";
 import { WeekSummaryStep } from "./week-summary";
 
 type Kind = ReviewAction["kind"];
@@ -187,18 +187,27 @@ function useDecide() {
   };
 }
 
-function DecisionButtons({ onPick, compact, disabled }: { onPick: (kind: Kind) => void; compact?: boolean; disabled?: readonly Kind[] }) {
+/**
+ * Przyciski decyzji. `compact` (listy przeglądu tygodnia) = lekkie przyciski bez ramek, żeby tytuł zadania
+ * był najmocniejszy w wierszu; numer klawisza tylko przy wierszu, na który działają klawisze (`keys`).
+ */
+function DecisionButtons({ onPick, compact, keys = true, disabled }: { onPick: (kind: Kind) => void; compact?: boolean; keys?: boolean; disabled?: readonly Kind[] }) {
   return (
-    <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-2"}`}>
+    <div className={`flex flex-wrap items-center ${compact ? "gap-0.5" : "gap-2"}`}>
       {KINDS.map((k) => (
         <button
           key={k}
           type="button"
           disabled={disabled?.includes(k)}
           onClick={() => onPick(k)}
-          className={`inline-flex items-center gap-1.5 rounded-md border border-[var(--line)] ${compact ? "px-1.5 py-0.5 text-xs" : "px-3 py-1.5 text-sm"} hover:bg-[var(--hover)] disabled:opacity-40 ${k === "delete" ? "text-[var(--danger)]" : ""}`}
+          title={keys ? undefined : `${REVIEW_ACTION[k].label} (klawisz ${REVIEW_ACTION[k].key} przy zadaniu otwartym w panelu)`}
+          className={`inline-flex items-center gap-1.5 rounded-md ${
+            compact
+              ? `px-1.5 py-0.5 text-xs hover:bg-[var(--hover)] ${k === "delete" ? "ml-2 text-[var(--danger)]/80 hover:text-[var(--danger)]" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`
+              : `border border-[var(--line)] px-3 py-1.5 text-sm hover:bg-[var(--hover)] ${k === "delete" ? "text-[var(--danger)]" : ""}`
+          } disabled:pointer-events-none disabled:opacity-40`}
         >
-          <kbd className="rounded bg-black/5 px-1 text-[10px] dark:bg-white/10">{REVIEW_ACTION[k].key}</kbd>
+          {keys ? <kbd className="rounded bg-black/5 px-1 text-[10px] dark:bg-white/10">{REVIEW_ACTION[k].key}</kbd> : null}
           {REVIEW_ACTION[k].label}
         </button>
       ))}
@@ -613,31 +622,43 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
     );
   }
 
-  const row = (task: ViewTask, extra?: ReactNode) => (
-    <li key={task.id} className={`flex flex-col gap-1.5 px-3 py-2 ${openTaskId === task.id ? openRowClass : ""}`} data-task-row={task.id} data-task-id={task.id}>
-      <div className="flex items-center gap-2 text-sm">
-        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: PRIORITY[task.priority].color }} />
-        <button type="button" className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => openTask(task.id)}>
-          {task.title}
-        </button>
-        {task.dueDate ? <span className={`text-xs ${task.dueDate < ctx.today ? "text-[var(--danger)]" : "text-[var(--muted)]"}`}>{relativeDay(task.dueDate, ctx.today)}</span> : null}
-        {needsDecision(task) ? <span className="rounded bg-amber-100 px-1 text-xs text-amber-900 dark:bg-amber-900/40 dark:text-amber-100" title="Przesuwane 3 razy lub więcej">{task.postponeCount}× przesuwane</span> : null}
-        <OpenButtons task={task} />
-      </div>
-      {picking === task.id ? (
-        <DatePick initial={addDays(ctx.today, 2)} onPick={(date) => act(task, { kind: "date", date })} onCancel={() => setPicking(null)} />
-      ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <DecisionButtons compact onPick={pickFor(task)} disabled={task.recurrence ? ["someday"] : []} />
-          {extra}
+  // Wiersz, na który działają klawisze 1–6 (otwarty w panelu albo pierwszy) — tylko on pokazuje numery klawiszy.
+  const target = (keyed.find((t) => t.id === openTaskId) ?? keyed[0])?.id;
+  const row = (task: ViewTask, extra?: ReactNode) => {
+    const keys = task.id === target;
+    return (
+      <li
+        key={task.id}
+        className={`flex flex-col gap-1 px-3 py-2.5 ${openTaskId === task.id ? openRowClass : keys ? "shadow-[inset_3px_0_0_var(--line)]" : ""}`}
+        data-task-row={task.id}
+        data-task-id={task.id}
+      >
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: PRIORITY[task.priority].color }} />
+          <button type="button" className="min-w-0 flex-1 truncate text-left text-[15px] font-medium hover:underline" onClick={() => openTask(task.id)}>
+            {task.title}
+          </button>
+          {needsDecision(task) ? <span className="shrink-0 rounded bg-amber-100 px-1 text-xs text-amber-900 dark:bg-amber-900/40 dark:text-amber-100" title="Przesuwane 3 razy lub więcej">{task.postponeCount}× przesuwane</span> : null}
+          {task.dueDate ? <span className={`shrink-0 text-xs ${task.dueDate < ctx.today ? "text-[var(--danger)]" : "text-[var(--muted)]"}`}>{relativeDay(task.dueDate, ctx.today)}</span> : null}
+          <OpenButtons task={task} />
         </div>
-      )}
-    </li>
-  );
+        {picking === task.id ? (
+          <div className="pl-4">
+            <DatePick initial={addDays(ctx.today, 2)} onPick={(date) => act(task, { kind: "date", date })} onCancel={() => setPicking(null)} />
+          </div>
+        ) : (
+          <div className="-ml-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 pl-4">
+            <DecisionButtons compact keys={keys} onPick={pickFor(task)} disabled={task.recurrence ? ["someday"] : []} />
+            {extra}
+          </div>
+        )}
+      </li>
+    );
+  };
   const move = (task: ViewTask) => (
-    <Select
+    <select
       aria-label="Przenieś do listy"
-      className="py-0.5 text-xs"
+      className="rounded-md border-0 bg-transparent py-0.5 pr-1 pl-1.5 text-xs text-[var(--muted)] outline-none hover:bg-[var(--hover)] hover:text-[var(--foreground)] focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
       value=""
       onChange={(e) => {
         if (!e.target.value) return;
@@ -654,7 +675,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
             {l.name}
           </option>
         ))}
-    </Select>
+    </select>
   );
   const empty = (text: string) => <p className="rounded-md border border-dashed border-[var(--line)] px-3 py-4 text-center text-sm text-[var(--muted)]">{filtered && FILTERED.includes(step) ? "Nic w tym kroku nie pasuje do filtra." : `✓ ${text}`}</p>;
 
