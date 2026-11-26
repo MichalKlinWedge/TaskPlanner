@@ -108,9 +108,9 @@ export function DayPlan({ data, ctx, settings, date: fixed }: { data: AppData; c
 
   return (
     <aside className="mt-6 text-sm lg:sticky lg:top-0 lg:mt-0 lg:max-h-[calc(100dvh-4rem)] lg:self-start lg:overflow-y-auto" aria-label="Plan dnia" data-testid="day-plan">
-      <header className="mb-2 flex items-baseline gap-2">
-        <h2 className="text-sm font-semibold">Plan dnia</h2>
-        <span className="text-xs text-[var(--muted)]">{plural(plan.day.timed.filter((b) => !b.passive).length, ["blok", "bloki", "bloków"])}</span>
+      <header className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <h2 className="text-sm font-semibold whitespace-nowrap">Plan dnia</h2>
+        <span className="text-xs whitespace-nowrap text-[var(--muted)]">{plural(plan.day.timed.filter((b) => !b.passive).length, ["blok", "bloki", "bloków"])}</span>
         <a href="#/calendar" className={`ml-auto ${navLinkClass}`}>
           Ułóż w kalendarzu →
         </a>

@@ -94,10 +94,12 @@ const onControl = (target: EventTarget | null) => target instanceof Element && t
 const openRowClass = "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]";
 
 /** Ikony przy tytule: edycja i podgląd zadania w prawym panelu. */
-function OpenButtons({ task, className = "" }: { task: ViewTask; className?: string }) {
+function OpenButtons({ task, className = "", hover = false }: { task: ViewTask; className?: string; hover?: boolean }) {
   const { openTask, openTaskId, openTaskMode } = useAppEnv();
+  // `hover` — w długich listach podsumowań ikony dopiero po najechaniu / fokusie (na dotyku zawsze), żeby nie zasłaniały tytułów.
+  const quiet = hover && openTaskId !== task.id ? "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100" : "";
   return (
-    <span className={`flex shrink-0 items-center ${className}`}>
+    <span className={`flex shrink-0 items-center ${quiet} ${className}`}>
       {(["edit", "preview"] as const).map((mode) => {
         const label = mode === "edit" ? "Edytuj zadanie" : "Podgląd zadania";
         return (
@@ -130,7 +132,7 @@ function ReviewTaskRow({ task, virtual = false, done = false, className = "" }: 
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
   return (
     <li
-      className={`flex items-center gap-2 ${virtual ? "opacity-60" : ""} ${openTaskId === task.id ? openRowClass : ""} ${className}`}
+      className={`group flex items-center gap-2.5 ${virtual ? "opacity-60" : ""} ${openTaskId === task.id ? openRowClass : ""} ${className}`}
       data-task-id={task.id}
       data-virtual={virtual ? "" : undefined}
     >
@@ -142,8 +144,8 @@ function ReviewTaskRow({ task, virtual = false, done = false, className = "" }: 
       <button type="button" className={`min-w-0 flex-1 truncate text-left hover:underline ${done ? "text-[var(--muted)] line-through" : ""}`} onClick={() => openTask(task.id)}>
         {task.title}
       </button>
-      {task.dueTime && !done ? <span className="text-xs text-[var(--muted)]">{task.dueTime}</span> : null}
-      <OpenButtons task={task} />
+      {task.dueTime && !done ? <span className="shrink-0 text-xs text-[var(--muted)] tabular-nums">{task.dueTime}</span> : null}
+      <OpenButtons task={task} hover />
     </li>
   );
 }
@@ -409,7 +411,7 @@ function DailyDone({ ctx, settings, log, total, onExit, navigate }: { ctx: ViewC
         <Stat label="Usunięte" value={String(stats.deleted)} />
       </section>
       {stats.needsDecision ? <p className="text-sm text-[var(--muted)]">{plural(stats.needsDecision, ["zadanie było przesuwane", "zadania były przesuwane", "zadań było przesuwanych"])} 3 razy lub więcej.</p> : null}
-      <section aria-label={day === "today" ? "Plan na dziś" : "Plan na jutro"} className="grid gap-4 @2xl:grid-cols-[1fr_16rem]">
+      <section aria-label={day === "today" ? "Plan na dziś" : "Plan na jutro"} className="grid gap-x-8 gap-y-6 @2xl:grid-cols-[minmax(0,1fr)_18rem]">
         <div>
           <div className="mb-2 flex items-center gap-2">
             <h2 className="text-sm font-semibold">
@@ -432,7 +434,7 @@ function DailyDone({ ctx, settings, log, total, onExit, navigate }: { ctx: ViewC
           {planTasks.length ? (
             <ul className="divide-y divide-[var(--line)] rounded-md border border-[var(--line)] text-sm" data-testid="review-plan">
               {planTasks.map((t) => (
-                <ReviewTaskRow key={t.id} task={t} className="px-3 py-1.5" />
+                <ReviewTaskRow key={t.id} task={t} className="px-3 py-2" />
               ))}
             </ul>
           ) : (
@@ -448,7 +450,7 @@ function DailyDone({ ctx, settings, log, total, onExit, navigate }: { ctx: ViewC
           </h2>
           <ul className="divide-y divide-[var(--line)] rounded-md border border-[var(--line)] text-sm" data-testid="review-done-today">
             {summary.doneToday.map((t) => (
-              <ReviewTaskRow key={t.id} task={t} done className="px-3 py-1.5" />
+              <ReviewTaskRow key={t.id} task={t} done className="px-3 py-2" />
             ))}
           </ul>
         </section>
