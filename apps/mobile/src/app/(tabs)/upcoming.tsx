@@ -1,10 +1,11 @@
 /**
  * „Nadchodzące” (M9): 14 dni (także puste, z „+ Dodaj” na dzień), potem tygodniami; wirtualne
  * wystąpienia serii tylko do odczytu — wszystko z `selectUpcoming` (core). Chipy filtra (jak na
- * webie) zawężają zadania; filtr trwa do zamknięcia aplikacji, nie jest zapisywany. „Eksport XLSX” jak na webie.
+ * webie) zawężają zadania; filtr pamiętany per widok do zamknięcia aplikacji (R-06), nie jest zapisywany. „+” dodaje
+ * zadanie bez terminu (jak Q na webie, R-08); termin wpisany w treści działa jak zawsze. „Eksport XLSX” jak na webie.
  */
-import { addDays, applyFilter, capitalized, dayLabel, dayMonth, isEmptyFilter, relativeDay, selectUpcoming, VIEW_SECTION, type FilterQuery } from '@taskplanner/core';
-import { useMemo, useState } from 'react';
+import { addDays, applyFilter, capitalized, dayLabel, dayMonth, isEmptyFilter, relativeDay, selectUpcoming, VIEW_SECTION } from '@taskplanner/core';
+import { useMemo } from 'react';
 import { Pressable, Text } from 'react-native';
 
 import { ExportChip } from '@/components/export-button';
@@ -13,6 +14,7 @@ import { ScreenHeader } from '@/components/sync-banner';
 import { openQuickAdd, TaskSections, type TaskSection } from '@/components/task-list';
 import { usePalette } from '@/components/ui';
 import { useSmartView } from '@/components/view-options';
+import { useAdhocFilter } from '@/lib/adhoc-filters';
 import { targetInbox, useView } from '@/lib/app-data';
 import { usePerfReady } from '@/lib/perf';
 
@@ -28,7 +30,7 @@ function AddOnDay({ date, listId }: { date: string; listId?: string }) {
 export default function UpcomingScreen() {
   const { data, today, ctx, workspaceId } = useView();
   usePerfReady('tab:upcoming', data.loaded);
-  const [filter, setFilter] = useState<FilterQuery>({});
+  const [filter, setFilter] = useAdhocFilter(data.userId, 'upcoming');
   const view = useMemo(() => selectUpcoming(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx), [data.tasks, filter, today, ctx]);
   // Eksport jak na webie: dzień jako sekcja, wystąpienie serii z własnym terminem.
   const exportRows = () => [
@@ -62,7 +64,7 @@ export default function UpcomingScreen() {
           {columnsHeader}
         </ScreenHeader>
       }
-      quickAdd={{ listId: inbox, dueDate: today }}
+      quickAdd={{ listId: inbox }}
     />
   );
 }

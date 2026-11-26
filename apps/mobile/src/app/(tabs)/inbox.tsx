@@ -1,16 +1,17 @@
 /**
  * Inbox (M9): otwarte zadania list `inbox` bieżącej przestrzeni albo wszystkich (`selectInbox`),
- * zawężone chipami filtra (jak na webie; filtr trwa do zamknięcia aplikacji, nie jest zapisywany);
+ * zawężone chipami filtra (jak na webie; filtr pamiętany per widok do zamknięcia aplikacji, nie jest zapisywany — R-06);
  * „Eksport XLSX” widocznych zadań.
  */
-import { applyFilter, isEmptyFilter, plural, selectInbox, type FilterQuery } from '@taskplanner/core';
-import { useMemo, useState } from 'react';
+import { applyFilter, isEmptyFilter, plural, selectInbox } from '@taskplanner/core';
+import { useMemo } from 'react';
 
 import { ExportChip } from '@/components/export-button';
 import { FilterBar } from '@/components/filter-bar';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections } from '@/components/task-list';
 import { useSmartView } from '@/components/view-options';
+import { useAdhocFilter } from '@/lib/adhoc-filters';
 import { targetInbox, useView } from '@/lib/app-data';
 import { usePerfReady } from '@/lib/perf';
 
@@ -20,7 +21,7 @@ export default function InboxScreen() {
   const { data, today, ctx, workspaceId } = useView();
   usePerfReady('tab:inbox', data.loaded);
   const inboxIds = useMemo(() => new Set(data.lists.filter((l) => l.kind === 'inbox').map((l) => l.id)), [data.lists]);
-  const [filter, setFilter] = useState<FilterQuery>({});
+  const [filter, setFilter] = useAdhocFilter(data.userId, 'inbox');
   const tasks = useMemo(() => {
     const inbox = selectInbox(data.tasks, inboxIds, ctx);
     return isEmptyFilter(filter) ? inbox : applyFilter(inbox, filter, today);

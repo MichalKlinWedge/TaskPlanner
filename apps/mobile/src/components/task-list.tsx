@@ -5,9 +5,9 @@
  * Otwarcie: najpierw ekran z pierwszymi wierszami bez gestów (`initialNumToRender`, `RowsInteractive`),
  * reszta wierszy i gesty przesunięcia w pierwszej wolnej chwili po narysowaniu.
  */
-import { canAddSubtask, nudgeTaskOps, type TaskNudge } from '@taskplanner/core';
+import { canAddSubtask, keepShownSelection, nudgeTaskOps, type TaskNudge } from '@taskplanner/core';
 import { router, useFocusEffect, type Href } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { BackHandler, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 
 import { useAppData } from '@/lib/app-data';
@@ -41,9 +41,20 @@ export function TaskSections({ sections, header, empty, quickAdd, reorder }: { s
     const idle = requestIdleCallback(() => setInteractive(true), { timeout: 500 });
     return () => cancelIdleCallback(idle);
   }, []);
-  // Zaznaczenie dotyczy tego ekranu — po wyjściu z niego znika.
-  const { setSelected } = useTaskActions();
+  // Zaznaczenie dotyczy tego ekranu — po wyjściu z niego znika. Po akcji grupowej zostaje (R-12, jak na
+  // webie), ale zadania, które zniknęły z widoku (przeniesione, ukończone tam, gdzie ukończonych nie widać), wypadają.
+  const { selected, setSelected } = useTaskActions();
   useFocusEffect(useCallback(() => () => setSelected([]), [setSelected]));
+  const shown = useMemo(() => new Set(sections.flatMap((s) => s.data.map((row) => row.task.id))), [sections]);
+  const shownBefore = useRef(shown);
+  useEffect(() => {
+    const before = shownBefore.current;
+    shownBefore.current = shown;
+    if (!selected.size) return;
+    const ids = [...selected];
+    const kept = keepShownSelection(ids, before, shown);
+    if (kept !== ids) setSelected(kept);
+  }, [shown, selected, setSelected]);
   return (
     <View style={{ flex: 1, backgroundColor: p.bg }}>
       <RowsSelectable.Provider value>
