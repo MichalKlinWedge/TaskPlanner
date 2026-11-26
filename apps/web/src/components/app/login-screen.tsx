@@ -39,7 +39,24 @@ async function googleAvailable(): Promise<boolean | null> {
   }
 }
 
-/** Logowanie (M1): Google albo link na e-mail (albo kod z tego maila, gdy szablon go zawiera). Konto powstaje przy pierwszym logowaniu. */
+/**
+ * Czy mail z linkiem zawiera też kod (`{{ .Token }}` w szablonie Magic Link). Lokalny Supabase — tak
+ * (`supabase/templates/magic_link.html`); w chmurze szablon jest domyślny, a jego zmiana wymaga własnego
+ * SMTP, więc pole kodu pokazujemy tylko z `NEXT_PUBLIC_AUTH_EMAIL_CODE=1` (włączyć na Vercelu po zmianie szablonu).
+ */
+function emailHasCode(): boolean {
+  if (process.env.NEXT_PUBLIC_AUTH_EMAIL_CODE === "1") return true;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname;
+    return host === "127.0.0.1" || host === "localhost" || host === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+/** Logowanie (M1): Google albo link na e-mail (albo kod z tego maila, gdy szablon go zawiera — `emailHasCode`). Konto powstaje przy pierwszym logowaniu. */
 export function LoginScreen() {
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
@@ -134,22 +151,24 @@ export function LoginScreen() {
                 Inny adres
               </button>
             </Notice>
-            <form onSubmit={(e) => void verifyCode(e)} className="flex flex-col gap-3">
-              <Field label="Kod z maila" hint="Kod jest w mailu tylko wtedy, gdy serwer go dopisuje — zwykle wystarczy link.">
-                <Input
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={10}
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="123456"
-                  data-testid="login-code"
-                />
-              </Field>
-              <Button kind="secondary" type="submit" disabled={busy || code.replace(/\s/g, "").length < 6}>
-                Zaloguj kodem
-              </Button>
-            </form>
+            {emailHasCode() ? (
+              <form onSubmit={(e) => void verifyCode(e)} className="flex flex-col gap-3">
+                <Field label="Kod z maila" hint="Link otwarty na innym urządzeniu? Wpisz tu kod z tego samego maila.">
+                  <Input
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={10}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="123456"
+                    data-testid="login-code"
+                  />
+                </Field>
+                <Button kind="secondary" type="submit" disabled={busy || code.replace(/\s/g, "").length < 6}>
+                  Zaloguj kodem
+                </Button>
+              </form>
+            ) : null}
           </>
         ) : (
           <form onSubmit={(e) => void magicLink(e)} className="flex flex-col gap-3">
