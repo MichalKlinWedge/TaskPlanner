@@ -45,6 +45,39 @@ export function EyeIcon({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
+/** Pudło archiwum — archiwizacja listy / przestrzeni. */
+export function ArchiveIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="3" y="4" width="18" height="5" rx="1" />
+      <path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9" />
+      <path d="M10 13h4" />
+    </svg>
+  );
+}
+
+/** Strzałka z pudła — przywrócenie z archiwum. */
+export function UnarchiveIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="3" y="4" width="18" height="5" rx="1" />
+      <path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9" />
+      <path d="m9.5 15.5 2.5-2.5 2.5 2.5" />
+    </svg>
+  );
+}
+
+/** Kosz — usunięcie. */
+export function TrashIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M6 6l1 14h10l1-14" />
+    </svg>
+  );
+}
+
 /** Link przejścia / powrotu („← Nawyki”, „Przegląd tygodnia →”) — jeden styl z ramką, dla `<a>` i `<button>`. */
 export const navLinkClass =
   "inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--line)] bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--foreground)]";

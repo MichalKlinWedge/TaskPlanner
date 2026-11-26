@@ -610,7 +610,7 @@ export function Shell({
             </div>
           </aside>
           <main ref={mainRef} className="@container relative min-w-0 flex-1 overflow-y-auto lg:[&:has(~[data-task-panel=full])]:hidden">
-            <div className={route.view === "settings" ? "h-full" : `mx-auto w-full p-4 pb-20 [--tp-pad:1rem] sm:p-6 sm:[--tp-pad:1.5rem] ${wide ? "" : route.view === "today" || route.view === "home" ? (hasColumns && route.view === "today" ? "max-w-7xl" : "max-w-5xl") : hasColumns ? "max-w-6xl" : "max-w-3xl"}`}>{content}</div>
+            <div className={route.view === "settings" ? "h-full" : `mx-auto w-full p-4 pb-20 [--tp-pad:1rem] sm:p-6 sm:[--tp-pad:1.5rem] ${wide ? "" : route.view === "today" || route.view === "home" ? (hasColumns && route.view === "today" ? "max-w-7xl" : "max-w-5xl") : hasColumns ? "max-w-6xl" : route.view === "manage" ? "max-w-5xl" : "max-w-3xl"}`}>{content}</div>
           </main>
           {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>

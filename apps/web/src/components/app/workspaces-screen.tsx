@@ -13,7 +13,7 @@ import { ProjectStatusSelect } from "./project-status";
 import { SharingPanel } from "./sharing";
 import { useTaskActions } from "./task-item";
 import { TemplatePicker, TemplatesCard, useCreateFromTemplate, useProjectTemplates, type TemplateChoice } from "./templates";
-import { Button, Card, CommitInput, IconButton, Input, Notice, Select } from "./ui";
+import { ArchiveIcon, Button, Card, CommitInput, IconButton, Input, Notice, Select, TrashIcon, UnarchiveIcon } from "./ui";
 import { WorkspaceExportButton, WorkspaceImportCard } from "./workspace-transfer";
 
 interface WorkspaceRow extends Record<string, string | number | null> {
@@ -243,7 +243,7 @@ function WorkspaceCard({
           lists={owner ? [...(inbox ? [inbox] : []), ...activeOthers].map((l) => ({ id: l.id, name: l.name, guestAccess: l.guest_access ?? "edit" })) : undefined}
         />
       ) : null}
-      <ul className="mt-3 flex flex-col divide-y divide-[var(--line)] border-t border-[var(--line)]">
+      <ul className="@container mt-3 flex flex-col divide-y divide-[var(--line)] border-t border-[var(--line)]">
         {inbox ? <ListItem store={store} list={inbox} run={run} editable={editable} role={workspace.role} /> : null}
         {others.map((list, index) => (
           <ListItem
@@ -299,57 +299,82 @@ function ListItem({
     const note = trashed ? ` ${plural(trashed, ["zadania", "zadań", "zadań"])} z kosza nie będzie już można przywrócić.` : "";
     if (window.confirm(`Usunąć pustą listę „${list.name}”?${note}`)) void update({ deleted_at: new Date().toISOString() });
   };
+  const badge = "shrink-0 rounded bg-[var(--hover)] px-1.5 py-px text-xs";
   return (
-    <li data-list={list.id} className={`flex flex-wrap items-center gap-2 py-2 text-sm ${archived ? "opacity-60" : ""}`}>
+    <li data-list={list.id} className={`${LIST_ROW} ${archived ? "opacity-60" : ""}`}>
       {editable ? (
         <ColorPicker value={list.color} onChange={(color) => void update({ color })} label={`Kolor listy ${list.name}`} />
       ) : (
         <span className="h-4 w-4 rounded-full border border-[var(--line)]" style={{ background: list.color ?? "transparent" }} />
       )}
-      {inbox || !editable ? <span className="font-medium">{list.name}</span> : <EditableName value={list.name} max={200} onSave={(name) => void update({ name })} />}
-      {inbox || !editable ? (
-        <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs">{LIST_KIND[list.kind]}</span>
-      ) : (
-        <Select value={list.kind} onChange={(e) => changeKind(e.target.value as NewListKind)} aria-label={`Rodzaj: ${list.name}`} className="py-0.5 text-xs">
-          <option value="list">{LIST_KIND.list}</option>
-          <option value="project">{LIST_KIND.project}</option>
-        </Select>
-      )}
-      {list.kind === "project" ? <ProjectStatusSelect name={list.name} value={list.project_status} onChange={editable ? (status) => void update({ project_status: status }) : undefined} /> : null}
-      {list.kind === "project" ? <ProjectDates list={list} editable={editable} /> : null}
-      {owner && guestAccess !== "edit" ? (
-        <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs" title={GUEST_ACCESS_HINT[guestAccess]} data-testid="list-guest-access">
-          dla gości: {GUEST_ACCESS[guestAccess].toLowerCase()}
-        </span>
-      ) : null}
-      {!owner && scopeEditable && !editable ? (
-        <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs" title="Właściciel udostępnił Ci tę listę tylko do podglądu">
-          tylko podgląd
-        </span>
-      ) : null}
-      {Number(list.open) > 0 ? <span className="text-xs opacity-60">{list.open} otwartych</span> : null}
-      <span className="flex-1" />
-      {!inbox && editable ? (
-        <>
-          <IconButton label="W górę" disabled={!canUp} onClick={() => onMove?.(-1)}>
-            ↑
-          </IconButton>
-          <IconButton label="W dół" disabled={!canDown} onClick={() => onMove?.(1)}>
-            ↓
-          </IconButton>
-          <Button kind="ghost" onClick={() => void update({ archived_at: archived ? null : new Date().toISOString() })}>
-            {archived ? "Przywróć" : "Archiwizuj"}
-          </Button>
-          {Number(list.total) === 0 ? (
-            <Button kind="ghost" onClick={remove} title="Usuń pustą listę" className="text-[var(--danger)]">
-              Usuń
-            </Button>
-          ) : null}
-        </>
-      ) : null}
+      <span className="flex min-w-40 flex-1 items-center gap-1.5 @[48rem]:min-w-0">
+        {inbox || !editable ? (
+          <span className="min-w-0 truncate px-1 font-medium" title={list.name}>
+            {list.name}
+          </span>
+        ) : (
+          <EditableName value={list.name} max={200} onSave={(name) => void update({ name })} />
+        )}
+        {owner && guestAccess !== "edit" ? (
+          <span className={badge} title={GUEST_ACCESS_HINT[guestAccess]} data-testid="list-guest-access">
+            dla gości: {GUEST_ACCESS[guestAccess].toLowerCase()}
+          </span>
+        ) : null}
+        {!owner && scopeEditable && !editable ? (
+          <span className={badge} title="Właściciel udostępnił Ci tę listę tylko do podglądu">
+            tylko podgląd
+          </span>
+        ) : null}
+      </span>
+      <span className="empty:hidden @[48rem]:empty:block">
+        {inbox || !editable ? (
+          <span className={badge}>{LIST_KIND[list.kind]}</span>
+        ) : (
+          <Select value={list.kind} onChange={(e) => changeKind(e.target.value as NewListKind)} aria-label={`Rodzaj: ${list.name}`} className={COMPACT_FIELD}>
+            <option value="list">{LIST_KIND.list}</option>
+            <option value="project">{LIST_KIND.project}</option>
+          </Select>
+        )}
+      </span>
+      <span className="empty:hidden @[48rem]:empty:block">
+        {list.kind === "project" ? <ProjectStatusSelect name={list.name} value={list.project_status} onChange={editable ? (status) => void update({ project_status: status }) : undefined} className={COMPACT_FIELD} /> : null}
+      </span>
+      <span className="empty:hidden @[48rem]:empty:block">{list.kind === "project" ? <ProjectDates list={list} editable={editable} /> : null}</span>
+      <span className="whitespace-nowrap text-xs text-[var(--muted)] empty:hidden @[48rem]:empty:block @[48rem]:text-right">{Number(list.open) > 0 ? `${list.open} otwartych` : null}</span>
+      <span className="flex items-center gap-0.5 empty:hidden @[48rem]:empty:flex">
+        {!inbox && editable ? (
+          <>
+            <IconButton label="W górę" disabled={!canUp} onClick={() => onMove?.(-1)}>
+              ↑
+            </IconButton>
+            <IconButton label="W dół" disabled={!canDown} onClick={() => onMove?.(1)}>
+              ↓
+            </IconButton>
+            <IconButton label={archived ? "Przywróć" : "Archiwizuj"} onClick={() => void update({ archived_at: archived ? null : new Date().toISOString() })}>
+              {archived ? <UnarchiveIcon /> : <ArchiveIcon />}
+            </IconButton>
+            {Number(list.total) === 0 ? (
+              <IconButton label="Usuń pustą listę" onClick={remove} className="text-[var(--danger)]">
+                <TrashIcon />
+              </IconButton>
+            ) : null}
+          </>
+        ) : null}
+      </span>
     </li>
   );
 }
+
+/**
+ * Wiersz listy: na wąskim ekranie zawija się jak dotąd, od 48rem szerokości listy (`@container` na `ul`)
+ * jest siatką o stałych kolumnach — kolor, nazwa (skracana), rodzaj, status, daty, licznik, akcje —
+ * wyrównaną między wierszami i bez przenoszenia przy długich nazwach.
+ */
+const LIST_ROW =
+  "flex flex-wrap items-center gap-x-2 gap-y-1 py-1 text-sm @[48rem]:grid @[48rem]:grid-cols-[1rem_minmax(0,1fr)_5.25rem_6.75rem_14rem_5.5rem_7.5rem] @[48rem]:gap-y-0";
+
+/** Zwarte pole w wierszu listy (select / data) — wypełnia kolumnę siatki. */
+const COMPACT_FIELD = "w-full px-1.5! py-0.5! text-xs!";
 
 /**
  * Początek i koniec projektu (`lists.start_date` / `end_date`; pasek projektu na osi czasu). Zadań nie
@@ -374,10 +399,10 @@ function ProjectDates({ list, editable }: { list: ListRow; editable: boolean }) 
     if (ops.length) void run(ops, { text: `Daty projektu „${list.name}” zmienione`, undo });
   };
   return (
-    <span className="flex items-center gap-1 text-xs" role="group" aria-label={`Daty projektu ${list.name}`} data-testid="project-dates">
-      <CommitInput type="date" aria-label={`Początek projektu ${list.name}`} title="Początek projektu" value={start ?? ""} onCommit={(v) => change({ startDate: (v || null) as LocalDate | null })} className="px-1.5 py-0.5 text-xs" />
+    <span className="flex items-center gap-1 text-xs @[48rem]:grid @[48rem]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]" role="group" aria-label={`Daty projektu ${list.name}`} data-testid="project-dates">
+      <CommitInput type="date" aria-label={`Początek projektu ${list.name}`} title="Początek projektu" value={start ?? ""} onCommit={(v) => change({ startDate: (v || null) as LocalDate | null })} className={COMPACT_FIELD} />
       <span aria-hidden>–</span>
-      <CommitInput type="date" aria-label={`Koniec projektu ${list.name}`} title="Koniec projektu" value={end ?? ""} onCommit={(v) => change({ endDate: (v || null) as LocalDate | null })} className="px-1.5 py-0.5 text-xs" />
+      <CommitInput type="date" aria-label={`Koniec projektu ${list.name}`} title="Koniec projektu" value={end ?? ""} onCommit={(v) => change({ endDate: (v || null) as LocalDate | null })} className={COMPACT_FIELD} />
     </span>
   );
 }
@@ -387,7 +412,7 @@ function EditableName({ value, max, onSave, className = "" }: { value: string; m
   const [draft, setDraft] = useState<string | null>(null);
   if (draft === null) {
     return (
-      <button type="button" className={`rounded px-1 text-left hover:bg-[var(--hover)] ${className}`} title="Zmień nazwę" onClick={() => setDraft(value)}>
+      <button type="button" className={`min-w-0 truncate rounded px-1 text-left hover:bg-[var(--hover)] ${className}`} title={`${value} — kliknij, aby zmienić nazwę`} onClick={() => setDraft(value)}>
         {value}
       </button>
     );
@@ -409,7 +434,7 @@ function EditableName({ value, max, onSave, className = "" }: { value: string; m
         if (e.key === "Enter") commit();
         if (e.key === "Escape") setDraft(null);
       }}
-      className={`max-w-xs ${className}`}
+      className={`w-full max-w-xs py-0.5! ${className}`}
     />
   );
 }
