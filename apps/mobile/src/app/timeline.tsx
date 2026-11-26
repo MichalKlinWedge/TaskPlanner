@@ -9,9 +9,13 @@
  * Jak na webie, ale tylko do podglądu (D7): filtr projektów (core `visibleProjects`, ukryte w kv),
  * lista naruszeń zależności i ścieżka krytyczna z tytułami otwierającymi zadanie, strzałki zależności
  * (koniec poprzednika → początek następnika; czerwone = naruszenie, pomarańczowe = ścieżka krytyczna).
+ * Przy tytule znaczki osób (odpowiedzialny pełny, uczestnicy w obrysie — jak na webie); szerokość lewej
+ * kolumny zmienia uchwyt na krawędzi nagłówka „Zadanie”, zapamiętana w kv (`timeline.left`).
  */
 import {
   addDays,
+  assigneeOf,
+  collaboratorBadge,
   dayMonth,
   daysBetween,
   plural,
@@ -30,8 +34,10 @@ import {
 import { router, Stack } from 'expo-router';
 import Storage from 'expo-sqlite/kv-store';
 import { useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTaskActions } from '@/components/actions';
@@ -49,6 +55,8 @@ const CRITICAL_KEY = 'timeline.critical';
 const ARROWS_KEY = 'timeline.arrows';
 /** Ukryte projekty (JSON z listą id, jak na webie `tp-timeline-hidden`). */
 const HIDDEN_KEY = 'timeline.hidden';
+/** Szerokość lewej kolumny (px, jak na webie `tp-timeline-widths`). */
+const LEFT_KEY = 'timeline.left';
 /** Kolor ścieżki krytycznej (jak na webie `--critical`). */
 const CRITICAL = '#ea580c';
 const SCALES: Record<TimelineScale, { label: string; dayWidth: number }> = {
@@ -59,6 +67,9 @@ const SCALES: Record<TimelineScale, { label: string; dayWidth: number }> = {
 const ROW = 40;
 const ARROW_WIDTH = 1.5;
 const LEFT = 150;
+const MIN_LEFT = 100;
+/** Znaczki osób przy tytule: najwyżej tyle (jak na webie). */
+const PEOPLE_SHOWN = 4;
 const INDENT = 12;
 const HEADER = 44;
 
@@ -130,6 +141,29 @@ export default function TimelineScreen() {
   const [showArrows, setShowArrowsState] = useState(() => readStored(ARROWS_KEY) !== '0');
   const [hidden, setHiddenState] = useState<ReadonlySet<string>>(readHidden);
   const { notify } = useTaskActions();
+  // Lewa kolumna: najwyżej ¾ ekranu, żeby oś zawsze było widać.
+  const { width: screenWidth } = useWindowDimensions();
+  const maxLeft = Math.max(MIN_LEFT, Math.round(screenWidth * 0.75));
+  const leftWidth = useSharedValue(Math.min(maxLeft, Math.max(MIN_LEFT, Number(readStored(LEFT_KEY)) || LEFT)));
+  const leftStart = useSharedValue(0);
+  const saveLeft = (w: number) => store(LEFT_KEY, String(Math.round(w)));
+  const resizeLeft = usePanGesture({
+    activeOffsetX: [-4, 4],
+    failOffsetY: [-12, 12],
+    onActivate: () => {
+      'worklet';
+      leftStart.value = leftWidth.value;
+    },
+    onUpdate: (e) => {
+      'worklet';
+      leftWidth.value = Math.min(maxLeft, Math.max(MIN_LEFT, leftStart.value + e.translationX));
+    },
+    onDeactivate: () => {
+      'worklet';
+      scheduleOnRN(saveLeft, leftWidth.value);
+    },
+  });
+  const leftStyle = useAnimatedStyle(() => ({ width: leftWidth.value }));
   // Zwinięte zadania — do wyjścia z ekranu; zwinięte projekty — w profilu (`settings.timeline.collapsed`, jak na webie),
   // więc zostają na każdym urządzeniu. Wiersz projektu ma id listy.
   const [closedTasks, setClosedTasks] = useState<ReadonlySet<string>>(new Set());
@@ -289,6 +323,20 @@ export default function TimelineScreen() {
     return new Set(model.links.filter((d) => onPath.has(d.id)).map((d) => `${d.predecessorId}>${d.successorId}`));
   }, [model]);
   const titleOf = (id: string) => data.tasks.find((t) => t.id === id)?.title ?? '?';
+  const tasksById = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
+  /** Osoby zadania: odpowiedzialny, potem uczestnicy (bez nieznanych), jak web `PeopleBadges`. */
+  const peopleOf = (id: string) => {
+    const task = tasksById.get(id);
+    if (!task) return [];
+    const assignee = assigneeOf(task.assigneeId, data.collaborators);
+    return [
+      ...(assignee ? [{ person: assignee, assignee: true }] : []),
+      ...(data.participants.get(id) ?? [])
+        .filter((pid) => pid !== task.assigneeId)
+        .flatMap((pid) => assigneeOf(pid, data.collaborators) ?? [])
+        .map((person) => ({ person, assignee: false })),
+    ];
+  };
   const openTask = (id: string) => router.push({ pathname: '/task/[id]', params: { id } });
 
   const todayX = x(today);
@@ -376,9 +424,14 @@ export default function TimelineScreen() {
       ) : (
         <ScrollView stickyHeaderIndices={[0]} contentContainerStyle={{ paddingBottom: 24 + insets.bottom }}>
           <View style={[styles.headerRow, { backgroundColor: p.bg, borderColor: p.border }]}>
-            <View style={[styles.left, { height: HEADER, justifyContent: 'flex-end', borderColor: p.border, backgroundColor: p.bg }]}>
+            <Animated.View style={[styles.left, leftStyle, { height: HEADER, justifyContent: 'flex-end', borderColor: p.border, backgroundColor: p.bg }]}>
               <Text style={{ color: p.muted, fontSize: 12, paddingBottom: 4 }}>Zadanie</Text>
-            </View>
+              <GestureDetector gesture={resizeLeft}>
+                <View style={styles.leftHandle} accessibilityLabel="Zmień szerokość kolumny zadań">
+                  <View style={[styles.leftGrip, { backgroundColor: p.muted }]} />
+                </View>
+              </GestureDetector>
+            </Animated.View>
             <View style={{ flex: 1, overflow: 'hidden', height: HEADER }}>
               <Animated.View style={[{ width, height: HEADER }, headerStyle]}>
                 {groups.map((g) => (
@@ -405,34 +458,47 @@ export default function TimelineScreen() {
           </View>
 
           <View style={{ flexDirection: 'row' }}>
-            <View style={[styles.left, { borderColor: p.border }]}>
-              {visible.map(({ row, depth }) => (
-                <Pressable key={row.id} accessibilityRole="button" accessibilityLabel={`Otwórz „${row.title}”`} onPress={() => open(row)} style={[styles.titleCell, { borderColor: p.border, paddingLeft: 4 + depth * INDENT }]}>
-                  {row.hasChildren ? (
-                    <Pressable accessibilityRole="button" accessibilityLabel={closed.has(row.id) ? 'Rozwiń' : 'Zwiń'} hitSlop={8} onPress={() => toggle(row)} style={styles.toggle}>
-                      <Text style={{ color: p.muted, fontSize: 11 }}>{closed.has(row.id) ? '▸' : '▾'}</Text>
-                    </Pressable>
-                  ) : (
-                    <View style={styles.toggle} />
-                  )}
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      flex: 1,
-                      fontSize: 13,
-                      fontWeight: row.kind === 'project' ? '700' : '400',
-                      color: row.done ? p.muted : row.violated ? p.bad : p.fg,
-                      textDecorationLine: row.done ? 'line-through' : 'none',
-                    }}
-                  >
-                    {row.title}
-                  </Text>
-                  {showCritical && row.float !== null ? (
-                    <Text style={{ fontSize: 11, color: row.critical ? CRITICAL : p.muted, fontWeight: row.critical ? '700' : '400' }}>{row.critical ? '●' : `+${row.float}`}</Text>
-                  ) : null}
-                </Pressable>
-              ))}
-            </View>
+            <Animated.View style={[styles.left, leftStyle, { borderColor: p.border }]}>
+              {visible.map(({ row, depth }) => {
+                const people = row.kind === 'task' ? peopleOf(row.id) : [];
+                return (
+                  <Pressable key={row.id} accessibilityRole="button" accessibilityLabel={`Otwórz „${row.title}”`} onPress={() => open(row)} style={[styles.titleCell, { borderColor: p.border, paddingLeft: 4 + depth * INDENT }]}>
+                    {row.hasChildren ? (
+                      <Pressable accessibilityRole="button" accessibilityLabel={closed.has(row.id) ? 'Rozwiń' : 'Zwiń'} hitSlop={8} onPress={() => toggle(row)} style={styles.toggle}>
+                        <Text style={{ color: p.muted, fontSize: 11 }}>{closed.has(row.id) ? '▸' : '▾'}</Text>
+                      </Pressable>
+                    ) : (
+                      <View style={styles.toggle} />
+                    )}
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        flex: 1,
+                        fontSize: 13,
+                        fontWeight: row.kind === 'project' ? '700' : '400',
+                        color: row.done ? p.muted : row.violated ? p.bad : p.fg,
+                        textDecorationLine: row.done ? 'line-through' : 'none',
+                      }}
+                    >
+                      {row.title}
+                    </Text>
+                    {people.slice(0, PEOPLE_SHOWN).map(({ person, assignee }) => (
+                      <Text
+                        key={person.id}
+                        accessibilityLabel={`${assignee ? 'Odpowiedzialny' : 'Uczestnik'}: ${person.name}`}
+                        style={[styles.person, assignee ? { backgroundColor: `${p.accent}2e`, borderColor: 'transparent', color: p.fg } : { borderColor: p.accent, color: p.accent }]}
+                      >
+                        {collaboratorBadge(person)}
+                      </Text>
+                    ))}
+                    {people.length > PEOPLE_SHOWN ? <Text style={{ fontSize: 10, color: p.muted }}>+{people.length - PEOPLE_SHOWN}</Text> : null}
+                    {showCritical && row.float !== null ? (
+                      <Text style={{ fontSize: 11, color: row.critical ? CRITICAL : p.muted, fontWeight: row.critical ? '700' : '400' }}>{row.critical ? '●' : `+${row.float}`}</Text>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </Animated.View>
             <Animated.ScrollView ref={chart} horizontal showsHorizontalScrollIndicator onScroll={onScroll} scrollEventThrottle={16} onContentSizeChange={placeOnToday} style={{ flex: 1 }}>
               <View style={{ width, height: visible.length * ROW }}>
                 {periods.map((period) => (
@@ -515,6 +581,9 @@ const styles = StyleSheet.create({
   left: { width: LEFT, borderRightWidth: StyleSheet.hairlineWidth, paddingLeft: 8 },
   titleCell: { height: ROW, flexDirection: 'row', alignItems: 'center', gap: 2, borderBottomWidth: StyleSheet.hairlineWidth, paddingRight: 6 },
   toggle: { width: 14, alignItems: 'center' },
+  leftHandle: { position: 'absolute', right: -10, top: 0, bottom: 0, width: 20, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  leftGrip: { width: 3, height: 18, borderRadius: 2, opacity: 0.6 },
+  person: { fontSize: 10, fontWeight: '600', minWidth: 18, paddingHorizontal: 3, borderRadius: 9, borderWidth: 1, textAlign: 'center', overflow: 'hidden' },
   group: { position: 'absolute', top: 2, height: 20, fontSize: 12, fontWeight: '600', paddingLeft: 4, borderLeftWidth: StyleSheet.hairlineWidth },
   period: { position: 'absolute', top: 22, height: 22, fontSize: 11, textAlign: 'center', paddingTop: 3, borderLeftWidth: StyleSheet.hairlineWidth },
   gridLine: { position: 'absolute', top: 0, width: StyleSheet.hairlineWidth },
