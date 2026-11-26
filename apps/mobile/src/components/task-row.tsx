@@ -7,6 +7,7 @@
  * Szybkie otwarcie listy (`docs/WYDAJNOSC.md` § Telefon): gest przesunięcia (`Swipeable` — gest,
  * wartości współdzielone i trzy widoki animowane na wiersz) dochodzi dopiero po pierwszym
  * narysowaniu listy (`RowsInteractive` z `TaskSections`), a metadane to jeden `Text` z jednym zagnieżdżonym.
+ * Kolumny, które nie mieszczą się na ekranie, przewijają listę w poziomie (`WideList`) — wtedy bez gestu przesunięcia.
  */
 import {
   assigneeOf,
@@ -27,8 +28,9 @@ import {
   type ViewTask,
 } from '@taskplanner/core';
 import { router } from 'expo-router';
-import { createContext, Fragment, memo, useContext, useRef } from 'react';
+import { createContext, Fragment, memo, useContext, useRef, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import Swipeable, { SwipeDirection, type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import { listEditable, useAppData } from '@/lib/app-data';
@@ -90,20 +92,41 @@ export function Highlighted({ text, ranges }: { text: string; ranges: readonly (
 
 /** Szerokości kolumn — wspólne dla wiersza i nagłówka `TaskColumnsHeader`. */
 const COLUMN_WIDTH: Record<ListColumn, number> = { assignee: 72, start: 50, due: 56, tags: 80 };
+/** Najmniejsza szerokość tytułu obok kolumn — węższy ekran przewija listę w poziomie. */
+const TITLE_MIN = 180;
 
-/** Nagłówek kolumn nad wierszami listy. */
+/** Szerokość wiersza z kolumnami, przy której tytuł ma jeszcze `TITLE_MIN` (odstępy i kółko jak w `styles.row`). */
+export const columnsRowWidth = (columns: readonly ListColumn[]) => 12 + 22 + 10 + TITLE_MIN + columns.reduce((sum, c) => sum + 10 + COLUMN_WIDTH[c], 0) + 12;
+
+/**
+ * Lista szersza niż ekran (`TaskSections`): przesunięcie poziome, widoczna szerokość i szerokość wierszy.
+ * `null` — lista mieści się na ekranie.
+ */
+export const WideList = createContext<{ x: SharedValue<number>; view: number; width: number } | null>(null);
+
+/** Część szerokiej listy, która stoi w miejscu (nagłówek ekranu, sekcje): przesuwa się razem z przewinięciem. */
+export function Sticky({ children }: { children: ReactNode }) {
+  const wide = useContext(WideList);
+  const shift = useAnimatedStyle(() => ({ transform: [{ translateX: wide ? wide.x.value : 0 }] }));
+  if (!wide) return children;
+  return <Animated.View style={[{ width: wide.view }, shift]}>{children}</Animated.View>;
+}
+
+/** Nagłówek kolumn nad wierszami listy (w szerokiej liście leży w `Sticky`, więc przesuwa się odwrotnie — razem z wierszami). */
 export function TaskColumnsHeader({ columns }: { columns: readonly ListColumn[] }) {
   const p = usePalette();
+  const wide = useContext(WideList);
+  const shift = useAnimatedStyle(() => ({ transform: [{ translateX: wide ? -wide.x.value : 0 }] }));
   if (!columns.length) return null;
   return (
-    <View style={[styles.columnsHeader, { borderColor: p.border }]}>
+    <Animated.View style={[styles.columnsHeader, { borderColor: p.border }, wide ? { width: wide.width } : null, shift]}>
       <View style={{ flex: 1 }} />
       {columns.map((c) => (
         <Text key={c} style={[styles.column, { width: COLUMN_WIDTH[c], color: p.muted, fontWeight: '600' }]} numberOfLines={1}>
           {LIST_COLUMN[c]}
         </Text>
       ))}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -133,7 +156,9 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
   const interactive = useContext(RowsInteractive);
-  const swipeable = !virtualDate && !selecting && interactive && !readOnly;
+  // Szeroka lista przewija się w poziomie — przesunięcie wiersza by z tym walczyło.
+  const wide = !!useContext(WideList);
+  const swipeable = !virtualDate && !selecting && interactive && !readOnly && !wide;
   const assignee = assigneeOf(task.assigneeId, data.collaborators);
   const attachments = data.attachmentCounts.get(task.id) ?? 0;
   // Uczestnicy obok odpowiedzialnego — razem najwyżej 4 znaczki (jak na webie).
@@ -169,7 +194,11 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
       accessibilityLabel={task.title}
       accessibilityState={{ selected: isSelected }}
       accessibilityHint={
-        selecting ? 'Dotknij, żeby zaznaczyć albo odznaczyć' : readOnly ? 'Otwiera szczegóły; tylko podgląd' : `Otwiera szczegóły; przesuń w prawo — ukończ, w lewo — termin${selectable ? '; przytrzymaj — zaznacz' : ''}`
+        selecting
+          ? 'Dotknij, żeby zaznaczyć albo odznaczyć'
+          : readOnly
+            ? 'Otwiera szczegóły; tylko podgląd'
+            : `Otwiera szczegóły${wide ? '' : '; przesuń w prawo — ukończ, w lewo — termin'}${selectable ? '; przytrzymaj — zaznacz' : ''}`
       }
       onPress={() => {
         if (selecting) return readOnly ? notify(READONLY_LIST_NOTE) : toggleSelected(task.id);

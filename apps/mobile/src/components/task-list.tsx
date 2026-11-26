@@ -4,17 +4,20 @@
  * zaznaczonym zadaniu także „+ Podzadanie” — jak „+” przy wierszu na webie).
  * Otwarcie: najpierw ekran z pierwszymi wierszami bez gestów (`initialNumToRender`, `RowsInteractive`),
  * reszta wierszy i gesty przesunięcia w pierwszej wolnej chwili po narysowaniu.
+ * Kolumny („Kolumny” widoku), które nie mieszczą się obok tytułu, przewijają wiersze w poziomie
+ * (`WideList`); nagłówek ekranu i sekcje stoją wtedy w miejscu (`Sticky`).
  */
 import { canAddSubtask, keepShownSelection, nudgeTaskOps, type TaskNudge } from '@taskplanner/core';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
-import { BackHandler, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Pressable, SectionList, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 
 import { useAppData } from '@/lib/app-data';
 
 import { useTaskActions } from './actions';
 import { bulkAssignee, bulkDate, bulkTag, pickList, pickPriority } from './task-menus';
-import { RowsInteractive, RowsSelectable, TaskRow, type TaskRowProps } from './task-row';
+import { columnsRowWidth, RowsInteractive, RowsSelectable, Sticky, TaskRow, WideList, type TaskRowProps } from './task-row';
 import { usePalette } from './ui';
 
 export interface RowItem extends TaskRowProps {
@@ -55,34 +58,73 @@ export function TaskSections({ sections, header, empty, quickAdd, reorder }: { s
     const kept = keepShownSelection(ids, before, shown);
     if (kept !== ids) setSelected(kept);
   }, [shown, selected, setSelected]);
+
+  // Szeroka lista: wiersze z kolumnami szersze niż ekran → poziome przewijanie całej listy.
+  const window = useWindowDimensions().width;
+  const [box, setBox] = useState(0);
+  const view = box || window;
+  const columns = useMemo(() => visible.find((s) => s.data.length)?.data[0]?.columns ?? [], [visible]);
+  const need = columns.length ? columnsRowWidth(columns) : 0;
+  const width = need > view ? need : 0;
+  const x = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((e) => {
+    x.value = e.contentOffset.x;
+  });
+  useEffect(() => {
+    if (!width) x.set(0);
+  }, [width, x]);
+  const wide = useMemo(() => (width ? { x, view, width } : null), [width, view, x]);
+
+  const list = (
+    <SectionList
+      style={width ? { width } : undefined}
+      sections={visible}
+      keyExtractor={(item) => item.key}
+      // `key` tylko dla listy — nie w propsach wiersza (React nie pozwala na `key` w spreadzie).
+      renderItem={({ item: { key: _key, ...row } }) => <TaskRow {...row} />}
+      renderSectionHeader={({ section }) =>
+        section.title ? (
+          <View style={{ backgroundColor: p.bg }}>
+            <Sticky>
+              <View style={[styles.header, { borderColor: p.border }]}>
+                <Text style={[styles.headerText, { color: section.tone === 'bad' ? p.bad : p.fg }]}>{section.title}</Text>
+                {section.count ? <Text style={{ color: p.muted, fontSize: 12 }}>{section.count}</Text> : null}
+              </View>
+            </Sticky>
+          </View>
+        ) : null
+      }
+      renderSectionFooter={({ section }) => (section.footer ? <Sticky>{section.footer}</Sticky> : null)}
+      ListHeaderComponent={header ? <Sticky>{header}</Sticky> : undefined}
+      ListEmptyComponent={
+        empty ? (
+          <Sticky>
+            <Text style={[styles.empty, { color: p.muted }]}>{empty}</Text>
+          </Sticky>
+        ) : undefined
+      }
+      ListFooterComponent={<View style={{ height: 120 }} />}
+      stickySectionHeadersEnabled
+      // Pierwsza klatka: tyle wierszy, ile widać pod nagłówkiem (wiersz ~60 dp); reszta ekranu dochodzi
+      // w następnej porcji. Każdy wiersz więcej to dłuższe otwarcie listy (`docs/WYDAJNOSC.md`).
+      initialNumToRender={8}
+      windowSize={11}
+      keyboardShouldPersistTaps="handled"
+    />
+  );
   return (
-    <View style={{ flex: 1, backgroundColor: p.bg }}>
+    <View style={{ flex: 1, backgroundColor: p.bg }} onLayout={(e) => setBox(e.nativeEvent.layout.width)}>
       <RowsSelectable.Provider value>
         <RowsInteractive.Provider value={interactive}>
-          <SectionList
-            sections={visible}
-            keyExtractor={(item) => item.key}
-            // `key` tylko dla listy — nie w propsach wiersza (React nie pozwala na `key` w spreadzie).
-            renderItem={({ item: { key: _key, ...row } }) => <TaskRow {...row} />}
-            renderSectionHeader={({ section }) =>
-              section.title ? (
-                <View style={[styles.header, { backgroundColor: p.bg, borderColor: p.border }]}>
-                  <Text style={[styles.headerText, { color: section.tone === 'bad' ? p.bad : p.fg }]}>{section.title}</Text>
-                  {section.count ? <Text style={{ color: p.muted, fontSize: 12 }}>{section.count}</Text> : null}
-                </View>
-              ) : null
-            }
-            renderSectionFooter={({ section }) => (section.footer ? <View>{section.footer}</View> : null)}
-            ListHeaderComponent={header}
-            ListEmptyComponent={empty ? <Text style={[styles.empty, { color: p.muted }]}>{empty}</Text> : undefined}
-            ListFooterComponent={<View style={{ height: 120 }} />}
-            stickySectionHeadersEnabled
-            // Pierwsza klatka: tyle wierszy, ile widać pod nagłówkiem (wiersz ~60 dp); reszta ekranu dochodzi
-            // w następnej porcji. Każdy wiersz więcej to dłuższe otwarcie listy (`docs/WYDAJNOSC.md`).
-            initialNumToRender={8}
-            windowSize={11}
-            keyboardShouldPersistTaps="handled"
-          />
+          <WideList.Provider value={wide}>
+            {width ? (
+              <Animated.ScrollView horizontal onScroll={onScroll} scrollEventThrottle={16} overScrollMode="never" keyboardShouldPersistTaps="handled">
+                {list}
+              </Animated.ScrollView>
+            ) : (
+              list
+            )}
+          </WideList.Provider>
         </RowsInteractive.Provider>
       </RowsSelectable.Provider>
       <BottomBar quickAdd={quickAdd} reorder={reorder} />
