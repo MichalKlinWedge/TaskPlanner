@@ -643,7 +643,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
             <DatePick initial={addDays(ctx.today, 2)} onPick={(date) => act(task, { kind: "date", date })} onCancel={() => setPicking(null)} />
           </div>
         ) : (
-          <div className="-ml-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 pl-4">
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 pl-4">
             <DecisionButtons compact keys={keys} onPick={pickFor(task)} disabled={task.recurrence ? ["someday"] : []} />
             {extra}
           </div>
@@ -651,28 +651,6 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
       </li>
     );
   };
-  const move = (task: ViewTask) => (
-    <select
-      aria-label="Przenieś do listy"
-      className="rounded-md border-0 bg-transparent py-0.5 pr-1 pl-1.5 text-xs text-[var(--muted)] outline-none hover:bg-[var(--hover)] hover:text-[var(--foreground)] focus-visible:ring-1 focus-visible:ring-[var(--accent)]"
-      value=""
-      onChange={(e) => {
-        if (!e.target.value) return;
-        const { ops, undo } = bulkTaskOps([task], data.tasks, { kind: "move", listId: e.target.value }, { today: ctx.today, now: new Date(), timeZone: ctx.timeZone });
-        void run(ops, { text: `„${task.title}” → ${data.lists.find((l) => l.id === e.target.value)?.name}`, undo });
-        setLog((l) => [...l, { task, action: { kind: "today" } }]);
-      }}
-    >
-      <option value="">Przenieś do…</option>
-      {data.lists
-        .filter((l) => l.workspaceId === task.workspaceId && l.kind !== "inbox")
-        .map((l) => (
-          <option key={l.id} value={l.id}>
-            {l.name}
-          </option>
-        ))}
-    </select>
-  );
   const empty = (text: string) => <p className="rounded-md border border-dashed border-[var(--line)] px-3 py-4 text-center text-sm text-[var(--muted)]">{filtered && FILTERED.includes(step) ? "Nic w tym kroku nie pasuje do filtra." : `✓ ${text}`}</p>;
 
   return (
@@ -712,7 +690,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
         {FILTERED.includes(step) ? <FilterBar query={filter} onChange={setFilter} /> : null}
         {step === "inbox" ? (
           review.inbox.length ? (
-            <ul className="divide-y divide-[var(--line)] rounded-md border border-[var(--line)]">{review.inbox.map((t) => row(t, move(t)))}</ul>
+            <ul className="divide-y divide-[var(--line)] rounded-md border border-[var(--line)]">{review.inbox.map((t) => row(t))}</ul>
           ) : (
             empty("Inbox pusty.")
           )

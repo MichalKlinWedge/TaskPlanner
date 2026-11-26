@@ -1,8 +1,8 @@
 /**
- * Przegląd tygodnia (Etap 9, M16) — siedem kroków jak `#/review/weekly` na webie: Inbox do zera
- * (z „Przenieś do…”), zaległe, aktywne projekty bez następnego kroku, „oczekuje” > 7 dni,
+ * Przegląd tygodnia (Etap 9, M16) — siedem kroków jak `#/review/weekly` na webie: Inbox do zera,
+ * zaległe, aktywne projekty bez następnego kroku, „oczekuje” > 7 dni,
  * nadchodzący tydzień, nawyki z 7 dni, podsumowanie (`WeekSummaryStep`). Kroki i liczniki — `weeklyReview` z core, decyzje przy
- * każdym zadaniu przez `bulkTaskOps` (z „Cofnij”), na końcu podsumowanie i zapis `review_sessions`.
+ * każdym zadaniu przez `useDecide` (z „Cofnij”), na końcu podsumowanie i zapis `review_sessions`.
  * Chipy filtra zawężają zadania w krokach Inbox, Zaległe, Oczekuje i Nadchodzący tydzień (projekty
  * i nawyki zostają całe); filtr trwa do opuszczenia ekranu, podsumowanie liczy wszystko.
  */
@@ -10,7 +10,6 @@ import {
   addDays,
   AI_NEEDS_NETWORK,
   aiAccountReady,
-  bulkTaskOps,
   capitalized,
   dayLabel,
   isEmptyFilter,
@@ -36,9 +35,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTaskActions } from '@/components/actions';
 import { FilterBar } from '@/components/filter-bar';
 import { STATE_LABEL, useStateColors } from '@/components/habits';
-import { pickDate, pickOption } from '@/components/pickers';
+import { pickDate } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
-import { CompactAction, DecisionButtons, useDecide, useReviewSession, type LogEntry, type ReviewKindKey } from '@/components/review';
+import { DecisionButtons, useDecide, useReviewSession, type LogEntry, type ReviewKindKey } from '@/components/review';
 import { Button, Chip, ColorDot, usePalette } from '@/components/ui';
 import { WeekSummaryStep } from '@/components/week-summary';
 import { useAiAccount } from '@/lib/ai';
@@ -114,16 +113,6 @@ export default function WeeklyReviewScreen() {
     const date = await pickDate({ title: 'Nowy termin', value: addDays(today, 2), today });
     if (date) act(task, { kind: 'date', date });
   };
-  const move = async (task: ViewTask) => {
-    const target = await pickOption(
-      'Przenieś do listy',
-      data.lists.filter((l) => l.workspaceId === task.workspaceId && l.kind !== 'inbox').map((l) => ({ label: listLabel(data, l.id), value: l.id })),
-    );
-    if (!target) return;
-    const { ops, undo } = bulkTaskOps([task], data.tasks, { kind: 'move', listId: target }, { today, now: new Date(), timeZone: ctx.timeZone });
-    void run(ops, { text: `„${task.title}” → ${data.lists.find((l) => l.id === target)?.name}`, undo });
-    setLog((l) => [...l, { task, action: { kind: 'today' } }]);
-  };
 
   const empty = (text: string) => <Text style={[styles.empty, { color: p.muted, borderColor: p.border }]}>✓ {text}</Text>;
   // Tytuł (pogrubiony, do 2 linii), pod nim lista / termin / „N× przesuwane”, niżej lekkie przyciski decyzji.
@@ -180,11 +169,7 @@ export default function WeeklyReviewScreen() {
 
   let body: ReactNode;
   if (step === 'inbox') {
-    body = review.inbox.length
-      ? review.inbox.map((t) =>
-          row(t, { trailing: <CompactAction label="Przenieś do…" onPress={() => void move(t)} /> }),
-        )
-      : empty('Inbox pusty.');
+    body = review.inbox.length ? review.inbox.map((t) => row(t)) : empty('Inbox pusty.');
   } else if (step === 'overdue') {
     body = review.overdue.length ? review.overdue.map((t) => row(t)) : empty('Nic zaległego.');
   } else if (step === 'projects') {

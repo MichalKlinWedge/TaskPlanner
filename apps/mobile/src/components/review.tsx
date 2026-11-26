@@ -82,7 +82,7 @@ export function useDecide() {
 /**
  * Przyciski decyzji 1–6 (Ukończ / Dziś / Jutro / Wybierz datę / Kiedyś / Usuń). `compact` (listy przeglądu
  * tygodnia) = lekkie przyciski bez ramek, żeby tytuł zadania był najmocniejszy w wierszu; `trailing` — dodatkowy
- * przycisk w tym samym rzędzie (np. „Przenieś do…”).
+ * przycisk w tym samym rzędzie.
  */
 export function DecisionButtons({ onPick, disabled, compact, trailing }: { onPick: (kind: ReviewKindKey) => void; disabled?: readonly ReviewKindKey[]; compact?: boolean; trailing?: ReactNode }) {
   const p = usePalette();
@@ -175,7 +175,7 @@ export function ReviewNudge() {
 const styles = StyleSheet.create({
   buttons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   button: { width: '31.5%', borderWidth: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
-  compactButtons: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 2, rowGap: 2, marginLeft: 8 },
+  compactButtons: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', columnGap: 2, rowGap: 2 },
   compact: { borderRadius: 8, paddingVertical: 6, paddingHorizontal: 8 },
   compactDelete: { marginLeft: 6 },
   nudges: { gap: 6, paddingHorizontal: 12, paddingTop: 8 },
