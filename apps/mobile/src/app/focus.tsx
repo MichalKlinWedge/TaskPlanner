@@ -129,6 +129,17 @@ export default function FocusScreen() {
   );
   const maxDay = Math.max(1, ...week.days.map((d) => d.minutes));
 
+  // Wejścia są ukryte przy wyłączonym trybie, ale ekran da się otworzyć linkiem / skrótem — jak `#/focus` na webie.
+  if (!data.settings.focus.enabled) {
+    return (
+      <View style={[styles.body, { flex: 1, backgroundColor: p.bg }]}>
+        <Stack.Screen options={{ title: 'Skupienie' }} />
+        <Text style={{ color: p.muted, fontSize: 15 }}>Tryb skupienia jest wyłączony — włącz go w Ustawieniach.</Text>
+        <Button title="Otwórz Ustawienia" onPress={() => router.replace('/settings')} />
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Skupienie' }} />

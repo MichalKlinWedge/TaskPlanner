@@ -20,6 +20,7 @@ import {
   cellInGroup,
   cellKey,
   derivedLinkErrorText,
+  derivedLinks,
   fitTitle,
   moveCanvasGroupOps,
   nearestFreeCell,
@@ -459,6 +460,17 @@ describe('strzałki: canvasArrows / canvasArrowSegment / „wynika z”', () => 
     });
     expect(removeDerivedLinkOps({ id: C, derivedFrom: [A] }, A).ops).toEqual([{ table: 'tasks', id: C, patch: { derived_from: null } }]);
     expect(removeDerivedLinkOps({ id: C, derivedFrom: null }, A)).toEqual({ ops: [], undo: [] });
+  });
+
+  it('derivedLinks: źródła w kolejności derived_from (bez brakujących i siebie) i zadania, które wynikają', () => {
+    const tasks = [
+      { id: A, derivedFrom: null },
+      { id: B, derivedFrom: [A] },
+      { id: C, derivedFrom: ['brak', B, C, A, B] },
+    ];
+    expect(derivedLinks(C, tasks)).toEqual({ from: [tasks[1], tasks[0]], to: [] });
+    expect(derivedLinks(A, tasks)).toEqual({ from: [], to: [tasks[1], tasks[2]] });
+    expect(derivedLinks('brak', tasks)).toEqual({ from: [], to: [tasks[2]] });
   });
 
   it('derivedFromOf czyta tekst JSON i tablicę, odrzuca złe zapisy', () => {

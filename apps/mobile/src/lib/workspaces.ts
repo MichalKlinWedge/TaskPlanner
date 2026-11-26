@@ -49,7 +49,7 @@ export async function workspaceItems(engine: SyncEngine): Promise<WorkspaceItem[
 export async function listItems(engine: SyncEngine, workspaceId: string): Promise<ListItem[]> {
   const rows = await engine.db.all<SqlRow>(
     `select l.id, l.scope_id, l.kind, l.name, l.color, l.sort_key, l.project_status, l.archived_at, l.guest_access,
-            (select count(*) from tasks t where t.list_id = l.id and t.deleted_at is null and t.parent_id is null
+            (select count(*) from tasks t where t.list_id = l.id and t.deleted_at is null
                and t.status not in ('done', 'cancelled')) as open,
             (select count(*) from tasks t where t.list_id = l.id and t.deleted_at is null) as total
      from lists l where l.scope_id = ? and l.deleted_at is null

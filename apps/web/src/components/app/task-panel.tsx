@@ -42,6 +42,7 @@ import {
   describeRecurrence,
   formatMinutes,
   isOpen,
+  derivedLinks,
   LIST_KIND,
   moveTaskOps,
   normalizeText,
@@ -278,6 +279,8 @@ function TaskDetails({ task, trash }: { task: ViewTask; trash?: TrashPreview<Tra
   const listReadOnly = !listEditable(data, task.listId);
   // Zadanie w koszu: wszystko zablokowane, da się je tylko przywrócić.
   const readOnly = listReadOnly || !!trash;
+  // Ukończone i anulowane: kółko wypełnione, klik przywraca (jak w wierszu zadania i na telefonie).
+  const closed = !isOpen(task);
 
   const remove = () => {
     const ops = deleteTaskOps(data.tasks, task.id, new Date());
@@ -307,13 +310,13 @@ function TaskDetails({ task, trash }: { task: ViewTask; trash?: TrashPreview<Tra
           <button
             type="button"
             role="checkbox"
-            aria-checked={task.status === "done"}
-            aria-label={task.status === "done" ? "Przywróć zadanie" : "Ukończ zadanie"}
+            aria-checked={closed}
+            aria-label={closed ? "Przywróć zadanie" : "Ukończ zadanie"}
             onClick={() => void toggle(task)}
             className="mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-xs text-white"
-            style={{ borderColor: PRIORITY[task.priority].color, background: task.status === "done" ? PRIORITY[task.priority].color : "transparent" }}
+            style={{ borderColor: PRIORITY[task.priority].color, background: closed ? PRIORITY[task.priority].color : "transparent" }}
           >
-            {task.status === "done" ? "✓" : ""}
+            {closed ? "✓" : ""}
           </button>
           <TitleField key={`${task.id}:${task.title}`} value={task.title} onSave={(title) => void update({ title })} />
         </Editable>
@@ -629,6 +632,7 @@ function DependenciesField({ task }: { task: ViewTask }) {
   const { run, notify } = useTaskActions();
   const deps = useDependencies(store);
   const links = useMemo(() => taskLinks(task.id, data.tasks, deps), [task.id, data.tasks, deps]);
+  const derived = useMemo(() => derivedLinks(task.id, data.tasks), [task.id, data.tasks]);
   const [adding, setAdding] = useState<"predecessor" | "successor" | null>(null);
   const [query, setQuery] = useState("");
   const byId = new Map(data.tasks.map((t) => [t.id, t]));
@@ -689,7 +693,26 @@ function DependenciesField({ task }: { task: ViewTask }) {
     );
   };
 
-  const count = links.predecessors.length + links.successors.length;
+  // „Wynika z” (Karteczki) to samo powiązanie, nie zależność — tu tylko do odczytu, zmienia się strzałką na Karteczkach.
+  const linked = (title: string, label: string, tasks: readonly ViewTask[]) =>
+    tasks.length ? (
+      <>
+        <h4 className="text-xs text-[var(--muted)]" title="Powiązanie z Karteczek (bez wpływu na terminy) — zmienia się strzałką na Karteczkach">
+          {title}
+        </h4>
+        <ul className="mb-2 divide-y divide-[var(--line)]" aria-label={label}>
+          {tasks.map((t) => (
+            <li key={t.id} className="py-1 text-sm">
+              <button type="button" className={`block max-w-full truncate text-left hover:text-[var(--accent)] ${isOpen(t) ? "" : "text-[var(--muted)] line-through"}`} onClick={() => openTask(t.id)}>
+                {t.title}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </>
+    ) : null;
+
+  const count = links.predecessors.length + links.successors.length + derived.from.length + derived.to.length;
   return (
     <Block title={`Zależności${count ? ` · ${count}` : ""}`}>
       {links.predecessors.length ? (
@@ -708,6 +731,8 @@ function DependenciesField({ task }: { task: ViewTask }) {
           </ul>
         </>
       ) : null}
+      {linked("Wynika z", "Wynika z", derived.from)}
+      {linked("Z tego wynika", "Z tego wynika", derived.to)}
       {adding ? (
         <div className="flex flex-col gap-1">
           <div className="flex gap-2">

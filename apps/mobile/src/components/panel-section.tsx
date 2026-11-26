@@ -19,6 +19,8 @@ import { mutate } from '@/lib/sync';
  */
 const LockedContext = createContext(false);
 export const LockedSections = LockedContext.Provider;
+/** Czy sekcje są tylko do odczytu — dla treści sekcji `readable`, która sama chowa swoje przyciski edycji. */
+export const useSectionsLocked = () => useContext(LockedContext);
 
 /** Czy sekcja jest zwinięta + przełącznik (zapis do profilu). */
 export function useSectionCollapsed(id: string, defaultCollapsed = false): [boolean, () => void] {
@@ -43,6 +45,7 @@ export function PanelSection({
   count,
   right,
   defaultCollapsed = false,
+  readable = false,
   children,
 }: {
   /** Stały klucz sekcji — ten sam co na webie (wspólny stan zwinięcia). */
@@ -53,11 +56,17 @@ export function PanelSection({
   /** Przyciski po prawej stronie nagłówka (działają też przy zwiniętej sekcji). */
   right?: ReactNode;
   defaultCollapsed?: boolean;
+  /**
+   * Treść sama obsługuje tryb tylko do odczytu (`useSectionsLocked` — chowa przyciski edycji), więc przy blokadzie nie
+   * jest wyłączana w całości: linki w opisie i przejścia do innych zadań dalej działają.
+   */
+  readable?: boolean;
   children: ReactNode;
 }) {
   const p = usePalette();
   const tint = useHeadTint();
-  const locked = useContext(LockedContext);
+  const sectionsLocked = useContext(LockedContext);
+  const locked = sectionsLocked && !readable;
   const [collapsed, toggle] = useSectionCollapsed(id, defaultCollapsed);
   return (
     <View style={[styles.card, { backgroundColor: p.card, borderColor: p.border }]}>
@@ -81,7 +90,7 @@ export function PanelSection({
           </Text>
           {count !== undefined && count !== '' ? <Text style={{ color: p.muted, fontSize: 12 }}>· {count}</Text> : null}
         </Pressable>
-        {right && !locked ? <View style={styles.right}>{right}</View> : null}
+        {right && !sectionsLocked ? <View style={styles.right}>{right}</View> : null}
       </View>
       {collapsed ? null : (
         <View style={[styles.body, locked && styles.locked]} pointerEvents={locked ? 'none' : 'auto'} accessibilityState={locked ? { disabled: true } : undefined}>

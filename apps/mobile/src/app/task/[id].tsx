@@ -44,6 +44,7 @@ import {
   endSeriesOps,
   formatMinutes,
   isOpen,
+  derivedLinks,
   manualEntryOps,
   moveTaskOps,
   normalizeText,
@@ -87,7 +88,7 @@ import { confirm, useTaskActions } from '@/components/actions';
 import { BreakdownField } from '@/components/ai-breakdown';
 import { AttachmentsField } from '@/components/attachments-field';
 import { DescriptionField } from '@/components/description-field';
-import { LockedSections, PanelSection } from '@/components/panel-section';
+import { LockedSections, PanelSection, useSectionsLocked } from '@/components/panel-section';
 import { PurgeButton } from '@/components/purge-button';
 import { pickAmount, pickDate, pickOption, pickTime } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
@@ -122,10 +123,10 @@ function Editable({ readOnly, children }: { readOnly: boolean; children: ReactNo
 }
 
 /** Zwijana karta sekcji; klucz = tytuł bez licznika („Podzadania · 2/3” → „Podzadania”), ten sam co na webie. */
-function Block({ id, title, children, right }: { id?: string; title: string; children: ReactNode; right?: ReactNode }) {
+function Block({ id, title, children, right, readable }: { id?: string; title: string; children: ReactNode; right?: ReactNode; readable?: boolean }) {
   const [base, ...count] = title.split(' · ');
   return (
-    <PanelSection id={id ?? base} title={base} count={count.join(' · ') || undefined} right={right}>
+    <PanelSection id={id ?? base} title={base} count={count.join(' · ') || undefined} right={right} readable={readable}>
       {children}
     </PanelSection>
   );
@@ -313,8 +314,8 @@ export default function TaskScreen() {
           </View>
           </Block>
 
-          <Block title="Opis">
-            <DescriptionField key={task.id} taskId={task.id} />
+          <Block title="Opis" readable>
+            <DescriptionField key={task.id} taskId={task.id} readOnly={readOnly} />
           </Block>
 
           <PeopleField key={`people:${task.id}`} task={task} data={data} />
@@ -896,6 +897,7 @@ function AttachSubtask({ task, data }: { task: ViewTask; data: AppData }) {
 function ParentField({ task, data, parent }: { task: ViewTask; data: AppData; parent: ViewTask | undefined }) {
   const p = usePalette();
   const { run, notify } = useTaskActions();
+  const locked = useSectionsLocked();
   const [open, setOpen] = useState(false);
   const all = useMemo(() => (open ? parentCandidates(data.tasks, task.id) : []), [open, data.tasks, task.id]);
 
@@ -907,11 +909,17 @@ function ParentField({ task, data, parent }: { task: ViewTask; data: AppData; pa
   };
 
   return (
-    <Block title="Zadanie nadrzędne">
-      <Text style={{ color: parent ? p.fg : p.muted, fontSize: 15 }} numberOfLines={2}>
-        {parent ? parent.title : '— (zadanie główne)'}
-      </Text>
-      {open ? (
+    <Block title="Zadanie nadrzędne" readable>
+      {parent ? (
+        <Pressable accessibilityRole="link" accessibilityLabel={`Otwórz „${parent.title}”`} onPress={() => router.push({ pathname: '/task/[id]', params: { id: parent.id } })}>
+          <Text style={{ color: p.accent, fontSize: 15 }} numberOfLines={2}>
+            {parent.title}
+          </Text>
+        </Pressable>
+      ) : (
+        <Text style={{ color: p.muted, fontSize: 15 }}>— (zadanie główne)</Text>
+      )}
+      {locked ? null : open ? (
         <TaskPicker data={data} candidates={all} onPick={move} onClose={() => setOpen(false)} label="Szukaj zadania nadrzędnego" verb="Przepnij pod" empty="Brak zadań na tej liście, pod które można przepiąć." />
       ) : (
         <View style={styles.pills}>
@@ -982,8 +990,10 @@ function TaskPicker({ data, candidates: all, onPick, onClose, label, verb, empty
 function DependenciesField({ task, data }: { task: ViewTask; data: AppData }) {
   const p = usePalette();
   const { run, notify } = useTaskActions();
+  const locked = useSectionsLocked();
   const deps = useDependencies();
   const links = useMemo(() => taskLinks(task.id, data.tasks, deps), [task.id, data.tasks, deps]);
+  const derived = useMemo(() => derivedLinks(task.id, data.tasks), [task.id, data.tasks]);
   const [adding, setAdding] = useState<'predecessor' | 'successor' | null>(null);
   const [query, setQuery] = useState('');
   const byId = new Map(data.tasks.map((t) => [t.id, t]));
@@ -1029,25 +1039,46 @@ function DependenciesField({ task, data }: { task: ViewTask; data: AppData }) {
             </Text>
           ) : null}
         </Pressable>
-        <Pill label={lagLabel(d.lagDays)} onPress={() => pickLag(d)} />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Usuń zależność z ${titleOf(link.otherId)}`}
-          hitSlop={10}
-          onPress={() => {
-            const result = removeDependencyOps(d.id);
-            void run(result.ops, { text: `Usunięto zależność ${titleOf(d.predecessorId)} → ${titleOf(d.successorId)}`, undo: result.undo });
-          }}
-        >
-          <Text style={{ color: p.muted, fontSize: 16 }}>✕</Text>
-        </Pressable>
+        {locked ? (
+          <Text style={{ color: p.muted, fontSize: 12 }}>{lagLabel(d.lagDays)}</Text>
+        ) : (
+          <>
+            <Pill label={lagLabel(d.lagDays)} onPress={() => pickLag(d)} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Usuń zależność z ${titleOf(link.otherId)}`}
+              hitSlop={10}
+              onPress={() => {
+                const result = removeDependencyOps(d.id);
+                void run(result.ops, { text: `Usunięto zależność ${titleOf(d.predecessorId)} → ${titleOf(d.successorId)}`, undo: result.undo });
+              }}
+            >
+              <Text style={{ color: p.muted, fontSize: 16 }}>✕</Text>
+            </Pressable>
+          </>
+        )}
       </View>
     );
   };
 
-  const count = links.predecessors.length + links.successors.length;
+  // „Wynika z” (Karteczki na webie) to samo powiązanie, nie zależność — tu tylko do odczytu.
+  const linked = (title: string, tasks: readonly ViewTask[]) =>
+    tasks.length ? (
+      <View style={{ gap: 6 }}>
+        <Text style={{ color: p.muted, fontSize: 12 }}>{title}</Text>
+        {tasks.map((t) => (
+          <Pressable key={t.id} accessibilityRole="link" accessibilityLabel={`${title}: „${t.title}”`} style={styles.dependency} onPress={() => router.push({ pathname: '/task/[id]', params: { id: t.id } })}>
+            <Text style={{ flex: 1, color: isOpen(t) ? p.fg : p.muted, fontSize: 15, textDecorationLine: isOpen(t) ? 'none' : 'line-through' }} numberOfLines={1}>
+              {t.title}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    ) : null;
+
+  const count = links.predecessors.length + links.successors.length + derived.from.length + derived.to.length;
   return (
-    <Block title={`Zależności${count ? ` · ${count}` : ''}`}>
+    <Block title={`Zależności${count ? ` · ${count}` : ''}`} readable>
       {links.predecessors.length ? (
         <View style={{ gap: 6 }}>
           <Text style={{ color: p.muted, fontSize: 12 }}>Czeka na</Text>
@@ -1060,6 +1091,9 @@ function DependenciesField({ task, data }: { task: ViewTask; data: AppData }) {
           {links.successors.map(item)}
         </View>
       ) : null}
+      {linked('Wynika z', derived.from)}
+      {linked('Z tego wynika', derived.to)}
+      {derived.from.length || derived.to.length ? <Text style={{ color: p.muted, fontSize: 11 }}>„Wynika z” to powiązanie z Karteczek na webie (bez wpływu na terminy); zmienia się tylko tam.</Text> : null}
       {adding ? (
         <View style={{ gap: 6 }}>
           <View style={styles.pills}>
@@ -1084,6 +1118,8 @@ function DependenciesField({ task, data }: { task: ViewTask; data: AppData }) {
           ))}
           {needle && !candidates.length ? <Text style={{ color: p.muted, fontSize: 12 }}>Brak otwartych zadań o takim tytule w tej przestrzeni.</Text> : null}
         </View>
+      ) : locked ? (
+        count ? null : <Text style={{ color: p.muted, fontSize: 12 }}>Brak zależności.</Text>
       ) : (
         <View style={styles.pills}>
           <Pill label="+ Czeka na…" color={p.accent} onPress={() => setAdding('predecessor')} />

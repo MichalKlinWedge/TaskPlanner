@@ -27,9 +27,11 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useTaskActions } from '@/components/actions';
 import { Chip, usePalette } from '@/components/ui';
 import { useView } from '@/lib/app-data';
 import { useLocalQuery } from '@/lib/local-query';
+import { mutate } from '@/lib/sync';
 
 const SCALE_KEY = 'timeline.scale';
 const UNDATED_KEY = 'timeline.undated';
@@ -73,7 +75,12 @@ export default function TimelineScreen() {
   });
   const [withUndated, setWithUndatedState] = useState(() => readStored(UNDATED_KEY) !== '0');
   const [showCritical, setShowCriticalState] = useState(() => readStored(CRITICAL_KEY) === '1');
-  const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
+  const { notify } = useTaskActions();
+  // Zwinięte zadania — do wyjścia z ekranu; zwinięte projekty — w profilu (`settings.timeline.collapsed`, jak na webie),
+  // więc zostają na każdym urządzeniu. Wiersz projektu ma id listy.
+  const [closedTasks, setClosedTasks] = useState<ReadonlySet<string>>(new Set());
+  const collapsedProjects = data.settings.timeline.collapsed;
+  const closed = useMemo(() => new Set([...closedTasks, ...collapsedProjects]), [closedTasks, collapsedProjects]);
   const setScale = (s: TimelineScale) => {
     setScaleState(s);
     store(SCALE_KEY, s);
@@ -165,13 +172,21 @@ export default function TimelineScreen() {
     if (row.kind === 'project') router.push({ pathname: '/list/[id]', params: { id: row.id } });
     else router.push({ pathname: '/task/[id]', params: { id: row.id } });
   };
-  const toggle = (id: string) =>
-    setClosed((all) => {
+  const toggle = (row: TimelineRow) => {
+    if (row.kind === 'project') {
+      const known = new Set(data.lists.filter((l) => l.kind === 'project').map((l) => l.id));
+      const next = collapsedProjects.filter((id) => id !== row.id && known.has(id));
+      if (!collapsedProjects.includes(row.id)) next.push(row.id);
+      void mutate('profiles', data.userId, { settings: { ...data.settings, timeline: { ...data.settings.timeline, collapsed: next } } }).catch((e: unknown) => notify(String(e)));
+      return;
+    }
+    setClosedTasks((all) => {
       const next = new Set(all);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(row.id)) next.delete(row.id);
+      else next.add(row.id);
       return next;
     });
+  };
 
   const todayX = x(today);
   const showLabel = (label: string, w: number) => (w >= 28 ? label : '');
@@ -245,7 +260,7 @@ export default function TimelineScreen() {
               {visible.map(({ row, depth }) => (
                 <Pressable key={row.id} accessibilityRole="button" accessibilityLabel={`Otwórz „${row.title}”`} onPress={() => open(row)} style={[styles.titleCell, { borderColor: p.border, paddingLeft: 4 + depth * INDENT }]}>
                   {row.hasChildren ? (
-                    <Pressable accessibilityRole="button" accessibilityLabel={closed.has(row.id) ? 'Rozwiń' : 'Zwiń'} hitSlop={8} onPress={() => toggle(row.id)} style={styles.toggle}>
+                    <Pressable accessibilityRole="button" accessibilityLabel={closed.has(row.id) ? 'Rozwiń' : 'Zwiń'} hitSlop={8} onPress={() => toggle(row)} style={styles.toggle}>
                       <Text style={{ color: p.muted, fontSize: 11 }}>{closed.has(row.id) ? '▸' : '▾'}</Text>
                     </Pressable>
                   ) : (

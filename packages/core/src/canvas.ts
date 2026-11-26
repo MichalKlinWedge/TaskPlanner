@@ -553,6 +553,19 @@ export function removeDerivedLinkOps(task: LinkTask, fromId: string): { ops: Tas
   return { ops: [derivedOp(task.id, current.filter((id) => id !== fromId))], undo: [derivedOp(task.id, current)] };
 }
 
+/**
+ * Powiązania „wynika z” jednego zadania do pokazania poza Karteczkami (panel / ekran zadania, tylko odczyt):
+ * `from` — zadania, z których wynika (kolejność `derived_from`, brakujące pominięte), `to` — zadania, które
+ * wynikają z niego (kolejność `tasks`).
+ */
+export function derivedLinks<T extends LinkTask>(taskId: string, tasks: readonly T[]): { from: T[]; to: T[] } {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const self = byId.get(taskId);
+  const from = [...new Set(self?.derivedFrom ?? [])].flatMap((id) => (id !== taskId && byId.has(id) ? [byId.get(id)!] : []));
+  const to = tasks.filter((t) => t.id !== taskId && (t.derivedFrom ?? []).includes(taskId));
+  return { from, to };
+}
+
 /** Komunikat błędu „wynika z” do pokazania użytkownikowi. */
 export function derivedLinkErrorText(error: DerivedLinkError, titleOf: (id: string) => string): string {
   switch (error.reason) {
