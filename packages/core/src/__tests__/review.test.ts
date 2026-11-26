@@ -212,6 +212,6 @@ describe('asystent przeglądu (Etap 9)', () => {
     expect(summary.doneToday.map((t) => t.id)).toEqual(['done-today']);
     expect(summary.tomorrow.map((t) => t.id)).toEqual(['tomorrow']);
     expect(summary.today.map((t) => t.id)).toEqual(['today']);
-    expect(REVIEW_ACTION.someday).toEqual({ key: '5', label: 'Kiedyś' });
+    expect(REVIEW_ACTION.someday).toEqual({ key: '5', label: 'Kiedyś', icon: 'Kiedyś' });
   });
 });
