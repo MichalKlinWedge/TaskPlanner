@@ -231,6 +231,23 @@ export function QuickAdd({ listId, dueDate, slot, parent, defaults, placeholder 
           add={() => void (text.trim() && add([text], false))}
         />
       ) : null}
+      {details ? (
+        <div className="mt-3 flex justify-end gap-2">
+          {onCancel ? (
+            <button type="button" onClick={onCancel} className="rounded-md px-3 py-1.5 text-sm text-[var(--muted)] hover:bg-black/5 hover:text-[var(--foreground)] dark:hover:bg-white/10">
+              Anuluj
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void add([text], false)}
+            disabled={!defaultListId || !result.title.trim()}
+            className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Dodaj
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
