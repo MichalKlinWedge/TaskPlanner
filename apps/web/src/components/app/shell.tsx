@@ -4,11 +4,12 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, BOARD_BY, bulkTaskOps, dayLabel, sharedText, habitsForDay, isEmptyFilter, isOpen, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, tagsForWorkspace, VIEW_SECTION, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type QuickAddSlot, type ViewContext, type WebClip } from "@taskplanner/core";
+import { applyFilter, BOARD_BY, bulkTaskOps, dayLabel, sharedText, habitsForDay, isEmptyFilter, isOpen, keepShownSelection, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, tagsForWorkspace, VIEW_SECTION, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type QuickAddSlot, type ViewContext, type WebClip } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
+import { useAdhocFilter } from "@/lib/adhoc-filters";
 import { useAppData, useLateCount, useToday, type List, type Workspace } from "@/lib/app-data";
 import { GOOGLE_RETURN_PARAM } from "@/lib/calendars";
 import { DEFAULT_ROUTE, routeHash, useRoute, type Route } from "@/lib/route";
@@ -269,8 +270,8 @@ export function Shell({
     }
   };
 
-  // Filtr doraźny (chipy) nad Inbox / Dziś / Nadchodzące — do zmiany widoku; lista pamięta swój w `view_prefs.filter`.
-  const [adhoc, setAdhoc] = useState<FilterQuery>({});
+  // Filtr doraźny (chipy) nad Inbox / Dziś / Nadchodzące / Tablicą — pamiętany per widok do zamknięcia karty (R-06); lista pamięta swój w `view_prefs.filter`.
+  const [adhoc, setAdhoc] = useAdhocFilter(userId, routeHash(route));
 
   // Nowy widok: od góry, a na wąskim ekranie menu się chowa.
   const hash = routeHash(route);
@@ -281,9 +282,22 @@ export function Shell({
       setMenuOpen(false);
       setPeek(false);
       setSelected([]);
-      setAdhoc({});
     });
   }, [hash]);
+
+  // Zaznaczenie zostaje po akcji (R-12); zadania, które po zmianie danych zniknęły z widoku (usunięte,
+  // przeniesione, ukończone tam, gdzie ukończonych nie widać), z niego wypadają. Migawka widocznych
+  // wierszy odświeża się też po zmianie widoku i zaznaczenia.
+  const shownBefore = useRef<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const shown = new Set(visibleTaskIds());
+      const before = shownBefore.current;
+      shownBefore.current = shown;
+      setSelected((current) => keepShownSelection(current, before, shown) as string[]);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [data.tasks, hash, selected]);
 
   // „Wyjdź” z trybu skupienia wraca do ostatniego innego widoku.
   const [lastRoute, setLastRoute] = useState<Route>(DEFAULT_ROUTE);
@@ -435,8 +449,9 @@ export function Shell({
     setQuickOpen(true);
   };
   const sideButton = "hidden shrink-0 rounded-md px-2 text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)] md:block";
-  // Okno szybkiego dodawania dodaje tam, skąd je wywołano (lista / „Dziś” z dzisiejszym terminem).
-  const quickDefaults = list ? { listId: list.id } : route.view === "today" ? { listId: targetInbox?.id, dueDate: today } : { listId: targetInbox?.id };
+  // Okno szybkiego dodawania dodaje tam, skąd je wywołano (lista / „Dziś” z dzisiejszym terminem);
+  // udostępnione z innej aplikacji / zakładki — zawsze do Inboxu, bez terminu, jak na telefonie (R-09).
+  const quickDefaults = shared ? { listId: targetInbox?.id } : list ? { listId: list.id } : route.view === "today" ? { listId: targetInbox?.id, dueDate: today } : { listId: targetInbox?.id };
 
   return (
     <AppEnvProvider value={{ store, data, userId, email, timeZone: settings.timeZone, settings, today, workspaceId, openTask, openTaskId, openTaskMode, selectedIds, select }}>

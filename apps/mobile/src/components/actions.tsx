@@ -31,7 +31,7 @@ export interface TaskActions {
   selected: ReadonlySet<string>;
   toggleSelected: (id: string) => void;
   setSelected: (ids: readonly string[]) => void;
-  /** Akcja na zaznaczonych (z „Cofnij”), po niej zaznaczenie znika. */
+  /** Akcja na zaznaczonych (z „Cofnij”); zaznaczenie zostaje, jak na webie (R-12) — zadania, które zniknęły z widoku, wypadają w `TaskSections`. */
   bulk: (action: BulkAction) => Promise<void>;
 }
 
@@ -171,7 +171,6 @@ export function TaskActionsProvider({ children }: { children: ReactNode }) {
       if (!chosen.length) return;
       const now = new Date();
       const { ops, undo } = bulkTaskOps(chosen, all, action, { today: localDateAt(now, timeZone), now, timeZone });
-      setSelectedState(new Set());
       if (!ops.length) return show('Nic do zmiany.');
       await run(ops, { text: `${BULK_TEXT[action.kind]}: ${plural(chosen.length, TASKS)}`, undo });
     },

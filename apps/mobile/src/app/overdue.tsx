@@ -1,16 +1,17 @@
 /**
  * „Zaległe” (M9): otwarte zadania po terminie — dzisiejsze, których godzina minęła (na górze), i z
  * wcześniejszych dni; reguły z `selectOverdue` (core), lista odświeża się co minutę. Chipy filtra
- * zawężają zadania; filtr trwa do opuszczenia ekranu, nie jest zapisywany.
+ * zawężają zadania; filtr pamiętany per widok do zamknięcia aplikacji (R-06), nie jest zapisywany.
  */
-import { applyFilter, isEmptyFilter, minutesLate, overdueToTodayOps, plural, selectOverdue, VIEW_SECTION, type FilterQuery, type ViewTask } from '@taskplanner/core';
-import { useMemo, useState } from 'react';
+import { applyFilter, isEmptyFilter, minutesLate, overdueToTodayOps, plural, selectOverdue, VIEW_SECTION, type ViewTask } from '@taskplanner/core';
+import { useMemo } from 'react';
 
 import { useTaskActions } from '@/components/actions';
 import { FilterBar } from '@/components/filter-bar';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
 import { useSmartView } from '@/components/view-options';
+import { useAdhocFilter } from '@/lib/adhoc-filters';
 import { targetInbox, useLocalMinute, useView } from '@/lib/app-data';
 import { usePerfReady } from '@/lib/perf';
 
@@ -20,7 +21,7 @@ export default function OverdueScreen() {
   const { data, today, ctx, workspaceId } = useView();
   const now = useLocalMinute(ctx.timeZone);
   usePerfReady('/overdue', data.loaded);
-  const [filter, setFilter] = useState<FilterQuery>({});
+  const [filter, setFilter] = useAdhocFilter(data.userId, 'overdue');
   const view = useMemo(() => selectOverdue(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx, now), [data.tasks, filter, today, ctx, now]);
   const { run } = useTaskActions();
   const { row, options, columnsHeader } = useSmartView('overdue', data, today, workspaceId);

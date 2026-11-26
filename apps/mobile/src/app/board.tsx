@@ -9,7 +9,7 @@
  * Tryb „Własne” (tylko tablica listy): kolumny z `lists.board_columns` — dodanie, zmiana nazwy,
  * przesunięcie, usunięcie (z „Cofnij”) jak na webie; „Dodaj kartę” nad kartami ustawia pola kolumny.
  * `?list=` — tablica listy (kryterium w `view_prefs.boardBy`, chipy filtra zapisane w `view_prefs.filter`
- * jak na ekranie listy), `?view=` — widoku zbiorczego (`smartBoard`, kryterium w `settings.views`), bez — bieżącej przestrzeni (chipy filtra w pamięci do zamknięcia aplikacji)
+ * jak na ekranie listy), `?view=` — widoku zbiorczego (`smartBoard`, kryterium w `settings.views`), bez — bieżącej przestrzeni (chipy filtra bez listy pamiętane per widok do zamknięcia aplikacji, wspólne z zakładką widoku — R-06)
  * (kryterium zapamiętane na urządzeniu).
  */
 import {
@@ -52,6 +52,7 @@ import { pickOption, type Option } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
 import { RowsInteractive, TaskRow } from '@/components/task-row';
 import { Chip, usePalette } from '@/components/ui';
+import { useAdhocFilter } from '@/lib/adhoc-filters';
 import { listEditable, listLabel, targetInbox, useLocalMinute, useView } from '@/lib/app-data';
 import { updateSettings } from '@/lib/profile';
 import { mutate } from '@/lib/sync';
@@ -110,7 +111,8 @@ export default function BoardScreen() {
     }
   };
 
-  const [localFilter, setLocalFilter] = useState<FilterQuery>({});
+  // Tablica widoku dzieli filtr doraźny z jego zakładką (R-06).
+  const [localFilter, setLocalFilter] = useAdhocFilter(data.userId, view ?? 'board');
   const filter = list ? (list.prefs.filter ?? NO_FILTER) : localFilter;
   const setFilter = (next: FilterQuery) => {
     if (!list) return setLocalFilter(next);

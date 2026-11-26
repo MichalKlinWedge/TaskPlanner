@@ -54,6 +54,7 @@ export * from './timeline.ts';
 export * from './trash.ts';
 export * from './smart-views.ts';
 export * from './views.ts';
+export * from './view-memory.ts';
 export * from './web-clip.ts';
 export * from './week-summary.ts';
 export * from './widgets.ts';

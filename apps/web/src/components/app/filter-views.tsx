@@ -7,8 +7,9 @@
 import { filterChips, isEmptyFilter, keyBetween, plural, selectFiltered, sortTasks, tagWorkspacesPatch, uuidv7, type FilterQuery, type ViewContext, type ViewTask } from "@taskplanner/core";
 import { useState, type FormEvent } from "react";
 
+import { useAdhocFilter } from "@/lib/adhoc-filters";
 import type { AppData, SavedFilter, Tag } from "@/lib/app-data";
-import type { Route } from "@/lib/route";
+import { routeHash, type Route } from "@/lib/route";
 
 import { useAppEnv } from "./app-env";
 import { TaskExportButton } from "./export";
@@ -72,7 +73,12 @@ export function SaveFilter({ query, onSaved }: { query: FilterQuery; onSaved?: (
 
 export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: ViewContext; tag: Tag; navigate: (route: Route) => void }) {
   const { run } = useTaskActions();
-  const [query, setQuery] = useState<FilterQuery>({ tags: { ids: [tag.id], match: "any" } });
+  // Warunek tego tagu zawsze jest; dodatkowe chipy pamiętane per widok jak w Inbox / Dziś (R-06).
+  const { userId } = useAppEnv();
+  const [extra, setExtra] = useAdhocFilter(userId, routeHash({ view: "tag", id: tag.id }));
+  const base: FilterQuery = { tags: { ids: [tag.id], match: "any" } };
+  const query: FilterQuery = extra.tags ? extra : { ...extra, tags: base.tags };
+  const setQuery = (q: FilterQuery) => setExtra(JSON.stringify(q) === JSON.stringify(base) ? {} : q);
   const [renaming, setRenaming] = useState(false);
   const count = filtered(data.tasks, query, ctx).length;
   const update = (patch: Record<string, unknown>) => run([{ table: "tags", id: tag.id, patch }]);
@@ -127,7 +133,7 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
       <div className="mb-3" hidden={tag.shared}>
         <WorkspaceChips ids={tag.workspaceIds} workspaces={data.workspaces} label="Przestrzenie tagu" onChange={(ids) => void update(tagWorkspacesPatch(ids))} />
       </div>
-      <FilterBar query={query} onChange={(q) => setQuery(q.tags ? q : { ...q, tags: { ids: [tag.id], match: "any" } })}>
+      <FilterBar query={query} onChange={(q) => setQuery(q.tags ? q : { ...q, tags: base.tags })}>
         <SaveFilter query={query} onSaved={(id) => navigate({ view: "filter", id })} />
       </FilterBar>
       <Results data={data} ctx={ctx} query={query} />
