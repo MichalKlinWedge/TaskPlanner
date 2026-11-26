@@ -7,7 +7,8 @@
  * z liczbą pozycji, dotknięcie dnia → agenda dnia. Wydarzenia: kalendarze połączone na serwerze
  * i wybrane kalendarze telefonu (`lib/calendar-events.ts`). Wszystkie zmiany z „Cofnij”. Chipy filtra
  * zawężają zadania we wszystkich widokach (wydarzenia i nawyki zostają); bez terminu i godziny, bo o nich
- * decyduje kalendarz; filtr trwa do opuszczenia ekranu, nie jest zapisywany. Listy dnia w tygodniu
+ * decyduje kalendarz; filtr trwa do opuszczenia ekranu, nie jest zapisywany.
+ * Wysokość wiersza osi dnia (15 min / 30 min / 1 h) przełącza się przy filtrze. Listy dnia w tygodniu
  * i miesiącu są stronicowane (`EntryList`): przy 10 000 zadań dzień ma ~100 pozycji (`docs/WYDAJNOSC.md`).
  */
 import {
@@ -15,6 +16,8 @@ import {
   addMonths,
   agendaDays,
   applyFilter,
+  blockLanes,
+  CALENDAR_SLOTS,
   calendarEntries,
   capitalized,
   clickedTime,
@@ -29,6 +32,7 @@ import {
   minutesToTime,
   monthLabel,
   monthWeeks,
+  parseCalendarSlot,
   plural,
   PRIORITY,
   relativeDay,
@@ -41,6 +45,7 @@ import {
   WEEKDAY,
   type Block,
   type CalendarEntry,
+  type CalendarSlot,
   type FilterQuery,
   type IsoWeekday,
   type LocalDate,
@@ -50,12 +55,12 @@ import {
 } from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import Storage from 'expo-sqlite/kv-store';
-import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTaskActions } from '@/components/actions';
-import { DayTimeline } from '@/components/day-timeline';
+import { DayTimeline, MIN_BLOCK } from '@/components/day-timeline';
 import { FilterBar, type FilterField } from '@/components/filter-bar';
 import { pickAmount, pickDate, pickMany, pickOption, pickTime, type Option } from '@/components/pickers';
 import { Fab, openQuickAdd } from '@/components/task-list';
@@ -72,8 +77,9 @@ const MODES: { mode: Mode; label: string }[] = [
   { mode: 'week', label: 'Tydzień' },
   { mode: 'month', label: 'Miesiąc' },
 ];
-/** Pikseli na godzinę w widoku dnia. */
-const HOUR = 56;
+/** Wysokość wiersza osi dnia w minutach (jak na webie, per urządzenie) → pikseli na godzinę. */
+const SLOT_KEY = 'calendar.slot';
+const HOUR: Record<CalendarSlot, number> = { 15: 112, 30: 56, 60: 36 };
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
 const HABIT_COLOR = '#059669';
 /** Termin i godzinę ustala kalendarz — te warunki filtra nic tu nie zmieniają. */
@@ -98,12 +104,17 @@ export default function CalendarScreen() {
   const { notify } = useTaskActions();
   const [mode, setModeState] = useState<Mode>(() => (params.mode as Mode | undefined) ?? (Storage.getItemSync(MODE_KEY) as Mode | null) ?? 'day');
   const [date, setDate] = useState<LocalDate>(() => (/^\d{4}-\d{2}-\d{2}$/.test(params.date ?? '') ? (params.date as LocalDate) : today));
+  const [slot, setSlotState] = useState<CalendarSlot>(() => parseCalendarSlot(Storage.getItemSync(SLOT_KEY)));
   const deviceIds = useDeviceCalendarIds();
   const firstDay = data.settings.firstDayOfWeek;
 
   const setMode = (next: Mode) => {
     Storage.setItemSync(MODE_KEY, next);
     setModeState(next);
+  };
+  const setSlot = (next: CalendarSlot) => {
+    Storage.setItemSync(SLOT_KEY, String(next));
+    setSlotState(next);
   };
   const openDay = (day: LocalDate) => {
     setDate(day);
@@ -157,10 +168,22 @@ export default function CalendarScreen() {
           <View style={{ flex: 1 }} />
           <Chip label="Dziś" selected={date === today} onPress={() => setDate(today)} />
         </View>
-        <FilterBar query={filter} onChange={setFilter} hide={HIDDEN} />
+        <View style={styles.filters}>
+          {/* Z warunkami filtra chipy wiersza schodzą pod nie. */}
+          <View style={isEmptyFilter(filter) ? { flex: 1 } : { width: '100%' }}>
+            <FilterBar query={filter} onChange={setFilter} hide={HIDDEN} />
+          </View>
+          {mode === 'day' ? (
+            <View style={styles.row} accessibilityLabel="Wysokość wiersza">
+              {CALENDAR_SLOTS.map((s) => (
+                <Chip key={s} label={formatMinutes(s)} selected={slot === s} onPress={() => setSlot(s)} />
+              ))}
+            </View>
+          ) : null}
+        </View>
       </View>
       {mode === 'day' ? (
-        <DayView key={date} data={data} date={date} today={today} workspaceId={workspaceId} bottom={insets.bottom} />
+        <DayView key={date} slot={slot} data={data} date={date} today={today} workspaceId={workspaceId} bottom={insets.bottom} />
       ) : mode === 'week' ? (
         <RangeAgenda data={data} from={weekFrom} to={addDays(weekFrom, 7)} today={today} workspaceId={workspaceId} onDay={openDay} bottom={insets.bottom} />
       ) : (
@@ -182,7 +205,7 @@ function useSchedule() {
   };
 }
 
-function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; date: LocalDate; today: LocalDate; workspaceId: string | null; bottom: number }) {
+function DayView({ slot, data, date, today, workspaceId, bottom }: { slot: CalendarSlot; data: AppData; date: LocalDate; today: LocalDate; workspaceId: string | null; bottom: number }) {
   const p = usePalette();
   const { notify } = useTaskActions();
   const plan = useDayPlan(data, date, workspaceId, today);
@@ -194,6 +217,8 @@ function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; da
   const [axisTop, setAxisTop] = useState<number | null>(null);
   const [allDayOpen, setAllDayOpen] = useState(false);
   const day = plan.day;
+  const hour = HOUR[slot];
+  const lanes = useMemo(() => blockLanes(day.timed, ((MIN_BLOCK - 4) / hour) * 60), [day.timed, hour]);
   const clock = (b: Pick<Block, 'startAt'>) => localDateTimeAt(b.startAt, timeZone).slice(11);
 
   const at = (startMin: number) => `→ ${relativeDay(date, today)} ${minutesToTime(startMin)}`;
@@ -276,7 +301,7 @@ function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; da
   const allDayItems = [...day.allDay.filter((i) => i.kind === 'event'), ...day.allDay.filter((i) => i.kind === 'task')];
   const allDayShown = allDayOpen ? allDayItems : allDayItems.slice(0, ALL_DAY_LIMIT);
   // Przewinięcie na start: dziś — godzina przed „teraz”, inny dzień — początek pracy albo pierwszy blok.
-  const initial = Math.max(0, ((date === today ? nowMin - 60 : Math.min(toMin(workHours.start), ...day.timed.map((b) => b.startMin))) / 60) * HOUR - 8);
+  const initial = Math.max(0, ((date === today ? nowMin - 60 : Math.min(toMin(workHours.start), ...day.timed.map((b) => b.startMin))) / 60) * hour - 8);
   // Wyrównanie do „teraz” / początku dnia po każdej zmianie treści nad osią (konflikty, „cały dzień”,
   // wydarzenia telefonu dochodzą asynchronicznie) i wysokości — dopóki użytkownik sam nie przewinie.
   const align = () => {
@@ -284,6 +309,21 @@ function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; da
     scroll.current?.scrollTo({ y: axisTop + initial, animated: false });
   };
   useEffect(align);
+  // Inna wysokość wiersza: u góry zostaje ta sama godzina (bez przewijania palcem robi to `align`).
+  const offset = useRef(0);
+  const drawnHour = useRef(hour);
+  const rescaled = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const ratio = hour / drawnHour.current;
+    drawnHour.current = hour;
+    if (ratio !== 1 && touched.current && axisTop !== null && offset.current > axisTop) rescaled.current = axisTop + (offset.current - axisTop) * ratio;
+  }, [hour, axisTop]);
+  const onContentSize = () => {
+    align();
+    if (rescaled.current === null) return;
+    scroll.current?.scrollTo({ y: rescaled.current, animated: false });
+    rescaled.current = null;
+  };
 
   return (
     <ScrollView
@@ -292,7 +332,11 @@ function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; da
       onScrollBeginDrag={() => {
         touched.current = true;
       }}
-      onContentSizeChange={align}
+      onScroll={(e) => {
+        offset.current = e.nativeEvent.contentOffset.y;
+      }}
+      scrollEventThrottle={64}
+      onContentSizeChange={onContentSize}
     >
       <View style={{ padding: 12, gap: 8 }}>
         {plan.conflicts.length ? (
@@ -341,19 +385,21 @@ function DayView({ data, date, today, workspaceId, bottom }: { data: AppData; da
       </View>
       <View onLayout={(e) => setAxisTop(e.nativeEvent.layout.y)}>
       <DayTimeline
+        key={slot}
+        slot={slot}
         plan={day}
         hot={plan.hot}
-        lanes={plan.lanes}
+        lanes={lanes}
         free={plan.free}
         info={plan.info}
         tasks={plan.tasks}
         from={0}
         to={day.dayMinutes}
-        hour={HOUR}
+        hour={hour}
         nowMin={date === today ? nowMin : null}
         editable
         onPress={(b) => void onBlock(b)}
-        onEmpty={(min) => openQuickAdd({ dueDate: date, dueTime: clickedTime(min) })}
+        onEmpty={(min) => openQuickAdd({ dueDate: date, dueTime: clickedTime(min, slot) })}
         onMove={(task, startMin, durationMin) => schedule(task, scheduleBlockPatch(task, date, startMin, { durationMin }), at(startMin))}
         onResize={(task, startMin, endMin) => schedule(task, resizeBlockPatch(startMin, endMin), `— ${formatMinutes(Math.max(5, endMin - startMin))}`)}
       />
@@ -505,6 +551,7 @@ function MonthView({ data, date, today, workspaceId, onSelect, onDay, bottom }: 
 const styles = StyleSheet.create({
   bar: { padding: 8, gap: 6, borderBottomWidth: StyleSheet.hairlineWidth },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  filters: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 6 },
   arrow: { paddingHorizontal: 12, paddingVertical: 2 },
   box: { borderWidth: 1, borderRadius: 8, padding: 8, gap: 2 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

@@ -132,6 +132,12 @@ test('klik w puste miejsce dodaje zadanie z datą i godziną', async ({ page, se
   await page.setViewportSize({ width: 1280, height: 1000 });
   await slots.getByRole('button', { name: '15 min', exact: true }).click();
   await expect(calendar.locator('td.fc-timegrid-slot-lane[data-time="09:00:00"]')).toBeInViewport();
+  // Etykiety: przy 15 min „09:00” / „09:30”, przy 30 min „09”.
+  const label = (time: string) => calendar.locator(`td.fc-timegrid-slot-label[data-time="${time}"]`);
+  await expect(label('09:00:00')).toHaveText('09:00');
+  await expect(label('09:30:00')).toHaveText('09:30');
+  await slots.getByRole('button', { name: '30 min' }).click();
+  await expect(label('09:00:00')).toHaveText('09');
 
   // Miesiąc: sam dzień; godzina z wpisu zostaje w klikniętym dniu.
   await calendar.getByRole('button', { name: 'Miesiąc', exact: true }).click();

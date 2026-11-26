@@ -23,7 +23,6 @@ import {
   CALENDAR_SLOTS,
   calendarEntries,
   clickedTime,
-  DEFAULT_CALENDAR_SLOT,
   formatMinutes,
   habitSlots,
   isEmptyFilter,
@@ -32,6 +31,7 @@ import {
   freeSlotTimes,
   isOpen,
   localDateTimeAt,
+  parseCalendarSlot,
   PRIORITY,
   relativeDay,
   resizeBlockPatch,
@@ -66,6 +66,9 @@ const VIEW_KEY = "tp-calendar-view";
 /** Wysokość wiersza siatki w minutach (per przeglądarka). */
 const SLOT_KEY = "tp-calendar-slot";
 const SLOT_DURATION: Record<CalendarSlot, string> = { 15: "00:15:00", 30: "00:30:00", 60: "01:00:00" };
+/** Etykiety godzin: „09”; przy 15 min także połówki, więc pełny zapis „09:00” / „09:30”. */
+const SLOT_LABEL: CalendarOptions["slotLabelFormat"] = { hour: "2-digit", minute: "2-digit", omitZeroMinute: true };
+const SLOT_LABEL_FULL: CalendarOptions["slotLabelFormat"] = { hour: "2-digit", minute: "2-digit" };
 /** Panel zadań zwinięty ręcznie (per przeglądarka); bez tego przy wejściu zwija się sam, gdy wszystkie źródła są puste. */
 const PANEL_KEY = "tp-calendar-panel-closed";
 
@@ -96,10 +99,9 @@ function readView(): CalendarView {
 
 function readSlot(): CalendarSlot {
   try {
-    const v = Number(localStorage.getItem(SLOT_KEY));
-    return CALENDAR_SLOTS.find((s) => s === v) ?? DEFAULT_CALENDAR_SLOT;
+    return parseCalendarSlot(localStorage.getItem(SLOT_KEY));
   } catch {
-    return DEFAULT_CALENDAR_SLOT;
+    return parseCalendarSlot(null);
   }
 }
 
@@ -438,6 +440,7 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
             scrollTime: `${settings.workHours.start}:00`,
             businessHours: { daysOfWeek: settings.workHours.days.map((d) => d % 7), startTime: settings.workHours.start, endTime: settings.workHours.end },
             slotDuration: SLOT_DURATION[slot],
+            slotLabelFormat: slot === 15 ? SLOT_LABEL_FULL : SLOT_LABEL,
             expandRows: true,
             snapDuration: "00:15:00",
             nowIndicator: true,

@@ -11,6 +11,7 @@ import {
   blocksForDay,
   calendarEntries,
   clickedTime,
+  parseCalendarSlot,
   freeSlotTimes,
   conflictIds,
   conflicts,
@@ -116,6 +117,14 @@ describe('układ osi dnia', () => {
       'task:c': { lane: 0, lanes: 2 },
       'task:d': { lane: 0, lanes: 1 },
     });
+    // Najmniejsza długość na ekranie: krótkie bloki jeden po drugim stają obok siebie.
+    const short = [b('a', 540, 555), b('b', 555, 570), b('c', 570, 600)];
+    expect([...blockLanes(short).values()].map((l) => l.lanes)).toEqual([1, 1, 1]);
+    expect(Object.fromEntries(blockLanes(short, 24))).toEqual({
+      'task:a': { lane: 0, lanes: 2 },
+      'task:b': { lane: 1, lanes: 2 },
+      'task:c': { lane: 0, lanes: 2 },
+    });
   });
 });
 
@@ -128,6 +137,7 @@ describe('przeciąganie', () => {
     expect(minutesToTime(-30)).toBe('23:30');
     expect([0, 29, 30, 615, 629.9, 1439, 1500, -5].map((m) => clickedTime(m))).toEqual(['00:00', '00:00', '00:30', '10:00', '10:00', '23:30', '23:30', '00:00']);
     expect([14, 15, 629, 1439, 1500].map((m) => clickedTime(m, 15))).toEqual(['00:00', '00:15', '10:15', '23:45', '23:45']);
+    expect([null, '', '20', '15', '30', '60'].map(parseCalendarSlot)).toEqual([30, 30, 30, 15, 30, 60]);
     expect([59, 60, 629, 1439, 1500].map((m) => clickedTime(m, 60))).toEqual(['00:00', '01:00', '10:00', '23:00', '23:00']);
   });
 });

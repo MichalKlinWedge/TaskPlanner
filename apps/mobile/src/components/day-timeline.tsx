@@ -4,9 +4,9 @@
  * `core` (`blocksForDay`, `conflicts`, `freeSlots`) — tu jest tylko rysowanie i gesty. Z `editable`
  * blok zadania przesuwa się po przytrzymaniu i przeciągnięciu, a uchwyt na dole zmienia długość
  * (co 15 min, `snapMinutes`); zapis robi ekran (`onMove` / `onResize`). Dotknięcie bloku → `onPress`,
- * pustego miejsca → `onEmpty` (minuta od północy).
+ * pustego miejsca → `onEmpty` (minuta od północy). `slot` — wysokość wiersza: linie co tyle minut.
  */
-import { minutesToTime, PRIORITY, snapMinutes, type Block, type DayPlan, type FreeSlot, type ViewTask } from '@taskplanner/core';
+import { minutesToTime, PRIORITY, snapMinutes, type Block, type CalendarSlot, type DayPlan, type FreeSlot, type ViewTask } from '@taskplanner/core';
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -22,6 +22,8 @@ const GUTTER = 44;
 /** Odstęp nad pierwszą godziną (etykieta „GG:00” wystaje nad linię). */
 const TOP = 8;
 const SNAP = 15;
+/** Najmniejsza wysokość bloku (piksele). */
+export const MIN_BLOCK = 18;
 const HABIT_COLOR = '#059669';
 
 export interface DayTimelineProps {
@@ -37,6 +39,8 @@ export interface DayTimelineProps {
   to: number;
   /** Pikseli na godzinę. */
   hour: number;
+  /** Linie siatki co tyle minut (domyślnie tylko pełne godziny); przy 15 min etykiety także co pół godziny. */
+  slot?: CalendarSlot;
   /** Minuta „teraz” (tylko w dzisiejszym dniu). */
   nowMin?: number | null;
   editable?: boolean;
@@ -52,14 +56,14 @@ const clock = (min: number) => minutesToTime(min);
 
 export function DayTimeline(props: DayTimelineProps) {
   const p = usePalette();
-  const { plan, from, to, hour } = props;
+  const { plan, from, to, hour, slot = 60 } = props;
   const y = (min: number) => ((Math.min(Math.max(min, from), to) - from) / 60) * hour;
-  const hours = Array.from({ length: (to - from) / 60 + 1 }, (_, i) => from + i * 60);
+  const lines = Array.from({ length: Math.floor((to - from) / slot) + 1 }, (_, i) => from + i * slot);
   return (
     <View style={{ height: y(to) + TOP + 8, marginTop: TOP }}>
-      {hours.map((h) => (
-        <View key={h} style={[styles.hour, { top: y(h), borderColor: p.border }]}>
-          <Text style={[styles.hourText, { color: p.muted }]}>{String(Math.floor(h / 60) % 24).padStart(2, '0')}:00</Text>
+      {lines.map((m) => (
+        <View key={m} style={[m % 60 ? styles.minor : styles.hour, { top: y(m), borderColor: p.border }]}>
+          {m % (slot === 15 ? 30 : 60) ? null : <Text style={[styles.hourText, { color: p.muted }]}>{clock(m)}</Text>}
         </View>
       ))}
       <View style={[styles.lane, { height: y(to) }]} pointerEvents="box-none">
@@ -94,7 +98,8 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
   // Godzinę na żywo rysuje `BlockText` (`live` = 1 od chwytu do zapisu albo powrotu), więc blok
   // z gestami nie renderuje się przy każdym przeskoku — nowe domknięcia workletów kosztowały klatkę.
   const top = useSharedValue(y(startMin));
-  const height = useSharedValue(Math.max(18, y(endMin) - y(startMin) - 1));
+  // Prawdziwa długość; na ekranie blok ma co najmniej `MIN_BLOCK`.
+  const height = useSharedValue(y(endMin) - y(startMin));
   const shift = useSharedValue(0);
   const base = useSharedValue(0);
   const active = useSharedValue(0);
@@ -106,7 +111,7 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
   const toMin = (value: number) => from + snapMinutes((value / hour) * 60, SNAP);
   const reset = () => {
     top.value = y(startMin);
-    height.value = Math.max(18, y(endMin) - y(startMin) - 1);
+    height.value = y(endMin) - y(startMin);
     shift.value = 0;
     live.value = 0;
   };
@@ -162,7 +167,7 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
   });
   const tap = useTapGesture({ runOnJS: true, onActivate: () => props.onPress(block) });
   const gesture = useExclusiveGestures(move, tap);
-  const animated = useAnimatedStyle(() => ({ top: top.value, height: height.value, transform: [{ translateY: shift.value }], opacity: active.value ? 0.85 : 1, zIndex: active.value ? 10 : 1, elevation: active.value ? 6 : 0 }));
+  const animated = useAnimatedStyle(() => ({ top: top.value, height: Math.max(MIN_BLOCK, height.value - 1), transform: [{ translateY: shift.value }], opacity: active.value ? 0.85 : 1, zIndex: active.value ? 10 : 1, elevation: active.value ? 6 : 0 }));
 
   const color = task ? (PRIORITY[task.priority]?.color ?? p.border) : block.kind === 'habit' ? HABIT_COLOR : (source?.color ?? p.muted);
   const event = block.kind === 'event';
@@ -200,7 +205,7 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
 
   if (!draggable)
     return (
-      <Pressable accessibilityRole="button" accessibilityLabel={a11y} onPress={() => props.onPress(block)} style={[...style, { top: y(startMin), height: Math.max(18, y(endMin) - y(startMin) - 1) }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={a11y} onPress={() => props.onPress(block)} style={[...style, { top: y(startMin), height: Math.max(MIN_BLOCK, y(endMin) - y(startMin) - 1) }]}>
         {body}
       </Pressable>
     );
@@ -262,6 +267,7 @@ function BlockText({ live, top, shift, height, toMin, ...props }: BlockTextProps
 
 const styles = StyleSheet.create({
   hour: { position: 'absolute', left: 0, right: 0, borderTopWidth: StyleSheet.hairlineWidth },
+  minor: { position: 'absolute', left: GUTTER, right: 0, borderTopWidth: StyleSheet.hairlineWidth, opacity: 0.6 },
   hourText: { width: GUTTER - 6, textAlign: 'right', fontSize: 10, marginTop: -7 },
   lane: { position: 'absolute', top: 0, left: GUTTER, right: 4 },
   free: { position: 'absolute', left: 0, right: 0, backgroundColor: 'rgba(34,197,94,0.10)' },

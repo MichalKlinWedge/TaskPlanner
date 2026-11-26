@@ -328,9 +328,10 @@ export function freeSlotTimes(
 /**
  * Układ osi dnia (plan dnia na webie, oś dnia na telefonie): nakładające się bloki obok siebie.
  * Grupa = ciąg bloków połączonych nakładaniem; w grupie każdy blok dostaje pierwszą wolną kolumnę,
- * `lanes` — liczba kolumn grupy (szerokość bloku = 1 / `lanes`).
+ * `lanes` — liczba kolumn grupy (szerokość bloku = 1 / `lanes`). `minMinutes` — najmniejsza długość
+ * bloku na ekranie (krótki blok ma minimalną wysokość i przy drobnej skali zasłoniłby następny).
  */
-export function blockLanes(blocks: readonly Pick<Block, 'id' | 'kind' | 'startMin' | 'endMin'>[]): Map<string, { lane: number; lanes: number }> {
+export function blockLanes(blocks: readonly Pick<Block, 'id' | 'kind' | 'startMin' | 'endMin'>[], minMinutes = 0): Map<string, { lane: number; lanes: number }> {
   const out = new Map<string, { lane: number; lanes: number }>();
   const sorted = [...blocks].sort((a, b) => a.startMin - b.startMin || b.endMin - a.endMin);
   let group: { key: string; lane: number }[] = [];
@@ -346,8 +347,9 @@ export function blockLanes(blocks: readonly Pick<Block, 'id' | 'kind' | 'startMi
     if (block.startMin >= groupEnd) flush();
     let lane = laneEnds.findIndex((end) => end <= block.startMin);
     if (lane < 0) lane = laneEnds.push(0) - 1;
-    laneEnds[lane] = block.endMin;
-    groupEnd = Math.max(groupEnd, block.endMin);
+    const end = Math.max(block.endMin, block.startMin + minMinutes);
+    laneEnds[lane] = end;
+    groupEnd = Math.max(groupEnd, end);
     group.push({ key: `${block.kind}:${block.id}`, lane });
   }
   flush();
@@ -361,6 +363,9 @@ export const snapMinutes = (minutes: number, step = 15): number => Math.round(mi
 export const CALENDAR_SLOTS = [15, 30, 60] as const;
 export type CalendarSlot = (typeof CALENDAR_SLOTS)[number];
 export const DEFAULT_CALENDAR_SLOT: CalendarSlot = 30;
+
+/** Zapisany wybór wysokości wiersza; brak albo nieznana wartość → domyślna. */
+export const parseCalendarSlot = (stored: string | null): CalendarSlot => CALENDAR_SLOTS.find((s) => String(s) === stored) ?? DEFAULT_CALENDAR_SLOT;
 
 /** Kliknięte miejsce osi dnia → początek wiersza pod kursorem (domyślnie pół godziny), najpóźniej ostatni wiersz doby. */
 export const clickedTime = (minutes: number, slot: CalendarSlot = DEFAULT_CALENDAR_SLOT): LocalTime =>
