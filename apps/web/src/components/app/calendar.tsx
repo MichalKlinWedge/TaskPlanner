@@ -8,6 +8,7 @@
  * (`resizeBlockPatch`), blok z powrotem na panel zdejmuje godzinę (`unscheduleBlockPatch`).
  * Klik w puste miejsce otwiera szybkie dodawanie na ten dzień i godzinę (`onAdd`). Wysokość wiersza
  * (15 min / 30 min / 1 h) przełącza się nad siatką dnia i tygodnia; przeciąganie zawsze co 15 min.
+ * „Pokaż” (`calendar-sources.tsx`) wybiera listy i kalendarze zewnętrzne w widoku.
  *
  * Czas zadań jest pływający, więc kalendarz pracuje w „UTC” jako zegarze ściennym (bez stref) —
  * „teraz” to zegar ścienny strefy z ustawień.
@@ -55,6 +56,7 @@ import { useCalendarEvents } from "@/lib/calendar-events";
 import { useRoute } from "@/lib/route";
 
 import { useAppEnv } from "./app-env";
+import { CalendarSources, readCalendarHidden, storeCalendarHidden, useExternalCalendars, type CalendarHidden } from "./calendar-sources";
 import { FilterBar, type Field as FilterField } from "./filter-bar";
 import { useTaskActions } from "./task-item";
 import { Select } from "./ui";
@@ -144,6 +146,13 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
   const [slot, setSlot] = useState<CalendarSlot>(readSlot);
   const [range, setRange] = useState<{ from: LocalDate; to: LocalDate } | null>(null);
   const [source, setSource] = useState("today");
+  // Listy i kalendarze zewnętrzne ukryte przez „Pokaż” — poza widokiem i poza wyliczeniami (konflikty, wolne okna, panel).
+  const [hidden, setHiddenState] = useState<CalendarHidden>(readCalendarHidden);
+  const setHidden = (next: CalendarHidden) => {
+    setHiddenState(next);
+    storeCalendarHidden(next);
+  };
+  const externalCalendars = useExternalCalendars();
   // Filtr ukrywa bloki zadań i pozycje panelu; kolizje i wolne okna liczą się z całości.
   const [filter, setFilter] = useState<FilterQuery>({});
   const shown = useMemo(() => (isEmptyFilter(filter) ? null : matchesFilter(filter, ctx.today)), [filter, ctx.today]);
@@ -169,7 +178,11 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
   const timeZone = ctx.timeZone;
   const duration = settings.defaultDurationMin;
 
-  const tasks = useMemo(() => data.tasks.filter((t) => t.kind === "task" && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId)), [data.tasks, ctx.workspaceId]);
+  const inView = useMemo(() => {
+    const lists = hidden.lists;
+    return (t: ViewTask) => (!ctx.workspaceId || t.workspaceId === ctx.workspaceId) && !(t.listId && lists.has(t.listId));
+  }, [ctx.workspaceId, hidden.lists]);
+  const tasks = useMemo(() => data.tasks.filter((t) => t.kind === "task" && inView(t)), [data.tasks, inView]);
   const byId = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
   // Obsługa upuszczenia pochodzi sprzed zamrożenia kalendarza, a zadanie mogło się w międzyczasie zmienić.
   const latest = useRef(byId);
@@ -178,12 +191,16 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
   }, [byId]);
   // Nawyki z porą — bloki do odczytu (odhacza się je w „Dziś” / „Cykliczne”); klik otwiera nawyk.
   const habits = useMemo(
-    () => (range ? habitSlots(data.tasks.filter((t) => !ctx.workspaceId || t.workspaceId === ctx.workspaceId), data.habitCompletions, range.from, range.to, ctx.today) : []),
-    [data.tasks, data.habitCompletions, range, ctx.workspaceId, ctx.today],
+    () => (range ? habitSlots(data.tasks.filter(inView), data.habitCompletions, range.from, range.to, ctx.today) : []),
+    [data.tasks, data.habitCompletions, range, inView, ctx.today],
   );
 
   // Wydarzenia z kalendarzy zewnętrznych (widoczne kalendarze) nachodzące na zakres widoku.
-  const calendarEvents = useCalendarEvents(store, range, timeZone);
+  const allEvents = useCalendarEvents(store, range, timeZone);
+  const calendarEvents = useMemo(
+    () => (hidden.calendars.size ? { ...allEvents, list: allEvents.list.filter((e) => !hidden.calendars.has(allEvents.info.get(e.id)?.calendar_id ?? "")) } : allEvents),
+    [allEvents, hidden.calendars],
+  );
 
   const events = useMemo<EventInput[]>(() => {
     if (!range) return [];
@@ -218,9 +235,9 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
 
   const conflictCount = useMemo(() => events.filter((e) => e.extendedProps?.conflict).length, [events]);
   const candidates = useMemo(() => {
-    const all = panelTasks(source, data, ctx);
+    const all = panelTasks(source, data, ctx).filter(inView);
     return shown ? all.filter(shown) : all;
-  }, [source, data, ctx, shown]);
+  }, [source, data, ctx, shown, inView]);
   const togglePanel = () => {
     setPanelOpen(!panelOpen);
     try {
@@ -409,6 +426,7 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
       )}
       <div ref={grid} className="tp-calendar min-w-0 flex-1" data-testid="calendar">
         <FilterBar query={filter} onChange={setFilter} hide={HIDDEN_FILTERS}>
+          <CalendarSources data={data} workspaceId={ctx.workspaceId ?? null} calendars={externalCalendars} hidden={hidden} onChange={setHidden} />
           {view !== "dayGridMonth" ? (
             <div className="ml-auto flex overflow-hidden rounded-md border border-[var(--line)] text-xs" role="group" aria-label="Wysokość wiersza" title="Ile czasu obejmuje jeden wiersz siatki">
               {CALENDAR_SLOTS.map((s) => (

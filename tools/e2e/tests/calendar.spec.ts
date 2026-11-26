@@ -6,7 +6,7 @@ import { expect, openApp, test, unique } from '../src/fixtures.ts';
 
 // Zadania z dzisiejszym terminem do kosza — nie wypychają pozycji z panelu i nie zapychają kalendarza kolejnym testom.
 test.afterEach(async ({ server }) => {
-  const prefixes = ['Blok', 'Trzymany', 'W trakcie', 'Klik'];
+  const prefixes = ['Blok', 'Trzymany', 'W trakcie', 'Klik', 'Ukrywany'];
   const { error } = await server.client.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('scope_id', defaultWorkspaceId(server.userId, 'personal')).or(prefixes.map((t) => `title.like.${t} *`).join(','));
   expect(error).toBeNull();
 });
@@ -82,6 +82,43 @@ test('zmiana danych w trakcie przeciągania nie gubi upuszczenia', async ({ page
   await server.waitForTask(title, (t) => t.due_time === '12:00');
   await expect(block).toContainText('12:00');
   await other.close();
+});
+
+test('„Pokaż”: ukryta lista znika z kalendarza i panelu, wybór przeżywa przeładowanie', async ({ page, server }) => {
+  await openApp(page);
+  const timed = unique('Ukrywany blok');
+  const loose = unique('Ukrywany luźny');
+  const field = page.getByRole('textbox', { name: 'Dodaj zadanie na dziś' });
+  await field.fill(`${timed} dziś 11:00`);
+  await field.press('Enter');
+  const task = await server.waitForTask(timed, (t) => t.due_time === '11:00');
+  await field.fill(loose);
+  await field.press('Enter');
+  await server.waitForTask(loose);
+
+  await page.goto('/#/calendar');
+  const calendar = page.getByTestId('calendar');
+  const panel = page.getByTestId('calendar-panel');
+  await calendar.getByRole('button', { name: 'Dzień', exact: true }).click();
+  const block = calendar.locator('.fc-timegrid-event').filter({ hasText: timed });
+  await expect(block).toBeVisible();
+  await expect(panel.locator('[data-task]').filter({ hasText: loose })).toBeVisible();
+
+  const sources = calendar.getByTestId('calendar-sources');
+  await expect(sources).toHaveText(/Pokaż: wszystkie/);
+  await sources.click();
+  await calendar.locator(`[data-list="${String(task.list_id)}"] input`).uncheck();
+  await expect(block).toHaveCount(0);
+  await expect(panel.locator('[data-task]').filter({ hasText: loose })).toHaveCount(0);
+  await expect(sources).not.toHaveText(/wszystkie/);
+
+  await page.reload();
+  await expect(calendar.locator('.fc-timegrid-slot-lane').first()).toBeVisible();
+  await expect(block).toHaveCount(0);
+  await calendar.getByTestId('calendar-sources').click();
+  await calendar.getByRole('button', { name: 'Wszystkie', exact: true }).click();
+  await expect(block).toBeVisible();
+  await expect(panel.locator('[data-task]').filter({ hasText: loose })).toBeVisible();
 });
 
 test('klik w puste miejsce dodaje zadanie z datą i godziną', async ({ page, server }) => {
