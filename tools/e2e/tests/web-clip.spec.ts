@@ -82,10 +82,11 @@ test('zaznaczenie: cytat ze źródłem w opisie, poprawiony przed dodaniem; adre
   await description.press('Escape');
   await expect(dialog.getByRole('textbox', { name: 'Zadanie z udostępnionego linku' })).toBeFocused();
   await app.keyboard.press('Control+Enter');
-  // Okno zostaje (Ctrl+Enter), ale wycinek należał do pierwszego zadania.
-  await expect(description).toHaveCount(0);
+  // Okno zostaje (Ctrl+Enter), ale wycinek należał do pierwszego zadania — zostaje puste pole opisu okna.
+  await expect(dialog.getByRole('button', { name: 'Dodaj zadanie' })).toHaveCount(0);
+  await expect(description).toHaveValue('');
   const second = unique('Drugie');
-  await dialog.getByRole('textbox').fill(second);
+  await dialog.getByRole('textbox', { name: 'Zadanie z udostępnionego linku' }).fill(second);
   await app.keyboard.press('Enter');
   await expect(dialog).toBeHidden();
 
@@ -169,7 +170,8 @@ test('stara zakładka i Web Share Target (`?share_…`) działają jak dotąd', 
   const dialog = page.getByRole('dialog', { name: 'Szybkie dodawanie' });
   const name = dialog.getByRole('textbox', { name: 'Zadanie z udostępnionego linku' });
   await expect(name).toHaveValue(title, { timeout: 30_000 });
-  await expect(dialog.getByRole('textbox')).toHaveCount(1);
+  // Bez wycinka: zwykłe pole opisu okna, puste.
+  await expect(dialog.getByRole('textbox', { name: 'Opis' })).toHaveValue('');
   expect(new URL(page.url()).search).toBe('');
   await name.press('Enter');
   expect(await taskDetails(server, title)).toEqual({ description: null, source: { kind: 'link', url: `${SITE}/stary`, title }, links: [`${SITE}/stary`] });
