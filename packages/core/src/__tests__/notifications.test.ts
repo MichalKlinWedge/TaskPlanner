@@ -16,6 +16,9 @@ import {
   notificationWorkspaces,
   NotificationPrefs,
   phoneNotificationPushes,
+  reminderBellUpdate,
+  reminderNotifications,
+  EMPTY_REMINDER_BELL,
   toNotification,
   unreadCount,
   visibleNotifications,
@@ -159,6 +162,7 @@ describe('ustawienia i wiersz', () => {
       tasks: 'app',
       sharing: 'off',
       system: 'app',
+      reminders: 'app',
       toast: true,
       quiet: { enabled: false, from: '22:00', to: '07:00' },
     });
@@ -285,5 +289,35 @@ describe('telefon: powiadomienie systemowe po synchronizacji', () => {
     expect(phoneNotificationPushes([a], prefs, new Set(), NOW, TZ)).toEqual([]);
     // 13:00 w Warszawie.
     expect(phoneNotificationPushes([a], { ...push, quiet: { enabled: true, from: '12:30', to: '14:00' } }, new Set(), NOW, TZ)).toEqual([]);
+  });
+});
+
+describe('przypomnienia w dzwonku', () => {
+  const fire = (key: string, fireAt: string) => ({ key, taskId: 't1', reminderId: key.split(':')[0]!, occurrenceDate: '2026-11-18' as const, fireAt, dueAt: '2026-11-18T11:30:00.000Z' });
+  const tasks = new Map([['t1', { title: 'Raport', dueTime: '12:30', kind: 'task' as const, habit: null }]]);
+  it('wybite w ostatnich 24 h, z treścią z chwili wybicia; przyszłe i starsze — nie', () => {
+    const list = reminderNotifications(
+      [fire('a:2026-11-18', '2026-11-18T11:30:00.000Z'), fire('b:2026-11-18', '2026-11-18T13:00:00.000Z'), fire('c:2026-11-16', '2026-11-16T11:00:00.000Z')],
+      tasks, EMPTY_REMINDER_BELL, NOW, TZ,
+    );
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id: 'r:a:2026-11-18', kind: 'reminder', taskId: 't1', readAt: null });
+    expect(notificationText(list[0]!)).toEqual({ text: 'Przypomnienie: „Raport”', detail: 'Teraz (12:30)' });
+    expect(notificationTarget(list[0]!)).toEqual({ kind: 'task', taskId: 't1' });
+    // Wiersza w bazie nie ma — żadnych operacji.
+    expect(markReadOps(list, NOW)).toEqual([]);
+    expect(dismissOps(list, NOW)).toEqual([]);
+  });
+
+  it('przeczytane / usunięte na urządzeniu; „wszystkie do chwili”; wyłączone w ustawieniach', () => {
+    const fires = [fire('a:2026-11-18', '2026-11-18T11:30:00.000Z'), fire('d:2026-11-18', '2026-11-18T11:50:00.000Z')];
+    const first = reminderNotifications(fires, tasks, EMPTY_REMINDER_BELL, NOW, TZ);
+    const read = reminderBellUpdate(EMPTY_REMINDER_BELL, [first[0]!, note()], 'read');
+    expect(read.read).toEqual(['r:a:2026-11-18']);
+    expect(reminderNotifications(fires, tasks, read, NOW, TZ).map((n) => Boolean(n.readAt))).toEqual([true, false]);
+    expect(reminderNotifications(fires, tasks, reminderBellUpdate(EMPTY_REMINDER_BELL, [first[1]!], 'dismissed'), NOW, TZ).map((n) => n.id)).toEqual(['r:a:2026-11-18']);
+    expect(reminderNotifications(fires, tasks, { ...EMPTY_REMINDER_BELL, readBefore: '2026-11-18T11:40:00Z' }, NOW, TZ).map((n) => Boolean(n.readAt))).toEqual([true, false]);
+    expect(unreadCount(first, { ...prefs, reminders: 'off' }, NOW)).toBe(0);
+    expect(unreadCount(first, prefs, NOW)).toBe(2);
   });
 });

@@ -47,3 +47,29 @@ test('„Zaległe” pokazuje zadania po terminie, także z dzisiaj po godzinie'
   await page.keyboard.press('z');
   await expect(page.getByRole('heading', { name: 'Zaległe', level: 1 })).toBeVisible();
 });
+
+test('zadanie po godzinie zostaje czerwone, gdy jest zaznaczone (otwarte w panelu)', async ({ page, server }) => {
+  await openApp(page);
+  const title = unique('Po czasie zaznaczone');
+  const input = page.getByRole('textbox', { name: 'Dodaj zadanie na dziś' });
+  await input.fill(`${title} dziś o 0:01`);
+  await input.press('Enter');
+  await server.waitForTask(title);
+  const row = taskRow(page, title);
+  // Kolor tła jako RGB (color-mix daje w stylu inny zapis niż `rgb()`): przez płótno.
+  const background = () =>
+    row.evaluate((el) => {
+      const ctx = document.createElement('canvas').getContext('2d')!;
+      ctx.fillStyle = getComputedStyle(el).backgroundColor;
+      ctx.fillRect(0, 0, 1, 1);
+      return [...ctx.getImageData(0, 0, 1, 1).data.slice(0, 3)].join(',');
+    });
+  const late = await background();
+  await row.getByText(title).click();
+  await expect(page.getByRole('complementary', { name: 'Zadanie', exact: true })).toContainText(title);
+  // Zaznaczenie zmienia pasek po lewej, ale tło dalej jest czerwonawe (nie zwykłe tło zaznaczenia).
+  await expect.poll(background).not.toBe(late);
+  const [r, g, b] = (await background()).split(',').map(Number) as [number, number, number];
+  expect(r).toBeGreaterThan(g);
+  expect(r).toBeGreaterThan(b);
+});

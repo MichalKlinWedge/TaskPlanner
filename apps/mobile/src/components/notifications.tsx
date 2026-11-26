@@ -45,6 +45,7 @@ export const NOTIFICATION_ICON: Record<AppNotification['kind'], string> = {
   calendar_error: '📆',
   ai_error: '✨',
   storage_quota: '📦',
+  reminder: '⏰',
 };
 
 /** Trasa z `notificationRoute` (lib) → nawigacja. */

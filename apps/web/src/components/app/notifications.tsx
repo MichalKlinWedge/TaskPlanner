@@ -6,10 +6,8 @@
  * `notifications.ts`; dane z lokalnej bazy (`lib/notifications.ts`).
  */
 import {
-  dismissOps,
   filterNotifications,
   freshNotifications,
-  markReadOps,
   NOTIFICATION_CHANNEL,
   NOTIFICATION_GROUP_LABEL,
   NOTIFICATION_GROUP_SHORT,
@@ -33,7 +31,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { parseSettings } from "@/lib/app-data";
 import { useLocalQuery } from "@/lib/local-store";
-import { requestOpenTask, useNotifications } from "@/lib/notifications";
+import { dismissNotifications, markNotificationsRead, requestOpenTask, useNotifications } from "@/lib/notifications";
 import { browserDeviceId } from "@/lib/push";
 import { routeHash } from "@/lib/route";
 
@@ -59,6 +57,7 @@ const ICON: Record<AppNotification["kind"], string> = {
   calendar_error: "📆",
   ai_error: "✨",
   storage_quota: "📦",
+  reminder: "⏰",
 };
 
 /** Kliknięcie powiadomienia: zadanie w panelu, ekran przestrzeni, dziennik wysyłek, sekcja ustawień albo pasek zaproszeń. */
@@ -71,8 +70,6 @@ function openTarget(n: AppNotification) {
   else if (target.kind === "invites") window.scrollTo({ top: 0 });
 }
 
-type Ops = ReturnType<typeof markReadOps>;
-const applyOps = (store: TabStore, ops: Ops) => (ops.length ? void store.mutateMany(ops).catch(() => undefined) : undefined);
 
 /** Lista podzielona na dni (dzwonek i widok `#/notifications`). */
 function NotificationDays({ shown, now, timeZone, store, empty, onOpen }: { shown: AppNotification[]; now: Date; timeZone?: string; store: TabStore; empty: string; onOpen?: () => void }) {
@@ -88,11 +85,11 @@ function NotificationDays({ shown, now, timeZone, store, empty, onOpen }: { show
             now={now}
             timeZone={timeZone}
             onOpen={() => {
-              applyOps(store, markReadOps([n], new Date()));
+              markNotificationsRead(store, [n]);
               onOpen?.();
               openTarget(n);
             }}
-            onDismiss={() => applyOps(store, dismissOps([n], new Date()))}
+            onDismiss={() => dismissNotifications(store, [n])}
           />
         ))}
       </ul>
@@ -150,7 +147,6 @@ export function NotificationBell({ store, userId }: { store: TabStore; userId: s
 
   const shown = visibleNotifications(list, prefs, now, only);
   const unread = visibleNotifications(list, prefs, now, "unread");
-  const apply = (ops: Ops) => applyOps(store, ops);
 
   return (
     <div ref={box} className="relative" data-notifications>
@@ -212,7 +208,7 @@ export function NotificationBell({ store, userId }: { store: TabStore; userId: s
             <button
               type="button"
               disabled={!unread.length}
-              onClick={() => apply(markReadOps(unread, new Date()))}
+              onClick={() => markNotificationsRead(store, unread)}
               className="rounded px-1 text-[var(--accent)] hover:underline disabled:cursor-default disabled:text-[var(--muted)] disabled:no-underline"
             >
               Oznacz wszystkie jako przeczytane
@@ -241,7 +237,7 @@ export function NotificationsScreen() {
   const unread = filterNotifications(list, prefs, now, { ...filter, only: "unread" });
   // Nazwa przestrzeni: bieżąca, gdy jeszcze ją widzę, inaczej z migawki powiadomienia.
   const spaces = notificationWorkspaces(list).map((w) => ({ id: w.id, name: data.workspaces.find((x) => x.id === w.id)?.name ?? (w.name || "Przestrzeń") }));
-  const groups = NOTIFICATION_GROUPS.filter((g) => prefs[g] !== "off");
+  const groups = [...NOTIFICATION_GROUPS, "reminders" as const].filter((g) => prefs[g] !== "off");
   const chip = (active: boolean) => `rounded-full border px-3 py-0.5 text-sm ${active ? "border-[var(--accent)] bg-[var(--hover)] font-medium" : "border-[var(--line)] text-[var(--muted)] hover:text-[var(--foreground)]"}`;
   return (
     <div className="mx-auto max-w-3xl" data-testid="notifications-screen">
@@ -275,7 +271,7 @@ export function NotificationsScreen() {
         <button
           type="button"
           disabled={!unread.length}
-          onClick={() => applyOps(store, markReadOps(unread, new Date()))}
+          onClick={() => markNotificationsRead(store, unread)}
           className="text-sm text-[var(--accent)] hover:underline disabled:cursor-default disabled:text-[var(--muted)] disabled:no-underline"
         >
           Oznacz jako przeczytane{unread.length ? ` (${unread.length})` : ""}
@@ -333,7 +329,8 @@ export function NotificationToasts({ store, userId }: { store: TabStore; userId:
       seen.current = new Set(list.map(notificationSeenKey));
       return;
     }
-    const fresh = visibleNotifications(freshNotifications(list, seen.current, now), prefs, now, "unread");
+    // Przypomnienia mają własny dymek (wiadomość Service Workera przy push) — tu tylko zdarzenia z serwera.
+    const fresh = visibleNotifications(freshNotifications(list, seen.current, now), prefs, now, "unread").filter((n) => n.kind !== "reminder");
     for (const n of list) seen.current.add(notificationSeenKey(n));
     if (!prefs.toast || document.visibilityState !== "visible" || !fresh.length) return;
     const first = notificationText(fresh[0]!).text;
@@ -395,6 +392,16 @@ export function NotificationsCard({ store, userId }: { store: TabStore; userId: 
             </Select>
           </label>
         ))}
+        <label className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium">{NOTIFICATION_GROUP_LABEL.reminders.title}</span>
+            <span className="block text-xs text-[var(--muted)]">{NOTIFICATION_GROUP_LABEL.reminders.hint}</span>
+          </span>
+          <Select value={prefs.reminders} onChange={(e) => save({ reminders: e.target.value as "app" | "off" })} className="w-40" data-testid="notifications-reminders">
+            <option value="app">{NOTIFICATION_CHANNEL.app}</option>
+            <option value="off">{NOTIFICATION_CHANNEL.off}</option>
+          </Select>
+        </label>
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={prefs.toast} onChange={(e) => save({ toast: e.target.checked })} />
           Dymek przy nowym powiadomieniu, gdy aplikacja jest na wierzchu

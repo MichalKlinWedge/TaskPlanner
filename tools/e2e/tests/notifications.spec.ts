@@ -109,3 +109,29 @@ test('zmiana terminu przez właściciela → widok „Powiadomienia” z filtram
     await db.from('collaborators').update({ deleted_at }).eq('id', person);
   }
 });
+
+test('wybite przypomnienie → w dzwonku „Przypomnienie: …”, klik otwiera zadanie i oznacza przeczytane', async ({ page, server }) => {
+  await openApp(page);
+  const title = unique('Przypomnienie w dzwonku');
+  const input = page.getByRole('textbox', { name: 'Dodaj zadanie na dziś' });
+  // Przypomnienie 1 min przed 0:01 dzisiaj — już wybite (test nie działa w pierwszych minutach doby).
+  await input.fill(`${title} dziś o 0:01 ^1m`);
+  await input.press('Enter');
+  await server.waitForTask(title);
+  await page.getByTestId('notifications-bell').click();
+  const panel = page.getByTestId('notifications-panel');
+  const item = panel.getByTestId('notification').filter({ hasText: title });
+  await expect(item).toContainText(`Przypomnienie: „${title}”`);
+  await expect(item).toHaveAttribute('data-unread');
+  await item.getByRole('button', { name: new RegExp(title) }).click();
+  await expect(page.getByRole('complementary', { name: 'Zadanie', exact: true })).toContainText(title);
+  await page.getByTestId('notifications-bell').click();
+  await panel.getByRole('button', { name: 'Wszystkie', exact: true }).click();
+  await expect(item).not.toHaveAttribute('data-unread');
+  // Ukończone zadanie znika z dzwonka.
+  await page.keyboard.press('Escape');
+  await taskRow(page, title).getByRole('checkbox').first().click();
+  await server.waitForTask(title, (t) => t.status === 'done');
+  await page.getByTestId('notifications-bell').click();
+  await expect(item).toHaveCount(0);
+});

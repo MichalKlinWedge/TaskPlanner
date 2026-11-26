@@ -311,7 +311,16 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
   return (
     <li
       ref={dnd?.ref}
-      className={`group relative flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""} ${selected ? "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]" : lateMin > 0 ? "bg-[color-mix(in_srgb,var(--danger)_7%,var(--background))] shadow-[inset_3px_0_0_var(--danger)]" : "bg-[var(--background)]"} ${dnd?.dragging ? "z-10 opacity-80 shadow-lg" : ""}`}
+      className={`group relative flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""} ${
+        // Po czasie: czerwone tło zostaje także przy zaznaczeniu (otwarte w panelu) — pasek po lewej mówi, że zaznaczone.
+        lateMin > 0
+          ? selected
+            ? "bg-[color-mix(in_srgb,var(--danger)_12%,var(--background))] shadow-[inset_3px_0_0_var(--accent)]"
+            : "bg-[color-mix(in_srgb,var(--danger)_7%,var(--background))] shadow-[inset_3px_0_0_var(--danger)]"
+          : selected
+            ? "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]"
+            : "bg-[var(--background)]"
+      } ${dnd?.dragging ? "z-10 opacity-80 shadow-lg" : ""}`}
       style={{ ...dnd?.style, paddingLeft: depth * 20 }}
       data-task-id={task.id}
       data-virtual={virtualDate ? "" : undefined}

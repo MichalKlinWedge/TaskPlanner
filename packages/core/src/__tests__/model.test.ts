@@ -136,7 +136,7 @@ describe('ustawienia profilu', () => {
       taskPanel: { collapsed: {} },
       timeline: { collapsed: [] },
       views: {},
-      notifications: { tasks: 'app', sharing: 'app', system: 'app', toast: true, quiet: { enabled: false, from: '22:00', to: '07:00' } },
+      notifications: { tasks: 'app', sharing: 'app', system: 'app', reminders: 'app', toast: true, quiet: { enabled: false, from: '22:00', to: '07:00' } },
       onboarded: false,
     });
   });

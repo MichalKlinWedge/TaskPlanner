@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 import { addDays, localDateAt, localDateTimeAt } from './dates.ts';
 import { dayChip, dayLabel, formatBytes, pluralForm } from './format.ts';
+import { reminderBody, type ReminderFire, type ReminderTask } from './reminders.ts';
 import { LocalTime } from './schemas/primitives.ts';
 import { SCOPE_ROLE, type OwnerAfter, type ScopeRole } from './sharing.ts';
 
@@ -15,13 +16,16 @@ export const NOTIFICATION_KINDS = [
   'assigned', 'comment', 'participant', 'completed', 'due_changed',
   'invite', 'owner_offer', 'member_joined', 'member_left', 'member_removed', 'role_changed',
   'delivery_failed', 'connection_error', 'calendar_error', 'ai_error', 'storage_quota',
+  // Tylko lokalnie (nigdy w bazie): przypomnienie, które już wybiło — `reminderNotifications`.
+  'reminder',
 ] as const;
 export const NotificationKind = z.enum(NOTIFICATION_KINDS);
 export type NotificationKind = z.infer<typeof NotificationKind>;
 
-/** Grupa w ustawieniach: zadania we wspólnych przestrzeniach, udostępnianie, zdarzenia systemowe (N3). */
-export type NotificationGroup = 'tasks' | 'sharing' | 'system';
-export const NOTIFICATION_GROUPS: readonly NotificationGroup[] = ['tasks', 'sharing', 'system'];
+/** Grupa w ustawieniach: zadania we wspólnych przestrzeniach, udostępnianie, zdarzenia systemowe (N3), przypomnienia. */
+export type NotificationGroup = 'tasks' | 'sharing' | 'system' | 'reminders';
+/** Grupy z kanałem `push` (zdarzenia z serwera); przypomnienia mają własny push w „Przypomnieniach”. */
+export const NOTIFICATION_GROUPS: readonly Exclude<NotificationGroup, 'reminders'>[] = ['tasks', 'sharing', 'system'];
 export const NOTIFICATION_GROUP: Record<NotificationKind, NotificationGroup> = {
   assigned: 'tasks',
   comment: 'tasks',
@@ -39,16 +43,18 @@ export const NOTIFICATION_GROUP: Record<NotificationKind, NotificationGroup> = {
   calendar_error: 'system',
   ai_error: 'system',
   storage_quota: 'system',
+  reminder: 'reminders',
 };
 
 export const NOTIFICATION_GROUP_LABEL: Record<NotificationGroup, { title: string; hint: string }> = {
   tasks: { title: 'Zadania we wspólnych przestrzeniach', hint: 'przypisanie, komentarz, dodanie jako uczestnik, ukończenie i zmiana terminu Twojego zadania' },
   sharing: { title: 'Udostępnianie', hint: 'zaproszenia, propozycje roli właściciela, osoby dołączające i odchodzące, zmiana Twojej roli' },
   system: { title: 'Integracje i konto', hint: 'nieudane wysyłki integracji, wyłączone połączenie, kalendarz bez synchronizacji, odrzucony klucz AI, kończące się miejsce na załączniki' },
+  reminders: { title: 'Przypomnienia w dzwonku', hint: 'Twoje przypomnienia, które już wybiły (ostatnie 24 h, póki zadanie jest otwarte); dźwięk i powiadomienie systemowe — w „Przypomnieniach”' },
 };
 
 /** Krótka nazwa grupy (filtry widoku `#/notifications`). */
-export const NOTIFICATION_GROUP_SHORT: Record<NotificationGroup, string> = { tasks: 'Zadania', sharing: 'Udostępnianie', system: 'Integracje i konto' };
+export const NOTIFICATION_GROUP_SHORT: Record<NotificationGroup, string> = { tasks: 'Zadania', sharing: 'Udostępnianie', system: 'Integracje i konto', reminders: 'Przypomnienia' };
 
 /** `push` = w aplikacji i Web Push na przeglądarki z włączonymi przypomnieniami (etap N2). */
 export const NotificationChannel = z.enum(['off', 'app', 'push']);
@@ -65,6 +71,8 @@ export const NotificationPrefs = z.object({
   tasks: NotificationChannel.catch('app').default('app'),
   sharing: NotificationChannel.catch('app').default('app'),
   system: NotificationChannel.catch('app').default('app'),
+  /** Przypomnienia w dzwonku: tylko `app` / `off` (push przypomnień ustawia się osobno). */
+  reminders: z.enum(['off', 'app']).catch('app').default('app'),
   /** Dymek przy nowym powiadomieniu, gdy karta jest widoczna. */
   toast: z.boolean().catch(true).default(true),
   /** Cisza nocna: bez Web Push w tych godzinach (strefa z ustawień); dzwonek w aplikacji działa dalej. */
@@ -204,6 +212,8 @@ export function notificationText(n: Pick<AppNotification, 'kind' | 'data'>): { t
         : { text: `Kalendarz${named(label)} nie synchronizuje się`, detail: excerpt || null };
     case 'ai_error':
       return { text: `Klucz asystenta AI${label ? ` (${label})` : ''} został odrzucony`, detail: excerpt || null };
+    case 'reminder':
+      return { text: `Przypomnienie: ${quoted(title, 'zadanie')}`, detail: excerpt || null };
     case 'storage_quota': {
       const used = n.data.used !== undefined && n.data.quota ? `Zajęte ${formatBytes(n.data.used)} z ${formatBytes(n.data.quota)}` : null;
       return (n.data.percent ?? 0) >= 100
@@ -223,7 +233,7 @@ export type NotificationTarget =
 
 /** Co otwiera kliknięcie: zadanie, pasek zaproszeń, ekran przestrzeni, dziennik wysyłek albo sekcja ustawień. */
 export function notificationTarget(n: Pick<AppNotification, 'kind' | 'taskId' | 'workspaceId'>): NotificationTarget {
-  if (NOTIFICATION_GROUP[n.kind] === 'tasks') return n.taskId ? { kind: 'task', taskId: n.taskId } : { kind: 'none' };
+  if (NOTIFICATION_GROUP[n.kind] === 'tasks' || n.kind === 'reminder') return n.taskId ? { kind: 'task', taskId: n.taskId } : { kind: 'none' };
   if (n.kind === 'delivery_failed') return { kind: 'deliveries' };
   if (n.kind === 'connection_error') return { kind: 'settings', section: 'plugins' };
   if (n.kind === 'calendar_error') return { kind: 'settings', section: 'calendars' };
@@ -307,13 +317,16 @@ export function notificationTime(at: string, now: Date, timeZone?: string): stri
 
 export type NotificationOp = { table: 'notifications'; id: string; patch: { read_at?: string; deleted_at?: string } };
 
-/** Zaznaczenie jako przeczytane (już przeczytane pomijane). */
-export const markReadOps = (list: readonly Pick<AppNotification, 'id' | 'readAt'>[], now: Date): NotificationOp[] =>
-  list.filter((n) => !n.readAt).map((n) => ({ table: 'notifications', id: n.id, patch: { read_at: now.toISOString() } }));
+/** Wpis liczony na urządzeniu (przypomnienie) — nie ma wiersza w bazie, stan „przeczytane” trzyma urządzenie. */
+export const isLocalNotification = (n: { kind?: NotificationKind; id: string }): boolean => n.kind === 'reminder' || n.id.startsWith(REMINDER_NOTIFICATION_PREFIX);
 
-/** Usunięcie z listy (miękkie, przechodzi na inne urządzenia). */
+/** Zaznaczenie jako przeczytane (już przeczytane i lokalne pomijane). */
+export const markReadOps = (list: readonly Pick<AppNotification, 'id' | 'readAt'>[], now: Date): NotificationOp[] =>
+  list.filter((n) => !n.readAt && !isLocalNotification(n)).map((n) => ({ table: 'notifications', id: n.id, patch: { read_at: now.toISOString() } }));
+
+/** Usunięcie z listy (miękkie, przechodzi na inne urządzenia); lokalne pomijane. */
 export const dismissOps = (list: readonly Pick<AppNotification, 'id'>[], now: Date): NotificationOp[] =>
-  list.map((n) => ({ table: 'notifications', id: n.id, patch: { deleted_at: now.toISOString() } }));
+  list.filter((n) => !isLocalNotification(n)).map((n) => ({ table: 'notifications', id: n.id, patch: { deleted_at: now.toISOString() } }));
 
 /** Nowe nieprzeczytane od poprzedniego odczytu (dymek): id spoza `seen`, zdarzenie nie starsze niż 2 min. */
 export function freshNotifications(list: readonly AppNotification[], seen: ReadonlySet<string>, now: Date): AppNotification[] {
@@ -397,4 +410,64 @@ export function phoneNotificationPushes(
       return !n.readAt && prefs[NOTIFICATION_GROUP[n.kind]] === 'push' && age >= 0 && age < NOTIFICATION_PHONE_WINDOW_MS && !shown.has(notificationFireKey(n));
     })
     .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+}
+
+// ── Przypomnienia w dzwonku (lokalnie) ──────────────────────────────────────────────────────
+
+/** Przypomnienia, które wybiły w tym czasie, wiszą w dzwonku (póki zadanie jest otwarte). */
+export const REMINDER_BELL_WINDOW_MS = 24 * 3_600_000;
+export const REMINDER_NOTIFICATION_PREFIX = 'r:';
+
+/** Stan przypomnień w dzwonku na urządzeniu: przeczytane i usunięte (klucze wpisów), „wszystkie do chwili”. */
+export interface ReminderBellState {
+  read: readonly string[];
+  dismissed: readonly string[];
+  readBefore: string | null;
+}
+
+export const EMPTY_REMINDER_BELL: ReminderBellState = { read: [], dismissed: [], readBefore: null };
+
+/**
+ * Wybite przypomnienia (`reminderFireTimes` w oknie `[now − 24 h, now]`) jako wpisy dzwonka: id `r:<klucz>`, czas =
+ * chwila przypomnienia, tytuł zadania i treść jak w powiadomieniu (`reminderBody` w chwili wybicia).
+ * Ukończone zadanie nie ma już przypomnień, więc znika samo.
+ */
+export function reminderNotifications(
+  fires: readonly ReminderFire[],
+  tasks: ReadonlyMap<string, Pick<ReminderTask, 'title' | 'dueTime' | 'kind' | 'habit'> & { workspaceId?: string | null }>,
+  state: ReminderBellState,
+  now: Date,
+  timeZone?: string,
+): AppNotification[] {
+  const read = new Set(state.read);
+  const dismissed = new Set(state.dismissed);
+  const since = now.getTime() - REMINDER_BELL_WINDOW_MS;
+  const out: AppNotification[] = [];
+  for (const fire of fires) {
+    const at = new Date(fire.fireAt).getTime();
+    const task = tasks.get(fire.taskId);
+    const id = REMINDER_NOTIFICATION_PREFIX + fire.key;
+    if (!task || at < since || at > now.getTime() || dismissed.has(id)) continue;
+    const isRead = read.has(id) || (state.readBefore !== null && at <= new Date(state.readBefore).getTime());
+    out.push({
+      id,
+      kind: 'reminder',
+      taskId: fire.taskId,
+      workspaceId: task.workspaceId ?? null,
+      actorId: null,
+      data: { title: task.title.slice(0, 500), excerpt: reminderBody(task, fire, fire.fireAt, timeZone).body.slice(0, 500) },
+      groupKey: null,
+      at: fire.fireAt,
+      readAt: isRead ? fire.fireAt : null,
+    });
+  }
+  return out;
+}
+
+/** Zapamiętanie przeczytanych / usuniętych wpisów przypomnień (najwyżej 300 ostatnich kluczy na listę). */
+export function reminderBellUpdate(state: ReminderBellState, list: readonly Pick<AppNotification, 'id'>[], what: 'read' | 'dismissed'): ReminderBellState {
+  const ids = list.map((n) => n.id).filter((id) => id.startsWith(REMINDER_NOTIFICATION_PREFIX));
+  if (!ids.length) return state;
+  const merged = [...new Set([...state[what], ...ids])].slice(-300);
+  return { ...state, [what]: merged };
 }
