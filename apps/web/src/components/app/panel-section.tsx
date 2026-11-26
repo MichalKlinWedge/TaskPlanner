@@ -9,6 +9,8 @@
 import { TASK_SECTION_ICON } from "@taskplanner/core";
 import { createContext, useContext, type HTMLAttributes, type ReactNode } from "react";
 
+import { updateSettings } from "@/lib/json-update";
+
 import { useAppEnv } from "./app-env";
 import { useTaskActions } from "./task-item";
 
@@ -26,10 +28,14 @@ export function useSectionCollapsed(id: string, defaultCollapsed = false): [bool
   const { notify } = useTaskActions();
   const collapsed = settings.taskPanel.collapsed[id] ?? defaultCollapsed;
   const toggle = () => {
-    const next = { ...settings.taskPanel.collapsed, [id]: !collapsed };
-    // Wartość równa domyślnej nie musi być zapisana — profil nie rośnie od samego klikania.
-    if (next[id] === defaultCollapsed) delete next[id];
-    void store.mutate("profiles", userId, { settings: { ...settings, taskPanel: { ...settings.taskPanel, collapsed: next } } }).catch((e: unknown) => notify(String(e)));
+    const value = !collapsed;
+    // Z najnowszych ustawień w bazie — szybkie zwijanie kilku sekcji się nie nadpisuje.
+    void updateSettings(store, userId, (s) => {
+      const next = { ...s.taskPanel.collapsed, [id]: value };
+      // Wartość równa domyślnej nie musi być zapisana — profil nie rośnie od samego klikania.
+      if (value === defaultCollapsed) delete next[id];
+      return { taskPanel: { ...s.taskPanel, collapsed: next } };
+    }).catch((e: unknown) => notify(String(e)));
   };
   return [collapsed, toggle];
 }

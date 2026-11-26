@@ -68,6 +68,7 @@ import type { TabStore } from "@taskplanner/sync";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 
 import { listEditable, useLocalMinute, type AppData, type List } from "@/lib/app-data";
+import { updateListPrefs, updateSettings } from "@/lib/json-update";
 import { useListWidths } from "@/lib/list-widths";
 import { useTrash } from "@/lib/trash";
 import { useClickOutside } from "@/lib/use-click-outside";
@@ -202,8 +203,9 @@ export function useViewColumns(id: ViewSettingsKey, ctx: ViewContext) {
   const prefs = settings.views[id] ?? {};
   const { columns, columnTags } = useColumns(prefs, data.tags);
   const [widths, setWidth] = useListWidths(`view:${id}`);
-  const setPrefs = (patch: Partial<SmartViewPrefs>) =>
-    void store.mutate("profiles", userId, { settings: { ...settings, views: smartViewsPatch(settings.views, id, patch) } }).catch((e: unknown) => notify(String(e)));
+  // Z najnowszych ustawień w bazie, nie z renderu — szybkie kolejne kliknięcia się nie nadpisują.
+  const setPrefs = (patch: Partial<SmartViewPrefs> | ((current: SmartViewPrefs) => Partial<SmartViewPrefs>)) =>
+    void updateSettings(store, userId, (s) => ({ views: smartViewsPatch(s.views, id, typeof patch === "function" ? patch(s.views[id] ?? {}) : patch) })).catch((e: unknown) => notify(String(e)));
   return {
     prefs,
     setPrefs,
@@ -211,10 +213,10 @@ export function useViewColumns(id: ViewSettingsKey, ctx: ViewContext) {
     picker: (
       <ColumnsPicker
         value={columns}
-        onChange={(next) => setPrefs({ columns: next })}
+        onToggle={(column, on) => setPrefs((p) => ({ columns: toggleColumn(p.columns, column, on) }))}
         tags={tagsForWorkspace(data.tags, ctx.workspaceId ?? null, prefs.columnTags)}
         tagValue={columnTags ? [...columnTags] : []}
-        onTagsChange={(next) => setPrefs({ columnTags: next })}
+        onTagToggle={(tagId, on) => setPrefs((p) => ({ columnTags: toggleId(p.columnTags, tagId, on) }))}
       />
     ),
     columnsHeader: <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} />,
@@ -511,22 +513,36 @@ function AddInline({ date, listId }: { date: LocalDate; listId: string }) {
 
 // ── Lista / projekt ──────────────────────────────────────────────────────────────────────────
 
+/** Kolumny po włączeniu / wyłączeniu jednej (kolejność stała). */
+const toggleColumn = (current: readonly ListColumn[] | undefined, column: ListColumn, on: boolean): ListColumn[] =>
+  orderedColumns(on ? [...(current ?? []), column] : (current ?? []).filter((c) => c !== column));
+
+/** Lista id po dodaniu / zdjęciu jednego (bez powtórzeń). */
+const toggleId = (current: readonly string[] | undefined, id: string, on: boolean): string[] => {
+  const rest = (current ?? []).filter((v) => v !== id);
+  return on ? [...rest, id] : rest;
+};
+
+/** Puste listy nie są zapisywane w `view_prefs`. */
+const orNone = <T,>(values: T[]): T[] | undefined => (values.length ? values : undefined);
+
 /**
  * „Kolumny”: dodatkowe kolumny listy (odpowiedzialny, początek, koniec, tagi — `view_prefs.columns`);
  * przy „Tagi” wybór tagów pokazywanych w kolumnie (`view_prefs.columnTags`, żaden = wszystkie).
  */
 function ColumnsPicker({
   value,
-  onChange,
+  onToggle,
   tags,
   tagValue,
-  onTagsChange,
+  onTagToggle,
 }: {
   value: readonly ListColumn[];
-  onChange: (next: ListColumn[]) => void;
+  /** Włączenie / wyłączenie jednej kolumny — zapis liczy się z aktualnych ustawień (kilka szybkich kliknięć). */
+  onToggle: (column: ListColumn, on: boolean) => void;
   tags: readonly { id: string; name: string }[];
   tagValue: readonly string[];
-  onTagsChange: (next: string[]) => void;
+  onTagToggle: (tagId: string, on: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDetailsElement>(null);
@@ -539,7 +555,7 @@ function ColumnsPicker({
       <div className="absolute z-20 mt-1 max-h-96 w-52 overflow-y-auto rounded-md border border-[var(--line)] bg-[var(--background)] p-2 shadow-lg">
         {(Object.keys(LIST_COLUMN) as ListColumn[]).map((c) => (
           <label key={c} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-[var(--hover)]">
-            <input type="checkbox" checked={value.includes(c)} onChange={(e) => onChange(orderedColumns(e.target.checked ? [...value, c] : value.filter((v) => v !== c)))} />
+            <input type="checkbox" checked={value.includes(c)} onChange={(e) => onToggle(c, e.target.checked)} />
             {LIST_COLUMN[c]}
           </label>
         ))}
@@ -549,7 +565,7 @@ function ColumnsPicker({
             {tags.length ? (
               tags.map((t) => (
                 <label key={t.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-[var(--hover)]">
-                  <input type="checkbox" checked={tagValue.includes(t.id)} onChange={(e) => onTagsChange(e.target.checked ? [...tagValue, t.id] : tagValue.filter((v) => v !== t.id))} />
+                  <input type="checkbox" checked={tagValue.includes(t.id)} onChange={(e) => onTagToggle(t.id, e.target.checked)} />
                   <span className="truncate">@{t.name}</span>
                 </label>
               ))
@@ -588,7 +604,9 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
   const groups = useMemo(() => (tree ? null : groupTasks(sortTasks(tasks, sortBy), groupBy, { lists: data.lists, tags: data.tags })), [tree, tasks, sortBy, groupBy, data.lists, data.tags]);
   const openCount = tasks.filter(isOpen).length;
 
-  const setPrefs = (patch: Partial<ViewPrefs>) => void store.mutate("lists", list.id, { view_prefs: { ...list.prefs, ...patch } }).catch((e: unknown) => notify(String(e)));
+  // Z najnowszych `view_prefs` w bazie, nie z renderu — szybkie kolejne zmiany się nie nadpisują.
+  const setPrefs = (patch: Partial<ViewPrefs> | ((current: ViewPrefs) => Partial<ViewPrefs>)) =>
+    void updateListPrefs(store, list.id, typeof patch === "function" ? patch : () => patch).catch((e: unknown) => notify(String(e)));
   const toggle = (id: string) =>
     setCollapsed((current) => {
       const next = new Set(current);
@@ -754,20 +772,10 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
           </Select>
           <ColumnsPicker
             value={columns}
-            onChange={(next) => {
-              const prefs = { ...list.prefs };
-              delete prefs.columns;
-              if (next.length) prefs.columns = next;
-              void store.mutate("lists", list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
-            }}
+            onToggle={(column, on) => setPrefs((p) => ({ columns: orNone(toggleColumn(p.columns, column, on)) }))}
             tags={tagsForWorkspace(data.tags, list.workspaceId, list.prefs.columnTags)}
             tagValue={columnTags ? [...columnTags] : []}
-            onTagsChange={(next) => {
-              const prefs = { ...list.prefs };
-              delete prefs.columnTags;
-              if (next.length) prefs.columnTags = next;
-              void store.mutate("lists", list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
-            }}
+            onTagToggle={(tagId, on) => setPrefs((p) => ({ columnTags: orNone(toggleId(p.columnTags, tagId, on)) }))}
           />
         </div>
       )}
