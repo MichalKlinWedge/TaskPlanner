@@ -565,7 +565,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
   };
   const pickFor = (task: ViewTask) => (kind: Kind) => (kind === "date" ? setPicking(task.id) : act(task, { kind } as ReviewAction));
 
-  // Klawisze 1–6 działają na zadaniu otwartym w panelu, a bez niego na pierwszym nierozstrzygniętym kroku (Inbox, zaległe).
+  // Klawisze 1–6 działają tylko na zadaniu otwartym w panelu (kroki Inbox, zaległe); Enter bez panelu otwiera pierwsze nierozstrzygnięte.
   const keyed = step === "inbox" ? review.inbox : step === "overdue" ? review.overdue : [];
   const latest = useRef({ keyed, pickFor, onExit, picking, openTask, openTaskId });
   useEffect(() => {
@@ -582,14 +582,15 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
       }
       const kind = KEY_TO_KIND.get(event.key as "1");
       const left = k.filter((t) => !decided.current.has(t.id));
-      const f = left.find((t) => t.id === panel) ?? left[0];
-      if (!f || pk) return;
+      if (pk) return;
+      const f = left.find((t) => t.id === panel);
       if (kind) {
+        if (!f) return;
         event.preventDefault();
         p(f)(kind);
-      } else if (event.key === "Enter" && !onControl(event.target)) {
+      } else if (event.key === "Enter" && !onControl(event.target) && !panel && left[0]) {
         event.preventDefault();
-        open(f.id);
+        open(left[0].id);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -618,8 +619,8 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
     );
   }
 
-  // Wiersz, na który działają klawisze 1–6 (otwarty w panelu albo pierwszy) — tylko on pokazuje numery klawiszy.
-  const target = (keyed.find((t) => t.id === openTaskId) ?? keyed[0])?.id;
+  // Wiersz, na który działają klawisze 1–6 (otwarty w panelu) — tylko on pokazuje numery klawiszy.
+  const target = keyed.find((t) => t.id === openTaskId)?.id;
   const row = (task: ViewTask, extra?: ReactNode) => {
     const keys = task.id === target;
     return (
@@ -831,7 +832,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
             Zakończ przegląd
           </Button>
         )}
-        {step === "inbox" || step === "overdue" ? <span className="text-xs text-[var(--muted)]">Klawisze 1–6 — decyzja przy zadaniu otwartym w panelu albo pierwszym, Enter — edycja.</span> : null}
+        {step === "inbox" || step === "overdue" ? <span className="text-xs text-[var(--muted)]">Klawisze 1–6 — decyzja przy zadaniu otwartym w panelu, Enter — edycja pierwszego.</span> : null}
       </div>
     </Frame>
   );

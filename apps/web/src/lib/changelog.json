@@ -1,4 +1,5 @@
 [
+  {"version":"0.40.3.2","kind":"z","date":"2026-11-26","title":"Przegląd tygodnia: klawisze 1–6 tylko przy zadaniu otwartym w panelu"},
   {"version":"0.40.3.1","kind":"z","date":"2026-11-26","title":"Przegląd tygodnia: bez „Przenieś do…”, przyciski decyzji wyrównane do prawej"},
   {"version":"0.40.3.0","kind":"w","date":"2026-11-26","title":"Przegląd: bez ikony ołówka przy zadaniach — edycję otwiera klik w nazwę"},
   {"version":"0.40.2.1","kind":"z","date":"2026-11-26","title":"Przegląd dnia: czytelniejsze wiersze podsumowania, szerszy „Plan dnia”"},
