@@ -1,4 +1,5 @@
 [
+  {"version":"0.43.3.0","kind":"w","date":"2026-11-26","title":"Dzwonek: „Przypomnij za 15 min / 30 min / 1 h” przy przypomnieniu"},
   {"version":"0.43.2.0","kind":"w","date":"2026-11-26","title":"Web: przypomnienia w dzwonku i czerwony wiersz po czasie także przy zaznaczeniu"},
   {"version":"0.43.1.4","kind":"z","date":"2026-11-26","title":"Dziś: „Plan dnia” bez drugiego suwaka — przykleja się tylko, gdy mieści się w oknie"},
   {"version":"0.43.1.3","kind":"z","date":"2026-11-26","title":"Telefon: centrum powiadomień — dzwonek, ekran z filtrami i powiadomienia w zasobniku z akcją „Oznacz jako przeczytane”"},

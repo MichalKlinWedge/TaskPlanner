@@ -418,6 +418,10 @@ export function phoneNotificationPushes(
 export const REMINDER_BELL_WINDOW_MS = 24 * 3_600_000;
 export const REMINDER_NOTIFICATION_PREFIX = 'r:';
 
+/** „Przypomnij za…” przy przypomnieniu w dzwonku: jednorazowe przypomnienie przez `snoozeReminderOps` (wyśle je też push). */
+export const REMINDER_SNOOZE_OPTIONS = [15, 30, 60] as const;
+export const reminderSnoozeLabel = (minutes: number): string => (minutes % 60 ? `${minutes} min` : `${minutes / 60} h`);
+
 /** Stan przypomnień w dzwonku na urządzeniu: przeczytane i usunięte (klucze wpisów), „wszystkie do chwili”. */
 export interface ReminderBellState {
   read: readonly string[];

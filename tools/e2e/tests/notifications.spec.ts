@@ -110,28 +110,43 @@ test('zmiana terminu przez właściciela → widok „Powiadomienia” z filtram
   }
 });
 
-test('wybite przypomnienie → w dzwonku „Przypomnienie: …”, klik otwiera zadanie i oznacza przeczytane', async ({ page, server }) => {
+test('wybite przypomnienie → w dzwonku „Przypomnienie: …”, klik otwiera zadanie, „Przypomnij za 15 min”, ukończone znika', async ({ page, server }) => {
   await openApp(page);
-  const title = unique('Przypomnienie w dzwonku');
+  const [title, closed] = [unique('Przypomnienie w dzwonku'), unique('Przypomnienie ukończone')];
   const input = page.getByRole('textbox', { name: 'Dodaj zadanie na dziś' });
   // Przypomnienie 1 min przed 0:01 dzisiaj — już wybite (test nie działa w pierwszych minutach doby).
-  await input.fill(`${title} dziś o 0:01 ^1m`);
-  await input.press('Enter');
-  await server.waitForTask(title);
-  await page.getByTestId('notifications-bell').click();
+  for (const t of [title, closed]) {
+    await input.fill(`${t} dziś o 0:01 ^1m`);
+    await input.press('Enter');
+    await expect(input).toHaveValue('');
+  }
+  const task = await server.waitForTask(title);
+  await server.waitForTask(closed);
+  const bell = page.getByTestId('notifications-bell');
   const panel = page.getByTestId('notifications-panel');
   const item = panel.getByTestId('notification').filter({ hasText: title });
+  await bell.click();
   await expect(item).toContainText(`Przypomnienie: „${title}”`);
   await expect(item).toHaveAttribute('data-unread');
   await item.getByRole('button', { name: new RegExp(title) }).click();
   await expect(page.getByRole('complementary', { name: 'Zadanie', exact: true })).toContainText(title);
-  await page.getByTestId('notifications-bell').click();
+  await bell.click();
   await panel.getByRole('button', { name: 'Wszystkie', exact: true }).click();
   await expect(item).not.toHaveAttribute('data-unread');
+
+  // „Przypomnij za 15 min” = jednorazowe przypomnienie na serwerze, wpis znika z dzwonka.
+  await item.getByRole('group', { name: 'Przypomnij ponownie' }).getByRole('button', { name: '15 min' }).click();
+  await expect(panel.getByTestId('notification-snoozed')).toContainText(`„${title}” — przypomnę o`);
+  await expect(item).toHaveCount(0);
+  await expect
+    .poll(async () => ((await server.client.from('reminders').select('kind').eq('task_id', task.id).is('deleted_at', null)).data ?? []).map((r) => r.kind).sort())
+    .toEqual(['absolute', 'relative']);
+
   // Ukończone zadanie znika z dzwonka.
   await page.keyboard.press('Escape');
-  await taskRow(page, title).getByRole('checkbox').first().click();
-  await server.waitForTask(title, (t) => t.status === 'done');
-  await page.getByTestId('notifications-bell').click();
-  await expect(item).toHaveCount(0);
+  await taskRow(page, closed).getByRole('checkbox').first().click();
+  await server.waitForTask(closed, (t) => t.status === 'done');
+  await bell.click();
+  await panel.getByRole('button', { name: 'Wszystkie', exact: true }).click();
+  await expect(panel.getByTestId('notification').filter({ hasText: closed })).toHaveCount(0);
 });

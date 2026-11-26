@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  REMINDER_SNOOZE_OPTIONS,
+  reminderSnoozeLabel,
   dismissOps,
   filterNotifications,
   freshNotifications,
@@ -293,6 +295,9 @@ describe('telefon: powiadomienie systemowe po synchronizacji', () => {
 });
 
 describe('przypomnienia w dzwonku', () => {
+  it('„Przypomnij za…”: 15 min, 30 min, 1 h', () => {
+    expect(REMINDER_SNOOZE_OPTIONS.map(reminderSnoozeLabel)).toEqual(['15 min', '30 min', '1 h']);
+  });
   const fire = (key: string, fireAt: string) => ({ key, taskId: 't1', reminderId: key.split(':')[0]!, occurrenceDate: '2026-11-18' as const, fireAt, dueAt: '2026-11-18T11:30:00.000Z' });
   const tasks = new Map([['t1', { title: 'Raport', dueTime: '12:30', kind: 'task' as const, habit: null }]]);
   it('wybite w ostatnich 24 h, z treścią z chwili wybicia; przyszłe i starsze — nie', () => {

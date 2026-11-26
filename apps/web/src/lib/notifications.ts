@@ -24,6 +24,7 @@ import {
   reminderBellUpdate,
   reminderFireTimes,
   reminderNotifications,
+  snoozeReminderOps,
   toHabitCompletion,
   toNotification,
   toReminderRule,
@@ -32,6 +33,7 @@ import {
   type LocalTime,
   type ReminderBellState,
   type ReminderTask,
+  type ViewTask,
 } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -90,6 +92,33 @@ export function dismissNotifications(store: TabStore, list: readonly AppNotifica
   const ops = dismissOps(list, new Date());
   if (ops.length) void store.mutateMany(ops).catch(() => undefined);
   setBell(reminderBellUpdate(bellState(), list, "dismissed"));
+}
+
+/**
+ * „Przypomnij za N min” przy przypomnieniu w dzwonku: jednorazowe przypomnienie (`reminders`, jak „Odłóż”
+ * z powiadomienia push — wyśle je `reminders-push`, a po wybiciu wróci tu), poprzednie odłożenie znika, a ten
+ * wpis — z dzwonka. Wynik: godzina nowego przypomnienia albo `null`, gdy zadanie już zamknięte / usunięte.
+ */
+export async function snoozeReminderNotification(store: TabStore, n: AppNotification, userId: string, minutes: number, timeZone: string | undefined): Promise<LocalTime | null> {
+  if (!n.taskId) return null;
+  const [tasks, rows] = await Promise.all([
+    store.query<{ id: string; kind: string; status: string; time_zone: string | null }>("select id, kind, status, time_zone from tasks where id = ? and deleted_at is null", [n.taskId]),
+    store.query<{ id: string; task_id: string; kind: string; offset_min: number | null; at_date: string | null; at_time: string | null }>(
+      "select id, task_id, kind, offset_min, at_date, at_time from reminders where task_id = ? and deleted_at is null",
+      [n.taskId],
+    ),
+  ]);
+  const task = tasks[0];
+  if (!task) return null;
+  const snoozed = snoozeReminderOps(
+    { id: task.id, kind: task.kind === "habit" ? "habit" : "task", status: task.status as ViewTask["status"] },
+    rows.map(toReminderRule),
+    { userId, now: new Date(), timeZone: task.time_zone ?? timeZone, minutes },
+  );
+  if (!snoozed) return null;
+  await store.mutateMany(snoozed.ops);
+  dismissNotifications(store, [n]);
+  return snoozed.time;
 }
 
 // ── Przypomnienia w dzwonku ──────────────────────────────────────────────────────────────────

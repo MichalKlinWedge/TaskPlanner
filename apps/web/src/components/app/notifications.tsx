@@ -19,6 +19,8 @@ import {
   notificationTime,
   notificationWorkspaces,
   plural,
+  REMINDER_SNOOZE_OPTIONS,
+  reminderSnoozeLabel,
   unreadCount,
   visibleNotifications,
   type AppNotification,
@@ -31,7 +33,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { parseSettings } from "@/lib/app-data";
 import { useLocalQuery } from "@/lib/local-store";
-import { dismissNotifications, markNotificationsRead, requestOpenTask, useNotifications } from "@/lib/notifications";
+import { dismissNotifications, markNotificationsRead, requestOpenTask, snoozeReminderNotification, useNotifications } from "@/lib/notifications";
 import { browserDeviceId } from "@/lib/push";
 import { routeHash } from "@/lib/route";
 
@@ -72,9 +74,44 @@ function openTarget(n: AppNotification) {
 
 
 /** Lista podzielona na dni (dzwonek i widok `#/notifications`). */
-function NotificationDays({ shown, now, timeZone, store, empty, onOpen }: { shown: AppNotification[]; now: Date; timeZone?: string; store: TabStore; empty: string; onOpen?: () => void }) {
-  if (!shown.length) return <p className="px-3 py-6 text-center text-sm text-[var(--muted)]">{empty}</p>;
-  return notificationDays(shown, now, timeZone).map((day) => (
+function NotificationDays({
+  shown,
+  now,
+  timeZone,
+  store,
+  userId,
+  empty,
+  onOpen,
+}: {
+  shown: AppNotification[];
+  now: Date;
+  timeZone?: string;
+  store: TabStore;
+  userId: string;
+  empty: string;
+  onOpen?: () => void;
+}) {
+  const [note, setNote] = useState<string | null>(null);
+  const snooze = (n: AppNotification, minutes: number) => {
+    const title = typeof n.data.title === "string" ? n.data.title : "zadanie";
+    snoozeReminderNotification(store, n, userId, minutes, timeZone).then(
+      (time) => setNote(time ? `„${title}” — przypomnę o ${time}.` : `„${title}” jest już zamknięte albo usunięte.`),
+      (e: unknown) => setNote(e instanceof Error ? e.message : String(e)),
+    );
+  };
+  const status = note ? (
+    <p role="status" className="px-3 pt-2 text-xs text-[var(--muted)]" data-testid="notification-snoozed">
+      {note}
+    </p>
+  ) : null;
+  if (!shown.length)
+    return (
+      <>
+        {status}
+        <p className="px-3 py-6 text-center text-sm text-[var(--muted)]">{empty}</p>
+      </>
+    );
+  return [status, ...notificationDays(shown, now, timeZone).map((day) => (
     <section key={day.label}>
       <h3 className="sticky top-0 bg-[var(--surface)] px-3 pt-2 pb-1 text-xs font-medium text-[var(--muted)]">{day.label}</h3>
       <ul>
@@ -90,11 +127,12 @@ function NotificationDays({ shown, now, timeZone, store, empty, onOpen }: { show
               openTarget(n);
             }}
             onDismiss={() => dismissNotifications(store, [n])}
+            onSnooze={n.kind === "reminder" ? (minutes) => snooze(n, minutes) : undefined}
           />
         ))}
       </ul>
     </section>
-  ));
+  ))];
 }
 
 /** „Teraz” odświeżane co minutę (czas względny i retencja). */
@@ -200,6 +238,7 @@ export function NotificationBell({ store, userId }: { store: TabStore; userId: s
               now={now}
               timeZone={timeZone}
               store={store}
+              userId={userId}
               empty={only === "unread" ? "Wszystko przeczytane." : "Brak powiadomień."}
               onOpen={() => setOpen(false)}
             />
@@ -278,7 +317,7 @@ export function NotificationsScreen() {
         </button>
       </div>
       <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)]">
-        <NotificationDays shown={shown} now={now} timeZone={timeZone} store={store} empty={filter.only === "unread" ? "Wszystko przeczytane." : "Brak powiadomień."} />
+        <NotificationDays shown={shown} now={now} timeZone={timeZone} store={store} userId={userId} empty={filter.only === "unread" ? "Wszystko przeczytane." : "Brak powiadomień."} />
       </div>
       <p className="mt-3 text-xs text-[var(--muted)]">
         Powiadomienia starsze niż 90 dni znikają same. Które zdarzenia trafiają tutaj i jako push —{" "}
@@ -291,18 +330,49 @@ export function NotificationsScreen() {
   );
 }
 
-function NotificationItem({ n, now, timeZone, onOpen, onDismiss }: { n: AppNotification; now: Date; timeZone?: string; onOpen: () => void; onDismiss: () => void }) {
+function NotificationItem({
+  n,
+  now,
+  timeZone,
+  onOpen,
+  onDismiss,
+  onSnooze,
+}: {
+  n: AppNotification;
+  now: Date;
+  timeZone?: string;
+  onOpen: () => void;
+  onDismiss: () => void;
+  onSnooze?: (minutes: number) => void;
+}) {
   const { text, detail } = notificationText(n);
   return (
     <li className="group relative flex items-start gap-2 px-3 py-2 hover:bg-[var(--hover)]" data-testid="notification" data-unread={n.readAt ? undefined : ""}>
       <span aria-hidden className="mt-0.5 w-5 shrink-0 text-center">
         {ICON[n.kind]}
       </span>
-      <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left outline-none focus-visible:underline">
-        <span className={`block text-sm ${n.readAt ? "text-[var(--muted)]" : "font-medium"}`}>{text}</span>
-        {detail ? <span className="block truncate text-xs text-[var(--muted)]">{detail}</span> : null}
-        <span className="block text-[11px] text-[var(--muted)]">{notificationTime(n.at, now, timeZone)}</span>
-      </button>
+      <div className="min-w-0 flex-1">
+        <button type="button" onClick={onOpen} className="block w-full text-left outline-none focus-visible:underline">
+          <span className={`block text-sm ${n.readAt ? "text-[var(--muted)]" : "font-medium"}`}>{text}</span>
+          {detail ? <span className="block truncate text-xs text-[var(--muted)]">{detail}</span> : null}
+          <span className="block text-[11px] text-[var(--muted)]">{notificationTime(n.at, now, timeZone)}</span>
+        </button>
+        {onSnooze ? (
+          <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px]" role="group" aria-label="Przypomnij ponownie">
+            <span className="text-[var(--muted)]">Przypomnij za</span>
+            {REMINDER_SNOOZE_OPTIONS.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => onSnooze(m)}
+                className="rounded border border-[var(--border)] px-1.5 py-0.5 hover:bg-[var(--surface)] hover:text-[var(--accent)]"
+              >
+                {reminderSnoozeLabel(m)}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
       {n.readAt ? null : <span aria-label="Nieprzeczytane" className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--accent)]" />}
       <button
         type="button"
