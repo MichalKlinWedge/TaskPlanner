@@ -47,7 +47,7 @@ export default function ShareScreen() {
         }}
       />
       {saved ? <Text style={{ color: p.ok }}>{saved}</Text> : null}
-      <Button kind="secondary" title="Dziś" onPress={() => router.replace('/')} />
+      <Button kind="secondary" title="Dziś" onPress={() => router.replace('/today')} />
     </ScrollView>
   );
 }

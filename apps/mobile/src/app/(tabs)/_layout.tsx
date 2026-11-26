@@ -1,5 +1,5 @@
 /**
- * Zakładki MVP-3: Dziś, Inbox, Nadchodzące, Przeglądaj (przestrzenie, listy, tagi, filtry, ustawienia).
+ * Zakładki: Start (strona startowa, v1.x — `/`, otwiera się po starcie), Dziś (`/today`), Inbox, Nadchodzące, Przeglądaj (przestrzenie, listy, tagi, filtry, ustawienia).
  * Liczniki jak w pasku bocznym webu (`selectInbox`, `selectToday` z core, bieżąca przestrzeń): Inbox,
  * Dziś = zaległe + dzisiejsze — czerwony, gdy są zaległe. Licznik cyklicznych stoi w Przeglądaj.
  */
@@ -43,8 +43,9 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: p.bg },
       }}
     >
+      <Tabs.Screen name="index" options={{ title: 'Start', tabBarIcon: icon('🏠') }} />
       <Tabs.Screen
-        name="index"
+        name="today"
         options={{
           title: 'Dziś',
           tabBarIcon: icon('☀'),

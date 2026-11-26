@@ -63,6 +63,7 @@ export const commandSearchItems = (selected: number): SearchItem[] =>
 
 /** Polecenia, które wykonuje ekran szukania na telefonie (reszta to klawiatura, zaznaczenie albo motyw — tam są gdzie indziej). */
 export const PHONE_COMMANDS: ReadonlySet<string> = new Set([
+  'view.home',
   'view.inbox',
   'view.today',
   'view.overdue',

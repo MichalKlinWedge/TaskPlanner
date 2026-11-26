@@ -9,7 +9,7 @@ const path = require('path');
 
 const SHORTCUTS = [
   { id: 'quick_add', label: 'Szybkie dodawanie', long: 'Dodaj zadanie', url: 'taskplanner://quick-add' },
-  { id: 'today', label: 'Dziś', long: 'Zadania na dziś', url: 'taskplanner:///' },
+  { id: 'today', label: 'Dziś', long: 'Zadania na dziś', url: 'taskplanner:///today' },
   { id: 'search', label: 'Szukaj', long: 'Szukaj zadań', url: 'taskplanner://search' },
 ];
 

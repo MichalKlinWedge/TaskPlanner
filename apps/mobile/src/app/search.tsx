@@ -26,7 +26,8 @@ const KIND_LABEL: Record<string, string> = { list: 'Lista', workspace: 'Przestrz
 
 /** Widoki-polecenia: zakładki (powrót do nich) albo ekrany na stosie. */
 const VIEW_ROUTE: Record<string, { tab: boolean; href: Href }> = {
-  'view.today': { tab: true, href: '/' },
+  'view.home': { tab: true, href: '/' },
+  'view.today': { tab: true, href: '/today' },
   'view.inbox': { tab: true, href: '/inbox' },
   'view.upcoming': { tab: true, href: '/upcoming' },
   'view.overdue': { tab: false, href: '/overdue' },

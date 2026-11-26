@@ -34,7 +34,7 @@ export default function InviteScreen() {
     };
   }, [token, online, attempt]);
 
-  const home = <Button title="Dziś" kind="secondary" onPress={() => router.replace('/')} />;
+  const home = <Button title="Dziś" kind="secondary" onPress={() => router.replace('/today')} />;
   return (
     <Screen>
       <Section title="Zaproszenie do przestrzeni">

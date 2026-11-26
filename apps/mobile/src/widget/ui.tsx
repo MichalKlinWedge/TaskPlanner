@@ -21,7 +21,7 @@ export const themed = (view: (palette: Palette) => ReactElement) => ({ light: vi
 
 /** Głębokie linki do aplikacji (te same trasy co skróty aplikacji). */
 export const APP_URI = {
-  today: 'taskplanner:///',
+  today: 'taskplanner:///today',
   inbox: 'taskplanner:///inbox',
   habits: 'taskplanner://habits',
   quickAdd: 'taskplanner://quick-add',

@@ -33,7 +33,7 @@ export default function TodayScreen() {
   const { row, options, columnsHeader } = useSmartView('today', data, today, workspaceId, <ExportChip title="Dziś" rows={exportRows} />);
   const open = view.overdue.length + view.today.length;
   const habitsLeft = habits.filter((h) => !h.settled).length;
-  usePerfReady('tab:index', data.loaded);
+  usePerfReady('tab:today', data.loaded);
   if (data.loaded) perfOnce('start: Dziś', `${data.tasks.length} zadań`);
   const sections: TaskSection[] = [
     { key: 'plan', data: [], footer: data.loaded ? <><DayPlanCard data={data} today={today} workspaceId={workspaceId} />{columnsHeader}</> : undefined },
