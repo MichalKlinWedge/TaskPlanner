@@ -8,7 +8,7 @@
  *
  * Stan jest wspólny dla banera i ustawień (`useAppUpdate`). Wybór wydania i porównanie wersji: core `app-update.ts`.
  */
-import { APK_MIME, availableUpdate, shouldCheckUpdate, type AppRelease } from '@taskplanner/core';
+import { APK_MIME, APP_RELEASES_API_URL, availableUpdate, shouldCheckUpdate, type AppRelease } from '@taskplanner/core';
 import * as Application from 'expo-application';
 import { Directory, File, Paths } from 'expo-file-system';
 import Storage from 'expo-sqlite/kv-store';
@@ -17,7 +17,6 @@ import { useSyncExternalStore } from 'react';
 import { readJson, writeJson } from './config';
 import { reportError } from './error-log';
 
-export const RELEASES_URL = 'https://api.github.com/repos/MichalKlinWedge/TaskPlanner/releases?per_page=20';
 const FETCH_TIMEOUT_MS = 15_000;
 const KEYS = { last: 'update.last', dismissed: 'update.dismissed' } as const;
 
@@ -72,7 +71,7 @@ async function fetchReleases(): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(RELEASES_URL, { headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }, signal: controller.signal });
+    const res = await fetch(APP_RELEASES_API_URL, { headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }, signal: controller.signal });
     if (res.status === 403 || res.status === 429) throw new Error('GitHub chwilowo ogranicza zapytania — spróbuj później');
     if (!res.ok) throw new Error(`GitHub odpowiedział ${res.status}`);
     return await res.json();

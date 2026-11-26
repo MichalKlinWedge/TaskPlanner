@@ -22,9 +22,9 @@ import interactionPlugin, { Draggable, type DateClickArg, type DropArg, type Eve
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import {
-  applyFilter,
   CALENDAR_SLOTS,
   calendarEntries,
+  calendarPanelTasks,
   clickedTime,
   formatMinutes,
   habitSlots,
@@ -32,15 +32,12 @@ import {
   matchesFilter,
   datesPatch,
   freeSlotTimes,
-  isOpen,
   localDateTimeAt,
   parseCalendarSlot,
   PRIORITY,
   relativeDay,
   resizeBlockPatch,
   scheduleBlockPatch,
-  selectInbox,
-  selectToday,
   unscheduleBlockPatch,
   type CalendarSlot,
   type FilterQuery,
@@ -50,6 +47,7 @@ import {
   type TaskOp,
   type ViewContext,
   type ViewTask,
+  type CalendarPanelSource,
 } from "@taskplanner/core";
 import { memo, useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from "react";
 
@@ -119,18 +117,9 @@ type Popup = { kind: "task"; taskId: string; allDay: boolean; editable: boolean;
 
 const PANEL_SOURCES = (data: AppData) => ["today", "inbox", "none", ...data.savedFilters.map((f) => `filter:${f.id}`)];
 
-/** Źródło panelu: „Dziś i zaległe”, Inbox albo zapisany filtr (`filter:<id>`). */
-function panelTasks(source: string, data: AppData, ctx: ViewContext): ViewTask[] {
-  const noTime = (t: ViewTask) => t.kind === "task" && isOpen(t) && !t.dueTime;
-  if (source === "today") {
-    const view = selectToday(data.tasks, ctx, { completed: "hidden" });
-    return [...view.overdue, ...view.today].filter(noTime);
-  }
-  if (source === "inbox") return selectInbox(data.tasks, new Set(data.lists.filter((l) => l.kind === "inbox").map((l) => l.id)), ctx).filter(noTime);
-  if (source === "none") return data.tasks.filter((t) => noTime(t) && !t.dueDate && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId)).sort((a, b) => a.priority - b.priority || (a.sortKey < b.sortKey ? -1 : 1));
-  const filter = data.savedFilters.find((f) => `filter:${f.id}` === source);
-  return filter ? applyFilter(data.tasks, filter.query, ctx.today).filter((t) => noTime(t) && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId)) : [];
-}
+/** Źródło panelu: „Dziś i zaległe”, Inbox, „Bez terminu” albo zapisany filtr (`filter:<id>`) — core `calendarPanelTasks`. */
+const panelTasks = (source: string, data: AppData, ctx: ViewContext): ViewTask[] =>
+  calendarPanelTasks(source as CalendarPanelSource, { tasks: data.tasks, inboxListIds: new Set(data.lists.filter((l) => l.kind === "inbox").map((l) => l.id)), savedFilters: data.savedFilters }, ctx);
 
 /**
  * FullCalendar zamrożony na czas przeciągania / rozciągania bloku. Nowe opcje (każdy render ekranu, np. po

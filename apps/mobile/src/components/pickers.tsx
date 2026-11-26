@@ -11,6 +11,7 @@ import {
   buildSearchIndex,
   capitalized,
   COLOR_GRID,
+  datePresets,
   dayChip,
   isoWeekday,
   monthLabel,
@@ -252,14 +253,7 @@ function DatePicker({ request }: { request: Extract<Request, { kind: 'date' }> }
   const { today, value } = request;
   const { firstDayOfWeek } = useAppData().settings;
   const [month, setMonth] = useState(() => `${(value ?? today).slice(0, 7)}-01` as LocalDate);
-  const nextMonday = addDays(today, ((8 - isoWeekday(today)) % 7) || 7);
-  const presets: { label: string; date: LocalDate }[] = [
-    { label: 'Dziś', date: today },
-    { label: 'Jutro', date: addDays(today, 1) },
-    { label: 'Pojutrze', date: addDays(today, 2) },
-    { label: `Pon. ${dayChip(nextMonday).replace(/^[^,]+,\s*/, '')}`, date: nextMonday },
-    { label: 'Za tydzień', date: addDays(today, 7) },
-  ];
+  const presets = datePresets(today);
   // Siatka: od pierwszego dnia tygodnia przed 1. dniem miesiąca, 6 tygodni.
   const lead = (isoWeekday(month) - firstDayOfWeek + 7) % 7;
   const start = addDays(month, -lead);

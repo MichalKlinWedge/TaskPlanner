@@ -4,7 +4,7 @@
  * Eksport do Excela z widoków: przycisk z ikoną XLS, zapis skoroszytu (`core` `xlsxWorkbook`) jako
  * pobranie pliku i nazwy kolumn arkusza zadań z danych aplikacji (`tasksSheet`).
  */
-import { exportFileName, plural, tasksSheet, XLSX_MIME, xlsxWorkbook, type TaskExportNames, type TaskExportRow, type ViewContext, type XlsxSheet } from "@taskplanner/core";
+import { exportFileName, plural, taskExportNames, tasksSheet, XLSX_MIME, xlsxWorkbook, type TaskExportRow, type ViewContext, type XlsxSheet } from "@taskplanner/core";
 
 import type { AppData } from "@/lib/app-data";
 
@@ -38,17 +38,6 @@ export function downloadBlob(fileName: string, blob: Blob): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-/** Nazwy list (Inbox z przestrzenią), przestrzeni, tagów i współpracowników do arkusza zadań. */
-export function exportNames(data: AppData): TaskExportNames {
-  const workspaces = new Map(data.workspaces.map((w) => [w.id, w.name]));
-  return {
-    workspaces,
-    lists: new Map(data.lists.map((l) => [l.id, l.kind === "inbox" ? `Inbox (${workspaces.get(l.workspaceId) ?? ""})` : l.name])),
-    tags: new Map(data.tags.map((t) => [t.id, t.name])),
-    collaborators: new Map(data.collaborators.map((c) => [c.id, c.name])),
-  };
-}
-
 /**
  * Przycisk „Eksport XLSX”: arkusze budowane dopiero po kliknięciu (`build`), potem pobranie pliku i
  * komunikat (`summary` — np. ile wierszy).
@@ -78,7 +67,7 @@ export function TaskExportButton({ title, data, ctx, rows, count }: { title: str
   return (
     <ExportButton
       fileName={exportFileName(title, ctx.today)}
-      build={() => [tasksSheet(rows(), exportNames(data), { name: title, timeZone: ctx.timeZone })]}
+      build={() => [tasksSheet(rows(), taskExportNames(data), { name: title, timeZone: ctx.timeZone })]}
       summary={() => plural(count, ["zadanie", "zadania", "zadań"])}
       disabled={!count}
       testId="view-export"

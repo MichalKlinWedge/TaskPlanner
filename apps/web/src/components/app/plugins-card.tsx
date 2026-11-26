@@ -10,6 +10,7 @@
  */
 import {
   afterSendSummary,
+  canRetryDelivery,
   compareText,
   DEFAULT_DELAY_SEC,
   DELIVERY_STATUS,
@@ -19,11 +20,13 @@ import {
   normalizeText,
   PLUGIN_EVENT,
   PLUGIN_CONNECTION_STATUS,
+  PLUGIN_DELAYS,
   PLUGINS,
   pluginDef,
   pluginRuleDeleteOps,
   pluginRuleEnableOps,
   pluginRuleSaveOps,
+  pluginTriggerSummary,
   RULE_EVENTS,
   rulePreview,
   SAMPLE_TASK,
@@ -294,18 +297,6 @@ interface RuleDraftState {
   status: TaskStatus | "";
 }
 
-/** Opóźnienie wysyłki reguły zdarzeniowej (s) do wyboru. */
-const DELAYS: { value: number; label: string }[] = [
-  { value: 0, label: "od razu" },
-  { value: DEFAULT_DELAY_SEC, label: `${DEFAULT_DELAY_SEC} s (domyślnie)` },
-  { value: 60, label: "1 min" },
-  { value: 300, label: "5 min" },
-  { value: 900, label: "15 min" },
-  { value: 3600, label: "1 godz." },
-];
-
-const delayLabel = (sec: number) => DELAYS.find((d) => d.value === sec)?.label.replace(" (domyślnie)", "") ?? `${sec} s`;
-
 const draftOf = (r: PluginRule): RuleDraftState => ({
   id: r.id,
   name: r.name,
@@ -324,13 +315,6 @@ const draftOf = (r: PluginRule): RuleDraftState => ({
 
 const triggerOf = (d: RuleDraftState): PluginTrigger =>
   d.kind === "manual" ? { kind: "manual" } : { kind: "event", events: RULE_EVENTS.filter((e) => d.events.includes(e)), ...(isEmptyFilter(d.filter) ? {} : { filter: d.filter }) };
-
-/** Opis wyzwalacza na liście reguł. */
-function triggerSummary(r: PluginRule): string {
-  if (r.trigger.kind !== "event") return "„Wyślij do…”";
-  const events = r.trigger.events.map((e) => PLUGIN_EVENT[e]).join(", ");
-  return `gdy: ${events}${r.trigger.filter && !isEmptyFilter(r.trigger.filter) ? " (z filtrem)" : ""} · po ${delayLabel(r.options.delaySec ?? DEFAULT_DELAY_SEC)}`;
-}
 
 function Rules({
   store,
@@ -391,7 +375,7 @@ function Rules({
                 </label>
                 <span className="text-xs text-[var(--muted)]">
                   → {c ? c.label : "połączenie usunięte"}
-                  {c && c.status !== "active" ? ` (${PLUGIN_CONNECTION_STATUS[c.status]})` : ""} · {triggerSummary(r)}
+                  {c && c.status !== "active" ? ` (${PLUGIN_CONNECTION_STATUS[c.status]})` : ""} · {pluginTriggerSummary(r)}
                   {afterSendSummary(r.options.afterSend, tagName) ? ` · ${afterSendSummary(r.options.afterSend, tagName)}` : ""}
                 </span>
                 <span className="ml-auto flex gap-1">
@@ -528,7 +512,7 @@ function EventFields({ draft, setDraft }: { draft: RuleDraftState; setDraft: (d:
       </div>
       <Field label="Opóźnienie wysyłki" hint="Zmiany w tym czasie łączą się w jedną wysyłkę; cofnięte („Cofnij”) nie wychodzą wcale.">
         <Select value={String(draft.delaySec)} onChange={(e) => setDraft({ ...draft, delaySec: Number(e.target.value) })}>
-          {(DELAYS.some((d) => d.value === draft.delaySec) ? DELAYS : [...DELAYS, { value: draft.delaySec, label: `${draft.delaySec} s` }]).map((d) => (
+          {(PLUGIN_DELAYS.some((d) => d.value === draft.delaySec) ? PLUGIN_DELAYS : [...PLUGIN_DELAYS, { value: draft.delaySec, label: `${draft.delaySec} s` }]).map((d) => (
             <option key={d.value} value={d.value}>
               {d.label}
             </option>
@@ -704,7 +688,6 @@ interface DeliveryRow {
 }
 
 const DELIVERY_COLUMNS = "id, rule_id, connection_id, task_id, source, events, status, attempts, next_attempt_at, http_status, error, created_at, sent_at, external_url, title:payload->task->>title";
-const RETRYABLE = new Set(["failed", "dead", "skipped"]);
 const TONE: Record<"muted" | "ok" | "error", string> = {
   muted: "text-[var(--muted)]",
   ok: "text-green-700 dark:text-green-300",
@@ -787,7 +770,7 @@ function DeliveryList({
                 Otwórz ↗
               </a>
             ) : null}
-            {RETRYABLE.has(d.status) ? (
+            {canRetryDelivery(d.status) ? (
               <Button kind="ghost" disabled={busy} onClick={() => onRetry(d.id)}>
                 Ponów
               </Button>

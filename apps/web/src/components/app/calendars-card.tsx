@@ -8,7 +8,7 @@
  * Etap 12: przestrzenie, których zadania z godziną idą do kalendarza „Task Planner” na wybranym koncie
  * Google — `profiles.calendar_sync`, zapis lokalny (działa offline); serwer tworzy kalendarz i synchronizuje.
  */
-import { CalendarSync, relativeDay, localDateAt, localDateTimeAt } from "@taskplanner/core";
+import { CALENDAR_ACCOUNT_STATUS, CalendarSync, relativeDay, localDateAt, localDateTimeAt } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useState } from "react";
 
@@ -51,8 +51,6 @@ function parseCalendarSync(value: string | number | null | undefined): CalendarS
     return null;
   }
 }
-
-const STATUS: Record<string, string> = { active: "połączone", error: "błąd synchronizacji", revoked: "dostęp odwołany — połącz ponownie" };
 
 export function CalendarsCard({ store, timeZone }: { store: TabStore; timeZone?: string }) {
   const accounts = useLocalQuery<AccountRow>(store, "select id, provider, label, status, last_synced_at, last_error from calendar_accounts order by created_at", [], ["calendar_accounts"]).rows;
@@ -163,7 +161,7 @@ export function CalendarsCard({ store, timeZone }: { store: TabStore; timeZone?:
                 <span className="min-w-0 flex-1">
                   {a.label}
                   <span className="block text-xs text-[var(--muted)]">
-                    {a.provider === "google" ? "Google" : "ICS"} · {STATUS[a.status] ?? a.status} · synchronizacja: {synced(a.last_synced_at)}
+                    {a.provider === "google" ? "Google" : "ICS"} · {CALENDAR_ACCOUNT_STATUS[a.status as keyof typeof CALENDAR_ACCOUNT_STATUS] ?? a.status} · synchronizacja: {synced(a.last_synced_at)}
                   </span>
                   {a.last_error ? <span className="block text-xs text-[var(--danger)]">{a.last_error}</span> : null}
                 </span>
