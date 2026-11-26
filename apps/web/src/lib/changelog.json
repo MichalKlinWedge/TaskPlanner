@@ -1,4 +1,5 @@
 [
+  {"version":"0.40.1.0","kind":"w","date":"2026-11-26","title":"Oś czasu: zapamiętane szerokości kolumn i podział siatka / oś"},
   {"version":"0.40.0.0","kind":"y","date":"2026-11-26","title":"Lista osób w przestrzeni: data dołączenia członka"},
   {"version":"0.39.15.0","kind":"w","date":"2026-11-26","title":"Przegląd tygodnia: czytelniejsze wiersze zadań"},
   {"version":"0.39.14.1","kind":"z","date":"2026-11-26","title":"Oś czasu: znaczki osób przy tytule, szerokość kolumn siatki do przeciągnięcia"},

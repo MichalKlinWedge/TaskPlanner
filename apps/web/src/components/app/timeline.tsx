@@ -64,6 +64,7 @@ const CASCADE_KEY = "tp-timeline-cascade";
 const HIDDEN_KEY = "tp-timeline-hidden";
 const UNDATED_KEY = "tp-timeline-undated";
 const CRITICAL_KEY = "tp-timeline-critical";
+const WIDTHS_KEY = "tp-timeline-widths";
 const PROJECT = "p:";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -124,6 +125,48 @@ const COLUMNS: IColumnConfig[] = [
 ];
 /** Z „Ścieżką krytyczną”: zapas zadania w dniach (roboczych); projekt, ukończone i bez paska — „—”. */
 const CRITICAL_COLUMNS: IColumnConfig[] = [...COLUMNS, { id: "float", header: "Zapas", width: 60, align: "center", sort: false, resize: true, template: (v: unknown) => (typeof v === "number" ? String(v) : "—") }];
+
+/**
+ * Szerokości przeciągnięte w siatce (per przeglądarka): kolumny jak po `set-columns` SVAR (szerokość +
+ * która kolumna wypełnia resztę — po poszerzeniu „Zadanie” SVAR przenosi `flexgrow` na inną) i szerokość
+ * całej siatki (podział siatka / oś, `resize-grid`).
+ */
+interface StoredWidths {
+  columns: Record<string, { width: number; flexgrow?: number }>;
+  grid?: number;
+}
+const sane = (v: unknown, min: number): v is number => typeof v === "number" && Number.isFinite(v) && v >= min && v <= 4000;
+function readWidths(): StoredWidths {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(WIDTHS_KEY) ?? "{}");
+    if (!v || typeof v !== "object") return { columns: {} };
+    const raw = v as { columns?: unknown; grid?: unknown };
+    const columns: StoredWidths["columns"] = {};
+    if (raw.columns && typeof raw.columns === "object") {
+      for (const [id, c] of Object.entries(raw.columns as Record<string, { width?: unknown; flexgrow?: unknown }>)) {
+        if (c && sane(c.width, 20)) columns[id] = { width: c.width, ...(sane(c.flexgrow, 0.01) ? { flexgrow: c.flexgrow } : {}) };
+      }
+    }
+    return { columns, ...(sane(raw.grid, 100) ? { grid: raw.grid } : {}) };
+  } catch {
+    return { columns: {} };
+  }
+}
+function saveWidths(change: (w: StoredWidths) => StoredWidths) {
+  remember(WIDTHS_KEY, JSON.stringify(change(readWidths())));
+}
+/** Kolumny z zapamiętanymi szerokościami; gdy żadna nie wypełnia reszty (np. inny zestaw kolumn), wypełnia „Zadanie”. */
+function withWidths(columns: IColumnConfig[], stored: StoredWidths["columns"]): IColumnConfig[] {
+  const out = columns.map((c) => {
+    const s = c.id ? stored[c.id] : undefined;
+    if (!s) return c;
+    const next: IColumnConfig = { ...c, width: s.width };
+    if (s.flexgrow) next.flexgrow = s.flexgrow;
+    else delete next.flexgrow;
+    return next;
+  });
+  return out.some((c) => c.flexgrow) ? out : out.map((c) => (c.id === "text" ? { ...c, flexgrow: 1 } : c));
+}
 
 function readStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -241,11 +284,12 @@ interface ChartProps {
   end: Date;
   highlight: (date: Date, unit: string) => string;
   dark: boolean;
+  gridWidth: number | undefined;
   init: (api: IApi) => void;
 }
 
 /** SVAR rysuje się od nowa tylko przy zmianie danych osi (memo). */
-const Chart = memo(function Chart({ tasks, links, columns, scale, start, end, highlight, dark, init }: ChartProps) {
+const Chart = memo(function Chart({ tasks, links, columns, scale, start, end, highlight, dark, gridWidth, init }: ChartProps) {
   const Theme = dark ? WillowDark : Willow;
   return (
     <Locale words={GANTT_PL}>
@@ -255,6 +299,7 @@ const Chart = memo(function Chart({ tasks, links, columns, scale, start, end, hi
           tasks={tasks}
           links={links}
           columns={columns}
+          {...(gridWidth ? { gridWidth } : {})}
           scales={SCALES[scale].scales}
           cellWidth={SCALES[scale].cellWidth}
           cellHeight={34}
@@ -289,6 +334,10 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   // Zadania bez terminu jako wiersze bez paska — widać całe drzewo projektu.
   const [withUndated, setWithUndatedState] = useState(() => readStored(UNDATED_KEY, ["1", "0"], "1") === "1");
   const [showCritical, setShowCriticalState] = useState(() => readStored(CRITICAL_KEY, ["1", "0"], "0") === "1");
+  // Zapamiętane szerokości; po każdym przeciągnięciu wracają do propsów — SVAR przy przerysowaniu bierze kolumny z propsa.
+  const [widthsVersion, setWidthsVersion] = useState(0);
+  const columns = useMemo(() => withWidths(showCritical ? CRITICAL_COLUMNS : COLUMNS, readWidths().columns), [showCritical, widthsVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+  const gridWidth = useMemo(() => readWidths().grid, [widthsVersion]); // eslint-disable-line react-hooks/exhaustive-deps
   // Zwinięte zadania — do odświeżenia; zwinięte projekty — w profilu (`settings.timeline.collapsed`,
   // synchronizowane), więc zostają dla użytkownika na każdym urządzeniu.
   const [closedTasks, setClosedTasks] = useState<ReadonlySet<string>>(() => new Set());
@@ -420,6 +469,20 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
   const init = useCallback(
     (gantt: IApi) => {
       api.current = gantt;
+      // Szerokości przeciągnięte w siatce — zapamiętane do następnego otwarcia (`tp-timeline-widths`).
+      gantt.on("set-columns", (ev: { columns: { id?: string; width?: number; flexgrow?: number }[] }) => {
+        saveWidths((w) => {
+          const columns = { ...w.columns };
+          for (const c of ev.columns) if (c.id && c.width) columns[c.id] = { width: c.width, ...(c.flexgrow ? { flexgrow: c.flexgrow } : {}) };
+          return { ...w, columns };
+        });
+        setWidthsVersion((v) => v + 1);
+      });
+      gantt.on("resize-grid", (ev: { width: number; section?: string; inProgress?: boolean }) => {
+        if (ev.inProgress || (ev.section ?? "grid") !== "grid") return;
+        saveWidths((w) => ({ ...w, grid: Math.round(ev.width) }));
+        setWidthsVersion((v) => v + 1);
+      });
       const titleOf = (id: string) => latest.current.data.tasks.find((t) => t.id === id)?.title ?? "?";
       // Edytor, menu i zmiany drzewa SVAR — nie: zadania edytuje panel zadania.
       for (const action of ["add-task", "delete-task", "move-task", "copy-task", "indent-task", "update-link"] as const) gantt.intercept(action, () => false);
@@ -626,7 +689,7 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
       {projects.length ? (
         <div className="h-[calc(100vh-11rem)] min-h-80 overflow-hidden rounded-md border border-[var(--line)]">
           <style>{criticalCss + linkCss + projectCss + barlessCss}</style>
-          <Chart tasks={ganttTasks} links={ganttLinks} columns={showCritical ? CRITICAL_COLUMNS : COLUMNS} scale={scale} start={range.start} end={range.end} highlight={highlight} dark={dark} init={init} />
+          <Chart tasks={ganttTasks} links={ganttLinks} columns={columns} gridWidth={gridWidth} scale={scale} start={range.start} end={range.end} highlight={highlight} dark={dark} init={init} />
         </div>
       ) : allProjects.length ? (
         <p className="py-6 text-sm text-[var(--muted)]">
