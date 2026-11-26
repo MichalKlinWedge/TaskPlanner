@@ -64,8 +64,10 @@ import {
   MARKDOWN_SHORTCUTS,
   htmlToMarkdown,
   markdownContinueList,
+  markdownCheckboxLines,
   markdownEdit,
   markdownPaste,
+  toggleMarkdownCheckbox,
   reorderTaskTagOps,
   taskTagId,
   taskTagOps,
@@ -1418,6 +1420,16 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
       // Bez `localStorage` tryb zostaje tylko do przeładowania.
     }
   };
+  // Pole `[ ]` kliknięte w podglądzie: linia źródła z kolejności pól; gdy podgląd i źródło się nie zgadzają — nic.
+  const toggleCheckbox = (index: number, total: number) => {
+    const lines = markdownCheckboxLines(draft);
+    const line = lines[index];
+    if (readOnly || lines.length !== total || line === undefined) return false;
+    const next = toggleMarkdownCheckbox(draft, line);
+    setDraft(next);
+    void run([{ table: "tasks", id: taskId, patch: { description_md: next.trim() || null } }]);
+    return true;
+  };
   const closeFull = useCallback(() => {
     save();
     // Pole na pełnym ekranie znika z fokusem, bez `blur`.
@@ -1555,7 +1567,7 @@ export function DescriptionEditor({ taskId, readOnly = false }: { taskId: string
   const body = (fullScreen: boolean) =>
     preview ? (
       <div className={`rounded-md border border-[var(--line)] px-3 py-2 ${fullScreen ? "min-h-0 flex-1 overflow-auto" : "min-h-16"}`}>
-        <MarkdownPreview markdown={draft} onEdit={readOnly ? undefined : () => setPreview(false)} />
+        <MarkdownPreview markdown={draft} onEdit={readOnly ? undefined : () => setPreview(false)} onToggleCheckbox={readOnly ? undefined : toggleCheckbox} />
       </div>
     ) : (
       <textarea

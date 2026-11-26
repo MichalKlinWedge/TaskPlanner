@@ -6,16 +6,16 @@ Stan kodu: 24.11.2026, commit `73e5983` (gałąź `claude/selfhost-docs`; kod ap
 
 - **Rdzeń jest w parytecie**: pola zadania, powtarzanie, filtry i ich warunki, sortowanie / grupowanie / kolumny, kosz, nawyki (liczenie), przeglądy (kolejka i decyzje), udostępnianie przestrzeni, szablony, asystent AI, parser szybkiego dodawania (pełna lista w § „Sprawdzone, bez różnic”).
 - **P1 zrobione w kodzie 24.11.2026 (A-01…A-05, razem z nimi A-07), w wydanych APK od 0.1.27, próba na urządzeniu zostaje.** **P2 dla APK zrobione w kodzie tego samego dnia (A-06, A-08…A-25, R-03, R-04 i telefonowa część R-01).** Było w P1: ryzyko utraty danych albo mylące zachowanie na telefonie: opis gubi się po „Wstecz” (A-01), wylogowanie wyrzuca niewysłane zmiany (A-02), wyłączenie przypomnienia w nawyku kasuje wszystkie, także dodane na webie (A-03), ustawień profilu nie da się zmienić po kreatorze (A-04), telefon nie jest w „urządzeniach” i dubluje przypomnienia z przeglądarką (A-05).
-- **P2 dla webu zrobione w kodzie 24.11.2026 (W-01…W-03, W-05…W-08, R-01, R-02), wdrożone.** Z P2 zostaje W-04 (odhaczanie pól w podglądzie opisu).
+- **P2 dla webu zrobione w kodzie 24.11.2026 (W-01…W-03, W-05…W-08, R-01, R-02), wdrożone.** W-04 (odhaczanie pól w podglądzie opisu) zrobione 26.11.2026 — P2 webu zamknięte.
 - **P3 zrobione 25.11.2026:** A-47, A-48, R-15 i telefonowa część W-24 (czekają na APK po 0.1.30), W-24 na webie (czeka na wdrożenie), W-19 (naprawione wcześniej w `bee9469`, wdrożone).
-- **P3 zrobione 26.11.2026 (czekają na APK po 0.1.36, część webowa na wdrożenie):** A-51 (sekcje `readable` w `M/components/panel-section.tsx`: Opis, Zadanie nadrzędne, Zależności działają w podglądzie, przyciski edycji ukryte), R-05 (zwinięte projekty osi w `settings.timeline.collapsed`), R-07 (licznik z podzadaniami), R-13 (web: kółko anulowanego wypełnione, jak w wierszach i na telefonie), R-14 („Wynika z” / „Z tego wynika” tylko do odczytu w sekcji „Zależności” po obu stronach, core `derivedLinks`), R-16 (komunikat na ekranie skupienia). R-11 było już zrobione (telefon pyta przed usunięciem członka od 0.1.27). A-49 — decyzja: bez zmian.
+- **P3 zrobione 26.11.2026 (czekają na APK po 0.1.36, część webowa na wdrożenie):** A-51 (sekcje `readable` w `M/components/panel-section.tsx`: Opis, Zadanie nadrzędne, Zależności działają w podglądzie, przyciski edycji ukryte), R-05 (zwinięte projekty osi w `settings.timeline.collapsed`), R-07 (licznik z podzadaniami), R-13 (web: kółko anulowanego wypełnione, jak w wierszach i na telefonie), R-14 („Wynika z” / „Z tego wynika” tylko do odczytu w sekcji „Zależności” po obu stronach, core `derivedLinks`), R-16 (komunikat na ekranie skupienia). R-11 było już zrobione (telefon pyta przed usunięciem członka od 0.1.27). A-49 — decyzja: bez zmian. Web 26.11.2026 (czeka na wdrożenie): W-04 (pole `[ ]` w podglądzie opisu zapisuje źródło — core `markdownCheckboxLines`, `W/markdown-preview.tsx`), W-17 („Cofnij” po usunięciu zadania cyklicznego).
 - **Celowe** (nie do nadrabiania): Karteczki, edycja osi czasu, kalendarz tygodnia i miesiąca bez przeciągania, historia zmian, konfiguracja integracji — § „Różnice celowe”.
 - **Baza:** żadna pozycja nie wymaga migracji. Prawie wszystkie pozycje „A” wymagają nowego APK (bez OTA, D17), pozycje „W” tylko wdrożenia webu.
 
 | | P1 | P2 | P3 | razem |
 |---|---|---|---|---|
 | A — do nadrobienia w APK | 0 (5 zrobionych) | 0 (20 zrobionych) | 23 (3 zrobione, 1 odrzucona) | 23 |
-| W — do nadrobienia na webie | 0 | 1 (7 zrobionych) | 14 (2 zrobione) | 15 |
+| W — do nadrobienia na webie | 0 | 0 (8 zrobionych) | 13 (3 zrobione) | 13 |
 | R — działa inaczej, do ujednolicenia | 0 | 0 (4 zrobione) | 5 (7 zrobionych) | 5 |
 
 ### Proponowana kolejność
@@ -25,7 +25,7 @@ Stan kodu: 24.11.2026, commit `73e5983` (gałąź `claude/selfhost-docs`; kod ap
 3. **Ustawienia i przypomnienia** — ~~A-04, A-05, A-07~~ (zrobione w kodzie), ~~A-06~~ (zrobione w kodzie), ~~R-01~~.
 4. ~~**Czytelność współdzielenia i synchronizacji na telefonie** — A-08, A-09, A-10, A-11, A-21~~ (zrobione w kodzie; link zaproszenia wymaga też wdrożenia webu).
 5. ~~**Codzienna wygoda na telefonie** — A-12…A-20, A-22…A-25~~ (zrobione w kodzie).
-6. **Szybkie poprawki webu** — ~~W-01…W-03, W-05…W-08~~ (zrobione w kodzie), W-04.
+6. **Szybkie poprawki webu** — ~~W-01…W-03, W-05…W-08~~ (zrobione w kodzie), ~~W-04~~ (zrobione).
 7. Reszta P3 przy okazji prac w danym pliku.
 
 ## Jak czytać
@@ -115,7 +115,7 @@ Stan kodu: 24.11.2026, commit `73e5983` (gałąź `claude/selfhost-docs`; kod ap
 | W-01 ✅ | Projekt — status | Przy tworzeniu `active`, potem tylko odczyt w przeglądzie; nie widać i nie da się zmienić | Aktywny / wstrzymany / zakończony | Wybór w „Przestrzenie i listy” i w nagłówku projektu (`PROJECT_STATUS`) | `M/app/workspace/[id].tsx:60,104-110`; `W/workspaces-screen.tsx:158`, `W/review.tsx:411`; `PROJECT_STATUS` grep W = 0 | Specyfikacja M2; bez tego wstrzymany projekt wraca w przeglądzie tygodnia | S | — / web |
 | W-02 ✅ | Lista — rodzaj, usunięcie, kolor | Rodzaj tylko przy tworzeniu; pustą można tylko zarchiwizować; kolor dopiero po utworzeniu | Zmiana lista ↔ projekt, „Usuń pustą listę”, kolor przy tworzeniu | Te same operacje w `workspaces-screen.tsx` | `M/app/workspace/[id].tsx:98-122,167`, `M/lib/workspaces.ts:102-122`; `W/workspaces-screen.tsx:150-160,287` | Pomyłki rodzaju nie da się naprawić na webie | S | — / web |
 | W-03 ✅ | Szukanie w opisach | Paleta nie przekazuje opisu do indeksu | Szuka też w opisie; rodzaj listy jako słowo kluczowe | `description` w `taskSearchItem` (zapytanie jak na telefonie), `keywords` listy | `M/app/search.tsx:28-43`; `W/command-palette.tsx:150-151` | Specyfikacja M17 (tytuł, opis, tagi, lista) | S | — / web |
-| W-04 | Opis — pola `[ ]` | Podgląd tylko do odczytu, klik w pole niczego nie zapisuje | Odhaczanie w podglądzie | `toggleMarkdownCheckbox` przez `onReadOnlyChecked` TipTapa | `M/app/task/[id].tsx` `MarkdownView onToggleCheckbox`; `W/task-panel.tsx:1179-1185`, `WL/editor.ts:14` | Lista zadań w opisie bez sensu w podglądzie | S | — / web |
+| W-04 ✅ | Opis — pola `[ ]` | Podgląd tylko do odczytu, klik w pole niczego nie zapisuje | Odhaczanie w podglądzie | `toggleMarkdownCheckbox` przez `onReadOnlyChecked` TipTapa | `M/app/task/[id].tsx` `MarkdownView onToggleCheckbox`; `W/task-panel.tsx:1179-1185`, `WL/editor.ts:14` | Lista zadań w opisie bez sensu w podglądzie | S | — / web |
 | W-05 ✅ | Chipy filtra | Tylko Inbox, Dziś, Nadchodzące, lista, tablica, tag, filtr | Także kosz, kalendarz, nawyki, przegląd tygodnia, wyniki szukania | `FilterBar` w tych widokach | `M/app/trash.tsx:57`, `calendar.tsx:155`, `habits.tsx:45`, `review/weekly.tsx:289`, `search.tsx:80`; `W/shell.tsx:286` (`filterable`) | Specyfikacja M4 „chipy w każdym widoku” | M | — / web |
 | W-06 ✅ | Wiersz zadania — tagi | Tylko w kolumnie „Tagi” listy | Tagi w każdym wierszu | `TAG_CHIP` w meta wiersza, gdy nie ma kolumny | `M/components/task-row.tsx`, `M/lib/rows.ts:17`; `W/task-item.tsx:264,324-347` | W Dziś / Inbox nie widać kontekstu | S | — / web |
 | W-07 ✅ | Web Push — akcje | Zadanie bez akcji (`actions: []`); nawyk ma „Zrobione” | „Ukończ”, „Odłóż 10 min”, „Jutro” bez otwierania aplikacji | „Ukończ” / „Odłóż” w `sw.js` jak `habit-done` (wiadomość do karty albo `/?…`) | `M/lib/reminders.ts:114-118`; `apps/web/public/sw.js` (`actions: data.habit ? … : []`) | Telefon jest głównym kanałem, web pomocniczym | M | — / web |
@@ -133,7 +133,7 @@ Stan kodu: 24.11.2026, commit `73e5983` (gałąź `claude/selfhost-docs`; kod ap
 | W-14 | Skupienie w nawigacji | Brak w pasku bocznym (F, paleta, wskaźnik) | Pozycja w Przeglądaj | Pozycja paska, gdy `focus.enabled` | `M/app/(tabs)/browse.tsx:93`; `W/shell.tsx:392-407` | Odkrywalność | S | — / web |
 | W-15 | Ręczna synchronizacja | Stan to tekst, bez przycisku | „Synchronizuj teraz” | Klik w stan = `store.sync()` | `M/components/sync-indicator.tsx:51-62`; `W/signed-in.tsx:228-250` | Diagnostyka | S | — / web |
 | W-16 | Logowanie kodem | Tylko link | Kod z maila | Pole kodu po wysłaniu linku (`verifyOtp`) | `M/lib/auth.ts:48-52`; grep W `verifyOtp` = 0 | Mail otwarty na innym urządzeniu | S | — / web |
-| W-17 | Usunięcie nawyku | Pytanie, potem dymek **bez** „Cofnij” | „Cofnij” w dymku | Dodać `undo` (`restoreTaskOps`) | `M/app/habit/[id].tsx:77-79`; `W/habits.tsx:345-349` | Spójność | S | — / web |
+| W-17 ✅ | Usunięcie nawyku | Pytanie, potem dymek **bez** „Cofnij” | „Cofnij” w dymku | Dodać `undo` (`restoreTaskOps`) | `M/app/habit/[id].tsx:77-79`; `W/habits.tsx:345-349` | Spójność | S | — / web |
 | W-18 | Przegląd — listy klikalne | „Ukończone dziś” to liczba; plan i „Nadchodzący tydzień” nieklikalne | Listy z otwieraniem i ukończeniem | Otwieranie zadania z listy | `M/app/review/daily.tsx:168-195`, `weekly.tsx:236`; `W/review.tsx:303,330,626` | Wygoda | S | — / web |
 | W-19 ✅ | Przypomnienie o porze — podpis (błąd) | Dzień liczony względem terminu zadania (bez terminu zawsze „dziś”) | Względem dziś | `relativeDay(at_date, today)` | `W/task-panel.tsx:1121`; `M/app/task/[id].tsx` `RemindersField` | Mylący opis | S | — / web |
 | W-20 | Oś czasu — klik projektu | Nic nie robi | Otwiera listę | `navigate({ view: "list" })` | `M/app/timeline.tsx:164-167`; `W/timeline.tsx:416` | Drobne | S | — / web |

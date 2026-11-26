@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseInline, parseMarkdown, spansText, toggleMarkdownCheckbox } from '../markdown.ts';
+import { markdownCheckboxLines, parseInline, parseMarkdown, spansText, toggleMarkdownCheckbox } from '../markdown.ts';
 
 describe('Markdown: tekst w linii', () => {
   it('pogrubienie, kursywa, przekreślenie, kod, link', () => {
@@ -68,6 +68,12 @@ describe('Markdown: bloki', () => {
     expect(toggleMarkdownCheckbox(src, 1)).toBe('Lista:\n- [x] mleko\n- [x] chleb');
     expect(toggleMarkdownCheckbox(src, 2)).toBe('Lista:\n- [ ] mleko\n- [ ] chleb');
     expect(toggleMarkdownCheckbox(src, 0)).toBe(src);
+  });
+
+  it('linie pól list zadań w kolejności podglądu, bez bloków kodu', () => {
+    const src = ['- [ ] a', 'tekst', '```', '- [ ] w kodzie', '```', '  * [x] b', '- [] nie pole', '- [x]bez spacji', '1. [ ] c', '~~~', '- [ ] też kod', '~~~'].join('\r\n');
+    expect(markdownCheckboxLines(src)).toEqual([0, 5, 8]);
+    expect(markdownCheckboxLines('')).toEqual([]);
   });
 });
 

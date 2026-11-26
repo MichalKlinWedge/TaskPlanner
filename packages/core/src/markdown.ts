@@ -245,3 +245,25 @@ export function toggleMarkdownCheckbox(source: string, line: number): string {
   lines[line] = current.replace(/^(\s*(?:[-*+]|\d{1,9}[.)])\s+)\[([ xX])\]/, (_, head: string, mark: string) => `${head}[${mark === ' ' ? 'x' : ' '}]`);
   return lines.join('\n');
 }
+
+/**
+ * Numery linii z polami `[ ]` / `[x]` list zadań w kolejności pól w podglądzie opisu (bez bloków kodu
+ * ``` / ~~~). Podgląd na webie (TipTap) zna tylko numer kolejnego pola — to mapuje go na linię źródła.
+ */
+export function markdownCheckboxLines(source: string): number[] {
+  const out: number[] = [];
+  let fence: string | null = null;
+  source
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .forEach((line, i) => {
+      const mark = /^\s{0,3}(`{3,}|~{3,})/.exec(line)?.[1]?.[0];
+      if (mark) {
+        if (!fence) fence = mark;
+        else if (fence === mark) fence = null;
+        return;
+      }
+      if (!fence && /^\s*(?:[-*+]|\d{1,9}[.)])\s+\[[ xX]\](?=\s|$)/.test(line)) out.push(i);
+    });
+  return out;
+}

@@ -356,7 +356,8 @@ export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: App
     });
   const remove = () => {
     if (!window.confirm(`Przenieść zadanie cykliczne „${task.title}” do kosza? Historia zostaje i wróci razem z nim.`)) return;
-    void run(deleteTaskOps(data.tasks, task.id, new Date()), { text: `„${task.title}” w koszu` });
+    const ops = deleteTaskOps(data.tasks, task.id, new Date());
+    void run(ops, { text: `„${task.title}” w koszu`, undo: ops.map((op) => ({ ...op, patch: { deleted_at: null } })) });
     navigate({ view: "habits" });
   };
 
