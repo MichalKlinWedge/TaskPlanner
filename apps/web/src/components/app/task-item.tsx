@@ -465,8 +465,8 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
               className={overdue || lateMin > 0 ? "font-medium text-[var(--danger)]" : ""}
               title={`${date}${task.dueTime ? ` ${task.dueTime}` : ""}${lateMin > 0 ? ` · ${formatMinutes(lateMin)} po czasie` : ""}`}
             >
-              {columnDate(date, today)}
-              {task.dueTime ? ` ${task.dueTime}` : ""}
+              {/* Sekcja „Dziś” (`showDate` false): dzisiejsza data jest oczywista, wystarczy godzina. */}
+              {!showDate && date === today && task.dueTime ? task.dueTime : `${columnDate(date, today)}${task.dueTime ? ` ${task.dueTime}` : ""}`}
             </span>
           ) : (
             <span className="text-[var(--muted)]">—</span>

@@ -274,13 +274,15 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
               )}
             </View>
           );
-        const value = c === 'assignee' ? (assignee?.name ?? null) : c === 'start' ? (task.startDate ? columnDate(task.startDate, today) : null) : date ? columnDate(date, today) : null;
+        // Sekcja „Dziś” (`showDate` false): dzisiejsza data jest oczywista, wystarczy godzina.
+        const timeOnly = c === 'due' && !showDate && date === today && !!task.dueTime;
+        const value = c === 'assignee' ? (assignee?.name ?? null) : c === 'start' ? (task.startDate ? columnDate(task.startDate, today) : null) : timeOnly ? task.dueTime : date ? columnDate(date, today) : null;
         return (
           <View key={c} style={{ width: COLUMN_WIDTH[c], paddingTop: 2, opacity: closed ? 0.5 : 1 }}>
             <Text style={[styles.column, { color: value ? (c === 'due' && overdue ? p.bad : p.fg) : p.muted }]} numberOfLines={2}>
               {value ?? '—'}
             </Text>
-            {c === 'due' && date && task.dueTime ? <Text style={[styles.column, { color: overdue ? p.bad : p.muted }]}>{task.dueTime}</Text> : null}
+            {c === 'due' && date && task.dueTime && !timeOnly ? <Text style={[styles.column, { color: overdue ? p.bad : p.muted }]}>{task.dueTime}</Text> : null}
           </View>
         );
       })}
