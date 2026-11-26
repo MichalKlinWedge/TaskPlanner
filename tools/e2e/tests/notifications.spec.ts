@@ -4,7 +4,7 @@
  * przeczytane na serwerze; autor nie dostaje nic o własnych zmianach (tylko wiersz drugiej osoby na serwerze). N3: zmiana
  * terminu przez właściciela → widok `#/notifications` z filtrem grupy. Dane: wspólna przestrzeń z `global-setup.ts`.
  */
-import { addDays, localDateAt, uuidv7 } from '@taskplanner/core';
+import { addDays, localDateAt, localDateTimeAt, uuidv7 } from '@taskplanner/core';
 import type { Page } from '@playwright/test';
 
 import { E2E_EMAIL_2, TIME_ZONE } from '../src/constants.ts';
@@ -149,4 +149,52 @@ test('wybite przypomnienie → w dzwonku „Przypomnienie: …”, klik otwiera 
   await bell.click();
   await panel.getByRole('button', { name: 'Wszystkie', exact: true }).click();
   await expect(panel.getByTestId('notification').filter({ hasText: closed })).toHaveCount(0);
+});
+
+test('okno przypomnienia na środku ekranu: „Ukończ” i „Przypomnij za 30 min”', async ({ page, server }) => {
+  await openApp(page, '#/settings/notifications');
+  const mode = page.getByTestId('notifications-reminders');
+  await mode.selectOption('popup');
+  try {
+    await page.evaluate(() => (location.hash = '#/today'));
+    const [finish, later] = [unique('Okno ukończ'), unique('Okno później')];
+    // Jednorazowe przypomnienie minutę temu — okno pokazuje przypomnienia z ostatnich 15 min.
+    const at = localDateTimeAt(new Date(Date.now() - 60_000), TIME_ZONE).slice(11, 16);
+    const input = page.getByRole('textbox', { name: 'Dodaj zadanie na dziś' });
+    for (const t of [finish, later]) {
+      await input.fill(`${t} dziś ^${at}`);
+      await input.press('Enter');
+      await expect(input).toHaveValue('');
+    }
+    const [a, b] = [await server.waitForTask(finish), await server.waitForTask(later)];
+    const popup = page.getByTestId('reminder-popup');
+    const handled = new Set<string>();
+    // Inne testy mogą zostawić świeże przypomnienia — te zamykamy.
+    for (let i = 0; i < 12 && handled.size < 2; i++) {
+      await expect(popup).toBeVisible({ timeout: 45_000 });
+      const title = (await popup.getByRole('heading').textContent()) ?? '';
+      if (title === finish) {
+        await popup.getByRole('button', { name: '✓ Ukończ' }).click();
+        handled.add(finish);
+      } else if (title === later) {
+        await popup.getByRole('group', { name: 'Przypomnij ponownie' }).getByRole('button', { name: '30 min' }).click();
+        handled.add(later);
+      } else await popup.getByRole('button', { name: 'Zamknij (Esc)' }).click();
+      await expect(popup.getByRole('heading', { name: title, exact: true })).toHaveCount(0);
+    }
+    expect([...handled].sort()).toEqual([finish, later].sort());
+    await server.waitForTask(finish, (t) => t.status === 'done');
+    await expect
+      .poll(async () => ((await server.client.from('reminders').select('kind').eq('task_id', b.id).is('deleted_at', null)).data ?? []).length)
+      .toBe(2);
+    expect((await server.waitForTask(later)).status).toBe('todo');
+    expect(a.id).not.toBe(b.id);
+  } finally {
+    await page.evaluate(() => (location.hash = '#/settings/notifications'));
+    await mode.selectOption('app');
+    await expect(mode).toHaveValue('app');
+    await expect
+      .poll(async () => ((await server.client.from('profiles').select('settings').eq('id', server.userId).single()).data?.settings as { notifications?: { reminders?: string } } | null)?.notifications?.reminders)
+      .toBe('app');
+  }
 });

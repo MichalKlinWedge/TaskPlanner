@@ -135,6 +135,7 @@ function bellState(): ReminderBellState {
       read: Array.isArray(raw?.read) ? raw.read.filter((x): x is string => typeof x === "string") : [],
       dismissed: Array.isArray(raw?.dismissed) ? raw.dismissed.filter((x): x is string => typeof x === "string") : [],
       readBefore: typeof raw?.readBefore === "string" ? raw.readBefore : null,
+      popped: Array.isArray(raw?.popped) ? raw.popped.filter((x): x is string => typeof x === "string") : [],
     };
   } catch {
     bell = EMPTY_REMINDER_BELL;
@@ -151,6 +152,14 @@ function setBell(next: ReminderBellState) {
     // Pełny localStorage — stan zostaje w tej karcie.
   }
   bellListeners.forEach((l) => l());
+}
+
+/** Stan przypomnień w dzwonku tej przeglądarki (wspólny dla kart). */
+export const useReminderBell = (): ReminderBellState => useSyncExternalStore(subscribeBell, bellState, () => EMPTY_REMINDER_BELL);
+
+/** Zamknięcie okna przypomnienia bez decyzji: wpis zostaje w dzwonku (nieprzeczytany), okno nie wraca. */
+export function closeReminderPopups(list: readonly AppNotification[]) {
+  setBell(reminderBellUpdate(bellState(), list, "popped"));
 }
 
 function subscribeBell(listener: () => void) {
@@ -185,7 +194,7 @@ function useReminderNotifications(store: TabStore | null, userId: string, timeZo
     const timer = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(timer);
   }, []);
-  const state = useSyncExternalStore(subscribeBell, bellState, () => EMPTY_REMINDER_BELL);
+  const state = useReminderBell();
   const today = localDateAt(now, timeZone);
   const { rows: rules } = useLocalQuery<{ id: string; task_id: string; kind: string; offset_min: number | null; at_date: string | null; at_time: string | null }>(
     store,

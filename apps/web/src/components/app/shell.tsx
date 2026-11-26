@@ -36,6 +36,7 @@ import { ChangelogScreen } from "./changelog";
 import { NotificationsScreen, NotificationToasts } from "./notifications";
 import { QuickAddDialog } from "./quick-add";
 import { ReminderNotificationActions } from "./reminder-actions";
+import { ReminderPopup } from "./reminder-popup";
 import { TaskPanel } from "./task-panel";
 import { TaskActionsProvider, useTaskActions } from "./task-item";
 import { Select, Splash } from "./ui";
@@ -227,6 +228,7 @@ export function Shell({
 
   const [palette, setPalette] = useState<PaletteMode | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [reminderPopup, setReminderPopup] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const anchor = useRef<string | null>(null);
 
@@ -480,12 +482,13 @@ export function Shell({
       <TaskActionsProvider store={store} userId={userId} timeZone={settings.timeZone} tasks={data.tasks}>
         <AttachmentsProvider store={store} userId={userId}>
         <FocusProvider store={store} userId={userId} settings={settings}>
-        <ReminderToasts />
+        <ReminderToasts muted={settings.notifications.reminders === "popup"} />
+        <ReminderPopup onOpenChange={setReminderPopup} />
         <NotificationToasts store={store} userId={userId} />
         <HabitNotificationActions />
         <ReminderNotificationActions />
         <Keyboard
-          blocked={quickOpen || palette !== null || shortcutsOpen || route.view === "focus" || route.view === "review"}
+          blocked={quickOpen || palette !== null || shortcutsOpen || reminderPopup || route.view === "focus" || route.view === "review"}
           selected={selected}
           setSelected={setSelected}
           navigate={navigate}
@@ -930,17 +933,17 @@ function BulkBar({ selected, setSelected, openPalette }: { selected: readonly st
 }
 
 /** Skróty klawiszowe (M17); jednoklawiszowe nie działają w polach tekstowych ani przy otwartym oknie. */
-/** Przypomnienie push przy otwartej karcie — także dymek w aplikacji (M8). */
-function ReminderToasts() {
+/** Przypomnienie push przy otwartej karcie — także dymek w aplikacji (M8); w trybie okna na środku ekranu — bez dymka. */
+function ReminderToasts({ muted }: { muted: boolean }) {
   const { notify } = useTaskActions();
   useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
+    if (!("serviceWorker" in navigator) || muted) return;
     const onMessage = (event: MessageEvent) => {
       if (event.data?.type === "reminder") notify(`🔔 ${event.data.title ?? "Przypomnienie"}${event.data.body ? ` — ${event.data.body}` : ""}`);
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
     return () => navigator.serviceWorker.removeEventListener("message", onMessage);
-  }, [notify]);
+  }, [notify, muted]);
   return null;
 }
 

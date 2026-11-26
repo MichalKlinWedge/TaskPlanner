@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   REMINDER_SNOOZE_OPTIONS,
+  reminderPopups,
   reminderSnoozeLabel,
   dismissOps,
   filterNotifications,
@@ -295,6 +296,21 @@ describe('telefon: powiadomienie systemowe po synchronizacji', () => {
 });
 
 describe('przypomnienia w dzwonku', () => {
+  it('okno na środku ekranu: tylko tryb „popup”, nieprzeczytane, ≤ 15 min, niezamknięte; najstarsze pierwsze', () => {
+    const now = new Date('2026-11-18T12:00:00.000Z');
+    const entry = (id: string, at: string, readAt: string | null = null) => ({ id, kind: 'reminder' as const, taskId: 't1', workspaceId: null, actorId: null, data: {}, groupKey: null, at, readAt });
+    const list = [
+      entry('r:b', '2026-11-18T11:58:00.000Z'),
+      entry('r:a', '2026-11-18T11:50:00.000Z'),
+      entry('r:old', '2026-11-18T11:40:00.000Z'),
+      entry('r:read', '2026-11-18T11:59:00.000Z', '2026-11-18T11:59:00.000Z'),
+      entry('r:closed', '2026-11-18T11:59:30.000Z'),
+      { ...entry('n1', '2026-11-18T11:59:00.000Z'), kind: 'comment' as const },
+    ];
+    const state = { popped: ['r:closed'] };
+    expect(reminderPopups(list, { reminders: 'popup' }, state, now).map((n) => n.id)).toEqual(['r:a', 'r:b']);
+    expect(reminderPopups(list, { reminders: 'app' }, state, now)).toEqual([]);
+  });
   it('„Przypomnij za…”: 15 min, 30 min, 1 h', () => {
     expect(REMINDER_SNOOZE_OPTIONS.map(reminderSnoozeLabel)).toEqual(['15 min', '30 min', '1 h']);
   });

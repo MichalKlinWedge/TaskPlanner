@@ -19,6 +19,7 @@ import {
   notificationTime,
   notificationWorkspaces,
   plural,
+  REMINDER_DISPLAY,
   REMINDER_SNOOZE_OPTIONS,
   reminderSnoozeLabel,
   unreadCount,
@@ -27,6 +28,7 @@ import {
   type NotificationChannel,
   type NotificationFilter,
   type NotificationPrefs,
+  type ReminderDisplay,
 } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useEffect, useRef, useState } from "react";
@@ -467,9 +469,12 @@ export function NotificationsCard({ store, userId }: { store: TabStore; userId: 
             <span className="block font-medium">{NOTIFICATION_GROUP_LABEL.reminders.title}</span>
             <span className="block text-xs text-[var(--muted)]">{NOTIFICATION_GROUP_LABEL.reminders.hint}</span>
           </span>
-          <Select value={prefs.reminders} onChange={(e) => save({ reminders: e.target.value as "app" | "off" })} className="w-40" data-testid="notifications-reminders">
-            <option value="app">{NOTIFICATION_CHANNEL.app}</option>
-            <option value="off">{NOTIFICATION_CHANNEL.off}</option>
+          <Select value={prefs.reminders} onChange={(e) => save({ reminders: e.target.value as ReminderDisplay })} className="w-64" data-testid="notifications-reminders">
+            {(["app", "popup", "off"] as const).map((v) => (
+              <option key={v} value={v}>
+                {REMINDER_DISPLAY[v]}
+              </option>
+            ))}
           </Select>
         </label>
         <label className="flex items-center gap-2">

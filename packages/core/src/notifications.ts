@@ -50,7 +50,10 @@ export const NOTIFICATION_GROUP_LABEL: Record<NotificationGroup, { title: string
   tasks: { title: 'Zadania we wspólnych przestrzeniach', hint: 'przypisanie, komentarz, dodanie jako uczestnik, ukończenie i zmiana terminu Twojego zadania' },
   sharing: { title: 'Udostępnianie', hint: 'zaproszenia, propozycje roli właściciela, osoby dołączające i odchodzące, zmiana Twojej roli' },
   system: { title: 'Integracje i konto', hint: 'nieudane wysyłki integracji, wyłączone połączenie, kalendarz bez synchronizacji, odrzucony klucz AI, kończące się miejsce na załączniki' },
-  reminders: { title: 'Przypomnienia w dzwonku', hint: 'Twoje przypomnienia, które już wybiły (ostatnie 24 h, póki zadanie jest otwarte); dźwięk i powiadomienie systemowe — w „Przypomnieniach”' },
+  reminders: {
+    title: 'Przypomnienia w aplikacji',
+    hint: 'Twoje przypomnienia, które już wybiły (ostatnie 24 h, póki zadanie jest otwarte) — w dzwonku, a na życzenie także jako okno na środku ekranu z „Ukończ” i „Przypomnij za…”; powiadomienie systemowe — w „Przypomnieniach”',
+  },
 };
 
 /** Krótka nazwa grupy (filtry widoku `#/notifications`). */
@@ -66,13 +69,25 @@ export const NOTIFICATION_CHANNEL: Record<NotificationChannel, string> = {
   push: 'W aplikacji i push',
 };
 
+export const ReminderDisplay = z.enum(['off', 'app', 'popup']);
+export type ReminderDisplay = z.infer<typeof ReminderDisplay>;
+
+export const REMINDER_DISPLAY: Record<ReminderDisplay, string> = {
+  app: 'W dzwonku',
+  popup: 'W dzwonku i okno na środku ekranu',
+  off: 'Wyłączone',
+};
+
 /** `profiles.settings.notifications`; uszkodzone wartości wracają do domyślnych. */
 export const NotificationPrefs = z.object({
   tasks: NotificationChannel.catch('app').default('app'),
   sharing: NotificationChannel.catch('app').default('app'),
   system: NotificationChannel.catch('app').default('app'),
-  /** Przypomnienia w dzwonku: tylko `app` / `off` (push przypomnień ustawia się osobno). */
-  reminders: z.enum(['off', 'app']).catch('app').default('app'),
+  /**
+   * Przypomnienia w aplikacji: `app` = w dzwonku, `popup` = w dzwonku i okno na środku ekranu (Ukończ / Przypomnij za…),
+   * `off` — wcale (push przypomnień ustawia się osobno).
+   */
+  reminders: ReminderDisplay.catch('app').default('app'),
   /** Dymek przy nowym powiadomieniu, gdy karta jest widoczna. */
   toast: z.boolean().catch(true).default(true),
   /** Cisza nocna: bez Web Push w tych godzinach (strefa z ustawień); dzwonek w aplikacji działa dalej. */
@@ -422,14 +437,37 @@ export const REMINDER_NOTIFICATION_PREFIX = 'r:';
 export const REMINDER_SNOOZE_OPTIONS = [15, 30, 60] as const;
 export const reminderSnoozeLabel = (minutes: number): string => (minutes % 60 ? `${minutes} min` : `${minutes / 60} h`);
 
-/** Stan przypomnień w dzwonku na urządzeniu: przeczytane i usunięte (klucze wpisów), „wszystkie do chwili”. */
+/**
+ * Stan przypomnień w dzwonku na urządzeniu: przeczytane i usunięte (klucze wpisów), „wszystkie do chwili”
+ * oraz zamknięte okna na środku ekranu (`popped` — wpis zostaje w dzwonku, okno nie wraca).
+ */
 export interface ReminderBellState {
   read: readonly string[];
   dismissed: readonly string[];
   readBefore: string | null;
+  popped: readonly string[];
 }
 
-export const EMPTY_REMINDER_BELL: ReminderBellState = { read: [], dismissed: [], readBefore: null };
+export const EMPTY_REMINDER_BELL: ReminderBellState = { read: [], dismissed: [], readBefore: null, popped: [] };
+
+/** Okno na środku ekranu pokazuje przypomnienia najwyżej tak stare (np. karta otwarta po chwili). */
+export const REMINDER_POPUP_WINDOW_MS = 15 * 60_000;
+
+/**
+ * Przypomnienia do okna na środku ekranu (tryb `popup`): nieprzeczytane, z ostatnich 15 min, okno jeszcze
+ * niezamknięte; najstarsze pierwsze.
+ */
+export function reminderPopups(list: readonly AppNotification[], prefs: Pick<NotificationPrefs, 'reminders'>, state: Pick<ReminderBellState, 'popped'>, now: Date): AppNotification[] {
+  if (prefs.reminders !== 'popup') return [];
+  const popped = new Set(state.popped);
+  return list
+    .filter((n) => {
+      if (n.kind !== 'reminder' || n.readAt || popped.has(n.id)) return false;
+      const age = now.getTime() - new Date(n.at).getTime();
+      return age >= 0 && age < REMINDER_POPUP_WINDOW_MS;
+    })
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+}
 
 /**
  * Wybite przypomnienia (`reminderFireTimes` w oknie `[now − 24 h, now]`) jako wpisy dzwonka: id `r:<klucz>`, czas =
@@ -468,8 +506,8 @@ export function reminderNotifications(
   return out;
 }
 
-/** Zapamiętanie przeczytanych / usuniętych wpisów przypomnień (najwyżej 300 ostatnich kluczy na listę). */
-export function reminderBellUpdate(state: ReminderBellState, list: readonly Pick<AppNotification, 'id'>[], what: 'read' | 'dismissed'): ReminderBellState {
+/** Zapamiętanie przeczytanych / usuniętych / zamkniętych w oknie wpisów przypomnień (najwyżej 300 ostatnich kluczy na listę). */
+export function reminderBellUpdate(state: ReminderBellState, list: readonly Pick<AppNotification, 'id'>[], what: 'read' | 'dismissed' | 'popped'): ReminderBellState {
   const ids = list.map((n) => n.id).filter((id) => id.startsWith(REMINDER_NOTIFICATION_PREFIX));
   if (!ids.length) return state;
   const merged = [...new Set([...state[what], ...ids])].slice(-300);
