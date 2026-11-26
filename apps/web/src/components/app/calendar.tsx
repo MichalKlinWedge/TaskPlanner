@@ -59,7 +59,7 @@ import { useRoute } from "@/lib/route";
 
 import { useAppEnv } from "./app-env";
 import { CalendarEventDetails, CalendarTaskMenu, pointAnchor, rectAnchor, type PopupAnchor } from "./calendar-menus";
-import { CalendarSources, readCalendarHidden, storeCalendarHidden, useExternalCalendars, type CalendarHidden } from "./calendar-sources";
+import { blockTextColor, CalendarSources, listColor, readCalendarHidden, storeCalendarHidden, useExternalCalendars, type CalendarHidden } from "./calendar-sources";
 import { FilterBar, type Field as FilterField } from "./filter-bar";
 import { useTaskActions } from "./task-item";
 import { Select } from "./ui";
@@ -209,6 +209,11 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
   );
   // Dostęp do list (rola w przestrzeni + dostęp gości) — bloki list tylko do podglądu są nieprzesuwalne.
   const access = useMemo(() => ({ lists: data.lists, workspaces: data.workspaces }), [data.lists, data.workspaces]);
+  // Tło bloku zadania = kolor listy (jak kropka w „Pokaż”); priorytet zostaje w ramce.
+  const listColors = useMemo(() => {
+    const workspaces = new Map(data.workspaces.map((w) => [w.id, w]));
+    return new Map(data.lists.map((l) => [l.id, listColor(l, workspaces.get(l.workspaceId))]));
+  }, [data.lists, data.workspaces]);
 
   const events = useMemo<EventInput[]>(() => {
     if (!range) return [];
@@ -220,8 +225,10 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
       const color = task ? (PRIORITY[task.priority]?.color ?? PRIORITY[4].color) : (source?.color ?? undefined);
       // Lista tylko do podglądu (współdzielona przestrzeń) — bez przeciągania i zmian z menu.
       const changeable = e.kind === "task" && !e.virtual && !e.passive && !!task && listEditable(access, task.listId);
+      const fill = task?.listId ? listColors.get(task.listId) : null;
       return {
         ...(source && { backgroundColor: "var(--surface)", textColor: "var(--foreground)" }),
+        ...(fill && { backgroundColor: fill, textColor: blockTextColor(fill) }),
         id: e.key,
         title: `${e.conflict ? "⚠ " : ""}${e.kind === "habit" ? (e.habitState === "done" ? "✓ " : "◎ ") : e.virtual ? "↻ " : ""}${e.title}`,
         start: e.start,
@@ -241,7 +248,7 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
       }
     }
     return out;
-  }, [range, tasks, byId, shown, habits, calendarEvents, timeZone, duration, view, settings.workHours, access]);
+  }, [range, tasks, byId, shown, habits, calendarEvents, timeZone, duration, view, settings.workHours, access, listColors]);
 
   const conflictCount = useMemo(() => events.filter((e) => e.extendedProps?.conflict).length, [events]);
   const candidates = useMemo(() => {

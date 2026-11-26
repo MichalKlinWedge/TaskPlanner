@@ -5,9 +5,10 @@
  * jest per przeglądarka (`localStorage` `tp-calendar-hidden` — ukryte id), nowa lista i nowy kalendarz
  * są widoczne. Ukryte nie liczą się też do konfliktów, wolnych okien ani panelu zadań bez godziny.
  * Widoczność kalendarza na koncie (Ustawienia → „Połączone kalendarze”) jest osobna: ukryty tam nie
- * synchronizuje wydarzeń i tu się nie pojawia.
+ * synchronizuje wydarzeń i tu się nie pojawia. Kropka przy liście ma kolor jej bloków w kalendarzu
+ * (`listColor`), przy kalendarzu — kolor ramki jego wydarzeń.
  */
-import { projectFilterLabel } from "@taskplanner/core";
+import { contrastRatio, projectFilterLabel } from "@taskplanner/core";
 import { useCallback, useMemo, useState } from "react";
 
 import type { AppData } from "@/lib/app-data";
@@ -54,13 +55,21 @@ export function useExternalCalendars(): ExternalCalendar[] {
   return useLocalQuery<ExternalCalendar>(store, "select id, name, color from calendars where visible = 1 and is_task_target = 0 order by name", [], ["calendars"]).rows;
 }
 
-const dotColor = (color: string | null) => (color && /^#[0-9a-f]{3,8}$/i.test(color) ? color : "var(--muted)");
+const hex = (color: string | null | undefined) => (color && /^#[0-9a-f]{6}$/i.test(color) ? color : null);
 
-function Item({ checked, onChange, color, name, ...rest }: { checked: boolean; onChange: () => void; color: string | null; name: string; "data-list"?: string; "data-calendar"?: string }) {
+/** Kolor bloków listy w kalendarzu: kolor listy, bez niego — przestrzeni; `null` = domyślny (akcent). */
+export const listColor = (list: { color: string | null } | undefined, workspace: { color: string | null } | undefined): string | null => hex(list?.color) ?? hex(workspace?.color);
+
+/** Tekst na bloku w kolorze listy: biały, gdy da się go przeczytać, inaczej prawie czarny. */
+export const blockTextColor = (background: string) => (contrastRatio(background, "#FFFFFF") >= 3 ? "#FFFFFF" : "#18181B");
+
+const dotColor = (color: string | null) => hex(color) ?? "var(--muted)";
+
+function Item({ checked, onChange, color, name, ...rest }: { checked: boolean; onChange: () => void; /** Kolor CSS kropki. */ color: string; name: string; "data-list"?: string; "data-calendar"?: string }) {
   return (
     <label {...rest} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-[var(--hover)]">
       <input type="checkbox" checked={checked} onChange={onChange} />
-      <span className="size-2.5 shrink-0 rounded-full" style={{ background: dotColor(color) }} aria-hidden />
+      <span className="size-2.5 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
       <span className="truncate">{name}</span>
     </label>
   );
@@ -139,7 +148,7 @@ export function CalendarSources({ data, workspaceId, calendars, hidden, onChange
                 </label>
                 <div className="pl-4">
                   {own.map((l) => (
-                    <Item key={l.id} data-list={l.id} checked={!hidden.lists.has(l.id)} onChange={() => setLists((next) => void (next.delete(l.id) || next.add(l.id)))} color={l.color ?? workspace.color} name={l.kind === "inbox" ? "Inbox" : l.name} />
+                    <Item key={l.id} data-list={l.id} checked={!hidden.lists.has(l.id)} onChange={() => setLists((next) => void (next.delete(l.id) || next.add(l.id)))} color={listColor(l, workspace) ?? "var(--accent)"} name={l.kind === "inbox" ? "Inbox" : l.name} />
                   ))}
                 </div>
               </div>
@@ -149,7 +158,7 @@ export function CalendarSources({ data, workspaceId, calendars, hidden, onChange
             <div role="group" aria-label="Kalendarze zewnętrzne" className="mt-2 border-t border-[var(--line)] pt-1">
               <div className="px-2 py-1 text-xs font-semibold text-[var(--muted)] uppercase">Kalendarze zewnętrzne</div>
               {calendars.map((c) => (
-                <Item key={c.id} data-calendar={c.id} checked={!hidden.calendars.has(c.id)} onChange={() => toggleCalendar(c.id)} color={c.color} name={c.name} />
+                <Item key={c.id} data-calendar={c.id} checked={!hidden.calendars.has(c.id)} onChange={() => toggleCalendar(c.id)} color={dotColor(c.color)} name={c.name} />
               ))}
             </div>
           ) : null}
