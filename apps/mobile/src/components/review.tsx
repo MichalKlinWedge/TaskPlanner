@@ -22,7 +22,7 @@ import {
   type ViewTask,
 } from '@taskplanner/core';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAppData, useToday } from '@/lib/app-data';
@@ -79,30 +79,48 @@ export function useDecide() {
   };
 }
 
-/** Przyciski decyzji 1–6 (Ukończ / Dziś / Jutro / Wybierz datę / Kiedyś / Usuń). */
-export function DecisionButtons({ onPick, disabled, compact }: { onPick: (kind: ReviewKindKey) => void; disabled?: readonly ReviewKindKey[]; compact?: boolean }) {
+/**
+ * Przyciski decyzji 1–6 (Ukończ / Dziś / Jutro / Wybierz datę / Kiedyś / Usuń). `compact` (listy przeglądu
+ * tygodnia) = lekkie przyciski bez ramek, żeby tytuł zadania był najmocniejszy w wierszu; `trailing` — dodatkowy
+ * przycisk w tym samym rzędzie (np. „Przenieś do…”).
+ */
+export function DecisionButtons({ onPick, disabled, compact, trailing }: { onPick: (kind: ReviewKindKey) => void; disabled?: readonly ReviewKindKey[]; compact?: boolean; trailing?: ReactNode }) {
   const p = usePalette();
   return (
-    <View style={styles.buttons}>
+    <View style={compact ? styles.compactButtons : styles.buttons}>
       {REVIEW_KINDS.map((k) => {
         const off = disabled?.includes(k);
+        const color = k === 'delete' ? p.bad : k === 'done' ? p.ok : compact ? p.muted : p.fg;
         return (
           <Pressable
             key={k}
             accessibilityRole="button"
             accessibilityState={{ disabled: !!off }}
             disabled={off}
+            hitSlop={compact ? 4 : undefined}
             onPress={() => onPick(k)}
-            style={({ pressed }) => [
-              compact ? styles.compact : styles.button,
-              { borderColor: k === 'done' ? p.ok : p.border, backgroundColor: pressed ? p.border : p.card, opacity: off ? 0.35 : 1 },
-            ]}
+            style={({ pressed }) =>
+              compact
+                ? [styles.compact, k === 'delete' && styles.compactDelete, { backgroundColor: pressed ? p.border : 'transparent', opacity: off ? 0.35 : 1 }]
+                : [styles.button, { borderColor: k === 'done' ? p.ok : p.border, backgroundColor: pressed ? p.border : p.card, opacity: off ? 0.35 : 1 }]
+            }
           >
-            <Text style={{ color: k === 'delete' ? p.bad : k === 'done' ? p.ok : p.fg, fontSize: compact ? 12 : 14, fontWeight: '600' }}>{REVIEW_ACTION[k].label}</Text>
+            <Text style={{ color, fontSize: compact ? 13 : 14, fontWeight: compact ? '500' : '600' }}>{REVIEW_ACTION[k].label}</Text>
           </Pressable>
         );
       })}
+      {trailing}
     </View>
+  );
+}
+
+/** Lekki przycisk w rzędzie decyzji (`DecisionButtons` `compact` `trailing`). */
+export function CompactAction({ label, onPress }: { label: string; onPress: () => void }) {
+  const p = usePalette();
+  return (
+    <Pressable accessibilityRole="button" hitSlop={4} onPress={onPress} style={({ pressed }) => [styles.compact, { backgroundColor: pressed ? p.border : 'transparent' }]}>
+      <Text style={{ color: p.accent, fontSize: 13, fontWeight: '500' }}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -157,7 +175,9 @@ export function ReviewNudge() {
 const styles = StyleSheet.create({
   buttons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   button: { width: '31.5%', borderWidth: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
-  compact: { borderWidth: 1, borderRadius: 14, paddingVertical: 5, paddingHorizontal: 9 },
+  compactButtons: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 2, rowGap: 2, marginLeft: 8 },
+  compact: { borderRadius: 8, paddingVertical: 6, paddingHorizontal: 8 },
+  compactDelete: { marginLeft: 6 },
   nudges: { gap: 6, paddingHorizontal: 12, paddingTop: 8 },
   nudge: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 10, padding: 10 },
   nudgeText: { flex: 1 },

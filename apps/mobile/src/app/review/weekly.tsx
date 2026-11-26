@@ -38,7 +38,7 @@ import { FilterBar } from '@/components/filter-bar';
 import { STATE_LABEL, useStateColors } from '@/components/habits';
 import { pickDate, pickOption } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
-import { DecisionButtons, useDecide, useReviewSession, type LogEntry, type ReviewKindKey } from '@/components/review';
+import { CompactAction, DecisionButtons, useDecide, useReviewSession, type LogEntry, type ReviewKindKey } from '@/components/review';
 import { Button, Chip, ColorDot, usePalette } from '@/components/ui';
 import { WeekSummaryStep } from '@/components/week-summary';
 import { useAiAccount } from '@/lib/ai';
@@ -126,18 +126,26 @@ export default function WeeklyReviewScreen() {
   };
 
   const empty = (text: string) => <Text style={[styles.empty, { color: p.muted, borderColor: p.border }]}>✓ {text}</Text>;
-  const row = (task: ViewTask, extra?: ReactNode) => (
+  // Tytuł (pogrubiony, do 2 linii), pod nim lista / termin / „N× przesuwane”, niżej lekkie przyciski decyzji.
+  const row = (task: ViewTask, { trailing, below }: { trailing?: ReactNode; below?: ReactNode } = {}) => (
     <View key={task.id} style={[styles.row, { borderColor: p.border }]}>
-      <Pressable style={styles.rowHead} onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}>
-        <View style={[styles.dot, { backgroundColor: PRIORITY[task.priority].color }]} />
-        <Text style={{ color: p.fg, fontSize: 15, flex: 1 }} numberOfLines={2}>
-          {task.title}
-        </Text>
-        {task.dueDate ? <Text style={{ color: task.dueDate < today ? p.bad : p.muted, fontSize: 12 }}>{relativeDay(task.dueDate, today)}</Text> : null}
+      <Pressable style={({ pressed }) => [styles.rowHead, { opacity: pressed ? 0.6 : 1 }]} onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}>
+        <View style={[styles.dot, styles.rowDot, { backgroundColor: PRIORITY[task.priority].color }]} />
+        <View style={styles.rowText}>
+          <Text style={{ color: p.fg, fontSize: 16, fontWeight: '600', lineHeight: 21 }} numberOfLines={2}>
+            {task.title}
+          </Text>
+          <View style={styles.meta}>
+            <Text style={{ color: p.muted, fontSize: 12 }} numberOfLines={1}>
+              {listLabel(data, task.listId)}
+            </Text>
+            {task.dueDate ? <Text style={{ color: task.dueDate < today ? p.bad : p.muted, fontSize: 12 }}>· {relativeDay(task.dueDate, today)}</Text> : null}
+            {needsDecision(task) ? <Text style={[styles.warn, { color: '#92400e', backgroundColor: '#fef3c7' }]}>{task.postponeCount}× przesuwane</Text> : null}
+          </View>
+        </View>
       </Pressable>
-      {needsDecision(task) ? <Text style={[styles.warn, { color: '#92400e', backgroundColor: '#fef3c7' }]}>{task.postponeCount}× przesuwane</Text> : null}
-      <DecisionButtons compact onPick={(k) => void pickFor(task)(k)} disabled={task.recurrence ? ['someday'] : []} />
-      {extra}
+      <DecisionButtons compact onPick={(k) => void pickFor(task)(k)} disabled={task.recurrence ? ['someday'] : []} trailing={trailing} />
+      {below}
     </View>
   );
 
@@ -174,12 +182,7 @@ export default function WeeklyReviewScreen() {
   if (step === 'inbox') {
     body = review.inbox.length
       ? review.inbox.map((t) =>
-          row(
-            t,
-            <Pressable accessibilityRole="button" onPress={() => void move(t)} hitSlop={6}>
-              <Text style={{ color: p.accent, fontSize: 13 }}>Przenieś do…</Text>
-            </Pressable>,
-          ),
+          row(t, { trailing: <CompactAction label="Przenieś do…" onPress={() => void move(t)} /> }),
         )
       : empty('Inbox pusty.');
   } else if (step === 'overdue') {
@@ -197,13 +200,18 @@ export default function WeeklyReviewScreen() {
               </Pressable>
               <Text style={{ color: p.muted, fontSize: 12 }}>{plural(open.length, ['otwarte zadanie', 'otwarte zadania', 'otwartych zadań'])} bez terminu</Text>
               {open.slice(0, 5).map((t) => (
-                <View key={t.id} style={styles.next}>
-                  <Text style={{ color: p.fg, flex: 1 }} numberOfLines={1}>
-                    {t.title}
-                  </Text>
-                  <Chip label="Dziś" onPress={() => act(t, { kind: 'today' })} />
-                  <Chip label="Jutro" onPress={() => act(t, { kind: 'tomorrow' })} />
-                  <Chip label="+7 dni" onPress={() => act(t, { kind: 'date', date: addDays(today, 7) })} />
+                <View key={t.id} style={[styles.nextTask, { borderColor: p.border }]}>
+                  <Pressable onPress={() => router.push({ pathname: '/task/[id]', params: { id: t.id } })} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+                    <Text style={{ color: p.fg, fontSize: 15, fontWeight: '500' }} numberOfLines={2}>
+                      {t.title}
+                    </Text>
+                  </Pressable>
+                  <View style={styles.next}>
+                    <Text style={{ color: p.muted, fontSize: 12 }}>następny krok:</Text>
+                    <Chip label="Dziś" onPress={() => act(t, { kind: 'today' })} />
+                    <Chip label="Jutro" onPress={() => act(t, { kind: 'tomorrow' })} />
+                    <Chip label="+7 dni" onPress={() => act(t, { kind: 'date', date: addDays(today, 7) })} />
+                  </View>
                 </View>
               ))}
               <View style={{ marginHorizontal: -12 }}>
@@ -216,21 +224,22 @@ export default function WeeklyReviewScreen() {
   } else if (step === 'waiting') {
     body = review.waiting.length
       ? review.waiting.map(({ task, days }) =>
-          row(
-            task,
-            <View style={styles.next}>
-              <Text style={{ color: p.muted, fontSize: 12, flex: 1 }}>oczekuje {plural(days, ['dzień', 'dni', 'dni'])}</Text>
-              <Chip
-                label="Już nie czeka"
-                onPress={() =>
-                  void run([{ table: 'tasks', id: task.id, patch: { status: 'todo' } }], {
-                    text: `„${task.title}” — do zrobienia`,
-                    undo: [{ table: 'tasks', id: task.id, patch: { status: 'waiting' } }],
-                  })
-                }
-              />
-            </View>,
-          ),
+          row(task, {
+            below: (
+              <View style={[styles.next, styles.indent]}>
+                <Text style={{ color: p.muted, fontSize: 12, flex: 1 }}>oczekuje {plural(days, ['dzień', 'dni', 'dni'])}</Text>
+                <Chip
+                  label="Już nie czeka"
+                  onPress={() =>
+                    void run([{ table: 'tasks', id: task.id, patch: { status: 'todo' } }], {
+                      text: `„${task.title}” — do zrobienia`,
+                      undo: [{ table: 'tasks', id: task.id, patch: { status: 'waiting' } }],
+                    })
+                  }
+                />
+              </View>
+            ),
+          }),
         )
       : empty('Nic nie czeka dłużej niż tydzień.');
   } else if (step === 'upcoming') {
@@ -337,10 +346,15 @@ const styles = StyleSheet.create({
   body: { padding: 16, gap: 10, paddingBottom: 48 },
   h2: { fontSize: 17, fontWeight: '700' },
   empty: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 10, padding: 16, textAlign: 'center' },
-  row: { borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 10, gap: 8 },
+  row: { borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 12, gap: 6 },
   rowHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rowDot: { alignSelf: 'flex-start', marginTop: 7 },
+  rowText: { flex: 1, gap: 2 },
+  meta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 6, rowGap: 2 },
+  indent: { marginLeft: 16 },
+  nextTask: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8, gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  warn: { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, fontSize: 12 },
+  warn: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1, fontSize: 12, overflow: 'hidden' },
   project: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12, gap: 6 },
   next: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   day: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: 10, gap: 4 },
