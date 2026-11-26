@@ -319,7 +319,7 @@ export function Shell({
   const tag = route.view === "tag" ? data.tags.find((t) => t.id === route.id) : undefined;
   const savedFilter = route.view === "filter" ? data.savedFilters.find((f) => f.id === route.id) : undefined;
   const filterable = ["inbox", "today", "overdue", "upcoming", "list", "board"].includes(route.view);
-  const smartPrefs = route.view === "inbox" || route.view === "today" || route.view === "overdue" || route.view === "upcoming" ? settings.views[route.view] : undefined;
+  const smartPrefs = route.view === "inbox" || route.view === "today" || route.view === "overdue" || route.view === "upcoming" || route.view === "tag" || route.view === "filter" ? settings.views[route.view] : undefined;
   const hasColumns = !!(list?.prefs ?? smartPrefs)?.columns?.length;
   const wide = smartPrefs?.view === "kanban" || route.view === "board" || route.view === "calendar" || route.view === "timeline" || list?.prefs.view === "kanban" || list?.prefs.view === "canvas";
   // Widoki dostają zadania po filtrze doraźnym; liczniki paska bocznego liczą się z pełnych danych.

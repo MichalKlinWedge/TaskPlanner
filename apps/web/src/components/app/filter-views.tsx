@@ -17,6 +17,7 @@ import { FilterBar } from "./filter-bar";
 import { TagColorPicker } from "./tag-chip";
 import { TaskItem, useTaskActions } from "./task-item";
 import { Button, Input } from "./ui";
+import { ColumnsScroll, useViewColumns } from "./views";
 
 /** Zadania pasujące do filtra; bez warunku statusu — tylko otwarte. */
 export const filtered = (tasks: readonly ViewTask[], query: FilterQuery, ctx: ViewContext): ViewTask[] => selectFiltered(tasks, query, ctx);
@@ -26,16 +27,20 @@ export function filterCount(tasks: readonly ViewTask[], query: FilterQuery, ctx:
   return filtered(tasks, query, ctx).length;
 }
 
-function Results({ data, ctx, query }: { data: AppData; ctx: ViewContext; query: FilterQuery }) {
+/** Wyniki z kolumnami widoku (`view` z `useViewColumns`). */
+function Results({ data, ctx, query, view }: { data: AppData; ctx: ViewContext; query: FilterQuery; view: ReturnType<typeof useViewColumns> }) {
   const tasks = sortTasks(filtered(data.tasks, query, ctx), "due");
   const names = new Map(data.lists.map((l) => [l.id, l.kind === "inbox" ? `Inbox (${data.workspaces.find((w) => w.id === l.workspaceId)?.name})` : l.name]));
   if (!tasks.length) return <p className="py-6 text-center text-sm text-[var(--muted)]">Żadne zadanie nie pasuje.</p>;
   return (
-    <ul className="divide-y divide-[var(--line)]">
-      {tasks.map((t) => (
-        <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} />
-      ))}
-    </ul>
+    <ColumnsScroll columns={view.cols.columns}>
+      {view.columnsHeader}
+      <ul className="divide-y divide-[var(--line)]">
+        {tasks.map((t) => (
+          <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} {...view.cols} />
+        ))}
+      </ul>
+    </ColumnsScroll>
   );
 }
 
@@ -82,6 +87,7 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
   const [renaming, setRenaming] = useState(false);
   const count = filtered(data.tasks, query, ctx).length;
   const update = (patch: Record<string, unknown>) => run([{ table: "tags", id: tag.id, patch }]);
+  const view = useViewColumns("tag", ctx);
 
   return (
     <>
@@ -133,10 +139,11 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
       <div className="mb-3" hidden={tag.shared}>
         <WorkspaceChips ids={tag.workspaceIds} workspaces={data.workspaces} label="Przestrzenie tagu" onChange={(ids) => void update(tagWorkspacesPatch(ids))} />
       </div>
+      <div className="mb-2 flex flex-wrap gap-2">{view.picker}</div>
       <FilterBar query={query} onChange={(q) => setQuery(q.tags ? q : { ...q, tags: base.tags })}>
         <SaveFilter query={query} onSaved={(id) => navigate({ view: "filter", id })} />
       </FilterBar>
-      <Results data={data} ctx={ctx} query={query} />
+      <Results data={data} ctx={ctx} query={query} view={view} />
     </>
   );
 }
@@ -175,6 +182,7 @@ export function SavedFilterView({ data, ctx, filter, navigate }: { data: AppData
   const changed = JSON.stringify(query) !== saved;
   const count = filtered(data.tasks, query, ctx).length;
   const update = (patch: Record<string, unknown>) => run([{ table: "saved_filters", id: filter.id, patch }]);
+  const view = useViewColumns("filter", ctx);
   const names = {
     tags: new Map(data.tags.map((t) => [t.id, t.name])),
     lists: new Map(data.lists.map((l) => [l.id, l.name])),
@@ -227,8 +235,9 @@ export function SavedFilterView({ data, ctx, filter, navigate }: { data: AppData
         <TaskExportButton title={filter.name} data={data} ctx={ctx} count={count} rows={() => sortTasks(filtered(data.tasks, query, ctx), "due").map((task) => ({ task }))} />
       </header>
       {!changed ? <p className="mb-2 text-xs text-[var(--muted)]">{filterChips(filter.query, names).map((c) => c.label).join(" · ")}</p> : null}
+      <div className="mb-2 flex flex-wrap gap-2">{view.picker}</div>
       <FilterBar query={query} onChange={setQuery} />
-      <Results data={data} ctx={ctx} query={query} />
+      <Results data={data} ctx={ctx} query={query} view={view} />
     </>
   );
 }

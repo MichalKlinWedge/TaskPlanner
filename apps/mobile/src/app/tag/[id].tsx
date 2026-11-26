@@ -35,6 +35,7 @@ export default function TagScreen() {
     <>
       <Stack.Screen options={{ title: tag ? `@${tag.name}` : 'Tag' }} />
       <FilterResults
+        columnsKey="tag"
         query={query}
         save
         quickAdd={tag ? { tag: tag.name } : null}

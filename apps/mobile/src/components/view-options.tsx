@@ -3,7 +3,7 @@
  * oraz `useSmartView` — ustawienia Inboxu, „Dziś”, „Zaległych” i „Nadchodzących” z `settings.views`
  * profilu (wspólne z webem) z chipem „▦ Tablica” (`/board?view=`).
  */
-import { LIST_COLUMN, orderedColumns, smartViewsPatch, tagsForWorkspace, type ListColumn, type SmartView, type SmartViewPrefs, type ViewTask } from '@taskplanner/core';
+import { LIST_COLUMN, orderedColumns, smartViewsPatch, tagsForWorkspace, type ListColumn, type SmartView, type SmartViewPrefs, type ViewSettingsKey, type ViewTask } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { useMemo, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -88,23 +88,36 @@ export function columnRowMaker(data: AppData, today: string, { columns, columnTa
   return (task, props) => base(task, { columns, ...shown(task), ...props });
 }
 
-/** Widok zbiorczy: `row` z kolumnami, pasek opcji i nagłówek kolumn. */
-/** `extra` — dodatkowy chip w wierszu opcji (np. „Eksport XLSX”). */
-export function useSmartView(view: SmartView, data: AppData, today: string, workspaceId: string | null, extra?: ReactNode) {
+/**
+ * Kolumny widoku z `settings.views[view]` (wspólne z webem): `row` z kolumnami, chipy i nagłówek kolumn.
+ * Widoki zbiorcze i — wspólnie dla wszystkich tagów / zapisanych filtrów — klucze `tag` / `filter`.
+ */
+export function useViewColumns(view: ViewSettingsKey, data: AppData, today: string, workspaceId: string | null) {
   const { notify } = useTaskActions();
   const prefs = data.settings.views[view];
   const cols = useColumns(prefs, data.tags);
   const setPrefs = (patch: Partial<SmartViewPrefs>) => void updateSettings((s) => ({ views: smartViewsPatch(s.views, view, patch) })).catch((e: unknown) => notify(e instanceof Error ? e.message : String(e)));
   return {
     row: columnRowMaker(data, today, cols),
+    chips: <ColumnChips {...cols} tags={tagsForWorkspace(data.tags, workspaceId, prefs?.columnTags)} onChange={setPrefs} />,
+    columnsHeader: <TaskColumnsHeader columns={cols.columns} />,
+  };
+}
+
+/** Widok zbiorczy: `row` z kolumnami, pasek opcji i nagłówek kolumn. */
+/** `extra` — dodatkowy chip w wierszu opcji (np. „Eksport XLSX”). */
+export function useSmartView(view: SmartView, data: AppData, today: string, workspaceId: string | null, extra?: ReactNode) {
+  const { row, chips, columnsHeader } = useViewColumns(view, data, today, workspaceId);
+  return {
+    row,
     options: (
       <OptionRow>
-        <ColumnChips {...cols} tags={tagsForWorkspace(data.tags, workspaceId, prefs?.columnTags)} onChange={setPrefs} />
+        {chips}
         <OptionChip label="▦ Tablica" accent onPress={() => router.push({ pathname: '/board', params: { view } })} />
         {extra}
       </OptionRow>
     ),
-    columnsHeader: <TaskColumnsHeader columns={cols.columns} />,
+    columnsHeader,
   };
 }
 

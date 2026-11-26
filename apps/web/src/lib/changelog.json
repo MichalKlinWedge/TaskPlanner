@@ -1,4 +1,5 @@
 [
+  {"version":"0.39.14.0","kind":"w","date":"2026-11-26","title":"Widoki tagu i zapisanego filtra: „Kolumny” jak w widokach zbiorczych"},
   {"version":"0.39.13.1","kind":"z","date":"2026-11-26","title":"Szybkie dodawanie (Q): przyciski „Dodaj” i „Anuluj” w oknie"},
   {"version":"0.39.13.0","kind":"w","date":"2026-11-26","title":"Zaznaczone zadania: grupowe dodanie / zdjęcie tagu i zmiana odpowiedzialnego"},
   {"version":"0.39.12.0","kind":"w","date":"2026-11-26","title":"Porządki: web i telefon korzystają z logiki w core zamiast własnych kopii"},

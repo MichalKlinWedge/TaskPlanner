@@ -15,8 +15,11 @@ export const SMART_VIEW: Record<SmartView, string> = { inbox: 'Inbox', today: VI
 /** Ile dni „Nadchodzące” pokazuje osobno (lista i tablica). */
 export const UPCOMING_DAYS = 14;
 
+/** Klucz ustawień w `settings.views`: widok zbiorczy albo wszystkie widoki tagu / zapisanego filtra (tylko kolumny). */
+export type ViewSettingsKey = keyof ProfileSettings['views'];
+
 /** `settings.views` po zmianie jednego widoku; puste listy i `undefined` znikają z zapisu. */
-export function smartViewsPatch(views: ProfileSettings['views'], view: SmartView, patch: Partial<SmartViewPrefs>): ProfileSettings['views'] {
+export function smartViewsPatch(views: ProfileSettings['views'], view: ViewSettingsKey, patch: Partial<SmartViewPrefs>): ProfileSettings['views'] {
   const next = Object.entries({ ...views[view], ...patch }).filter(([, v]) => v !== undefined && !(Array.isArray(v) && !v.length));
   return { ...views, [view]: Object.fromEntries(next) };
 }

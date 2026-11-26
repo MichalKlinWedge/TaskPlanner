@@ -58,6 +58,7 @@ import {
   type SortBy,
   type ViewContext,
   type ViewPrefs,
+  type ViewSettingsKey,
   type ViewTask,
   READONLY_LIST_NOTE,
   listShareBadge,
@@ -182,7 +183,7 @@ function useColumns(prefs: SmartViewPrefs, tags: AppData["tags"]) {
 }
 
 /** Wiersze z kolumnami: bywają szersze od ekranu (szerokości z nagłówka) — przewijanie w poziomie; `pl-5` zostawia miejsce na uchwyt ⋮⋮. */
-function ColumnsScroll({ columns, children }: { columns: readonly ListColumn[]; children: ReactNode }) {
+export function ColumnsScroll({ columns, children }: { columns: readonly ListColumn[]; children: ReactNode }) {
   return (
     <div className={columns.length ? "-ml-5 overflow-x-auto pl-5" : "contents"} data-testid="list-scroll">
       {/* Szerokość nie mniejsza niż minimum wierszy (stałe „Zadanie”, ściśnięte kolumny) — reszta to suwak poziomy. */}
@@ -191,8 +192,11 @@ function ColumnsScroll({ columns, children }: { columns: readonly ListColumn[]; 
   );
 }
 
-/** Ustawienia widoku zbiorczego (`settings.views`, synchronizowane) i części układu: przełącznik, „Kolumny”, tablica. */
-function useSmartView(id: SmartView, ctx: ViewContext, targetInbox: List | undefined) {
+/**
+ * Kolumny widoku z `settings.views[id]` (synchronizowane): „Kolumny” (`picker`), nagłówek i właściwości wierszy (`cols`).
+ * Widoki zbiorcze i — wspólnie dla wszystkich tagów / zapisanych filtrów — klucze `tag` / `filter`.
+ */
+export function useViewColumns(id: ViewSettingsKey, ctx: ViewContext) {
   const { store, settings, userId, data } = useAppEnv();
   const { notify } = useTaskActions();
   const prefs = settings.views[id] ?? {};
@@ -200,23 +204,33 @@ function useSmartView(id: SmartView, ctx: ViewContext, targetInbox: List | undef
   const [widths, setWidth] = useListWidths(`view:${id}`);
   const setPrefs = (patch: Partial<SmartViewPrefs>) =>
     void store.mutate("profiles", userId, { settings: { ...settings, views: smartViewsPatch(settings.views, id, patch) } }).catch((e: unknown) => notify(String(e)));
+  return {
+    prefs,
+    setPrefs,
+    cols: { columns, columnTags, widths },
+    picker: (
+      <ColumnsPicker
+        value={columns}
+        onChange={(next) => setPrefs({ columns: next })}
+        tags={tagsForWorkspace(data.tags, ctx.workspaceId ?? null, prefs.columnTags)}
+        tagValue={columnTags ? [...columnTags] : []}
+        onTagsChange={(next) => setPrefs({ columnTags: next })}
+      />
+    ),
+    columnsHeader: <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} />,
+  };
+}
+
+/** Ustawienia widoku zbiorczego (`settings.views`, synchronizowane) i części układu: przełącznik, „Kolumny”, tablica. */
+function useSmartView(id: SmartView, ctx: ViewContext, targetInbox: List | undefined) {
+  const { prefs, setPrefs, cols, picker, columnsHeader } = useViewColumns(id, ctx);
   const kanban = prefs.view === "kanban";
   return {
     kanban,
-    cols: { columns, columnTags, widths },
+    cols,
     switcher: <ViewSwitch views={["list", "kanban"]} value={kanban ? "kanban" : "list"} onChange={(view) => setPrefs({ view })} />,
-    columnsBar: kanban ? null : (
-      <div className="mb-2 flex flex-wrap gap-2">
-        <ColumnsPicker
-          value={columns}
-          onChange={(next) => setPrefs({ columns: next })}
-          tags={tagsForWorkspace(data.tags, ctx.workspaceId ?? null, prefs.columnTags)}
-          tagValue={columnTags ? [...columnTags] : []}
-          onTagsChange={(next) => setPrefs({ columnTags: next })}
-        />
-      </div>
-    ),
-    columnsHeader: <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} />,
+    columnsBar: kanban ? null : <div className="mb-2 flex flex-wrap gap-2">{picker}</div>,
+    columnsHeader,
     board: (tasks: readonly ViewTask[], opts: { inboxIds?: ReadonlySet<string>; now?: string; addLabel?: string }) => (
       <SmartBoardView id={id} tasks={tasks} ctx={ctx} targetInbox={targetInbox} by={prefs.boardBy ?? (id === "upcoming" ? "weekday" : "status")} onBy={(boardBy) => setPrefs({ boardBy })} {...opts} />
     ),

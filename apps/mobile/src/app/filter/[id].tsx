@@ -39,6 +39,7 @@ export default function FilterScreen() {
     <>
       <Stack.Screen options={{ title: filter.name }} />
       <FilterResults
+        columnsKey="filter"
         query={query}
         quickAdd={{ listId: query.lists?.length === 1 ? query.lists[0] : undefined }}
         exportTitle={filter.name}

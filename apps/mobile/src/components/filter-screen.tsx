@@ -8,13 +8,12 @@ import { filterChips, plural, selectFiltered, sortTasks, type FilterQuery } from
 import { useMemo, type ReactNode } from 'react';
 
 import { useView } from '@/lib/app-data';
-import { rowMaker } from '@/lib/rows';
 
 import { ExportChip } from './export-button';
 import { FilterBar } from './filter-bar';
 import { ScreenHeader } from './sync-banner';
 import { TaskSections, type QuickAddParams } from './task-list';
-import { OptionRow } from './view-options';
+import { OptionRow, useViewColumns } from './view-options';
 
 const TASKS = ['zadanie', 'zadania', 'zadań'] as const;
 
@@ -25,7 +24,10 @@ export function FilterResults({
   save,
   quickAdd = null,
   exportTitle,
+  columnsKey,
 }: {
+  /** Ustawienia kolumn w `settings.views` (wspólne dla wszystkich tagów / filtrów). */
+  columnsKey: 'tag' | 'filter';
   query: FilterQuery;
   header?: ReactNode;
   onChange?: (query: FilterQuery) => void;
@@ -34,9 +36,9 @@ export function FilterResults({
   /** Tytuł arkusza i pliku eksportu; brak — bez „Eksport XLSX”. */
   exportTitle?: string;
 }) {
-  const { data, today, ctx } = useView();
+  const { data, today, ctx, workspaceId } = useView();
   const tasks = useMemo(() => sortTasks(selectFiltered(data.tasks, query, ctx), 'due'), [data.tasks, query, ctx]);
-  const row = rowMaker(data, today);
+  const { row, chips: columnChips, columnsHeader } = useViewColumns(columnsKey, data, today, workspaceId);
   const chips = filterChips(query, {
     lists: new Map(data.lists.map((l) => [l.id, l.name])),
     workspaces: new Map(data.workspaces.map((w) => [w.id, w.name])),
@@ -49,12 +51,12 @@ export function FilterResults({
       header={
         <ScreenHeader subtitle={`${plural(tasks.length, TASKS)}${chips.length && !onChange ? ` · ${chips.map((c) => c.label).join(' · ')}` : ''}`}>
           {header}
-          {exportTitle ? (
-            <OptionRow>
-              <ExportChip title={exportTitle} rows={() => tasks.map((task) => ({ task }))} />
-            </OptionRow>
-          ) : null}
+          <OptionRow>
+            {columnChips}
+            {exportTitle ? <ExportChip title={exportTitle} rows={() => tasks.map((task) => ({ task }))} /> : null}
+          </OptionRow>
           {onChange ? <FilterBar query={query} onChange={onChange} save={save} /> : null}
+          {tasks.length ? columnsHeader : null}
         </ScreenHeader>
       }
       empty="Żadne zadanie nie pasuje."
