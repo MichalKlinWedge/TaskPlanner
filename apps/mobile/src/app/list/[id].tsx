@@ -1,7 +1,9 @@
 /**
  * Lista / projekt (M9): drzewo podzadań ze zwijaniem i postępem (kolejność ręczna, bez grupowania)
  * albo grupy po sortowaniu; sortowanie, grupowanie, ukończone i chipy filtra w `view_prefs` listy — jak na webie.
- * „▦ Tablica” otwiera kanban listy (`/board?list=`).
+ * „▦ Tablica” otwiera kanban listy (`/board?list=`). „Widok” = `view_prefs.view` jak przełącznik na webie:
+ * lista z „Tablica” otwiera się od razu jako tablica (nad ekranem listy — „Wstecz” wraca tu, do przełącznika);
+ * „Karteczki” (tylko web) — jako lista. „Eksport XLSX” jak na webie: drzewo z poziomami albo grupy jako sekcje.
  */
 import {
   applyFilter,
@@ -27,10 +29,11 @@ import {
   type ViewPrefs,
 } from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
+import { ExportChip } from '@/components/export-button';
 import { FilterBar } from '@/components/filter-bar';
 import { SaveTemplateBar } from '@/components/templates';
 import { pickOption } from '@/components/pickers';
@@ -44,6 +47,10 @@ import { usePerfReady } from '@/lib/perf';
 import { mutate } from '@/lib/sync';
 
 const OPEN = ['otwarte', 'otwarte', 'otwartych'] as const;
+
+/** Tryby listy na telefonie (`view_prefs.view`); „Karteczki” są tylko na webie — tu jak lista. */
+type PhoneView = 'list' | 'kanban';
+const PHONE_VIEW: Record<PhoneView, string> = { list: 'Lista', kanban: 'Tablica' };
 
 function Pref<T extends string>({ label, value, labels, onChange }: { label: string; value: T; labels: Record<T, string>; onChange: (v: T) => void }) {
   const p = usePalette();
@@ -78,6 +85,14 @@ export default function ListScreen() {
   const completed: CompletedMode = list?.prefs.completed ?? 'today';
   const filter = list?.prefs.filter;
   const { columns, columnTags } = useColumns(list?.prefs, data.tags);
+  const phoneView: PhoneView = list?.prefs.view === 'kanban' ? 'kanban' : 'list';
+  // Zapamiętana tablica: raz na otwarcie ekranu, gdy lista jest już wczytana.
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (!list || autoOpened.current) return;
+    autoOpened.current = true;
+    if (list.prefs.view === 'kanban') router.push({ pathname: '/board', params: { list: list.id } });
+  }, [list]);
 
   const tasks = useMemo(() => {
     const own = data.tasks.filter((t) => t.listId === id);
@@ -141,6 +156,18 @@ export default function ListScreen() {
     if (!prefs.columnTags?.length) delete prefs.columnTags;
     void mutate('lists', list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
   };
+  const setView = (next: PhoneView) => {
+    if (next !== phoneView) {
+      if (editable) setPrefs({ view: next });
+      else notify(READONLY_LIST_NOTE);
+    }
+    if (next === 'kanban') router.push({ pathname: '/board', params: { list: list.id } });
+  };
+  // Eksport jak na webie: drzewo (wszystkie poziomy, także zwinięte) albo grupy sortowania jako sekcje.
+  const exportRows = () =>
+    tree
+      ? flattenTree(buildTree(tasks)).map((n) => ({ task: n.task, depth: n.depth }))
+      : groupTasks(sortTasks(tasks, sortBy), groupBy, { lists: data.lists, tags: data.tags }).flatMap((g) => g.tasks.map((task) => ({ task, section: g.label || undefined })));
   const workspace = data.workspaces.find((w) => w.id === list.workspaceId)?.name;
   const title = `${list.kind === 'inbox' ? `Inbox · ${workspace ?? ''}` : list.name}${share ? ` ${share.icon}` : ''}`;
 
@@ -157,7 +184,9 @@ export default function ListScreen() {
               <Pref label="Grupy" value={groupBy} labels={GROUP_BY} onChange={(v) => setPrefs({ groupBy: v })} />
               <Pref label="Ukończone" value={completed} labels={COMPLETED_MODE} onChange={(v) => setPrefs({ completed: v })} />
               <ColumnChips columns={columns} columnTags={columnTags} tags={tagsForWorkspace(data.tags, list.workspaceId, list.prefs.columnTags)} onChange={setColumnPrefs} />
+              <Pref label="Widok" value={phoneView} labels={PHONE_VIEW} onChange={setView} />
               <OptionChip label="▦ Tablica" accent onPress={() => router.push({ pathname: '/board', params: { list: list.id } })} />
+              <ExportChip title={list.kind === 'inbox' ? `Inbox ${workspace ?? ''}`.trim() : list.name} rows={exportRows} />
               {list.kind === 'project' ? (
                 <Pressable accessibilityRole="button" onPress={() => setSavingTemplate((v) => !v)} style={[styles.pref, { borderColor: p.border }]}>
                   <Text style={{ color: p.accent, fontSize: 13 }}>⧉ Zapisz jako szablon</Text>

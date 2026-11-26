@@ -1,6 +1,8 @@
 /**
  * Polecenia palety i skróty klawiszowe (SPECYFIKACJA M17). Tu są etykiety i klawisze; obsługa
- * klawiatury jest w `apps/web`, ekran szukania na telefonie pokazuje te same polecenia.
+ * klawiatury jest w `apps/web`. Ekran szukania na telefonie pokazuje te polecenia bez zaznaczenia,
+ * które umie wykonać (`PHONE_COMMANDS`: widoki, przeglądy, szybkie dodawanie, skupienie, przestrzeń,
+ * nowy projekt) — bez akcji na zaznaczonych, motywu i skrótów klawiszowych.
  */
 import type { SearchItem } from './search.ts';
 
@@ -55,3 +57,25 @@ export const LIST_SHORTCUTS: readonly { keys: readonly string[]; label: string }
 /** Polecenia jako pozycje wyszukiwarki; bez zaznaczenia — bez poleceń na zadaniach. */
 export const commandSearchItems = (selected: number): SearchItem[] =>
   COMMANDS.filter((c) => selected > 0 || !c.needsSelection).map((c) => ({ id: c.id, kind: c.kind, title: c.label, keywords: c.keywords }));
+
+/** Polecenia, które wykonuje ekran szukania na telefonie (reszta to klawiatura, zaznaczenie albo motyw — tam są gdzie indziej). */
+export const PHONE_COMMANDS: ReadonlySet<string> = new Set([
+  'view.inbox',
+  'view.today',
+  'view.overdue',
+  'view.upcoming',
+  'view.kanban',
+  'view.calendar',
+  'view.timeline',
+  'view.habits',
+  'review.daily',
+  'review.weekly',
+  'task.quick_add',
+  'focus.start',
+  'list.new_project',
+  'workspace.switch',
+]);
+
+/** Pozycje poleceń dla telefonu; `focus` — tryb skupienia włączony w Ustawieniach. */
+export const phoneCommandSearchItems = ({ focus }: { focus: boolean }): SearchItem[] =>
+  commandSearchItems(0).filter((c) => PHONE_COMMANDS.has(c.id) && (focus || !c.id.startsWith('focus.')));

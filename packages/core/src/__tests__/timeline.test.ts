@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { addDays } from '../dates.ts';
 import { violations, type Dependency } from '../dependencies.ts';
 import type { TaskOp } from '../tasks.ts';
-import { addDependencyOps, dependencyErrorText, projectFilterLabel, removeDependencyOps, shiftProjectOps, taskLinks, timelineChangeOps, timelineFileName, timelineGridSheet, timelineModel, timelinePeriods, timelineRowSpans, timelineSheet, visibleProjects, lighten, type TimelineProject, type TimelineTask } from '../timeline.ts';
+import { addDependencyOps, dependencyErrorText, projectDatesOps, projectFilterLabel, removeDependencyOps, shiftProjectOps, taskLinks, timelineChangeOps, timelineFileName, timelineGridSheet, timelineModel, timelinePeriods, timelineRowSpans, timelineSheet, visibleProjects, lighten, type TimelineProject, type TimelineTask } from '../timeline.ts';
 
 const W = 'ws-1';
 const task = (id: string, startDate: string | null, dueDate: string | null, over: Partial<TimelineTask> = {}): TimelineTask => ({
@@ -313,5 +313,32 @@ describe('filtr projektów i eksport', () => {
     expect(months.columns.slice(4).map((c) => c.header)).toEqual(['listopad']);
     expect(months.rows[0]![4]).toEqual({ fill: '#6366f1' });
     expect(timelineGridSheet(timelineModel([], [], []), { scale: 'week', today: '2026-11-22' })).toMatchObject({ rows: [], headerRows: undefined, merges: [] });
+  });
+});
+
+describe('projectDatesOps', () => {
+  const project = { id: 'p1', startDate: '2026-12-01', endDate: '2026-12-20' };
+
+  it('zmienia jedną datę z „Cofnij”; ta sama data albo brak zmiany — nic', () => {
+    expect(projectDatesOps(project, { startDate: '2026-12-05' })).toEqual({
+      ops: [{ table: 'lists', id: 'p1', patch: { start_date: '2026-12-05' } }],
+      undo: [{ table: 'lists', id: 'p1', patch: { start_date: '2026-12-01' } }],
+    });
+    expect(projectDatesOps(project, { endDate: null })).toEqual({
+      ops: [{ table: 'lists', id: 'p1', patch: { end_date: null } }],
+      undo: [{ table: 'lists', id: 'p1', patch: { end_date: '2026-12-20' } }],
+    });
+    expect(projectDatesOps(project, { endDate: '2026-12-20' })).toEqual({ ops: [], undo: [] });
+    expect(projectDatesOps({ id: 'p2', startDate: null, endDate: null }, { startDate: '2026-12-01' }).ops).toEqual([{ table: 'lists', id: 'p2', patch: { start_date: '2026-12-01' } }]);
+  });
+
+  it('koniec nigdy przed początkiem: druga data idzie za zmienioną', () => {
+    expect(projectDatesOps(project, { startDate: '2026-12-24' })).toEqual({
+      ops: [{ table: 'lists', id: 'p1', patch: { start_date: '2026-12-24', end_date: '2026-12-24' } }],
+      undo: [{ table: 'lists', id: 'p1', patch: { start_date: '2026-12-01', end_date: '2026-12-20' } }],
+    });
+    expect(projectDatesOps(project, { endDate: '2026-11-30' }).ops).toEqual([{ table: 'lists', id: 'p1', patch: { start_date: '2026-11-30', end_date: '2026-11-30' } }]);
+    // Ten sam dzień początku i końca jest dozwolony.
+    expect(projectDatesOps(project, { endDate: '2026-12-01' }).ops).toEqual([{ table: 'lists', id: 'p1', patch: { end_date: '2026-12-01' } }]);
   });
 });

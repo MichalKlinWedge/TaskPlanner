@@ -2,8 +2,9 @@
  * Sekcja „Załączniki” na ekranie zadania (Etap 10, jak `AttachmentsField` na webie): zdjęcie z aparatu,
  * obrazy z galerii, dowolne pliki i linki. Pliki idą przez kolejkę (`lib/files.ts`) — offline czekają
  * z dopiskiem „czeka na sieć”. Podgląd: obrazy w aplikacji (pełny ekran), PDF i reszta w aplikacji
- * systemowej (`File.preview` → `ACTION_VIEW`). Przytrzymanie kafelka i przyciski podglądu: „Udostępnij”
- * (systemowy arkusz — też zapis do plików) i „Otwórz w innej aplikacji”.
+ * systemowej (`File.preview` → `ACTION_VIEW`). Menu kafelka (⋯ albo przytrzymanie) i przyciski podglądu: „Udostępnij”
+ * (systemowy arkusz — też zapis do plików) i „Otwórz w innej aplikacji”. Link ma ikonę strony z podglądu i ✕;
+ * plik, którego nie udało się wysłać, pokazuje przyczynę z kolejki.
  */
 import { attachmentView, fileProblem, formatBytes, linkAttachmentOp, parseHttpUrl, plural, AttachmentPreview, type NewFile } from '@taskplanner/core';
 import type { PendingFile, SqlRow } from '@taskplanner/sync';
@@ -206,20 +207,7 @@ export function AttachmentsField({ taskId, readOnly = false }: { taskId: string;
       ) : null}
 
       {links.map((a) => (
-        <Pressable
-          key={a.id}
-          accessibilityRole="link"
-          onPress={() => a.url && void Linking.openURL(a.url)}
-          onLongPress={readOnly ? undefined : () => remove(a)}
-          style={[styles.link, { borderColor: p.border }]}
-        >
-          <Text style={{ color: p.fg }} numberOfLines={1}>
-            🔗 {a.name}
-          </Text>
-          <Text style={{ color: p.muted, fontSize: 12 }} numberOfLines={1}>
-            {a.preview === null ? 'Pobieranie podglądu…' : [a.preview.siteName, a.preview.description].filter(Boolean).join(' · ') || a.url}
-          </Text>
-        </Pressable>
+        <LinkRow key={a.id} item={a} onRemove={readOnly ? undefined : () => remove(a)} />
       ))}
 
       {files.length || waiting.length ? (
@@ -233,7 +221,7 @@ export function AttachmentsField({ taskId, readOnly = false }: { taskId: string;
         </View>
       ) : null}
 
-      {!count && !linking ? <Text style={{ color: p.muted, fontSize: 12 }}>Zdjęcie, plik do 25 MB albo link. Przytrzymaj, żeby udostępnić albo usunąć.</Text> : null}
+      {!count && !linking ? <Text style={{ color: p.muted, fontSize: 12 }}>{readOnly ? 'Brak załączników.' : 'Zdjęcie, plik do 25 MB albo link.'}</Text> : null}
 
       <Modal visible={!!image} transparent animationType="fade" onRequestClose={() => setImage(null)}>
         <Pressable accessibilityLabel="Zamknij podgląd" style={styles.viewer} onPress={() => setImage(null)}>
@@ -293,27 +281,73 @@ function Thumb({ item }: { item: { id: string; storagePath: string | null; mime:
   return <Text style={styles.icon}>{kind === 'pdf' ? '📄' : kind === 'image' ? '🖼' : '📦'}</Text>;
 }
 
-function Tile({ item, subtitle, onOpen, onMenu }: { item: Attachment; subtitle: string; onOpen: () => void; onMenu: () => void }) {
+/** Ikona strony z podglądu linku (`preview.icon`); bez niej albo po błędzie wczytania — 🔗. */
+function SiteIcon({ uri }: { uri?: string }) {
+  const [broken, setBroken] = useState(false);
+  if (!uri || broken) return <Text style={styles.siteIconText}>🔗</Text>;
+  return <Image source={{ uri }} style={styles.siteIcon} resizeMode="contain" accessibilityIgnoresInvertColors onError={() => setBroken(true)} />;
+}
+
+/** Link: dotknięcie otwiera stronę, ✕ usuwa (z „Cofnij”); w podglądzie bez ✕. */
+function LinkRow({ item, onRemove }: { item: Attachment; onRemove?: () => void }) {
+  const p = usePalette();
+  const preview = item.preview;
+  return (
+    <View style={[styles.link, { borderColor: p.border }]}>
+      <SiteIcon key={preview?.icon} uri={preview?.icon} />
+      <Pressable accessibilityRole="link" accessibilityLabel={`Otwórz „${item.name}”`} onPress={() => item.url && void Linking.openURL(item.url)} style={styles.linkText}>
+        <Text style={{ color: p.fg }} numberOfLines={1}>
+          {item.name}
+        </Text>
+        <Text style={{ color: p.muted, fontSize: 12 }} numberOfLines={1}>
+          {preview === null ? 'Pobieranie podglądu…' : [preview.siteName, preview.description].filter(Boolean).join(' · ') || item.url}
+        </Text>
+      </Pressable>
+      {onRemove ? <CornerButton label="✕" accessibilityLabel={`Usuń „${item.name}”`} onPress={onRemove} /> : null}
+    </View>
+  );
+}
+
+/** Widoczny przycisk na kafelku / wierszu (✕ albo ⋯) — zamiast samego przytrzymania. */
+function CornerButton({ label, accessibilityLabel, onPress }: { label: string; accessibilityLabel: string; onPress: () => void }) {
   const p = usePalette();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz „${item.name}”`} onPress={onOpen} onLongPress={onMenu} style={[styles.tile, { borderColor: p.border }]}>
-      <Thumb item={item} />
-      <Text style={{ color: p.fg, fontSize: 12 }} numberOfLines={1}>
-        {item.name}
-      </Text>
-      <Text style={{ color: p.muted, fontSize: 11 }}>{subtitle}</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} hitSlop={8} onPress={onPress} style={({ pressed }) => [styles.corner, { backgroundColor: p.card, borderColor: p.border, opacity: pressed ? 0.6 : 1 }]}>
+      <Text style={{ color: p.muted, fontSize: 13, fontWeight: '700' }}>{label}</Text>
     </Pressable>
   );
 }
 
+function Tile({ item, subtitle, onOpen, onMenu }: { item: Attachment; subtitle: string; onOpen: () => void; onMenu: () => void }) {
+  const p = usePalette();
+  return (
+    <View style={[styles.tile, { borderColor: p.border }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz „${item.name}”`} onPress={onOpen} onLongPress={onMenu} style={styles.tileBody}>
+        <Thumb item={item} />
+        <Text style={{ color: p.fg, fontSize: 12 }} numberOfLines={1}>
+          {item.name}
+        </Text>
+        <Text style={{ color: p.muted, fontSize: 11 }}>{subtitle}</Text>
+      </Pressable>
+      <View style={styles.cornerWrap}>
+        <CornerButton label="⋯" accessibilityLabel={`Menu „${item.name}”`} onPress={onMenu} />
+      </View>
+    </View>
+  );
+}
+
+/** Plik w kolejce; po nieudanej próbie widać przyczynę z kolejki (`PendingFile.error`). */
 function PendingTile({ file, offline, onOpen, onMenu }: { file: PendingFile; offline: boolean; onOpen: () => void; onMenu: () => void }) {
   const p = usePalette();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz „${file.name}”`} onPress={onOpen} onLongPress={onMenu} style={[styles.tile, styles.pending, { borderColor: p.border }]}>
-      <Thumb item={{ id: file.id, storagePath: null, mime: file.mime }} />
-      <Text style={{ color: p.fg, fontSize: 12 }} numberOfLines={1}>
-        {file.name}
-      </Text>
+    <View style={[styles.tile, styles.pending, { borderColor: p.border }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz „${file.name}”`} onPress={onOpen} onLongPress={onMenu} style={styles.tileBody}>
+        <Thumb item={{ id: file.id, storagePath: null, mime: file.mime }} />
+        <Text style={{ color: p.fg, fontSize: 12 }} numberOfLines={1}>
+          {file.name}
+        </Text>
+        {file.failed ? null : <Text style={{ color: p.muted, fontSize: 11 }}>{`${formatBytes(file.size)} · ${offline || file.attempts ? 'czeka na sieć' : 'wysyłanie…'}`}</Text>}
+      </Pressable>
       {file.failed ? (
         <View style={styles.failed}>
           <Text style={{ color: p.bad, fontSize: 11 }}>Nie wysłano</Text>
@@ -324,10 +358,16 @@ function PendingTile({ file, offline, onOpen, onMenu }: { file: PendingFile; off
             usuń
           </Text>
         </View>
-      ) : (
-        <Text style={{ color: p.muted, fontSize: 11 }}>{`${formatBytes(file.size)} · ${offline || file.attempts ? 'czeka na sieć' : 'wysyłanie…'}`}</Text>
-      )}
-    </Pressable>
+      ) : null}
+      {file.error && (file.failed || file.attempts) ? (
+        <Text style={{ color: file.failed ? p.bad : p.muted, fontSize: 11 }} numberOfLines={4}>
+          {file.error}
+        </Text>
+      ) : null}
+      <View style={styles.cornerWrap}>
+        <CornerButton label="⋯" accessibilityLabel={`Menu „${file.name}”`} onPress={onMenu} />
+      </View>
+    </View>
   );
 }
 
@@ -336,9 +376,15 @@ const styles = StyleSheet.create({
   action: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6 },
   linkRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   input: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 15 },
-  link: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 8, gap: 2 },
+  link: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 8, gap: 8 },
+  linkText: { flex: 1, minWidth: 0, gap: 2 },
+  siteIcon: { width: 16, height: 16 },
+  siteIconText: { fontSize: 14, width: 18, textAlign: 'center' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tile: { width: '31%', borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 6, gap: 2 },
+  tileBody: { gap: 2 },
+  cornerWrap: { position: 'absolute', top: 4, right: 4 },
+  corner: { minWidth: 24, height: 24, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   pending: { borderStyle: 'dashed' },
   thumb: { width: '100%', height: 80, borderRadius: 6 },
   icon: { fontSize: 32, height: 80, textAlign: 'center', textAlignVertical: 'center' },

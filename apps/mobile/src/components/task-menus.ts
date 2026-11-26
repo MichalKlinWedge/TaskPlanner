@@ -31,7 +31,7 @@ export const pickPriority = (title: string, current?: Priority) =>
     PRIORITIES.map((p) => ({ label: PRIORITY[p].label, hint: PRIORITY[p].short, value: p, selected: p === current })),
   );
 
-/** Lista docelowa: przestrzeń → Inbox, listy i projekty. */
+/** Lista docelowa: przestrzeń → Inbox, listy i projekty; przy wielu listach pole szukania (jak „Przenieś do…” na webie). */
 export function pickList(data: AppData, title: string, current?: string) {
   const options: Option<string>[] = [];
   for (const w of data.workspaces) {
@@ -39,7 +39,7 @@ export function pickList(data: AppData, title: string, current?: string) {
       options.push({ label: l.kind === 'inbox' ? `Inbox` : l.name, hint: `${w.name} · ${LIST_KIND[l.kind]}`, value: l.id, selected: l.id === current });
     }
   }
-  return pickOption(title, options);
+  return pickOption(title, options, { search: true });
 }
 
 /** Pasek zaznaczenia: termin dla wielu zadań. */

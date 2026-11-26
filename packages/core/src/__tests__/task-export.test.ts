@@ -1,7 +1,7 @@
 /** Eksport zadań z widoków do arkusza: kolumny, sekcje, wcięcie, nazwy, nazwa pliku. */
 import { describe, expect, it } from 'vitest';
 
-import { exportFileName, tasksSheet, type TaskExportNames } from '../task-export.ts';
+import { exportFileName, taskExportNames, tasksSheet, type TaskExportNames } from '../task-export.ts';
 import type { ViewTask } from '../views.ts';
 
 const task = (over: Partial<ViewTask>): ViewTask => ({
@@ -73,6 +73,23 @@ describe('eksport zadań', () => {
       ['Zaległe', { date: '2026-11-10' }],
       ['Jutro', { date: '2026-11-27' }],
     ]);
+  });
+
+  it('nazwy z danych aplikacji: Inbox z przestrzenią', () => {
+    const n = taskExportNames({
+      workspaces: [{ id: 'w1', name: 'Dom' }],
+      lists: [
+        { id: 'i1', name: 'Inbox', kind: 'inbox', workspaceId: 'w1' },
+        { id: 'l1', name: 'Remont', kind: 'project', workspaceId: 'w1' },
+        { id: 'i2', name: 'Inbox', kind: 'inbox', workspaceId: 'w9' },
+      ],
+      tags: [{ id: 'g1', name: 'zakupy' }],
+      collaborators: [{ id: 'c1', name: 'Ola' }],
+    });
+    expect([...n.lists.values()]).toEqual(['Inbox (Dom)', 'Remont', 'Inbox ()']);
+    expect(n.workspaces.get('w1')).toBe('Dom');
+    expect(n.tags.get('g1')).toBe('zakupy');
+    expect(n.collaborators.get('c1')).toBe('Ola');
   });
 
   it('nazwa pliku bez polskich znaków', () => {

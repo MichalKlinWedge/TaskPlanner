@@ -2,12 +2,15 @@
  * „Przeglądaj”: wyszukiwarka, przestrzenie → listy i projekty, tagi i zapisane filtry z licznikami
  * otwartych zadań liczonymi jak na webie (`isOpen`, `selectFiltered` z core: wszystkie poziomy drzewa,
  * bez nawyków, tagi w bieżącej przestrzeni), kosz, ustawienia, narzędzia PoC (tylko po włączeniu, `devToolsEnabled`).
+ * „Cykliczne” z licznikiem nieodhaczonych na dziś (`habitsForDay`, jak pasek boczny webu); pasek zaproszeń
+ * do przestrzeni jak w `ScreenHeader`.
  */
-import { isOpen, LIST_KIND, listShareBadge, selectFiltered, selectOverdue, tagsForWorkspace, VIEW_SECTION, type ListShareBadge } from '@taskplanner/core';
+import { habitsForDay, isOpen, LIST_KIND, listShareBadge, selectFiltered, selectOverdue, tagsForWorkspace, VIEW_SECTION, type ListShareBadge } from '@taskplanner/core';
 import { router, type Href } from 'expo-router';
 import { useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { ScopeInvitesBanner } from '@/components/sharing';
 import { SyncBanner } from '@/components/sync-banner';
 import { ColorDot, usePalette } from '@/components/ui';
 import { useLocalMinute, useView } from '@/lib/app-data';
@@ -55,7 +58,7 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 
 export default function BrowseScreen() {
   const p = usePalette();
-  const { data, ctx, workspaceId } = useView();
+  const { data, ctx, today, workspaceId } = useView();
   const devTools = useSyncExternalStore(onDevToolsChange, devToolsEnabled);
   usePerfReady('tab:browse', data.loaded);
   const counts = useMemo(() => {
@@ -74,6 +77,7 @@ export default function BrowseScreen() {
     const view = selectOverdue(data.tasks, ctx, now);
     return view.today.length + view.earlier.length;
   }, [data.tasks, ctx, now]);
+  const habits = useMemo(() => habitsForDay(data.tasks, data.habitCompletions, today, today, workspaceId).filter((h) => !h.settled).length, [data.tasks, data.habitCompletions, today, workspaceId]);
   const workspaces = data.workspaces.filter((w) => !workspaceId || w.id === workspaceId);
   // Jak na webie: przy „Wszystkich przestrzeniach” zakładka Inbox to suma, więc Inbox każdej przestrzeni
   // stoi na czele jej grupy; przy jednej przestrzeni zakładka Inbox jest właśnie nim — bez powtórki.
@@ -88,6 +92,7 @@ export default function BrowseScreen() {
   return (
     <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.body}>
       <SyncBanner />
+      <ScopeInvitesBanner />
       <Pressable accessibilityRole="search" onPress={() => router.push('/search')} style={[styles.search, { borderColor: p.border, backgroundColor: p.card }]}>
         <Text style={{ color: p.muted, fontSize: 16 }}>⌕ Szukaj zadań, list, tagów…</Text>
       </Pressable>
@@ -95,7 +100,7 @@ export default function BrowseScreen() {
       <Group title="Planowanie">
         <Item title={VIEW_SECTION.overdue} hint="Po terminie, także dzisiejsze po godzinie" count={overdue} alert href="/overdue" />
         <Item title="Kalendarz" hint="Dzień z przeciąganiem bloków, tydzień, miesiąc" href="/calendar" />
-        <Item title="Cykliczne" hint="Passa, regularność, historia" href="/habits" />
+        <Item title="Cykliczne" hint="Passa, regularność, historia" count={habits} href="/habits" />
         {data.settings.focus.enabled ? <Item title="Skupienie" hint="Pomodoro i stoper, czas pracy" href="/focus" /> : null}
         <Item title="Tablica" hint="Kanban bieżącej przestrzeni" href="/board" />
         <Item title="Oś czasu" hint="Projekty i zadania na osi dni, tygodni, miesięcy" href="/timeline" />

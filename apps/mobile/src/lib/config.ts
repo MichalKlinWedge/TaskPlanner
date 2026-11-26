@@ -31,6 +31,9 @@ const CLOUD_WEB_URL = 'https://task-planner-omega-indol.vercel.app';
 
 export const webAppUrl = (): string | null => (serverConfig()?.url === CLOUD_SERVER.url ? CLOUD_WEB_URL : null);
 
+/** Polityka prywatności (strona webu `/prywatnosc`) — ta sama dla każdego serwera. */
+export const PRIVACY_URL = `${CLOUD_WEB_URL}/prywatnosc`;
+
 export interface SessionUser {
   id: string;
   email: string | null;

@@ -2,7 +2,8 @@
  * Kalendarz na telefonie (Etap 5, M11; D16 — własna oś dnia, bez calendar-kit): dzień / tydzień (agenda)
  * / miesiąc nad `core/time-blocking.ts`, jak `#/calendar` na webie. Dzień: wiersz „cały dzień”,
  * konflikty, oś z przeciąganiem bloków zadań (przytrzymanie → przesunięcie, uchwyt → długość),
- * „Zaplanuj…” dla zadań bez godziny (`scheduleBlockPatch`), menu bloku i pozycji „cały dzień” (otwórz, godzina,
+ * „Zaplanuj…” dla zadań bez godziny (arkusz ze źródłem i szukaniem — core `calendarPanelTasks`; `scheduleBlockPatch`),
+ * cień poza godzinami pracy (`workWindow`), licznik nakładających się bloków w tygodniu i miesiącu, menu bloku i pozycji „cały dzień” (otwórz, godzina,
  * inny dzień, czas trwania, „Bez godziny” — `unscheduleBlockPatch`), „+” = nowe zadanie na oglądany dzień, dotknięcie pustego miejsca osi = nowe zadanie na tę godzinę. Tydzień: `calendarEntries` → `agendaDays`. Miesiąc: `monthWeeks`
  * z liczbą pozycji, dotknięcie dnia → agenda dnia. Wydarzenia: kalendarze połączone na serwerze
  * i wybrane kalendarze telefonu (`lib/calendar-events.ts`). Wszystkie zmiany z „Cofnij”. Chipy filtra
@@ -17,8 +18,10 @@ import {
   agendaDays,
   applyFilter,
   blockLanes,
+  CALENDAR_PANEL_SOURCE,
   CALENDAR_SLOTS,
   calendarEntries,
+  calendarPanelTasks,
   capitalized,
   clickedTime,
   datesPatch,
@@ -38,13 +41,15 @@ import {
   relativeDay,
   resizeBlockPatch,
   scheduleBlockPatch,
-  selectToday,
+  searchTaskTitles,
   shortDate,
   unscheduleBlockPatch,
   weekStart,
   WEEKDAY,
+  workWindow,
   type Block,
   type CalendarEntry,
+  type CalendarPanelSource,
   type CalendarSlot,
   type FilterQuery,
   type IsoWeekday,
@@ -56,13 +61,14 @@ import {
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import Storage from 'expo-sqlite/kv-store';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTaskActions } from '@/components/actions';
 import { DayTimeline, MIN_BLOCK } from '@/components/day-timeline';
 import { FilterBar, type FilterField } from '@/components/filter-bar';
-import { pickAmount, pickDate, pickMany, pickOption, pickTime, type Option } from '@/components/pickers';
+import { WorkspaceSwitcher } from '@/components/header';
+import { pickAmount, pickDate, pickMany, pickOption, pickTime, Sheet, type Option } from '@/components/pickers';
 import { Fab, openQuickAdd } from '@/components/task-list';
 import { Chip, usePalette } from '@/components/ui';
 import { listEditable, useView, type AppData } from '@/lib/app-data';
@@ -143,9 +149,12 @@ export default function CalendarScreen() {
         options={{
           title: 'Kalendarz',
           headerRight: () => (
-            <Pressable accessibilityRole="button" accessibilityLabel="Kalendarze telefonu" hitSlop={10} onPress={() => void chooseCalendars()}>
-              <Text style={{ color: p.accent, fontSize: 14 }}>📱 {deviceIds.length || ''}</Text>
-            </Pressable>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              <WorkspaceSwitcher />
+              <Pressable accessibilityRole="button" accessibilityLabel="Kalendarze telefonu" hitSlop={10} onPress={() => void chooseCalendars()}>
+                <Text style={{ color: p.accent, fontSize: 14 }}>📱 {deviceIds.length || ''}</Text>
+              </Pressable>
+            </View>
           ),
         }}
       />
@@ -203,6 +212,106 @@ function useSchedule() {
     const ops: TaskOp[] = [{ table: 'tasks', id: task.id, patch }];
     void run(ops, { text: `„${task.title}” ${text}`, undo: [{ table: 'tasks', id: task.id, patch: pick(before, Object.keys(patch)) }] });
   };
+}
+
+/** Ile pozycji arkusza „Zaplanuj…” naraz; reszta po „Pokaż więcej” (bez cichego limitu). */
+const PLAN_PAGE = 50;
+
+/**
+ * Arkusz „Zaplanuj…”: otwarte zadania bez godziny ze źródła (core `calendarPanelTasks` — dziś i zaległe,
+ * oglądany dzień, Inbox, bez terminu, zapisane filtry) i szukanie w tytułach; wybór → godzina.
+ */
+function ScheduleSheet({ data, date, today, workspaceId, onPick, onClose }: { data: AppData; date: LocalDate; today: LocalDate; workspaceId: string | null; onPick: (task: ViewTask) => void; onClose: () => void }) {
+  const p = usePalette();
+  const [source, setSource] = useState<CalendarPanelSource>(date === today ? 'today' : 'day');
+  const [query, setQuery] = useState('');
+  const [shown, setShown] = useState(PLAN_PAGE);
+  const { timeZone, firstDayOfWeek } = data.settings;
+  const sources = useMemo((): { value: CalendarPanelSource; label: string }[] => [
+    { value: 'today', label: CALENDAR_PANEL_SOURCE.today },
+    ...(date !== today ? [{ value: 'day' as const, label: capitalized(relativeDay(date, today)) }] : []),
+    { value: 'inbox', label: CALENDAR_PANEL_SOURCE.inbox },
+    { value: 'none', label: CALENDAR_PANEL_SOURCE.none },
+    ...data.savedFilters.map((f) => ({ value: `filter:${f.id}` as const, label: `${f.icon ? `${f.icon} ` : ''}${f.name}` })),
+  ], [date, today, data.savedFilters]);
+  const candidates = useMemo(() => {
+    const inboxListIds = new Set(data.lists.filter((l) => l.kind === 'inbox').map((l) => l.id));
+    const list = calendarPanelTasks(source, { tasks: data.tasks, inboxListIds, savedFilters: data.savedFilters }, { today, timeZone, workspaceId, firstDayOfWeek }, date);
+    return searchTaskTitles(list, query);
+  }, [source, data.tasks, data.lists, data.savedFilters, today, timeZone, workspaceId, firstDayOfWeek, date, query]);
+  const choose = (next: CalendarPanelSource) => {
+    setSource(next);
+    setShown(PLAN_PAGE);
+  };
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+      <Sheet title={`Zaplanuj zadanie — ${relativeDay(date, today)}`} onClose={onClose}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sources} accessibilityLabel="Źródło zadań">
+          {sources.map((s) => (
+            <Chip key={s.value} label={s.label} selected={source === s.value} onPress={() => choose(s.value)} />
+          ))}
+        </ScrollView>
+        <TextInput
+          value={query}
+          onChangeText={(text) => {
+            setQuery(text);
+            setShown(PLAN_PAGE);
+          }}
+          placeholder="Szukaj w tytułach"
+          placeholderTextColor={p.muted}
+          accessibilityLabel="Szukaj zadania"
+          autoCorrect={false}
+          returnKeyType="search"
+          style={[styles.search, { color: p.fg, borderColor: p.border }]}
+        />
+        <Text style={{ color: p.muted, fontSize: 12, marginBottom: 4 }}>{plural(candidates.length, ['zadanie bez godziny', 'zadania bez godziny', 'zadań bez godziny'])}</Text>
+        {candidates.slice(0, shown).map((t) => (
+          <Pressable
+            key={t.id}
+            accessibilityRole="button"
+            onPress={() => onPick(t)}
+            style={({ pressed }) => [styles.candidate, { borderColor: p.border, borderLeftColor: PRIORITY[t.priority]?.color ?? p.border, backgroundColor: pressed ? p.border : 'transparent' }]}
+          >
+            <Text style={{ color: p.fg, fontSize: 15 }} numberOfLines={2}>
+              {t.title}
+            </Text>
+            <Text style={{ color: p.muted, fontSize: 12 }}>
+              {t.dueDate ? relativeDay(t.dueDate, today) : 'bez terminu'}
+              {t.durationMin ? ` · ${formatMinutes(t.durationMin)}` : ''}
+            </Text>
+          </Pressable>
+        ))}
+        {!candidates.length ? <Text style={{ color: p.muted, fontSize: 13, paddingVertical: 8 }}>{query.trim() ? 'Nic nie pasuje.' : 'Brak zadań bez godziny.'}</Text> : null}
+        {candidates.length > shown ? (
+          <Pressable accessibilityRole="button" hitSlop={6} onPress={() => setShown(shown + PLAN_PAGE)} style={{ paddingVertical: 10 }}>
+            <Text style={{ color: p.accent, fontSize: 14 }}>Pokaż więcej ({candidates.length - shown})</Text>
+          </Pressable>
+        ) : null}
+      </Sheet>
+    </Modal>
+  );
+}
+
+/** Pozycje w konflikcie (nakładające się bloki) — licznik tygodnia, miesiąca i dnia agendy. */
+const conflictCount = (entries: readonly CalendarEntry[]) => entries.reduce((n, e) => n + (e.conflict ? 1 : 0), 0);
+
+/** „⚠ N” w nagłówku dnia agendy. */
+function DayConflicts({ entries }: { entries: readonly CalendarEntry[] }) {
+  const p = usePalette();
+  const count = conflictCount(entries);
+  if (!count) return null;
+  return <Text style={{ color: p.bad, fontSize: 12, fontWeight: '600' }} accessibilityLabel={`Nakładające się bloki: ${count}`}>⚠ {count}</Text>;
+}
+
+function ConflictNote({ count }: { count: number }) {
+  const p = usePalette();
+  if (!count) return null;
+  return (
+    <Text accessibilityRole="text" style={{ color: p.bad, fontSize: 12, fontWeight: '600' }}>
+      ⚠ Nakładające się bloki w widocznym zakresie: {count}
+    </Text>
+  );
 }
 
 function DayView({ slot, data, date, today, workspaceId, bottom }: { slot: CalendarSlot; data: AppData; date: LocalDate; today: LocalDate; workspaceId: string | null; bottom: number }) {
@@ -279,22 +388,13 @@ function DayView({ slot, data, date, today, workspaceId, bottom }: { slot: Calen
     else if (choice === 'unschedule') schedule(task, unscheduleBlockPatch(), '— bez godziny');
   };
 
-  // Do zaplanowania: otwarte bez godziny — z tego dnia, a dziś także zaległe; potem bez terminu.
-  const planNext = async () => {
-    const all = data.tasks.filter((t) => t.kind === 'task' && isOpen(t) && !t.dueTime && (!workspaceId || t.workspaceId === workspaceId));
-    const dated = date === today ? (() => {
-      const view = selectToday(all, { today, timeZone, workspaceId, firstDayOfWeek: data.settings.firstDayOfWeek }, { completed: 'hidden' });
-      return [...view.overdue, ...view.today];
-    })() : all.filter((t) => t.dueDate === date);
-    const undated = all.filter((t) => !t.dueDate).sort((a, b) => a.priority - b.priority || (a.sortKey < b.sortKey ? -1 : 1));
-    const list = [...dated, ...undated].slice(0, 60);
-    if (!list.length) return notify('Brak zadań bez godziny.');
-    const task = await pickOption<ViewTask>(
-      'Zaplanuj zadanie',
-      list.map((t) => ({ label: t.title, value: t, hint: t.dueDate ? relativeDay(t.dueDate, today) : 'bez terminu' })),
-    );
-    if (task) await setTime(task);
+  // „Zaplanuj…”: arkusz zadań bez godziny ze źródłem i szukaniem (jak panel kalendarza na webie).
+  const [planning, setPlanning] = useState(false);
+  const planTask = (task: ViewTask) => {
+    setPlanning(false);
+    void setTime(task);
   };
+  const work = useMemo(() => workWindow(date, workHours, timeZone), [date, workHours, timeZone]);
 
   // „Cały dzień”: wydarzenia, potem zadania bez godziny; zwinięte do 8 pozycji (jak na webie).
   const ALL_DAY_LIMIT = 8;
@@ -380,9 +480,10 @@ function DayView({ slot, data, date, today, workspaceId, bottom }: { slot: Calen
           <Text style={{ color: p.muted, fontSize: 12, flex: 1 }}>
             {plural(day.timed.filter((b) => !b.passive).length, ['blok', 'bloki', 'bloków'])} · przytrzymaj blok, żeby go przesunąć · dotknij pustego miejsca, żeby dodać zadanie
           </Text>
-          <Chip label="+ Zaplanuj…" onPress={() => void planNext()} />
+          <Chip label="+ Zaplanuj…" onPress={() => setPlanning(true)} />
         </View>
       </View>
+      {planning ? <ScheduleSheet data={data} date={date} today={today} workspaceId={workspaceId} onPick={planTask} onClose={() => setPlanning(false)} /> : null}
       <View onLayout={(e) => setAxisTop(e.nativeEvent.layout.y)}>
       <DayTimeline
         key={slot}
@@ -391,6 +492,7 @@ function DayView({ slot, data, date, today, workspaceId, bottom }: { slot: Calen
         hot={plan.hot}
         lanes={lanes}
         free={plan.free}
+        work={work}
         info={plan.info}
         tasks={plan.tasks}
         from={0}
@@ -475,10 +577,12 @@ function RangeAgenda({ data, from, to, today, workspaceId, onDay, bottom }: { da
   const days = useMemo(() => perfMeasure('kalendarz: agenda', () => agendaDays(entries, from, to)), [entries, from, to]);
   return (
     <ScrollView contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: bottom + 88 }}>
+      <ConflictNote count={conflictCount(entries)} />
       {days.map((d) => (
         <View key={d.date} style={[styles.dayCard, { borderColor: d.date === today ? p.accent : p.border, backgroundColor: p.card }]}>
           <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz dzień ${dayLabel(d.date)}`} onPress={() => onDay(d.date)} style={styles.row}>
             <Text style={{ color: d.date === today ? p.accent : p.fg, fontSize: 14, fontWeight: '700', flex: 1 }}>{capitalized(dayLabel(d.date))}</Text>
+            <DayConflicts entries={d.entries} />
             <Text style={{ color: p.muted, fontSize: 18 }}>›</Text>
           </Pressable>
           <EntryList key={`${d.date}:${workspaceId}`} entries={d.entries} tasks={tasks} info={info} limit={10} />
@@ -500,6 +604,7 @@ function MonthView({ data, date, today, workspaceId, onSelect, onDay, bottom }: 
   const selected = days.get(date) ?? [];
   return (
     <ScrollView contentContainerStyle={{ padding: 8, gap: 10, paddingBottom: bottom + 88 }}>
+      <ConflictNote count={conflictCount(entries)} />
       <View>
         <View style={styles.week}>
           {weeks[0]!.map((d) => (
@@ -515,11 +620,12 @@ function MonthView({ data, date, today, workspaceId, onSelect, onDay, bottom }: 
               // Kropki: najpierw aktywne, potem ukończone i „wolny” (przygaszone).
               const dots = [...list.filter((e) => !e.passive), ...list.filter((e) => e.passive)];
               const isSelected = d === date;
+              const hot = conflictCount(list);
               return (
                 <Pressable
                   key={d}
                   accessibilityRole="button"
-                  accessibilityLabel={`${dayLabel(d)}, ${plural(list.length, ['pozycja', 'pozycje', 'pozycji'])}`}
+                  accessibilityLabel={`${dayLabel(d)}, ${plural(list.length, ['pozycja', 'pozycje', 'pozycji'])}${hot ? `, nakładające się bloki: ${hot}` : ''}`}
                   accessibilityState={{ selected: isSelected }}
                   onPress={() => (isSelected ? onDay(d) : onSelect(d))}
                   style={[styles.cell, { borderColor: isSelected ? p.accent : p.border, backgroundColor: isSelected ? p.selected : d.slice(0, 7) === month ? p.card : 'transparent' }]}
@@ -531,6 +637,7 @@ function MonthView({ data, date, today, workspaceId, onSelect, onDay, bottom }: 
                     ))}
                   </View>
                   {dots.length > 4 ? <Text style={{ color: p.muted, fontSize: 9 }}>+{dots.length - 4}</Text> : null}
+                  {hot ? <Text style={{ color: p.bad, fontSize: 9, fontWeight: '700' }}>⚠{hot}</Text> : null}
                 </Pressable>
               );
             })}
@@ -540,6 +647,7 @@ function MonthView({ data, date, today, workspaceId, onSelect, onDay, bottom }: 
       <View style={[styles.dayCard, { borderColor: p.border, backgroundColor: p.card }]}>
         <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz dzień ${dayLabel(date)}`} onPress={() => onDay(date)} style={styles.row}>
           <Text style={{ color: p.fg, fontSize: 14, fontWeight: '700', flex: 1 }}>{capitalized(dayLabel(date))}</Text>
+          <DayConflicts entries={selected} />
           <Text style={{ color: p.accent, fontSize: 13 }}>Oś dnia ›</Text>
         </Pressable>
         <EntryList key={`${date}:${workspaceId}`} entries={selected} tasks={tasks} info={info} limit={30} />
@@ -563,4 +671,7 @@ const styles = StyleSheet.create({
   cell: { flex: 1, minHeight: 54, borderWidth: StyleSheet.hairlineWidth, borderRadius: 6, padding: 3, alignItems: 'center', gap: 3 },
   dots: { flexDirection: 'row', flexWrap: 'wrap', gap: 2, justifyContent: 'center' },
   dot: { width: 6, height: 6, borderRadius: 3 },
+  sources: { gap: 6, paddingBottom: 8 },
+  search: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 15, marginBottom: 6 },
+  candidate: { borderBottomWidth: StyleSheet.hairlineWidth, borderLeftWidth: 3, paddingLeft: 10, paddingVertical: 10, gap: 2 },
 });

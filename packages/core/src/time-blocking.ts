@@ -177,16 +177,28 @@ export interface FreeSlot {
 const toMin = (time: LocalTime) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
 
 /**
+ * Godziny pracy dnia w minutach od północy (jak bloki; przy zmianie czasu liczone zegarem ściennym) —
+ * wolne okna i cieniowanie osi dnia poza pracą. Dzień wolny albo koniec nie później niż początek → `null`.
+ */
+export function workWindow(date: LocalDate, work: WorkHours, timeZone?: string): FreeSlot | null {
+  if (!work.days.includes(isoWeekday(date))) return null;
+  const dayStart = zonedInstant(date, '00:00', timeZone).getTime();
+  const wall = (time: LocalTime) => Math.round((zonedInstant(date, time, timeZone).getTime() - dayStart) / 60_000);
+  if (toMin(work.end) <= toMin(work.start)) return null;
+  const startMin = wall(work.start);
+  const endMin = wall(work.end);
+  return endMin > startMin ? { startMin, endMin } : null;
+}
+
+/**
  * Wolne okna w godzinach pracy dnia (podświetlenie w widoku dnia): przerwy między zajętymi blokami
  * (aktywne zadania i wydarzenia „zajęty”) nie krótsze niż `minMinutes`. Dzień wolny od pracy → brak.
  * Minuty jak w blokach (od północy dnia — przy zmianie czasu godziny pracy liczą się zegarem ściennym).
  */
 export function freeSlots(plan: Pick<DayPlan, 'date' | 'timed'>, work: WorkHours, { minMinutes = 15, timeZone }: { minMinutes?: number; timeZone?: string } = {}): FreeSlot[] {
-  if (!work.days.includes(isoWeekday(plan.date))) return [];
-  const dayStart = zonedInstant(plan.date, '00:00', timeZone).getTime();
-  const wall = (time: LocalTime) => Math.round((zonedInstant(plan.date, time, timeZone).getTime() - dayStart) / 60_000);
-  const from = wall(work.start);
-  const to = toMin(work.end) >= toMin(work.start) ? wall(work.end) : from;
+  const window = workWindow(plan.date, work, timeZone);
+  if (!window) return [];
+  const { startMin: from, endMin: to } = window;
   const busy = plan.timed.filter((b) => !b.passive && !b.virtual && b.endMin > from && b.startMin < to).sort((a, b) => a.startMin - b.startMin);
   const slots: FreeSlot[] = [];
   let cursor = from;

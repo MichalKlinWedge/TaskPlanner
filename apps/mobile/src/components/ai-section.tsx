@@ -14,6 +14,9 @@ import { Button, Chip, Field, P, Row, Section, usePalette } from './ui';
 
 type Message = { tone?: 'ok' | 'bad'; text: string } | null;
 
+/** Chwila ostatniego udanego „Sprawdź” (`verified_at`), jak na webie. */
+const dateTime = (iso: string) => new Date(iso).toLocaleString('pl-PL', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
 export function AiSection() {
   const account = useAiAccount();
   const online = sessionUser().online;
@@ -73,6 +76,7 @@ export function AiSection() {
 }
 
 function AccountSummary({ account, busy, onModel }: { account: AiAccount; busy: boolean; onModel: (model: string) => void }) {
+  const p = usePalette();
   const status = AI_ACCOUNT_STATUS[account.status];
   return (
     <View style={{ gap: 6 }}>
@@ -82,6 +86,7 @@ function AccountSummary({ account, busy, onModel }: { account: AiAccount; busy: 
       </P>
       <P tone={status.tone === 'ok' ? 'ok' : status.tone === 'error' ? 'bad' : undefined} muted={status.tone === 'muted'}>
         {`Stan: ${status.label}`}
+        {account.verifiedAt && account.status === 'active' ? <Text style={{ color: p.muted }}>{` (sprawdzone ${dateTime(account.verifiedAt)})`}</Text> : null}
       </P>
       {account.lastError ? <P tone="bad">{`Ostatni błąd: ${account.lastError}`}</P> : null}
       {account.models.length ? (

@@ -1,19 +1,22 @@
 import { ACCOUNT_DELETE_NOTE, LOGIN_INVITE_NOTE } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Switch, Text, View } from 'react-native';
+import { Alert, Linking, Switch, Text, View } from 'react-native';
 
 import { AiSection } from '@/components/ai-section';
 import { UpdateSection } from '@/components/app-update';
 import { BackgroundStatus } from '@/components/background-status';
+import { BackupSection } from '@/components/backup-section';
+import { CalendarsSection } from '@/components/calendars-section';
 import { ErrorsSection } from '@/components/errors-section';
 import { InvitesSection } from '@/components/invites-section';
+import { PluginsSection } from '@/components/plugins-section';
 import { ProfileSection } from '@/components/profile-section';
 import { SyncIndicator } from '@/components/sync-indicator';
 import { Button, CollapsibleSections, Field, P, Row, Screen, Section, usePalette } from '@/components/ui';
 import { useView } from '@/lib/app-data';
 import { deleteAccount, sendMagicLink, signInWithGoogle, signOut, verifyEmailCode } from '@/lib/auth';
-import { CLOUD_SERVER, saveServerConfig, serverConfig, sessionUser } from '@/lib/config';
+import { CLOUD_SERVER, PRIVACY_URL, saveServerConfig, serverConfig, sessionUser } from '@/lib/config';
 import { useSyncStatus } from '@/lib/local-query';
 import { mutate, onSessionChange, unsentChanges, type PullPerf } from '@/lib/sync';
 
@@ -102,6 +105,7 @@ export default function Settings() {
   const [busy, setBusy] = useState(false);
   const [user, setUser] = useState(sessionUser());
   const [info, setInfo] = useState<string | null>(null);
+  const palette = usePalette();
   const { pullPerf, authLost } = useSyncStatus();
   const relogin = user.online && authLost;
 
@@ -228,6 +232,9 @@ export default function Settings() {
           </>
         )}
         {info ? <P tone={info.startsWith('Błąd') ? 'bad' : 'ok'}>{info}</P> : null}
+        <Text accessibilityRole="link" style={{ color: palette.accent, textDecorationLine: 'underline', fontSize: 13 }} onPress={() => void Linking.openURL(PRIVACY_URL)}>
+          Polityka prywatności
+        </Text>
       </Section>
 
       <UpdateSection />
@@ -237,6 +244,12 @@ export default function Settings() {
       <FocusSection />
 
       <AiSection />
+
+      {user.online && !relogin ? <PluginsSection /> : null}
+
+      {user.online && !relogin ? <CalendarsSection /> : null}
+
+      <BackupSection />
 
       <BackgroundStatus />
 

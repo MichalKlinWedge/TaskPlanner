@@ -1,5 +1,5 @@
 /**
- * Własna oś dnia (D16, Etap 5): godziny, wolne okna w godzinach pracy, linia „teraz”, bloki zadań,
+ * Własna oś dnia (D16, Etap 5): godziny, cień poza godzinami pracy (`work`), wolne okna w godzinach pracy, linia „teraz”, bloki zadań,
  * nawyków i wydarzeń obok siebie przy nakładaniu (`blockLanes`), obramowanie konfliktu. Plan liczy
  * `core` (`blocksForDay`, `conflicts`, `freeSlots`) — tu jest tylko rysowanie i gesty. Z `editable`
  * blok zadania przesuwa się po przytrzymaniu i przeciągnięciu, a uchwyt na dole zmienia długość
@@ -32,6 +32,11 @@ export interface DayTimelineProps {
   hot: ReadonlySet<string>;
   lanes: ReadonlyMap<string, { lane: number; lanes: number }>;
   free: readonly FreeSlot[];
+  /**
+   * Godziny pracy dnia (`workWindow`): poza nimi oś jest przyciemniona (jak `businessHours` na webie);
+   * `null` = dzień wolny (cała oś w cieniu), brak = bez cieniowania.
+   */
+  work?: FreeSlot | null;
   info: ReadonlyMap<string, EventInfo>;
   tasks: ReadonlyMap<string, ViewTask>;
   /** Zakres osi w minutach od północy dnia (pełne godziny). */
@@ -54,6 +59,16 @@ export interface DayTimelineProps {
 
 const clock = (min: number) => minutesToTime(min);
 
+/** Odcinki osi `[from, to)` poza godzinami pracy. */
+function shade(work: FreeSlot | null | undefined, from: number, to: number): FreeSlot[] {
+  if (work === undefined) return [];
+  if (work === null) return [{ startMin: from, endMin: to }];
+  return [
+    { startMin: from, endMin: Math.min(work.startMin, to) },
+    { startMin: Math.max(work.endMin, from), endMin: to },
+  ].filter((s) => s.endMin > s.startMin);
+}
+
 export function DayTimeline(props: DayTimelineProps) {
   const p = usePalette();
   const { plan, from, to, hour, slot = 60 } = props;
@@ -69,6 +84,9 @@ export function DayTimeline(props: DayTimelineProps) {
       <View style={[styles.lane, { height: y(to) }]} pointerEvents="box-none">
         {/* Pod blokami; czytnik ekranu ma „+” na ekranie kalendarza. */}
         {props.onEmpty ? <Pressable accessible={false} style={StyleSheet.absoluteFill} onPress={(e) => props.onEmpty?.(from + (e.nativeEvent.locationY / hour) * 60)} /> : null}
+        {shade(props.work, from, to).map((s) => (
+          <View key={`off:${s.startMin}`} pointerEvents="none" style={[styles.off, { top: y(s.startMin), height: y(s.endMin) - y(s.startMin) }]} />
+        ))}
         {props.free.map((s) => (
           <View key={s.startMin} pointerEvents="none" style={[styles.free, { top: y(s.startMin), height: y(s.endMin) - y(s.startMin) }]} />
         ))}
@@ -271,6 +289,7 @@ const styles = StyleSheet.create({
   hourText: { width: GUTTER - 6, textAlign: 'right', fontSize: 10, marginTop: -7 },
   lane: { position: 'absolute', top: 0, left: GUTTER, right: 4 },
   free: { position: 'absolute', left: 0, right: 0, backgroundColor: 'rgba(34,197,94,0.10)' },
+  off: { position: 'absolute', left: 0, right: 0, backgroundColor: 'rgba(113,113,122,0.12)' },
   now: { position: 'absolute', left: -4, right: 0, height: 2, zIndex: 20 },
   block: { position: 'absolute', borderRadius: 6, borderLeftWidth: 4, overflow: 'hidden' },
   handle: { position: 'absolute', left: '30%', right: '30%', bottom: 0, height: 12, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 2 },

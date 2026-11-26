@@ -45,7 +45,9 @@ import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanima
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTaskActions } from '@/components/actions';
+import { ExportChip } from '@/components/export-button';
 import { FilterBar } from '@/components/filter-bar';
+import { WorkspaceSwitcher } from '@/components/header';
 import { pickOption, type Option } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
 import { RowsInteractive, TaskRow } from '@/components/task-row';
@@ -368,11 +370,12 @@ export default function BoardScreen() {
     else chipViews.delete(key);
   };
 
-  const title = list ? `Tablica · ${list.name}` : view ? `Tablica · ${SMART_VIEW[view]}` : `Tablica · ${data.workspaces.find((w) => w.id === ctx.workspaceId)?.name ?? 'wszystko'}`;
+  // Przestrzeń wybiera przełącznik w nagłówku (tablica listy jej nie używa); nazwa jest w nim, nie w tytule.
+  const title = list ? `Tablica · ${list.name}` : view ? `Tablica · ${SMART_VIEW[view]}` : 'Tablica';
 
   return (
     <View ref={rootRef} collapsable={false} style={{ flex: 1, backgroundColor: p.bg }}>
-      <Stack.Screen options={{ title }} />
+      <Stack.Screen options={{ title, headerRight: list ? undefined : () => <WorkspaceSwitcher /> }} />
       <View style={styles.top}>
         <Pressable
           accessibilityRole="button"
@@ -383,6 +386,7 @@ export default function BoardScreen() {
           <Text style={{ color: p.fg, fontSize: 13 }}>Kolumny: {BOARD_BY[by]}</Text>
         </Pressable>
         {by === 'status' && doneNote ? <Text style={{ color: p.muted, fontSize: 12 }}>{doneNote}</Text> : null}
+        <ExportChip title={title} rows={() => columns.flatMap((c) => c.tasks.map((task) => ({ task, section: c.label })))} />
       </View>
       <FilterBar query={filter} onChange={setFilter} hide={list || view === 'inbox' ? ['lists'] : []} save />
       <View style={styles.tabRow}>
@@ -569,7 +573,7 @@ function BoardCard({ task, api, enabled, children }: { task: ViewTask; api: { cu
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingTop: 10 },
+  top: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingTop: 10 },
   by: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
   tabs: { gap: 6, paddingHorizontal: 12, paddingVertical: 10 },
   tabBar: { flexGrow: 1, flexShrink: 1 },

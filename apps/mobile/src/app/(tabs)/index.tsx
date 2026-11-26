@@ -4,12 +4,14 @@
  * Nawyki jako blok (Etap 8): `habitsForDay` z odhaczeniem, celem ilościowym, dniem wolnym i passą;
  * o porze przeglądu (`reviewsDue`) — odnośnik do przeglądu dnia / tygodnia (Etap 9). Chipy filtra
  * (jak na webie) zawężają zadania, nie nawyki; filtr trwa do zamknięcia aplikacji, nie jest zapisywany.
+ * „Eksport XLSX” — zadania z sekcjami (bez nawyków), jak na webie.
  */
 import { applyFilter, capitalized, dayLabel, habitsForDay, isEmptyFilter, plural, selectToday, VIEW_SECTION, type FilterQuery } from '@taskplanner/core';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { DayPlanCard } from '@/components/day-plan';
+import { ExportChip } from '@/components/export-button';
 import { FilterBar } from '@/components/filter-bar';
 import { HabitTodayItem } from '@/components/habits';
 import { ReviewNudge } from '@/components/review';
@@ -26,7 +28,8 @@ export default function TodayScreen() {
   const [filter, setFilter] = useState<FilterQuery>({});
   const view = useMemo(() => selectToday(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx), [data.tasks, filter, today, ctx]);
   const habits = useMemo(() => habitsForDay(data.tasks, data.habitCompletions, today, today, workspaceId), [data.tasks, data.habitCompletions, today, workspaceId]);
-  const { row, options, columnsHeader } = useSmartView('today', data, today, workspaceId);
+  const exportRows = () => (['overdue', 'today', 'ongoing', 'done'] as const).flatMap((key) => view[key].map((task) => ({ task, section: VIEW_SECTION[key] })));
+  const { row, options, columnsHeader } = useSmartView('today', data, today, workspaceId, <ExportChip title="Dziś" rows={exportRows} />);
   const open = view.overdue.length + view.today.length;
   const habitsLeft = habits.filter((h) => !h.settled).length;
   usePerfReady('tab:index', data.loaded);

@@ -10,10 +10,12 @@ import {
   aiBreakdownNote,
   AI_HINT_MAX,
   breakdownDrafts,
+  breakdownDueBounds,
   breakdownMinutes,
   breakdownOps,
   breakdownRequest,
   canBreakDown,
+  clampBreakdownDue,
   formatMinutes,
   plural,
   PRIORITY,
@@ -104,9 +106,14 @@ function BreakdownForm({ task, data, today, account, online, onClose }: Props & 
     ]);
     if (picked !== undefined) patch(d.key, { durationMin: picked || null });
   };
+  // Jak pole daty na webie (`min` / `max`): od dziś do terminu zadania; data spoza zakresu wraca na jego brzeg.
+  const bounds = breakdownDueBounds(task, today);
   const pickDue = async (d: BreakdownDraft) => {
-    const date = await pickDate({ title: 'Termin kroku', value: d.dueDate, today, allowNone: true });
-    if (date !== undefined) patch(d.key, { dueDate: date });
+    const date = await pickDate({ title: bounds.max ? `Termin kroku (do ${shortDate(bounds.max)})` : 'Termin kroku', value: d.dueDate, today, allowNone: true });
+    if (date === undefined) return;
+    const clamped = clampBreakdownDue(date, task, today);
+    if (clamped !== date) notify(clamped === bounds.min ? 'Termin kroku najwcześniej dziś.' : `Termin kroku najpóźniej ${shortDate(clamped!)} — termin zadania.`);
+    patch(d.key, { dueDate: clamped });
   };
   const pickStepPriority = async (d: BreakdownDraft) => {
     const priority = await pickPriority('Priorytet kroku', d.priority);

@@ -57,6 +57,7 @@ import {
   reminderOffset,
   relativeDay,
   removeDependencyOps,
+  reorderTaskTagOps,
   reparentTaskOps,
   readableColor,
   responsibleAccount,
@@ -87,6 +88,7 @@ import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInpu
 import { confirm, useTaskActions } from '@/components/actions';
 import { BreakdownField } from '@/components/ai-breakdown';
 import { AttachmentsField } from '@/components/attachments-field';
+import { ColorPicker } from '@/components/color-picker';
 import { DescriptionField } from '@/components/description-field';
 import { LockedSections, PanelSection, useSectionsLocked } from '@/components/panel-section';
 import { PurgeButton } from '@/components/purge-button';
@@ -532,12 +534,41 @@ function TimeField({ task }: { task: ViewTask }) {
   );
 }
 
+/**
+ * Tagi zadania. Dotknięcie chipa = menu jak na webie: kolor tagu (nie dla kopii z cudzej przestrzeni — zmienia go
+ * autor), przesunięcie w lewo / prawo (`reorderTaskTagOps`; pierwszy kolorowy tag nadaje kolor karteczce), usunięcie.
+ */
 function TagsField({ task, data }: { task: ViewTask; data: AppData }) {
   const p = usePalette();
   const { run } = useTaskActions();
   const [name, setName] = useState('');
+  // Tag, któremu wybieramy kolor (menu chipa → „Kolor…”).
+  const [coloring, setColoring] = useState<string | null>(null);
   const byId = new Map(data.tags.map((t) => [t.id, t]));
+  const colored = coloring && task.tagIds.includes(coloring) ? byId.get(coloring) : undefined;
   const query = name.trim().replace(/^[@#]/, '').toLowerCase();
+  const tagMenu = (tagId: string, index: number) => {
+    const tag = byId.get(tagId);
+    const count = task.tagIds.length;
+    then(
+      pickOption<'color' | 'left' | 'right' | 'remove'>(`@${tag?.name ?? '…'}`, [
+        ...(tag && !tag.shared ? [{ label: 'Kolor…', value: 'color' as const }] : []),
+        ...(index > 0 ? [{ label: '← Przesuń w lewo', value: 'left' as const }] : []),
+        ...(index < count - 1 ? [{ label: 'Przesuń w prawo →', value: 'right' as const }] : []),
+        { label: 'Usuń z zadania', value: 'remove' as const, tone: 'bad' as const },
+      ]),
+      (choice) => {
+        if (choice === 'color') setColoring(tagId);
+        else if (choice === 'left' || choice === 'right') void run(reorderTaskTagOps(task.id, task.tagIds, index, index + (choice === 'left' ? -1 : 1)));
+        else if (choice === 'remove') void run([{ table: 'task_tags', id: taskTagId(task.id, tagId), patch: { deleted_at: new Date().toISOString() } }]);
+      },
+    );
+  };
+  const setColor = (color: string | null) => {
+    if (!colored) return;
+    void run([{ table: 'tags', id: colored.id, patch: { color } }]);
+    setColoring(null);
+  };
   // Podpowiedzi: tagi przestrzeni zadania (wpisana nazwa ukrytego tagu i tak trafia w ten sam tag).
   const suggestions = tagsForWorkspace(data.tags, task.workspaceId).filter((t) => !task.tagIds.includes(t.id) && (!query || t.name.toLowerCase().includes(query))).slice(0, 8);
   const add = (value: string) => {
@@ -549,12 +580,12 @@ function TagsField({ task, data }: { task: ViewTask; data: AppData }) {
   return (
     <Block title="Tagi">
       <View style={styles.pills}>
-        {task.tagIds.map((tagId) => (
+        {task.tagIds.map((tagId, index) => (
           <Pill
             key={tagId}
-            label={`@${byId.get(tagId)?.name ?? '…'}  ×`}
+            label={`@${byId.get(tagId)?.name ?? '…'}  ⋯`}
             color={readableColor(byId.get(tagId)?.color ?? '#d97706', p.card, p.fg)}
-            onPress={() => void run([{ table: 'task_tags', id: taskTagId(task.id, tagId), patch: { deleted_at: new Date().toISOString() } }])}
+            onPress={() => tagMenu(tagId, index)}
           />
         ))}
         <TextInput
@@ -568,6 +599,17 @@ function TagsField({ task, data }: { task: ViewTask; data: AppData }) {
           style={[styles.tagInput, { color: p.fg, borderColor: p.border }]}
         />
       </View>
+      {colored ? (
+        <View style={styles.tagColor}>
+          <View style={styles.tagColorHead}>
+            <Text style={{ color: p.muted, fontSize: 13 }}>Kolor @{colored.name}:</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Zamknij wybór koloru" hitSlop={8} onPress={() => setColoring(null)}>
+              <Text style={{ color: p.muted, fontSize: 15 }}>✕</Text>
+            </Pressable>
+          </View>
+          <ColorPicker value={colored.color} onChange={setColor} onClear={() => setColor(null)} />
+        </View>
+      ) : null}
       {name || suggestions.length ? (
         <View style={styles.pills}>
           {suggestions.map((t) => (
@@ -1145,6 +1187,8 @@ const styles = StyleSheet.create({
   pill: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 11, paddingVertical: 5 },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 15 },
   tagInput: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 3, fontSize: 13, minWidth: 90 },
+  tagColor: { marginTop: 10, gap: 8 },
+  tagColorHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   comment: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8, gap: 6 },
   commentInput: { minHeight: 64 },
   reminder: { flexDirection: 'row', alignItems: 'center', gap: 8 },

@@ -3,8 +3,8 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { COMMANDS, commandSearchItems } from '../commands.ts';
-import { buildSearchIndex, normalizeText, search, taskSearchItem, type SearchItem } from '../search.ts';
+import { COMMANDS, commandSearchItems, PHONE_COMMANDS, phoneCommandSearchItems } from '../commands.ts';
+import { buildSearchIndex, highlightParts, normalizeText, search, taskSearchItem, type SearchItem } from '../search.ts';
 import type { ViewTask } from '../views.ts';
 
 const items: SearchItem[] = [
@@ -65,6 +65,42 @@ describe('paleta', () => {
     expect(commandSearchItems(0).map((i) => i.id)).not.toContain('task.complete');
     expect(commandSearchItems(2).map((i) => i.id)).toContain('task.complete');
     expect(new Set(COMMANDS.map((c) => c.id)).size).toBe(COMMANDS.length);
+  });
+});
+
+describe('polecenia na telefonie', () => {
+  it('tylko znane polecenia bez zaznaczenia; skupienie tylko włączone', () => {
+    const known = new Set(COMMANDS.filter((c) => !c.needsSelection).map((c) => c.id));
+    for (const id of PHONE_COMMANDS) expect(known.has(id)).toBe(true);
+    const on = phoneCommandSearchItems({ focus: true }).map((i) => i.id);
+    expect(on).toContain('view.today');
+    expect(on).toContain('workspace.switch');
+    expect(on).toContain('focus.start');
+    expect(on).not.toContain('app.theme');
+    expect(on).not.toContain('app.palette');
+    expect(on).not.toContain('task.complete');
+    expect(phoneCommandSearchItems({ focus: false }).map((i) => i.id)).not.toContain('focus.start');
+  });
+});
+
+describe('podświetlenie', () => {
+  it('kawałki tytułu z zakresów wyszukiwarki', () => {
+    const [hit] = search(index, 'zolw');
+    expect(highlightParts(hit!.item.title, hit!.highlights)).toEqual([
+      { text: 'Kupić karmę dla ', hit: false },
+      { text: 'żółw', hit: true },
+      { text: 'ia', hit: false },
+    ]);
+  });
+
+  it('bez zakresów — cały tytuł; zakresy poza tytułem przycięte', () => {
+    expect(highlightParts('Raport', [])).toEqual([{ text: 'Raport', hit: false }]);
+    expect(highlightParts('', [])).toEqual([{ text: '', hit: false }]);
+    expect(highlightParts('Ab cd', [[0, 2], [3, 99]])).toEqual([
+      { text: 'Ab', hit: true },
+      { text: ' ', hit: false },
+      { text: 'cd', hit: true },
+    ]);
   });
 });
 

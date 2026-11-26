@@ -51,7 +51,7 @@ function appFileStore(userId: string): FileStore {
         // Plik zwykle już tu jest (`addFile` kopiuje go przed `enqueue`).
         if (!(data instanceof File && data.uri === target.uri)) {
           ensure(dir);
-          target.write(data instanceof Uint8Array ? data : new Uint8Array(await data.arrayBuffer()));
+          await target.write(data instanceof Uint8Array ? data : new Uint8Array(await data.arrayBuffer()));
         }
       }
       writeJson(metaKey(userId), known ? current.map((f) => (f.id === file.id ? file : f)) : [...current, file]);
@@ -102,7 +102,7 @@ function fileQueue(): FileQueue {
       if (source instanceof File) {
         const target = cachedFile(f.storagePath);
         ensure(cacheDir());
-        if (!target.exists) source.copy(target);
+        if (!target.exists) await source.copy(target);
       }
       await mutate('attachments', f.id, fileAttachmentPatch({ taskId: f.taskId, storagePath: f.storagePath, name: f.name, mime: f.mime, size: f.size }));
     },
@@ -133,7 +133,7 @@ export async function addFile(taskId: string, source: { uri: string } & Partial<
   const original = new File(source.uri);
   const name = source.name?.trim() || original.name || `plik-${id}`;
   const target = new File(ensure(pendingDir(userId)), id);
-  original.copy(target);
+  await original.copy(target);
   const size = target.size || source.size || 0;
   await fileQueue().enqueue({ id, taskId, storagePath: attachmentPath(userId, taskId, id, name), name, mime: source.mime || original.type || 'application/octet-stream', size }, target);
   // Synchronizacja najpierw (zadanie mogło powstać przed chwilą), wysyłka pliku po niej (`onSynced`).

@@ -154,6 +154,21 @@ export function search(index: SearchIndex, query: string, { limit = 20, recent, 
     .map(({ entry, score }) => ({ item: entry.item, score, highlights: highlights(entry.item.title, entry.title, terms) }));
 }
 
+/** Tytuł pocięty na kawałki z zaznaczonymi trafieniami (`highlights` z `search`) — do rysowania w aplikacji. */
+export function highlightParts(title: string, ranges: readonly (readonly [number, number])[]): { text: string; hit: boolean }[] {
+  const parts: { text: string; hit: boolean }[] = [];
+  let at = 0;
+  for (const [from, to] of ranges) {
+    const start = Math.max(at, Math.min(from, title.length));
+    const end = Math.min(Math.max(to, start), title.length);
+    if (start > at) parts.push({ text: title.slice(at, start), hit: false });
+    if (end > start) parts.push({ text: title.slice(start, end), hit: true });
+    at = end;
+  }
+  if (at < title.length || !parts.length) parts.push({ text: title.slice(at), hit: false });
+  return parts;
+}
+
 /** Zadanie jako pozycja wyszukiwarki (nazwy tagów i listy z lokalnej bazy). */
 export const taskSearchItem = (task: ViewTask, extra: { description?: string | null; listName?: string; tagNames?: readonly string[] } = {}): SearchItem => ({
   id: task.id,

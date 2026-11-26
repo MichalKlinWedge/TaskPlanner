@@ -8,10 +8,27 @@
  * wartości współdzielone i trzy widoki animowane na wiersz) dochodzi dopiero po pierwszym
  * narysowaniu listy (`RowsInteractive` z `TaskSections`), a metadane to jeden `Text` z jednym zagnieżdżonym.
  */
-import { assigneeOf, collaboratorBadge, columnDate, describeRecurrence, formatMinutes, isOpen, LIST_COLUMN, needsDecision, PRIORITY, READONLY_LIST_NOTE, readableColor, relativeDay, type ListColumn, type LocalDate, type ViewTask } from '@taskplanner/core';
+import {
+  assigneeOf,
+  collaboratorBadge,
+  columnDate,
+  describeRecurrence,
+  formatMinutes,
+  highlightParts,
+  isOpen,
+  LIST_COLUMN,
+  needsDecision,
+  PRIORITY,
+  READONLY_LIST_NOTE,
+  readableColor,
+  relativeDay,
+  type ListColumn,
+  type LocalDate,
+  type ViewTask,
+} from '@taskplanner/core';
 import { router } from 'expo-router';
-import { createContext, memo, useContext, useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { createContext, Fragment, memo, useContext, useRef } from 'react';
+import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import Swipeable, { SwipeDirection, type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import { listEditable, useAppData } from '@/lib/app-data';
@@ -45,6 +62,30 @@ export interface TaskRowProps {
   tagItems?: readonly { id: string; name: string; color: string | null }[];
   /** Dodatkowe kolumny listy (`view_prefs.columns`, kolejność `orderedColumns`) — po prawej stronie wiersza. */
   columns?: readonly ListColumn[];
+  /** Trafienia wyszukiwarki w tytule (`highlights` z `core/search.ts`) — wyróżnione. */
+  highlights?: readonly (readonly [number, number])[];
+  /** Przed otwarciem szczegółów (np. zapamiętanie w „ostatnio otwieranych” wyszukiwarki). */
+  onOpen?: () => void;
+}
+
+/**
+ * Tekst z wyróżnionymi trafieniami wyszukiwarki (tło jak `<mark>` na webie) — do wstawienia wewnątrz `<Text>`.
+ */
+export function Highlighted({ text, ranges }: { text: string; ranges: readonly (readonly [number, number])[] }) {
+  const background = useColorScheme() === 'dark' ? 'rgba(180, 83, 9, 0.6)' : 'rgba(252, 211, 77, 0.7)';
+  return (
+    <>
+      {highlightParts(text, ranges).map((part, i) =>
+        part.hit ? (
+          <Text key={i} style={{ backgroundColor: background }}>
+            {part.text}
+          </Text>
+        ) : (
+          <Fragment key={i}>{part.text}</Fragment>
+        ),
+      )}
+    </>
+  );
 }
 
 /** Szerokości kolumn — wspólne dla wiersza i nagłówka `TaskColumnsHeader`. */
@@ -75,7 +116,7 @@ export const RowsInteractive = createContext(true);
 /** Przytrzymanie zaznacza tylko tam, gdzie jest pasek akcji (`TaskSections`); gdzie indziej dotknięcie zawsze otwiera zadanie. */
 export const RowsSelectable = createContext(false);
 
-export const TaskRow = memo(function TaskRow({ task, today, showDate = true, listName, lateMin = 0, onToday, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, tagNames, tagItems, columns }: TaskRowProps) {
+export const TaskRow = memo(function TaskRow({ task, today, showDate = true, listName, lateMin = 0, onToday, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, tagNames, tagItems, columns, highlights, onOpen }: TaskRowProps) {
   const tagBubbles = columns?.includes('tags') ? (tagItems ?? (tagNames ?? []).map((name) => ({ id: name, name, color: null }))) : [];
   const p = usePalette();
   const actions = useTaskActions();
@@ -130,7 +171,11 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
       accessibilityHint={
         selecting ? 'Dotknij, żeby zaznaczyć albo odznaczyć' : readOnly ? 'Otwiera szczegóły; tylko podgląd' : `Otwiera szczegóły; przesuń w prawo — ukończ, w lewo — termin${selectable ? '; przytrzymaj — zaznacz' : ''}`
       }
-      onPress={() => (selecting ? (readOnly ? notify(READONLY_LIST_NOTE) : toggleSelected(task.id)) : router.push({ pathname: '/task/[id]', params: { id: task.id } }))}
+      onPress={() => {
+        if (selecting) return readOnly ? notify(READONLY_LIST_NOTE) : toggleSelected(task.id);
+        onOpen?.();
+        router.push({ pathname: '/task/[id]', params: { id: task.id } });
+      }}
       onLongPress={selectable && !virtualDate ? () => (readOnly ? notify(READONLY_LIST_NOTE) : toggleSelected(task.id)) : undefined}
       delayLongPress={350}
       style={({ pressed }) => [
@@ -165,7 +210,7 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
       )}
       <View style={styles.text}>
         <Text style={[styles.title, { color: closed ? p.muted : p.fg, textDecorationLine: closed ? 'line-through' : 'none' }]} numberOfLines={3}>
-          {task.title}
+          {highlights?.length ? <Highlighted text={task.title} ranges={highlights} /> : task.title}
         </Text>
         {meta.length ? (
           <Text style={[styles.meta, { color: p.muted }]} numberOfLines={1}>

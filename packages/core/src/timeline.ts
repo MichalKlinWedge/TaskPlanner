@@ -495,6 +495,28 @@ export function shiftProjectOps(
   return result;
 }
 
+/**
+ * Nowa data początku albo końca projektu (`null` = bez daty), bez przesuwania zadań — np. z „Edytuj”
+ * listy na telefonie. Koniec przed początkiem łamie regułę modelu, więc druga data idzie za zmienioną
+ * (początek po końcu = koniec tego dnia, koniec przed początkiem = początek tego dnia). Bez zmiany — puste.
+ */
+export function projectDatesOps(
+  project: Pick<TimelineProject, 'id' | 'startDate' | 'endDate'>,
+  change: { startDate: LocalDate | null } | { endDate: LocalDate | null },
+): { ops: TaskOp[]; undo: TaskOp[] } {
+  const next = { startDate: project.startDate, endDate: project.endDate, ...change };
+  if (next.startDate && next.endDate && next.startDate > next.endDate) {
+    if ('startDate' in change) next.endDate = next.startDate;
+    else next.startDate = next.endDate;
+  }
+  const patch: Record<string, unknown> = {};
+  const undo: Record<string, unknown> = {};
+  if (next.startDate !== project.startDate) [patch.start_date, undo.start_date] = [next.startDate, project.startDate];
+  if (next.endDate !== project.endDate) [patch.end_date, undo.end_date] = [next.endDate, project.endDate];
+  if (!Object.keys(patch).length) return { ops: [], undo: [] };
+  return { ops: [{ table: 'lists', id: project.id, patch }], undo: [{ table: 'lists', id: project.id, patch: undo }] };
+}
+
 export type DependencyError =
   | { reason: 'cycle'; cycle: string[] }
   | { reason: 'duplicate' }

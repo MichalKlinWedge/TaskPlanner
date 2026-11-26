@@ -34,6 +34,7 @@ export default function TagScreen() {
         query={query}
         save
         quickAdd={tag ? { tag: tag.name } : null}
+        exportTitle={tag ? `@${tag.name}` : undefined}
         onChange={setQuery}
         header={
           tag?.shared ? (

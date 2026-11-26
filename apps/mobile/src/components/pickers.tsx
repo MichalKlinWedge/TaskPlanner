@@ -1,12 +1,27 @@
 /**
  * Arkusze wyboru wywoływane z dowolnego miejsca (gest na wierszu, pasek zaznaczenia, szczegóły
- * zadania): `pickOption` — lista opcji, `pickMany` — kilka opcji z „Zastosuj”, `pickDate` — gotowe dni + kalendarz miesiąca, `pickTime` —
+ * zadania): `pickOption` — lista opcji (z `search` — pole szukania nad długą listą), `pickMany` — kilka opcji z „Zastosuj”, `pickDate` — gotowe dni + kalendarz miesiąca, `pickTime` —
  * gotowe godziny + wpisanie, `pickColor` — szersza paleta + wpisanie #RRGGBB, `pickNumber` — liczba z zakresu, `pickAmount` — gotowe liczby i „Inna…”. Jeden `<PickerHost />` w układzie głównym; Promise kończy się wyborem
  * albo `undefined` po zamknięciu. Własne arkusze zamiast natywnego wyboru daty — bez dodatkowego
  * modułu natywnego, a gotowe dni („Jutro”, „Za tydzień”) są o jedno dotknięcie.
  */
-import { addDays, addMonths, capitalized, COLOR_GRID, dayChip, isoWeekday, monthLabel, parseHexColor, WEEKDAY, type IsoWeekday, type LocalDate, type LocalTime } from '@taskplanner/core';
-import { useState, useSyncExternalStore, type ReactNode } from 'react';
+import {
+  addDays,
+  addMonths,
+  buildSearchIndex,
+  capitalized,
+  COLOR_GRID,
+  dayChip,
+  isoWeekday,
+  monthLabel,
+  parseHexColor,
+  search,
+  WEEKDAY,
+  type IsoWeekday,
+  type LocalDate,
+  type LocalTime,
+} from '@taskplanner/core';
+import { useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -23,7 +38,7 @@ export interface Option<T> {
 }
 
 type Request =
-  | { kind: 'option'; title: string; options: Option<unknown>[]; resolve: (value: unknown) => void }
+  | { kind: 'option'; title: string; options: Option<unknown>[]; search?: boolean; resolve: (value: unknown) => void }
   | { kind: 'many'; title: string; options: Option<unknown>[]; resolve: (value: unknown[] | undefined) => void }
   | { kind: 'date'; title: string; value: LocalDate | null; today: LocalDate; allowNone: boolean; resolve: (value: LocalDate | null | undefined) => void }
   | { kind: 'time'; title: string; value: LocalTime | null; allowNone: boolean; resolve: (value: LocalTime | null | undefined) => void }
@@ -45,8 +60,12 @@ function open<T>(request: Pending): Promise<T> {
   return new Promise<T>((resolve) => set({ ...request, resolve } as unknown as Request));
 }
 
-export const pickOption = <T,>(title: string, options: Option<T>[]): Promise<T | undefined> =>
-  open<T | undefined>({ kind: 'option', title, options: options as Option<unknown>[] });
+/** `search` — pole szukania nad listą (od `SEARCH_FROM` opcji): bez polskich znaków, po nazwie i podpowiedzi (`core/search.ts`). */
+export const pickOption = <T,>(title: string, options: Option<T>[], opts: { search?: boolean } = {}): Promise<T | undefined> =>
+  open<T | undefined>({ kind: 'option', title, options: options as Option<unknown>[], search: opts.search });
+
+/** Krótszej listy nie trzeba przeszukiwać. */
+const SEARCH_FROM = 8;
 
 /** Wybór kilku opcji (`selected` = zaznaczone na starcie); „Zastosuj” (nie „Gotowe” — to też status zadania) zwraca zaznaczone, zamknięcie — `undefined`. */
 export const pickMany = <T,>(title: string, options: Option<T>[]): Promise<T[] | undefined> =>
@@ -99,7 +118,7 @@ export function PickerHost() {
         <ManyList key={request.title} title={request.title} options={request.options} />
       ) : request ? (
         <Sheet title={request.title} onClose={() => close()}>
-          {request.kind === 'option' ? <OptionList options={request.options} /> : null}
+          {request.kind === 'option' ? <OptionList key={request.title} options={request.options} search={request.search && request.options.length >= SEARCH_FROM} /> : null}
           {request.kind === 'date' ? <DatePicker key={`${request.title}:${request.value}`} request={request} /> : null}
           {request.kind === 'time' ? <TimePicker key={`${request.title}:${request.value}`} request={request} /> : null}
           {request.kind === 'color' ? <ColorSheet key={`${request.title}:${request.value}`} request={request} /> : null}
@@ -135,11 +154,31 @@ export function Sheet({ title, onClose, children, footer }: { title: string; onC
   );
 }
 
-function OptionList({ options }: { options: Option<unknown>[] }) {
+function OptionList({ options, search: searchable }: { options: Option<unknown>[]; search?: boolean }) {
   const p = usePalette();
+  const [query, setQuery] = useState('');
+  const index = useMemo(() => (searchable ? buildSearchIndex(options.map((o, i) => ({ id: String(i), kind: 'list' as const, title: o.label, listName: o.hint }))) : null), [options, searchable]);
+  const shown = useMemo(
+    () => (index && query.trim() ? search(index, query, { limit: options.length }).map((r) => options[Number(r.item.id)]!) : options),
+    [index, query, options],
+  );
   return (
     <View>
-      {options.map((o, i) => (
+      {searchable ? (
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Szukaj…"
+          placeholderTextColor={p.muted}
+          accessibilityLabel="Szukaj na liście"
+          autoCorrect={false}
+          returnKeyType="search"
+          onSubmitEditing={() => shown.length === 1 && close(shown[0]!.value)}
+          style={[styles.search, { color: p.fg, borderColor: p.border }]}
+        />
+      ) : null}
+      {searchable && !shown.length ? <Text style={{ color: p.muted, fontSize: 14, paddingVertical: 12 }}>Nic nie znaleziono.</Text> : null}
+      {shown.map((o, i) => (
         <Pressable
           key={`${i}:${o.label}`}
           accessibilityRole="button"
@@ -396,5 +435,6 @@ const styles = StyleSheet.create({
   day: { height: 42, borderRadius: 21 },
   colorCell: { flex: 1, height: 34, borderRadius: 6, borderWidth: 2 },
   colorPreview: { width: 36, height: 36, borderRadius: 18, borderWidth: 1 },
+  search: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 16, marginBottom: 4 },
   timeInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 18, minWidth: 100 },
 });

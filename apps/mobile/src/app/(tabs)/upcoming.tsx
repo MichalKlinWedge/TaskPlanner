@@ -1,12 +1,13 @@
 /**
  * „Nadchodzące” (M9): 14 dni (także puste, z „+ Dodaj” na dzień), potem tygodniami; wirtualne
  * wystąpienia serii tylko do odczytu — wszystko z `selectUpcoming` (core). Chipy filtra (jak na
- * webie) zawężają zadania; filtr trwa do zamknięcia aplikacji, nie jest zapisywany.
+ * webie) zawężają zadania; filtr trwa do zamknięcia aplikacji, nie jest zapisywany. „Eksport XLSX” jak na webie.
  */
-import { addDays, applyFilter, capitalized, dayLabel, isEmptyFilter, relativeDay, selectUpcoming, VIEW_SECTION, type FilterQuery } from '@taskplanner/core';
+import { addDays, applyFilter, capitalized, dayLabel, dayMonth, isEmptyFilter, relativeDay, selectUpcoming, VIEW_SECTION, type FilterQuery } from '@taskplanner/core';
 import { useMemo, useState } from 'react';
 import { Pressable, Text } from 'react-native';
 
+import { ExportChip } from '@/components/export-button';
 import { FilterBar } from '@/components/filter-bar';
 import { ScreenHeader } from '@/components/sync-banner';
 import { openQuickAdd, TaskSections, type TaskSection } from '@/components/task-list';
@@ -29,7 +30,12 @@ export default function UpcomingScreen() {
   usePerfReady('tab:upcoming', data.loaded);
   const [filter, setFilter] = useState<FilterQuery>({});
   const view = useMemo(() => selectUpcoming(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx), [data.tasks, filter, today, ctx]);
-  const { row, options, columnsHeader } = useSmartView('upcoming', data, today, workspaceId);
+  // Eksport jak na webie: dzień jako sekcja, wystąpienie serii z własnym terminem.
+  const exportRows = () => [
+    ...view.days.flatMap(({ date, items }) => items.map((item) => ({ task: item.task, section: capitalized(dayLabel(date)), date: item.virtual ? item.date : undefined }))),
+    ...view.later.flatMap(({ weekStart, items }) => items.map((item) => ({ task: item.task, section: `Tydzień od ${dayMonth(weekStart)}` }))),
+  ];
+  const { row, options, columnsHeader } = useSmartView('upcoming', data, today, workspaceId, <ExportChip title="Nadchodzące" rows={exportRows} />);
   const inbox = targetInbox(data, workspaceId)?.id;
   const sections: TaskSection[] = [
     ...view.days.map(({ date, items }) => ({

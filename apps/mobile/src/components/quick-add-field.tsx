@@ -5,6 +5,8 @@
  * w tytule albo udostępniony link → załącznik-link (`withLinkOps`), tytuł strony uzupełni `link-preview`.
  */
 import {
+  findUrl,
+  linkName,
   localDateTimeAt,
   parseQuickAdd,
   plural,
@@ -141,6 +143,8 @@ export function QuickAddField({ listId, dueDate, slot, parent, placeholder = 'Do
   let target: string | null = null;
   if (text.trim() && defaultListId && result.title.trim()) target = quickAddTaskOps(result, text, { ...scope(defaultListId), newId: () => 'podglad' }).listId;
   const canAdd = !!defaultListId && !!text.trim();
+  // Adres w tytule albo udostępniony link → załącznik-link pierwszego zadania (jak chip na webie).
+  const linkUrl = link ?? findUrl(result.title);
 
   return (
     <View style={styles.wrap}>
@@ -173,6 +177,14 @@ export function QuickAddField({ listId, dueDate, slot, parent, placeholder = 'Do
             {target ? ` → ${listLabel(data, target)}` : ''}
           </Text>
           <View style={styles.chips}>
+            {linkUrl ? (
+              <View accessibilityLabel={`Link ${linkName(linkUrl)} trafi do załączników zadania`} style={[styles.chip, styles.linkChip, { backgroundColor: p.border }]}>
+                <Text style={{ color: p.fg, fontSize: 13, fontWeight: '600', flexShrink: 1 }} numberOfLines={1}>
+                  🔗 {linkName(linkUrl)}
+                </Text>
+                <Text style={{ color: p.muted, fontSize: 13 }}> — trafi do załączników</Text>
+              </View>
+            ) : null}
             {result.tokens.map((token) => {
               const label = quickAddChip(token, result, today);
               return (
@@ -206,4 +218,5 @@ const styles = StyleSheet.create({
   preview: { gap: 6 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 4 },
+  linkChip: { flexDirection: 'row', maxWidth: '100%' },
 });

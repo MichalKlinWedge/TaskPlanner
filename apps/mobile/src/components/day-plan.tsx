@@ -1,6 +1,7 @@
 /**
  * „Plan dnia” w „Dziś” (M9, M11) — jak aside na webie (`day-plan.tsx`): oś godzin pracy z blokami zadań,
- * nawyków i wydarzeń, wolne okna, linia „teraz”, konflikty; zwijany (stan na urządzeniu, domyślnie
+ * nawyków i wydarzeń, wolne okna, linia „teraz”, konflikty, wiersz „cały dzień” (zadania na ten dzień bez
+ * godziny — dotknięcie otwiera zadanie — i wydarzenia całodniowe); zwijany (stan na urządzeniu, domyślnie
  * zwinięty — wtedy w nagłówku liczba bloków, konflikty i najbliższy blok, żeby nie zasłaniać listy). Przesuwanie
  * bloków — w kalendarzu (`/calendar`); tu dotknięcie bloku otwiera zadanie albo nawyk, a „Ułóż dzień”
  * (`day-planner.tsx`) układa zadania w wolnych oknach (szkic jako przerywane bloki do „Zastosuj”). Chipy
@@ -24,6 +25,8 @@ import { Chip, Row, usePalette } from './ui';
 const OPEN_KEY = 'today.plan';
 /** Pikseli na godzinę (oś godzin pracy mieści się na ekranie). */
 const HOUR = 40;
+/** Wiersz „cały dzień” (zadania bez godziny i wydarzenia całodniowe) — dalej tylko „+N”, jak na webie. */
+const ALL_DAY_LIMIT = 8;
 
 export function DayPlanCard({ data, today, workspaceId, initial }: { data: AppData; today: LocalDate; workspaceId: string | null; initial?: LocalDate }) {
   const p = usePalette();
@@ -55,7 +58,6 @@ export function DayPlanCard({ data, today, workspaceId, initial }: { data: AppDa
   const clock = (b: Pick<Block, 'startAt'>) => localDateTimeAt(b.startAt, timeZone).slice(11);
   const blocks = plan.day.timed.filter((b) => !b.passive).length;
   const range = axisRange({ ...plan, day }, data.settings.workHours);
-  const events = plan.day.allDay.filter((i) => i.kind === 'event');
   const next = plan.day.timed.find((b) => !b.passive && b.endMin > nowMin);
 
   const openTask = (id: string) => router.push({ pathname: '/task/[id]', params: { id } });
@@ -96,10 +98,31 @@ export function DayPlanCard({ data, today, workspaceId, initial }: { data: AppDa
               ⚠ {clock(c.b)} {c.a.title} ↔ {c.b.title} · {c.overlapMin} min
             </Text>
           ))}
-          {events.length ? (
-            <Text style={{ color: p.muted, fontSize: 12 }} numberOfLines={2}>
-              Cały dzień: {events.map((e) => e.title).join(' · ')}
-            </Text>
+          {day.allDay.length ? (
+            <View style={styles.allDay} accessibilityLabel="Cały dzień">
+              {day.allDay.slice(0, ALL_DAY_LIMIT).map((item) =>
+                item.kind === 'task' ? (
+                  <Pressable
+                    key={`task:${item.id}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Otwórz „${item.title}”`}
+                    onPress={() => openTask(item.id)}
+                    style={({ pressed }) => [styles.allDayItem, { backgroundColor: p.border, opacity: pressed ? 0.6 : 1 }]}
+                  >
+                    <Text style={{ color: p.fg, fontSize: 12 }} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <View key={`event:${item.id}`} style={[styles.allDayItem, { borderColor: p.border, borderWidth: StyleSheet.hairlineWidth }]}>
+                    <Text style={{ color: p.muted, fontSize: 12 }} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                  </View>
+                ),
+              )}
+              {day.allDay.length > ALL_DAY_LIMIT ? <Text style={{ color: p.muted, fontSize: 12, alignSelf: 'center' }}>+{day.allDay.length - ALL_DAY_LIMIT}</Text> : null}
+            </View>
           ) : null}
           {day.timed.length ? (
             <DayTimeline
@@ -128,4 +151,6 @@ export function DayPlanCard({ data, today, workspaceId, initial }: { data: AppDa
 const styles = StyleSheet.create({
   card: { marginHorizontal: 12, marginVertical: 8, borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: 10, gap: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  allDay: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  allDayItem: { maxWidth: '100%', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
 });

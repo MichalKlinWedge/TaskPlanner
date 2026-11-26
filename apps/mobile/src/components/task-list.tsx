@@ -1,10 +1,11 @@
 /**
  * Ekran listy zadań: sekcje (Zaległe / Dziś / dni / grupy) na `SectionList` (wirtualizacja przy
- * tysiącach zadań), przycisk „+” szybkiego dodawania i pasek operacji na zaznaczonych.
+ * tysiącach zadań), przycisk „+” szybkiego dodawania i pasek operacji na zaznaczonych (przy jednym
+ * zaznaczonym zadaniu także „+ Podzadanie” — jak „+” przy wierszu na webie).
  * Otwarcie: najpierw ekran z pierwszymi wierszami bez gestów (`initialNumToRender`, `RowsInteractive`),
  * reszta wierszy i gesty przesunięcia w pierwszej wolnej chwili po narysowaniu.
  */
-import { nudgeTaskOps, type TaskNudge } from '@taskplanner/core';
+import { canAddSubtask, nudgeTaskOps, type TaskNudge } from '@taskplanner/core';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { BackHandler, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
@@ -126,6 +127,10 @@ function BulkBar({ reorder }: { reorder?: readonly string[] }) {
   const actions = useTaskActions();
   const { selected, setSelected, bulk, run, notify } = actions;
   const single = selected.size === 1 ? [...selected][0]! : null;
+  // Podzadanie do jednego zaznaczonego (zaznaczyć da się tylko zadanie z listy do edycji).
+  const singleTask = single ? data.tasks.find((t) => t.id === single) : undefined;
+  const parent = singleTask?.kind === 'task' && canAddSubtask(data.tasks, singleTask.id) ? singleTask : null;
+  const nudgeable = !!single && !!reorder?.includes(single);
   // Systemowe „Wstecz” najpierw zdejmuje zaznaczenie.
   useFocusEffect(
     useCallback(() => {
@@ -175,13 +180,30 @@ function BulkBar({ reorder }: { reorder?: readonly string[] }) {
   );
   return (
     <View style={styles.bars}>
-      {single && reorder?.includes(single) ? (
+      {nudgeable || parent ? (
         <View style={[styles.bulk, { backgroundColor: p.card, borderColor: p.border }]}>
-          {NUDGES.map(([move, label]) => (
-            <Pressable key={move} accessibilityRole="button" onPress={() => nudge(move)} style={({ pressed }) => [styles.bulkButton, { backgroundColor: pressed ? p.border : 'transparent' }]}>
-              <Text style={{ color: p.accent, fontWeight: '600', fontSize: 14 }}>{label}</Text>
+          {nudgeable
+            ? NUDGES.map(([move, label]) => (
+                <Pressable key={move} accessibilityRole="button" onPress={() => nudge(move)} style={({ pressed }) => [styles.bulkButton, { backgroundColor: pressed ? p.border : 'transparent' }]}>
+                  <Text style={{ color: p.accent, fontWeight: '600', fontSize: 14 }}>{label}</Text>
+                </Pressable>
+              ))
+            : null}
+          {parent ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Dodaj podzadanie do „${parent.title}”`}
+              onPress={() => {
+                setSelected([]);
+                openQuickAdd({ parentId: parent.id });
+              }}
+              style={({ pressed }) => [styles.bulkButton, { flex: nudgeable ? 1.3 : 1, backgroundColor: pressed ? p.border : 'transparent' }]}
+            >
+              <Text style={{ color: p.accent, fontWeight: '600', fontSize: 14 }} numberOfLines={1} adjustsFontSizeToFit>
+                + Podzadanie
+              </Text>
             </Pressable>
-          ))}
+          ) : null}
         </View>
       ) : null}
       {bar}

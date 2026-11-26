@@ -271,13 +271,38 @@ export default function FocusScreen() {
             </View>
           ))}
         </View>
-        {week.byTask.slice(0, 5).map((b) => (
-          <Text key={b.id ?? 'none'} style={{ color: p.muted, fontSize: 13 }} numberOfLines={1}>
-            {formatMinutes(b.minutes)} · {b.id ? (data.tasks.find((t) => t.id === b.id)?.title ?? 'zadanie usunięte') : 'bez zadania'}
-          </Text>
-        ))}
+        {week.total ? (
+          <>
+            <Breakdown title="Przestrzenie" buckets={week.byWorkspace} total={week.total} name={(id) => data.workspaces.find((w) => w.id === id)?.name} />
+            <Breakdown title="Listy i projekty" buckets={week.byList} total={week.total} name={(id) => listLabel(data, id) || undefined} />
+            <Breakdown title="Zadania" buckets={week.byTask} total={week.total} name={(id) => data.tasks.find((t) => t.id === id)?.title} />
+          </>
+        ) : (
+          <Text style={{ color: p.muted, fontSize: 13 }}>W tym tygodniu jeszcze bez zapisanej pracy.</Text>
+        )}
       </Section>
     </ScrollView>
+  );
+}
+
+/** Podział tygodnia z `focusWeek` (przestrzenie / listy / zadania): 5 największych z paskiem udziału — jak na webie. */
+function Breakdown({ title, buckets, total, name }: { title: string; buckets: readonly { id: string | null; minutes: number }[]; total: number; name: (id: string) => string | undefined }) {
+  const p = usePalette();
+  return (
+    <View style={styles.breakdown}>
+      <Text style={[styles.breakdownTitle, { color: p.muted }]}>{title}</Text>
+      {buckets.slice(0, 5).map((b) => (
+        <View key={b.id ?? 'none'} style={{ gap: 2 }}>
+          <View style={styles.breakdownRow}>
+            <Text style={{ color: p.fg, fontSize: 13, flex: 1 }} numberOfLines={1}>
+              {b.id ? (name(b.id) ?? '(usunięte)') : 'Bez zadania'}
+            </Text>
+            <Text style={{ color: p.muted, fontSize: 12 }}>{formatMinutes(b.minutes)}</Text>
+          </View>
+          <View style={[styles.breakdownBar, { width: `${(b.minutes / total) * 100}%`, backgroundColor: p.accent }]} />
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -342,4 +367,8 @@ const styles = StyleSheet.create({
   week: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', paddingTop: 6 },
   weekDay: { alignItems: 'center', gap: 2, flex: 1 },
   weekBar: { width: 14, borderRadius: 3 },
+  breakdown: { gap: 6, marginTop: 6 },
+  breakdownTitle: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  breakdownRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  breakdownBar: { height: 3, borderRadius: 2, opacity: 0.6 },
 });

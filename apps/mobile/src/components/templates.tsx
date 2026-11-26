@@ -1,8 +1,8 @@
 /**
  * Szablony projektów (v1.x) na telefonie: „Zapisz jako szablon” na ekranie projektu, wybór szablonu
- * z datą startu / końca przy dodawaniu projektu w przestrzeni i sekcja szablonów (usunięcie z „Cofnij”).
+ * z datą startu / końca przy dodawaniu projektu w przestrzeni i sekcja szablonów (zmiana nazwy i usunięcie z „Cofnij”).
  */
-import { deleteTemplateOps, shortDate, templateDates, templateHasDates, templateNamed, templateSummary, type LocalDate, type ProjectTemplate, type TemplateAnchor } from '@taskplanner/core';
+import { deleteTemplateOps, renameTemplateOp, shortDate, templateDates, templateHasDates, templateNamed, templateSummary, type LocalDate, type ProjectTemplate, type TemplateAnchor } from '@taskplanner/core';
 import { useState } from 'react';
 import { Alert, View } from 'react-native';
 
@@ -105,29 +105,54 @@ export function TemplateFields({ templates, value, onChange, today }: { template
   );
 }
 
-/** Szablony użytkownika z opisem i usunięciem (z „Cofnij”). */
+/** Szablony użytkownika z opisem, zmianą nazwy i usunięciem (z „Cofnij”). */
 export function TemplatesSection() {
   const templates = useProjectTemplates();
-  const { run } = useTaskActions();
+  const { run, notify } = useTaskActions();
+  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   if (!templates.length) return null;
+
+  // Jak na webie: pusta albo ta sama nazwa — bez zmian, nazwa innego szablonu — odmowa (zapis z tą nazwą by go zastąpił).
+  const rename = (template: ProjectTemplate, name: string) => {
+    setEditing(null);
+    if (!name.trim() || name.trim() === template.name) return;
+    const other = templateNamed(
+      templates.filter((x) => x.id !== template.id),
+      name,
+    );
+    if (other) return notify(`Szablon „${other.name}” już jest.`);
+    void run([renameTemplateOp(template.id, name)], { text: `Szablon „${template.name}” → „${name.trim()}”`, undo: [{ table: 'project_templates', id: template.id, patch: { name: template.name } }] });
+  };
+
   return (
     <Section title="Szablony projektów">
-      {templates.map((t) => (
-        <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={{ flex: 1 }}>
-            <P>{t.name}</P>
-            <P muted>{templateSummary(t.content)}</P>
+      {templates.map((t) =>
+        editing?.id === t.id ? (
+          <View key={t.id} style={{ gap: 8 }}>
+            <Field label="Nazwa szablonu" value={editing.name} onChangeText={(name) => setEditing({ id: t.id, name })} maxLength={100} autoFocus onSubmitEditing={() => rename(t, editing.name)} />
+            <Row>
+              <Button title="Zapisz" disabled={!editing.name.trim()} onPress={() => rename(t, editing.name)} />
+              <Button kind="secondary" title="Anuluj" onPress={() => setEditing(null)} />
+            </Row>
           </View>
-          <Button
-            kind="secondary"
-            title="Usuń"
-            onPress={() => {
-              const { ops, undo } = deleteTemplateOps(t.id);
-              void run(ops, { text: `Usunięto szablon „${t.name}”`, undo });
-            }}
-          />
-        </View>
-      ))}
+        ) : (
+          <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <P>{t.name}</P>
+              <P muted>{templateSummary(t.content)}</P>
+            </View>
+            <Button kind="secondary" title="Zmień nazwę" onPress={() => setEditing({ id: t.id, name: t.name })} />
+            <Button
+              kind="secondary"
+              title="Usuń"
+              onPress={() => {
+                const { ops, undo } = deleteTemplateOps(t.id);
+                void run(ops, { text: `Usunięto szablon „${t.name}”`, undo });
+              }}
+            />
+          </View>
+        ),
+      )}
       <P muted>Szablon zapiszesz na ekranie projektu („⧉ Zapisz jako szablon”). Szablony są Twoje — widzisz je na wszystkich urządzeniach.</P>
     </Section>
   );

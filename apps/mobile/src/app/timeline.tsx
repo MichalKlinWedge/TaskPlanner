@@ -6,19 +6,26 @@
  * w poziomie (nagłówek okresów idzie za nią), dotknięcie wiersza otwiera zadanie albo projekt.
  * „Ścieżka krytyczna” (core `criticalPath`, zapas w dniach roboczych z ustawień) barwi zadania bez zapasu
  * na pomarańczowo, przy pozostałych pokazuje zapas („+3”) i wypisuje ścieżkę każdego projektu.
+ * Jak na webie, ale tylko do podglądu (D7): filtr projektów (core `visibleProjects`, ukryte w kv),
+ * lista naruszeń zależności i ścieżka krytyczna z tytułami otwierającymi zadanie, strzałki zależności
+ * (koniec poprzednika → początek następnika; czerwone = naruszenie, pomarańczowe = ścieżka krytyczna).
  */
 import {
   addDays,
   dayMonth,
   daysBetween,
   plural,
+  projectFilterLabel,
+  timelineGridSheet,
   timelineModel,
   timelinePeriods,
   timelineRowSpans,
+  timelineSheet,
   type Dependency,
   type LocalDate,
   type TimelineRow,
   type TimelineScale,
+  visibleProjects,
 } from '@taskplanner/core';
 import { router, Stack } from 'expo-router';
 import Storage from 'expo-sqlite/kv-store';
@@ -28,6 +35,9 @@ import Animated, { useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTaskActions } from '@/components/actions';
+import { ExportChip } from '@/components/export-button';
+import { WorkspaceSwitcher } from '@/components/header';
+import { pickMany } from '@/components/pickers';
 import { Chip, usePalette } from '@/components/ui';
 import { useView } from '@/lib/app-data';
 import { useLocalQuery } from '@/lib/local-query';
@@ -36,6 +46,9 @@ import { mutate } from '@/lib/sync';
 const SCALE_KEY = 'timeline.scale';
 const UNDATED_KEY = 'timeline.undated';
 const CRITICAL_KEY = 'timeline.critical';
+const ARROWS_KEY = 'timeline.arrows';
+/** Ukryte projekty (JSON z listą id, jak na webie `tp-timeline-hidden`). */
+const HIDDEN_KEY = 'timeline.hidden';
 /** Kolor ścieżki krytycznej (jak na webie `--critical`). */
 const CRITICAL = '#ea580c';
 const SCALES: Record<TimelineScale, { label: string; dayWidth: number }> = {
@@ -44,6 +57,7 @@ const SCALES: Record<TimelineScale, { label: string; dayWidth: number }> = {
   month: { label: 'Miesiąc', dayWidth: 3 },
 };
 const ROW = 40;
+const ARROW_WIDTH = 1.5;
 const LEFT = 150;
 const INDENT = 12;
 const HEADER = 44;
@@ -65,6 +79,44 @@ const store = (key: string, value: string) => {
 
 const validColor = (color: string | null) => (color && /^#[0-9a-f]{3,8}$/i.test(color) ? color : null);
 
+const readHidden = (): ReadonlySet<string> => {
+  try {
+    const ids: unknown = JSON.parse(readStored(HIDDEN_KEY) ?? '[]');
+    return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []);
+  } catch {
+    return new Set();
+  }
+};
+
+interface Segment {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** Odcinki strzałki zależności (łamana pozioma / pionowa) od końca paska poprzednika do początku następnika. */
+const ARROW_STUB = 6;
+function arrowSegments(x1: number, y1: number, x2: number, y2: number): Segment[] {
+  const out: Segment[] = [];
+  const line = (ax: number, ay: number, bx: number, by: number) =>
+    out.push(ay === by ? { left: Math.min(ax, bx), top: ay, width: Math.abs(bx - ax), height: 0 } : { left: ax, top: Math.min(ay, by), width: 0, height: Math.abs(by - ay) });
+  const xm = x1 + ARROW_STUB;
+  line(x1, y1, xm, y1);
+  if (x2 - ARROW_STUB >= xm) {
+    line(xm, y1, xm, y2);
+    line(xm, y2, x2, y2);
+  } else {
+    // Następnik zaczyna się przed końcem poprzednika: obejście po granicy wiersza.
+    const yb = y1 + (y2 >= y1 ? ROW / 2 : -ROW / 2);
+    line(xm, y1, xm, yb);
+    line(xm, yb, x2 - ARROW_STUB, yb);
+    line(x2 - ARROW_STUB, yb, x2 - ARROW_STUB, y2);
+    line(x2 - ARROW_STUB, y2, x2, y2);
+  }
+  return out;
+}
+
 export default function TimelineScreen() {
   const p = usePalette();
   const insets = useSafeAreaInsets();
@@ -75,6 +127,8 @@ export default function TimelineScreen() {
   });
   const [withUndated, setWithUndatedState] = useState(() => readStored(UNDATED_KEY) !== '0');
   const [showCritical, setShowCriticalState] = useState(() => readStored(CRITICAL_KEY) === '1');
+  const [showArrows, setShowArrowsState] = useState(() => readStored(ARROWS_KEY) !== '0');
+  const [hidden, setHiddenState] = useState<ReadonlySet<string>>(readHidden);
   const { notify } = useTaskActions();
   // Zwinięte zadania — do wyjścia z ekranu; zwinięte projekty — w profilu (`settings.timeline.collapsed`, jak na webie),
   // więc zostają na każdym urządzeniu. Wiersz projektu ma id listy.
@@ -93,16 +147,36 @@ export default function TimelineScreen() {
     setShowCriticalState(on);
     store(CRITICAL_KEY, on ? '1' : '0');
   };
+  const setShowArrows = (on: boolean) => {
+    setShowArrowsState(on);
+    store(ARROWS_KEY, on ? '1' : '0');
+  };
+  const setHidden = (next: ReadonlySet<string>) => {
+    setHiddenState(next);
+    store(HIDDEN_KEY, JSON.stringify([...next]));
+  };
 
   const rows = useLocalQuery(['task_dependencies'], (engine) =>
     engine.db.all<{ id: string; predecessor_id: string; successor_id: string; lag_days: number }>('select id, predecessor_id, successor_id, lag_days from task_dependencies where deleted_at is null'),
   );
   const deps = useMemo((): Dependency[] => (rows ?? []).map((r) => ({ id: r.id, predecessorId: r.predecessor_id, successorId: r.successor_id, lagDays: Number(r.lag_days) || 0 })), [rows]);
 
-  const projects = useMemo(
+  const allProjects = useMemo(
     () => data.lists.filter((l) => l.kind === 'project' && (!ctx.workspaceId || l.workspaceId === ctx.workspaceId)).map((l) => ({ id: l.id, name: l.name, color: l.color, startDate: l.startDate, endDate: l.endDate })),
     [data.lists, ctx.workspaceId],
   );
+  const projects = useMemo(() => visibleProjects(allProjects, hidden), [allProjects, hidden]);
+  // Ukryte projekty spoza tej przestrzeni zostają ukryte przy każdej zmianie wyboru.
+  const hiddenElsewhere = () => [...hidden].filter((id) => !allProjects.some((pr) => pr.id === id));
+  const pickProjects = () =>
+    void pickMany(
+      'Projekty na osi',
+      allProjects.map((pr) => ({ label: pr.name, value: pr.id, selected: !hidden.has(pr.id) })),
+    ).then((shown) => {
+      if (!shown) return;
+      const keep = new Set(shown);
+      setHidden(new Set([...hiddenElsewhere(), ...allProjects.filter((pr) => !keep.has(pr.id)).map((pr) => pr.id)]));
+    });
   const workdays = data.settings.workHours.days;
   const model = useMemo(() => timelineModel(projects, data.tasks, deps, { withUndated, workdays }), [projects, data.tasks, deps, withUndated, workdays]);
   const spans = useMemo(() => timelineRowSpans(model.rows), [model.rows]);
@@ -188,12 +262,41 @@ export default function TimelineScreen() {
     });
   };
 
+  // Strzałki zależności między widocznymi wierszami z paskiem (pod zwiniętym rodzicem — brak).
+  const arrows = useMemo(() => {
+    if (!showArrows) return [];
+    const index = new Map(visible.map(({ row }, i) => [row.id, i]));
+    const violated = new Set(model.violations.map((v) => v.dependency.id));
+    const critical = new Set(showCritical ? model.criticalLinks : []);
+    const out: { id: string; tone: 'bad' | 'critical' | 'plain'; segments: Segment[]; x: number; y: number }[] = [];
+    for (const link of model.links) {
+      const a = index.get(link.predecessorId);
+      const b = index.get(link.successorId);
+      const from = spans.get(link.predecessorId);
+      const to = spans.get(link.successorId);
+      if (a === undefined || b === undefined || !from || !to) continue;
+      const x1 = (daysBetween(origin, from.end) + 1) * dayWidth;
+      const x2 = daysBetween(origin, to.start) * dayWidth;
+      const y1 = a * ROW + ROW / 2;
+      const y2 = b * ROW + ROW / 2;
+      out.push({ id: link.id, tone: violated.has(link.id) ? 'bad' : critical.has(link.id) ? 'critical' : 'plain', segments: arrowSegments(x1, y1, x2, y2), x: x2, y: y2 });
+    }
+    return out;
+  }, [showArrows, showCritical, visible, model, spans, origin, dayWidth]);
+  // Kolejne zadania ścieżki połączone zależnością na ścieżce: „→”, równoległe: „·” (jak na webie).
+  const criticalPairs = useMemo(() => {
+    const onPath = new Set(model.criticalLinks);
+    return new Set(model.links.filter((d) => onPath.has(d.id)).map((d) => `${d.predecessorId}>${d.successorId}`));
+  }, [model]);
+  const titleOf = (id: string) => data.tasks.find((t) => t.id === id)?.title ?? '?';
+  const openTask = (id: string) => router.push({ pathname: '/task/[id]', params: { id } });
+
   const todayX = x(today);
   const showLabel = (label: string, w: number) => (w >= 28 ? label : '');
 
   return (
     <View style={{ flex: 1, backgroundColor: p.bg }}>
-      <Stack.Screen options={{ title: 'Oś czasu' }} />
+      <Stack.Screen options={{ title: 'Oś czasu', headerRight: () => <WorkspaceSwitcher /> }} />
       <View style={styles.top}>
         {(Object.keys(SCALES) as TimelineScale[]).map((s) => (
           <Chip key={s} label={SCALES[s].label} selected={scale === s} onPress={() => setScale(s)} />
@@ -201,29 +304,75 @@ export default function TimelineScreen() {
         <Chip label="Dziś" onPress={() => scrollToday()} />
         <Chip label="Bez terminu" selected={withUndated} onPress={() => setWithUndated(!withUndated)} />
         <Chip label="Ścieżka krytyczna" selected={showCritical} onPress={() => setShowCritical(!showCritical)} />
+        <Chip label="Zależności" selected={showArrows} onPress={() => setShowArrows(!showArrows)} />
+        {allProjects.length ? <Chip label={`Projekty: ${projectFilterLabel(allProjects, hidden)}`} selected={projects.length !== allProjects.length} onPress={pickProjects} /> : null}
+        {/* Jak na webie: karta „Oś czasu” = siatka okresów bieżącej skali, „Szczegóły” = wiersze z zależnościami. */}
+        <ExportChip
+          title="Oś czasu"
+          sheets={() => ({
+            count: model.rows.filter((r) => r.kind === 'task').length,
+            sheets: [timelineGridSheet(model, { scale, today, colors: new Map(projects.map((pr) => [pr.id, pr.color])), firstDayOfWeek: ctx.firstDayOfWeek }), timelineSheet(model, data.tasks, 'Szczegóły')],
+          })}
+        />
       </View>
       <Text style={[styles.info, { color: p.muted }]}>
-        {plural(projects.length, ['projekt', 'projekty', 'projektów'])} · {plural(model.links.length, ['zależność', 'zależności', 'zależności'])}
+        {projects.length === allProjects.length ? plural(projects.length, ['projekt', 'projekty', 'projektów']) : `${projects.length} z ${plural(allProjects.length, ['projektu', 'projektów', 'projektów'])}`} ·{' '}
+        {plural(model.links.length, ['zależność', 'zależności', 'zależności'])}
         {model.undated ? ` · ${plural(model.undated, ['zadanie', 'zadania', 'zadań'])} bez terminu${withUndated ? '' : ' poza osią'}` : ''}
-        {model.violations.length ? ` · ⚠ ${plural(model.violations.length, ['naruszona zależność', 'naruszone zależności', 'naruszonych zależności'])}` : ''}
       </Text>
-      {showCritical && projects.length ? (
-        <View style={styles.chains}>
-          {model.criticalChains.length ? (
-            model.criticalChains.map((c) => (
-              <Text key={c.projectId} style={{ fontSize: 12, color: p.fg }} numberOfLines={3}>
-                <Text style={{ fontWeight: '700', color: CRITICAL }}>{projects.find((pr) => pr.id === c.projectId)?.name}</Text> — koniec {dayMonth(c.end)}:{' '}
-                {c.taskIds.map((id) => data.tasks.find((t) => t.id === id)?.title ?? '?').join(', ')}
+      {model.violations.length ? (
+        <View style={[styles.box, { borderColor: p.bad }]}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: p.bad }}>⚠ {plural(model.violations.length, ['naruszona zależność', 'naruszone zależności', 'naruszonych zależności'])}</Text>
+          <ScrollView style={styles.boxList} nestedScrollEnabled>
+            {model.violations.map((v) => (
+              <Text key={v.dependency.id} style={{ fontSize: 12, color: p.fg, paddingVertical: 2 }}>
+                <Text style={{ color: p.accent }} onPress={() => openTask(v.dependency.successorId)}>
+                  „{titleOf(v.dependency.successorId)}”
+                </Text>{' '}
+                zaczyna się {plural(v.days, ['dzień', 'dni', 'dni'])} za wcześnie po{' '}
+                <Text style={{ color: p.accent }} onPress={() => openTask(v.dependency.predecessorId)}>
+                  „{titleOf(v.dependency.predecessorId)}”
+                </Text>
+                {v.dependency.lagDays ? ` (+${plural(v.dependency.lagDays, ['dzień', 'dni', 'dni'])} odstępu)` : ''}
               </Text>
-            ))
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+      {showCritical && projects.length ? (
+        <View style={[styles.box, { borderColor: CRITICAL }]}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: CRITICAL }}>Ścieżka krytyczna</Text>
+          {model.criticalChains.length ? (
+            <ScrollView style={styles.boxList} nestedScrollEnabled>
+              {model.criticalChains.map((c) => (
+                <Text key={c.projectId} style={{ fontSize: 12, color: p.fg, paddingVertical: 2 }}>
+                  <Text style={{ fontWeight: '700' }}>{projects.find((pr) => pr.id === c.projectId)?.name}</Text> — koniec {dayMonth(c.end)}:{' '}
+                  {c.taskIds.map((id, i) => (
+                    <Text key={id}>
+                      {i ? (criticalPairs.has(`${c.taskIds[i - 1]}>${id}`) ? ' → ' : ' · ') : ''}
+                      <Text style={{ color: p.accent }} onPress={() => openTask(id)}>
+                        {titleOf(id)}
+                      </Text>
+                    </Text>
+                  ))}
+                </Text>
+              ))}
+            </ScrollView>
           ) : (
-            <Text style={{ fontSize: 12, color: p.muted }}>Ścieżka krytyczna: brak otwartych zadań z terminem.</Text>
+            <Text style={{ fontSize: 12, color: p.muted }}>Brak otwartych zadań z terminem w widocznych projektach.</Text>
           )}
         </View>
       ) : null}
 
       {!projects.length ? (
-        <Text style={[styles.empty, { color: p.muted }]}>Brak projektów w tej przestrzeni — oś pokazuje listy typu „projekt”.</Text>
+        allProjects.length ? (
+          <View style={styles.emptyBox}>
+            <Text style={[styles.empty, { color: p.muted }]}>Żaden projekt nie jest wybrany.</Text>
+            <Chip label="Pokaż wszystkie" onPress={() => setHidden(new Set(hiddenElsewhere()))} />
+          </View>
+        ) : (
+          <Text style={[styles.empty, { color: p.muted }]}>Brak projektów w tej przestrzeni — oś pokazuje listy typu „projekt”.</Text>
+        )
       ) : (
         <ScrollView stickyHeaderIndices={[0]} contentContainerStyle={{ paddingBottom: 24 + insets.bottom }}>
           <View style={[styles.headerRow, { backgroundColor: p.bg, borderColor: p.border }]}>
@@ -290,6 +439,29 @@ export default function TimelineScreen() {
                   <View key={period.start} style={[styles.gridLine, { left: daysBetween(origin, period.start) * dayWidth, height: visible.length * ROW, backgroundColor: p.border }]} />
                 ))}
                 <View style={[styles.today, { left: todayX + (scale === 'day' ? dayWidth / 2 : 0), height: visible.length * ROW, backgroundColor: p.bad }]} />
+                {arrows.map((a) => {
+                  const color = a.tone === 'bad' ? p.bad : a.tone === 'critical' ? CRITICAL : p.muted;
+                  return (
+                    <View key={a.id} pointerEvents="none" style={StyleSheet.absoluteFill}>
+                      {a.segments.map((seg, i) => (
+                        <View
+                          key={i}
+                          style={[
+                            styles.arrowLine,
+                            {
+                              left: seg.left - (seg.width ? 0 : ARROW_WIDTH / 2),
+                              top: seg.top - (seg.height ? 0 : ARROW_WIDTH / 2),
+                              width: seg.width || ARROW_WIDTH,
+                              height: seg.height || ARROW_WIDTH,
+                              backgroundColor: color,
+                            },
+                          ]}
+                        />
+                      ))}
+                      <View style={[styles.arrowHead, { left: a.x - 5, top: a.y - 4, borderLeftColor: color }]} />
+                    </View>
+                  );
+                })}
                 {visible.map(({ row }, i) => {
                   const span = spans.get(row.id);
                   if (!span) return null;
@@ -334,7 +506,11 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingTop: 10 },
   info: { fontSize: 12, paddingHorizontal: 12, paddingVertical: 8 },
   empty: { padding: 24, textAlign: 'center' },
-  chains: { paddingHorizontal: 12, paddingBottom: 8, gap: 2 },
+  box: { marginHorizontal: 12, marginBottom: 8, padding: 8, gap: 2, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8 },
+  boxList: { maxHeight: 112 },
+  emptyBox: { alignItems: 'center', gap: 4 },
+  arrowLine: { position: 'absolute', opacity: 0.85 },
+  arrowHead: { position: 'absolute', width: 0, height: 0, borderTopWidth: 4, borderBottomWidth: 4, borderLeftWidth: 5, borderTopColor: 'transparent', borderBottomColor: 'transparent' },
   headerRow: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
   left: { width: LEFT, borderRightWidth: StyleSheet.hairlineWidth, paddingLeft: 8 },
   titleCell: { height: ROW, flexDirection: 'row', alignItems: 'center', gap: 2, borderBottomWidth: StyleSheet.hairlineWidth, paddingRight: 6 },

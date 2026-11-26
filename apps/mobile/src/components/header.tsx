@@ -8,7 +8,7 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { setCurrentWorkspace, useAppData, useWorkspace } from '@/lib/app-data';
+import { setCurrentWorkspace, useAppData, useWorkspace, type Workspace } from '@/lib/app-data';
 import { useAppUpdate } from '@/lib/app-update';
 import { sessionUser } from '@/lib/config';
 import { isTicking, useFocusData } from '@/lib/focus';
@@ -17,11 +17,15 @@ import { useSyncStatus } from '@/lib/local-query';
 import { pickOption } from './pickers';
 import { usePalette } from './ui';
 
+/** Nazwa przestrzeni z dopiskiem roli w cudzej przestrzeni — jak przełącznik na webie. */
+const workspaceLabel = (w: Pick<Workspace, 'name' | 'role'>) => (w.role === 'viewer' ? `${w.name} (podgląd)` : w.role === 'editor' ? `${w.name} (udostępniona)` : w.name);
+
 export function WorkspaceSwitcher() {
   const p = usePalette();
   const data = useAppData();
   const workspaceId = useWorkspace(data);
-  const name = workspaceId ? (data.workspaces.find((w) => w.id === workspaceId)?.name ?? '—') : 'Wszystkie';
+  const current = workspaceId ? data.workspaces.find((w) => w.id === workspaceId) : undefined;
+  const name = workspaceId ? (current ? workspaceLabel(current) : '—') : 'Wszystkie';
   return (
     <Pressable
       accessibilityRole="button"
@@ -30,7 +34,7 @@ export function WorkspaceSwitcher() {
       onPress={() =>
         void pickOption<string>('Przestrzeń', [
           { label: 'Wszystkie', value: '', selected: !workspaceId },
-          ...data.workspaces.map((w) => ({ label: w.name, value: w.id, selected: w.id === workspaceId })),
+          ...data.workspaces.map((w) => ({ label: workspaceLabel(w), value: w.id, selected: w.id === workspaceId })),
         ]).then((id) => id !== undefined && setCurrentWorkspace(id || null))
       }
       style={[styles.switcher, { borderColor: p.border }]}

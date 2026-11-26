@@ -30,6 +30,22 @@ export interface TaskExportNames {
   collaborators: ReadonlyMap<string, string>;
 }
 
+/** Nazwy z danych aplikacji: Inbox z nazwą przestrzeni w nawiasie (jak na webie). */
+export function taskExportNames(source: {
+  workspaces: readonly { id: string; name: string }[];
+  lists: readonly { id: string; name: string; kind: string; workspaceId: string }[];
+  tags: readonly { id: string; name: string }[];
+  collaborators: readonly { id: string; name: string }[];
+}): TaskExportNames {
+  const workspaces = new Map(source.workspaces.map((w) => [w.id, w.name]));
+  return {
+    workspaces,
+    lists: new Map(source.lists.map((l) => [l.id, l.kind === 'inbox' ? `Inbox (${workspaces.get(l.workspaceId) ?? ''})` : l.name])),
+    tags: new Map(source.tags.map((t) => [t.id, t.name])),
+    collaborators: new Map(source.collaborators.map((c) => [c.id, c.name])),
+  };
+}
+
 /** Arkusz zadań widoku; kolumna „Sekcja” tylko, gdy któryś wiersz ją ma. */
 export function tasksSheet(rows: readonly TaskExportRow[], names: TaskExportNames, options: { name?: string; timeZone?: string } = {}): XlsxSheet {
   const sections = rows.some((r) => r.section);

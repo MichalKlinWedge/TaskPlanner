@@ -1,15 +1,17 @@
 /**
  * Listy przestrzeni (M2): Inbox na górze (bez zmiany nazwy, archiwizacji i usuwania), listy
- * i projekty z nazwą, kolorem, rodzajem, kolejnością i archiwizacją. Szybkie zadanie do Inboxu —
+ * i projekty z nazwą, kolorem, rodzajem, kolejnością, archiwizacją i datami projektu (bez przesuwania zadań). Szybkie zadanie do Inboxu —
  * do sprawdzenia kryterium MVP-1 (zadanie z trybu samolotowego na serwerze po włączeniu sieci).
  */
-import { canEditScope, GUEST_ACCESS, GUEST_ACCESS_HINT, GUEST_ACCESS_NOTE, inboxId, LIST_KIND, listAccess, plural, PROJECT_STATUS, type GuestAccess, type ListKind, type ProjectStatus, type ScopeRole } from '@taskplanner/core';
+import { canEditScope, columnDate, GUEST_ACCESS, GUEST_ACCESS_HINT, GUEST_ACCESS_NOTE, inboxId, LIST_KIND, listAccess, plural, PROJECT_STATUS, projectDatesOps, type GuestAccess, type ListKind, type ProjectStatus, type ScopeRole } from '@taskplanner/core';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert } from 'react-native';
 
 import { ColorPicker } from '@/components/color-picker';
+import { useTaskActions } from '@/components/actions';
 import { EditableItem } from '@/components/editable-item';
+import { pickDate } from '@/components/pickers';
 import { SharingSection } from '@/components/sharing';
 import { SyncIndicator } from '@/components/sync-indicator';
 import { TemplateFields, TemplatesSection, type TemplateChoice } from '@/components/templates';
@@ -50,6 +52,20 @@ export default function Workspace() {
   const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const onError = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
+  const { run } = useTaskActions();
+
+  /** Początek albo koniec projektu (bez przesuwania zadań); „Bez terminu” czyści datę. */
+  const pickProjectDate = (l: ListItem, which: 'start' | 'end') =>
+    void pickDate({
+      title: which === 'start' ? `Początek projektu „${l.name}”` : `Koniec projektu „${l.name}”`,
+      value: which === 'start' ? l.start_date : l.end_date,
+      today,
+      allowNone: true,
+    }).then((date) => {
+      if (date === undefined) return;
+      const { ops, undo } = projectDatesOps({ id: l.id, startDate: l.start_date, endDate: l.end_date }, which === 'start' ? { startDate: date } : { endDate: date });
+      if (ops.length) void run(ops, { text: `Daty projektu „${l.name}” zmienione`, undo });
+    });
 
   const inbox = lists.find((l) => l.kind === 'inbox');
   const active = lists.filter((l) => l.kind !== 'inbox' && !l.archived_at);
@@ -59,6 +75,7 @@ export default function Workspace() {
     [
       LIST_KIND[l.kind],
       l.kind === 'project' && l.project_status ? PROJECT_STATUS[l.project_status] : null,
+      l.kind === 'project' && (l.start_date || l.end_date) ? `${l.start_date ? columnDate(l.start_date, today) : '…'} – ${l.end_date ? columnDate(l.end_date, today) : '…'}` : null,
       plural(l.open, TASKS),
       owner && (l.guest_access ?? 'edit') !== 'edit' ? `dla gości: ${GUEST_ACCESS[l.guest_access!].toLowerCase()}` : null,
       !owner && editable && !listEditable(l) ? 'tylko podgląd' : null,
@@ -104,11 +121,18 @@ export default function Workspace() {
         </Row>
         {access(l)}
         {l.kind === 'project' ? (
-          <Row>
-            {STATUSES.map((s) => (
-              <Chip key={s} label={PROJECT_STATUS[s]} selected={l.project_status === s} onPress={() => void updateList(l, { project_status: s }).catch(onError)} />
-            ))}
-          </Row>
+          <>
+            <Row>
+              {STATUSES.map((s) => (
+                <Chip key={s} label={PROJECT_STATUS[s]} selected={l.project_status === s} onPress={() => void updateList(l, { project_status: s }).catch(onError)} />
+              ))}
+            </Row>
+            <Row>
+              <Chip label={`Początek: ${l.start_date ? columnDate(l.start_date, today) : 'bez daty'}`} selected={!!l.start_date} onPress={() => pickProjectDate(l, 'start')} />
+              <Chip label={`Koniec: ${l.end_date ? columnDate(l.end_date, today) : 'bez daty'}`} selected={!!l.end_date} onPress={() => pickProjectDate(l, 'end')} />
+            </Row>
+            <P muted>Daty projektu — pasek na osi czasu; zadania się nie przesuwają.</P>
+          </>
         ) : null}
         {l.total === 0 ? (
           <Button

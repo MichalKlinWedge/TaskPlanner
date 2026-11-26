@@ -177,6 +177,22 @@ const clampDue = (date: LocalDate | null, dueDate: LocalDate | null, today: Loca
   date && dueDate && dueDate >= today && date > dueDate ? dueDate : date;
 
 /**
+ * Zakres terminu kroku przy ręcznej zmianie (pole daty na webie: `min` / `max`): od dziś do terminu zadania;
+ * zadanie bez terminu albo po terminie nie wyznacza górnej granicy (`max` = `null`).
+ */
+export function breakdownDueBounds(task: { dueDate: LocalDate | null }, today: LocalDate): { min: LocalDate; max: LocalDate | null } {
+  return { min: today, max: task.dueDate && task.dueDate >= today ? task.dueDate : null };
+}
+
+/** Wybrany termin kroku wciśnięty w `breakdownDueBounds` (`null` = bez terminu zostaje). */
+export function clampBreakdownDue(date: LocalDate | null, task: { dueDate: LocalDate | null }, today: LocalDate): LocalDate | null {
+  if (!date) return null;
+  const { min, max } = breakdownDueBounds(task, today);
+  if (date < min) return min;
+  return max && date > max ? max : date;
+}
+
+/**
  * Odpowiedź modelu → szkic: kroki powtarzające istniejące podzadania (albo siebie) odpadają, daty liczone od
  * dziś / początku zadania mieszczą się przed jego terminem, a krok „po poprzednim” nie wypada przed nim.
  * Zadanie po terminie dostaje kroki bez dat.

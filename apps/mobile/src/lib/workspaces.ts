@@ -2,7 +2,7 @@
  * Przestrzenie i listy (M2) na lokalnej bazie: odczyt do ekranu „Przestrzenie i listy” i zapisy
  * przez `mutate` (wiersz + outbox). Kolejność = `sort_key` z `keyBetween` / `reorderPatches`.
  */
-import { inboxId, keyBetween, listKindPatch, reorderPatches, uuidv7, type GuestAccess, type ListKind, type ProjectStatus, type ScopeRole } from '@taskplanner/core';
+import { inboxId, keyBetween, listKindPatch, reorderPatches, uuidv7, type GuestAccess, type ListKind, type LocalDate, type ProjectStatus, type ScopeRole } from '@taskplanner/core';
 import type { SqlRow, SyncEngine } from '@taskplanner/sync';
 
 import { localEngine, mutate } from './sync';
@@ -26,6 +26,9 @@ export interface ListItem {
   color: string | null;
   sort_key: string;
   project_status: ProjectStatus | null;
+  /** Daty projektu (`lists.start_date` / `end_date`); lista — zawsze `null`. */
+  start_date: LocalDate | null;
+  end_date: LocalDate | null;
   archived_at: string | null;
   /** Dostęp gości (`lists.guest_access`); `null` = jeszcze niezsynchronizowana (jak `edit`). */
   guest_access: GuestAccess | null;
@@ -48,7 +51,7 @@ export async function workspaceItems(engine: SyncEngine): Promise<WorkspaceItem[
 
 export async function listItems(engine: SyncEngine, workspaceId: string): Promise<ListItem[]> {
   const rows = await engine.db.all<SqlRow>(
-    `select l.id, l.scope_id, l.kind, l.name, l.color, l.sort_key, l.project_status, l.archived_at, l.guest_access,
+    `select l.id, l.scope_id, l.kind, l.name, l.color, l.sort_key, l.project_status, l.start_date, l.end_date, l.archived_at, l.guest_access,
             (select count(*) from tasks t where t.list_id = l.id and t.deleted_at is null
                and t.status not in ('done', 'cancelled')) as open,
             (select count(*) from tasks t where t.list_id = l.id and t.deleted_at is null) as total

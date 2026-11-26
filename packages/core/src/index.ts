@@ -7,6 +7,7 @@ export * from './ai-week-summary.ts';
 export * from './alarms.ts';
 export * from './app-update.ts';
 export * from './attachments.ts';
+export * from './calendar-panel.ts';
 export * from './canvas.ts';
 export * from './canvas-arrange.ts';
 export * from './canvas-export.ts';

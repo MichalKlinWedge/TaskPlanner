@@ -357,6 +357,13 @@ export const PLUGIN_CONNECTION_STATUS: Record<'active' | 'disabled' | 'error', s
   error: 'wyłączone po błędzie',
 };
 
+/** Stan konta kalendarza zewnętrznego (`calendar_accounts.status`). */
+export const CALENDAR_ACCOUNT_STATUS: Record<'active' | 'error' | 'revoked', string> = {
+  active: 'połączone',
+  error: 'błąd synchronizacji',
+  revoked: 'dostęp odwołany — połącz ponownie',
+};
+
 /** Rodzaj wyzwalacza reguły. */
 export const PLUGIN_TRIGGER: Record<'manual' | 'event', string> = {
   manual: 'Ręcznie — „Wyślij do…”',

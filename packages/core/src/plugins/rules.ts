@@ -7,10 +7,10 @@
 import { z } from 'zod';
 
 import { taskTagId, uuidv7 } from '../ids.ts';
-import { TASK_STATUS } from '../labels.ts';
+import { PLUGIN_EVENT, TASK_STATUS } from '../labels.ts';
 import { keyBetween } from '../sort-key.ts';
 import type { TaskOp } from '../tasks.ts';
-import { FilterQuery, matchesFilter, type ViewTask } from '../views.ts';
+import { FilterQuery, isEmptyFilter, matchesFilter, type ViewTask } from '../views.ts';
 import { TaskStatus, type LocalDate } from '../schemas/primitives.ts';
 import { pluginDef } from './catalog.ts';
 import { RuleEvent, type PluginEvent } from './events.ts';
@@ -46,6 +46,31 @@ export function afterSendSummary(a: PluginAfterSend | undefined, tagName: (id: s
   const parts = [...names(a!.addTagIds, '+'), ...names(a!.removeTagIds, '−'), ...(a!.status ? [`status: ${TASK_STATUS[a!.status]}`] : [])];
   return parts.length ? `potem: ${parts.join(', ')}` : '';
 }
+
+/** Opóźnienia reguły zdarzeniowej do wyboru (web: edytor reguły; opis na liście reguł). */
+export const PLUGIN_DELAYS: readonly { value: number; label: string }[] = [
+  { value: 0, label: 'od razu' },
+  { value: DEFAULT_DELAY_SEC, label: `${DEFAULT_DELAY_SEC} s (domyślnie)` },
+  { value: 60, label: '1 min' },
+  { value: 300, label: '5 min' },
+  { value: 900, label: '15 min' },
+  { value: 3600, label: '1 godz.' },
+];
+
+/** Opóźnienie po polsku bez „(domyślnie)”, np. „5 min”; spoza listy — w sekundach. */
+export const pluginDelayLabel = (sec: number): string => PLUGIN_DELAYS.find((d) => d.value === sec)?.label.replace(' (domyślnie)', '') ?? `${sec} s`;
+
+/** Kiedy reguła wysyła — opis na liście reguł, np. „gdy: Ukończone (z filtrem) · po 20 s”. */
+export function pluginTriggerSummary(rule: Pick<PluginRule, 'trigger' | 'options'>): string {
+  if (rule.trigger.kind !== 'event') return '„Wyślij do…”';
+  const events = rule.trigger.events.map((e) => PLUGIN_EVENT[e] ?? e).join(', ');
+  const filtered = rule.trigger.filter && !isEmptyFilter(rule.trigger.filter) ? ' (z filtrem)' : '';
+  return `gdy: ${events}${filtered} · po ${pluginDelayLabel(rule.options.delaySec ?? DEFAULT_DELAY_SEC)}`;
+}
+
+/** Stany wysyłki, które użytkownik może ponowić (RPC `retry_plugin_delivery`). */
+export const RETRYABLE_DELIVERY_STATUSES: readonly string[] = ['failed', 'dead', 'skipped'];
+export const canRetryDelivery = (status: string): boolean => RETRYABLE_DELIVERY_STATUSES.includes(status);
 
 /** Argumenty `plugin_after_send` dla zadania: id wierszy `task_tags` jak w aplikacji (`taskTagId`). */
 export function afterSendArgs(taskId: string, a: PluginAfterSend): { p_status: TaskStatus | null; p_add: { id: string; tagId: string }[]; p_remove: string[] } {

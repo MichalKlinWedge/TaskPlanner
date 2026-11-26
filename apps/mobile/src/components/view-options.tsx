@@ -89,7 +89,8 @@ export function columnRowMaker(data: AppData, today: string, { columns, columnTa
 }
 
 /** Widok zbiorczy: `row` z kolumnami, pasek opcji i nagłówek kolumn. */
-export function useSmartView(view: SmartView, data: AppData, today: string, workspaceId: string | null) {
+/** `extra` — dodatkowy chip w wierszu opcji (np. „Eksport XLSX”). */
+export function useSmartView(view: SmartView, data: AppData, today: string, workspaceId: string | null, extra?: ReactNode) {
   const { notify } = useTaskActions();
   const prefs = data.settings.views[view];
   const cols = useColumns(prefs, data.tags);
@@ -100,6 +101,7 @@ export function useSmartView(view: SmartView, data: AppData, today: string, work
       <OptionRow>
         <ColumnChips {...cols} tags={tagsForWorkspace(data.tags, workspaceId, prefs?.columnTags)} onChange={setPrefs} />
         <OptionChip label="▦ Tablica" accent onPress={() => router.push({ pathname: '/board', params: { view } })} />
+        {extra}
       </OptionRow>
     ),
     columnsHeader: <TaskColumnsHeader columns={cols.columns} />,

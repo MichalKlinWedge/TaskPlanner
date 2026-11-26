@@ -9,11 +9,13 @@ import {
   BREAKDOWN_MAX_DESCRIPTION,
   BREAKDOWN_MAX_STEPS,
   breakdownDrafts,
+  breakdownDueBounds,
   breakdownMinutes,
   breakdownOps,
   breakdownPrompt,
   breakdownRequest,
   canBreakDown,
+  clampBreakdownDue,
   maskEmails,
   type AiBreakdownStep,
 } from '../ai-breakdown.ts';
@@ -182,5 +184,21 @@ describe('operacje', () => {
     expect(canBreakDown(chain, chain[2]!)).toBe(true);
     expect(canBreakDown(chain, chain[3]!)).toBe(false);
     expect(breakdownOps(drafts, 't4', { ...options(), tasks: chain })).toBeNull();
+  });
+});
+
+describe('breakdownDueBounds / clampBreakdownDue', () => {
+  it('od dziś do terminu zadania', () => {
+    expect(breakdownDueBounds({ dueDate: '2026-11-30' }, TODAY)).toEqual({ min: TODAY, max: '2026-11-30' });
+    expect(clampBreakdownDue('2026-11-20', { dueDate: '2026-11-30' }, TODAY)).toBe(TODAY);
+    expect(clampBreakdownDue('2026-12-05', { dueDate: '2026-11-30' }, TODAY)).toBe('2026-11-30');
+    expect(clampBreakdownDue('2026-11-27', { dueDate: '2026-11-30' }, TODAY)).toBe('2026-11-27');
+  });
+
+  it('bez terminu albo po terminie — bez górnej granicy; brak daty zostaje', () => {
+    expect(breakdownDueBounds({ dueDate: null }, TODAY)).toEqual({ min: TODAY, max: null });
+    expect(breakdownDueBounds({ dueDate: '2026-11-01' }, TODAY)).toEqual({ min: TODAY, max: null });
+    expect(clampBreakdownDue('2027-03-01', { dueDate: '2026-11-01' }, TODAY)).toBe('2027-03-01');
+    expect(clampBreakdownDue(null, { dueDate: '2026-11-30' }, TODAY)).toBeNull();
   });
 });

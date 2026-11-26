@@ -41,6 +41,7 @@ export default function FilterScreen() {
       <FilterResults
         query={query}
         quickAdd={{ listId: query.lists?.length === 1 ? query.lists[0] : undefined }}
+        exportTitle={filter.name}
         onChange={(next) => setDraft({ key, query: next })}
         header={
           <>

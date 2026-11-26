@@ -1,10 +1,12 @@
 /**
  * Inbox (M9): otwarte zadania list `inbox` bieżącej przestrzeni albo wszystkich (`selectInbox`),
- * zawężone chipami filtra (jak na webie; filtr trwa do zamknięcia aplikacji, nie jest zapisywany).
+ * zawężone chipami filtra (jak na webie; filtr trwa do zamknięcia aplikacji, nie jest zapisywany);
+ * „Eksport XLSX” widocznych zadań.
  */
 import { applyFilter, isEmptyFilter, plural, selectInbox, type FilterQuery } from '@taskplanner/core';
 import { useMemo, useState } from 'react';
 
+import { ExportChip } from '@/components/export-button';
 import { FilterBar } from '@/components/filter-bar';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections } from '@/components/task-list';
@@ -23,7 +25,7 @@ export default function InboxScreen() {
     const inbox = selectInbox(data.tasks, inboxIds, ctx);
     return isEmptyFilter(filter) ? inbox : applyFilter(inbox, filter, today);
   }, [data.tasks, inboxIds, ctx, filter, today]);
-  const { row, options, columnsHeader } = useSmartView('inbox', data, today, workspaceId);
+  const { row, options, columnsHeader } = useSmartView('inbox', data, today, workspaceId, <ExportChip title="Inbox" rows={() => tasks.map((task) => ({ task }))} />);
   const wsName = new Map(data.workspaces.map((w) => [w.id, w.name]));
   const target = targetInbox(data, workspaceId);
   return (
