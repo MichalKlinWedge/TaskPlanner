@@ -9,6 +9,7 @@ import {
   listAccess,
   listShareBadge,
   memberRoleLabel,
+  memberSince,
   ownerOfferQuestion,
   ownershipAcceptQuestion,
   ownershipHeirs,
@@ -99,5 +100,12 @@ describe('właściciele przestrzeni', () => {
     expect(ownershipAcceptQuestion(offer)).toContain('głównym właścicielem');
     expect(ownershipAcceptQuestion(offer)).toContain('a@x.pl straci rolę właściciela');
     expect(ownershipAcceptQuestion({ ...offer, after: null, primary: false })).not.toContain('straci');
+  });
+
+  it('data dołączenia członka: „od …”, brak daty = null', () => {
+    expect(memberSince('2026-11-24T12:00:00Z')).toBe('od 24 lis 2026');
+    expect(memberSince(null)).toBeNull();
+    expect(memberSince(undefined)).toBeNull();
+    expect(memberSince('zła data')).toBeNull();
   });
 });

@@ -14,6 +14,7 @@ import {
   GUEST_ACCESS_NOTE,
   inviteLink,
   memberRoleLabel,
+  memberSince,
   OWNER_AFTER,
   OWNER_OFFER_NOTE,
   ownerOfferQuestion,
@@ -214,6 +215,7 @@ export function SharingPanel({
               <span className="min-w-0 flex-1 truncate">
                 {m.email}
                 {m.me ? <span className="ml-1 opacity-60">(Ty)</span> : null}
+                {memberSince(m.joinedAt) ? <span className="ml-2 text-xs opacity-60">{memberSince(m.joinedAt)}</span> : null}
               </span>
               {canManageMember(me, m) ? (
                 <>

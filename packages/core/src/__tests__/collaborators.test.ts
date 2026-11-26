@@ -225,7 +225,7 @@ describe('osoby z przestrzeni (konta i zaproszenia)', () => {
           workspace: 'Wspólna',
           members: [
             { email: 'ja@x.pl', role: 'owner', me: true },
-            { email: 'Anna@Example.com', role: 'editor' },
+            { email: 'Anna@Example.com', role: 'editor', joinedAt: '2026-11-20T10:00:00Z' },
           ],
           invites: [
             { email: 'nowy@x.pl', role: 'viewer' },
@@ -241,11 +241,11 @@ describe('osoby z przestrzeni (konta i zaproszenia)', () => {
       email: 'anna@example.com',
       collaboratorId: anna.id,
       spaces: [
-        { workspaceId: 'w1', workspace: 'Wspólna', role: 'editor', pending: false },
-        { workspaceId: 'w2', workspace: 'Dom', role: 'viewer', pending: false },
+        { workspaceId: 'w1', workspace: 'Wspólna', role: 'editor', pending: false, joinedAt: '2026-11-20T10:00:00Z' },
+        { workspaceId: 'w2', workspace: 'Dom', role: 'viewer', pending: false, joinedAt: null },
       ],
     });
-    expect(people_[1]).toMatchObject({ collaboratorId: null, spaces: [{ pending: true, role: 'viewer' }] });
+    expect(people_[1]).toMatchObject({ collaboratorId: null, spaces: [{ pending: true, role: 'viewer', joinedAt: null }] });
   });
 
   it('nazwa z adresu', () => {

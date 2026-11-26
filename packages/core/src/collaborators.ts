@@ -331,14 +331,15 @@ export function initials(name: string): string {
 export interface SpaceSharing {
   workspaceId: string;
   workspace: string;
-  members: readonly { email: string; role: 'owner' | 'editor' | 'viewer'; me?: boolean }[];
+  members: readonly { email: string; role: 'owner' | 'editor' | 'viewer'; me?: boolean; joinedAt?: string | null }[];
   invites?: readonly { email: string; role: 'editor' | 'viewer'; expired?: boolean }[];
 }
 
 /** Konto (albo zaproszony adres) z przestrzeni, z rolą w każdej z nich. */
 export interface SpacePerson {
   email: string;
-  spaces: { workspaceId: string; workspace: string; role: 'owner' | 'editor' | 'viewer'; pending: boolean }[];
+  /** `joinedAt` — kiedy dołączył (`null` — zaproszenie albo członek sprzed zapisywania tej daty). */
+  spaces: { workspaceId: string; workspace: string; role: 'owner' | 'editor' | 'viewer'; pending: boolean; joinedAt: string | null }[];
   /** Własny współpracownik z tym adresem (już na liście). */
   collaboratorId: string | null;
 }
@@ -359,8 +360,8 @@ export function spacePeople(spaces: readonly SpaceSharing[], own: readonly Colla
   };
   for (const space of spaces) {
     const me = space.members.find((m) => m.me)?.email.toLowerCase();
-    for (const m of space.members) if (!m.me && m.email.toLowerCase() !== me) add(m.email, { workspaceId: space.workspaceId, workspace: space.workspace, role: m.role, pending: false });
-    for (const i of space.invites ?? []) if (!i.expired) add(i.email, { workspaceId: space.workspaceId, workspace: space.workspace, role: i.role, pending: true });
+    for (const m of space.members) if (!m.me && m.email.toLowerCase() !== me) add(m.email, { workspaceId: space.workspaceId, workspace: space.workspace, role: m.role, pending: false, joinedAt: m.joinedAt ?? null });
+    for (const i of space.invites ?? []) if (!i.expired) add(i.email, { workspaceId: space.workspaceId, workspace: space.workspace, role: i.role, pending: true, joinedAt: null });
   }
   return [...byEmail.values()].sort((a, b) => a.email.localeCompare(b.email));
 }

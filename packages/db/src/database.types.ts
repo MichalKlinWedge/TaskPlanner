@@ -659,14 +659,14 @@ isOneToOne: false
                   ]
                 },"scope_members": {
                   Row: {
-                    "role": string,"scope_id": string,"user_id": string
+                    "joined_at": string | null,"role": string,"scope_id": string,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "role"?: string,"scope_id": string,"user_id": string
+                    "joined_at"?: string | null,"role"?: string,"scope_id": string,"user_id": string
                   }
                   Update: {
-                    "role"?: string,"scope_id"?: string,"user_id"?: string
+                    "joined_at"?: string | null,"role"?: string,"scope_id"?: string,"user_id"?: string
                   }
                   Relationships: [
                     {

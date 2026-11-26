@@ -2,7 +2,7 @@
 -- Uruchomienie: npm run test:db
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(30);
+select plan(31);
 
 insert into auth.users (id, email) values
   ('00000000-0000-4000-8000-0000000000d1', 'wlasciciel-wsp@test.local'),
@@ -95,6 +95,8 @@ select is(pg_temp.codes(public.push_changes(jsonb_build_array(pg_temp.op('tasks'
 select is((select jsonb_agg(m ->> 'role') from jsonb_array_elements(public.workspace_sharing('f5000000-0000-4000-8000-000000000001') -> 'members') m),
   '["owner","editor","viewer"]'::jsonb, 'członek widzi listę członków');
 select is(public.workspace_sharing('f5000000-0000-4000-8000-000000000001') -> 'invites', '[]'::jsonb, 'nie-właściciel nie widzi zaproszeń');
+select is((select count(*) from jsonb_array_elements(public.workspace_sharing('f5000000-0000-4000-8000-000000000001') -> 'members') m
+            where (m ->> 'joinedAt')::timestamptz is not null), 3::bigint, 'każdy członek ma datę dołączenia');
 
 -- ── Właściciel zarządza ──────────────────────────────────────────────────────────────────────
 select pg_temp.login(:O);

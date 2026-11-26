@@ -8,6 +8,7 @@ import {
   canManageMember,
   inviteLink,
   memberRoleLabel,
+  memberSince,
   OWNER_AFTER,
   OWNER_OFFER_NOTE,
   ownerOfferQuestion,
@@ -246,10 +247,13 @@ export function SharingSection({ workspaceId, name }: { workspaceId: string; nam
     <Section title="Osoby">
       {sharing?.members.map((m) => (
         <Pressable key={m.userId} disabled={!canManageMember(me, m) || busy} onPress={() => void memberMenu(m)} style={[styles.row, { borderTopColor: p.border }]}>
-          <Text style={{ color: p.fg, flex: 1 }} numberOfLines={1}>
-            {m.email}
-            {m.me ? <Text style={{ color: p.muted }}> (Ty)</Text> : null}
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: p.fg }} numberOfLines={1}>
+              {m.email}
+              {m.me ? <Text style={{ color: p.muted }}> (Ty)</Text> : null}
+            </Text>
+            {memberSince(m.joinedAt) ? <Text style={{ color: p.muted, fontSize: 12 }}>{memberSince(m.joinedAt)}</Text> : null}
+          </View>
           <Text style={{ color: p.muted, fontSize: 12 }}>{memberRoleLabel(m, sharing.members)}</Text>
         </Pressable>
       ))}

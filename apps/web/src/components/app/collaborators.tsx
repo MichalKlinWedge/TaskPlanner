@@ -12,7 +12,7 @@
  * wymaga sieci; „+ Dodaj” zakłada z nich własnego współpracownika) oraz osoby wpisane przez
  * innych członków (`scope_collaborators`, `shared`).
  */
-import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, nameFromEmail, plural, SCOPE_ROLE, spacePeople, type Collaborator, type SpaceSharing } from "@taskplanner/core";
+import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, nameFromEmail, memberSince, plural, SCOPE_ROLE, spacePeople, type Collaborator, type SpaceSharing } from "@taskplanner/core";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import type { AppData } from "@/lib/app-data";
@@ -208,7 +208,7 @@ export function CollaboratorsView() {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{person.email}</span>
                   <span className="block text-xs text-[var(--muted)]">
-                    {person.spaces.map((s) => `${s.workspace} — ${s.pending ? `zaproszenie (${SCOPE_ROLE[s.role].toLowerCase()})` : SCOPE_ROLE[s.role].toLowerCase()}`).join(" · ")}
+                    {person.spaces.map((s) => `${s.workspace} — ${s.pending ? `zaproszenie (${SCOPE_ROLE[s.role].toLowerCase()})` : [SCOPE_ROLE[s.role].toLowerCase(), memberSince(s.joinedAt)].filter(Boolean).join(", ")}`).join(" · ")}
                   </span>
                 </span>
                 {person.collaboratorId ? (

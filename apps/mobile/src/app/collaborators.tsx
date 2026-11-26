@@ -9,7 +9,7 @@
  * wymaga sieci; „+ Dodaj” wypełnia formularz nowej osoby) oraz osoby wpisane przez innych członków
  * (`scope_collaborators`, `shared`).
  */
-import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, nameFromEmail, plural, SCOPE_ROLE, spacePeople, type Collaborator, type SpaceSharing } from '@taskplanner/core';
+import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, nameFromEmail, memberSince, plural, SCOPE_ROLE, spacePeople, type Collaborator, type SpaceSharing } from '@taskplanner/core';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -152,7 +152,7 @@ export default function Collaborators() {
                   {person.email}
                 </Text>
                 <Text style={{ color: p.muted, fontSize: 12 }}>
-                  {person.spaces.map((s) => `${s.workspace} — ${s.pending ? `zaproszenie (${SCOPE_ROLE[s.role].toLowerCase()})` : SCOPE_ROLE[s.role].toLowerCase()}`).join(' · ')}
+                  {person.spaces.map((s) => `${s.workspace} — ${s.pending ? `zaproszenie (${SCOPE_ROLE[s.role].toLowerCase()})` : [SCOPE_ROLE[s.role].toLowerCase(), memberSince(s.joinedAt)].filter(Boolean).join(', ')}`).join(' · ')}
                 </Text>
               </View>
               {person.collaboratorId ? (

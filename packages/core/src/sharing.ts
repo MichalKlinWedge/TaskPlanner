@@ -44,6 +44,15 @@ export interface SpaceMember {
   me: boolean;
   /** Główny właściciel przestrzeni. */
   primary?: boolean;
+  /** Kiedy dołączył do przestrzeni (`null` — członek sprzed zapisywania tej daty). */
+  joinedAt?: string | null;
+}
+
+/** „od 24 lis 2026” — data dołączenia członka w czasie lokalnym; `null`, gdy jej nie znamy. */
+export function memberSince(joinedAt: string | null | undefined): string | null {
+  const date = joinedAt ? new Date(joinedAt) : null;
+  if (!date || Number.isNaN(date.getTime())) return null;
+  return `od ${date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' })}`;
 }
 
 /** Nazwa roli członka; „Główny właściciel” tylko wtedy, gdy właścicieli jest kilku. */
