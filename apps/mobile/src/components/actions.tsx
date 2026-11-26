@@ -73,6 +73,9 @@ const BULK_TEXT: Record<BulkAction['kind'], string> = {
   someday: 'Na kiedyś',
   move: 'Przeniesiono',
   delete: 'Do kosza',
+  addTag: 'Dodano tag',
+  removeTag: 'Zdjęto tag',
+  assignee: 'Zmieniono odpowiedzialnego',
 };
 
 export function TaskActionsProvider({ children }: { children: ReactNode }) {
@@ -170,11 +173,11 @@ export function TaskActionsProvider({ children }: { children: ReactNode }) {
       const chosen = all.filter((t) => selected.has(t.id));
       if (!chosen.length) return;
       const now = new Date();
-      const { ops, undo } = bulkTaskOps(chosen, all, action, { today: localDateAt(now, timeZone), now, timeZone });
-      if (!ops.length) return show('Nic do zmiany.');
+      const { ops, undo } = bulkTaskOps(chosen, all, action, { today: localDateAt(now, timeZone), now, timeZone, tagScope: { userId: data.userId, tags: data.tags } });
+      if (!ops.length || (action.kind === 'assignee' && ops.length === (action.prepare?.length ?? 0))) return show('Nic do zmiany.');
       await run(ops, { text: `${BULK_TEXT[action.kind]}: ${plural(chosen.length, TASKS)}`, undo });
     },
-    [selected, timeZone, run, show],
+    [selected, timeZone, data.userId, data.tags, run, show],
   );
 
   const value = useMemo(() => ({ toggle, run, notify: show, selected, toggleSelected, setSelected, bulk }), [toggle, run, show, selected, toggleSelected, setSelected, bulk]);

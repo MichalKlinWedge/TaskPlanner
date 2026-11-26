@@ -7,7 +7,9 @@
  */
 import {
   applyFilter,
+  assigneeChoices,
   buildSearchIndex,
+  collaboratorsForWorkspace,
   COMMANDS,
   commandSearchItems,
   datePresets,
@@ -18,6 +20,9 @@ import {
   PLUGIN_SEND_NOTE,
   PRIORITY,
   search,
+  selfCollaborator,
+  tagCoverage,
+  tagsForWorkspace,
   taskSearchItem,
   type FilterQuery,
   type Priority,
@@ -54,6 +59,8 @@ export const AVAILABLE_COMMANDS = new Set([
   "task.tomorrow",
   "task.date",
   "task.move",
+  "task.tag",
+  "task.assignee",
   "task.delete",
   "plugin.send",
   "list.new_project",
@@ -88,7 +95,7 @@ const remember = (id: string) => {
   }
 };
 
-export type PaletteMode = "all" | "search" | "priority" | "move" | "date" | "workspace" | "send";
+export type PaletteMode = "all" | "search" | "priority" | "move" | "date" | "workspace" | "send" | "tag" | "assignee";
 
 /** Wybór z palety: pozycja wyszukiwarki albo wartość podtrybu. */
 export type PalettePick =
@@ -98,7 +105,11 @@ export type PalettePick =
   /** `null` = „Bez terminu”. */
   | { kind: "date"; date: string | null }
   | { kind: "workspace"; workspaceId: string | null }
-  | { kind: "send"; ruleId: string };
+  | { kind: "send"; ruleId: string }
+  /** Tag po nazwie: dodać tym, które go nie mają, albo (`remove`) zdjąć ze wszystkich. */
+  | { kind: "tag"; name: string; tagId: string | null; remove: boolean }
+  /** `null` = twórca zadania; `self` — „Ja” (wpis może dopiero powstać). */
+  | { kind: "assignee"; collaboratorId: string | null; self?: boolean };
 
 interface Option {
   key: string;
@@ -138,6 +149,8 @@ const PLACEHOLDER: Record<PaletteMode, string> = {
   priority: "Priorytet zaznaczonych — 1–4 albo strzałki",
   move: "Przenieś zaznaczone do… (nazwa listy)",
   send: "Wyślij zaznaczone do… (reguła z Ustawień → Integracje)",
+  tag: "Tag zaznaczonych — nazwa (nowa nazwa tworzy tag)",
+  assignee: "Odpowiedzialny zaznaczonych — imię",
   date: "Termin zaznaczonych — Dziś, Jutro… albo data niżej",
   workspace: "Przestrzeń",
   search: "Szukaj zadań, list, przestrzeni, tagów, filtrów",
@@ -145,7 +158,7 @@ const PLACEHOLDER: Record<PaletteMode, string> = {
 };
 
 export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; onClose: () => void; onPick: (pick: PalettePick) => void }) {
-  const { data, selectedIds, today, store } = useAppEnv();
+  const { data, selectedIds, today, store, workspaceId, email } = useAppEnv();
   const { sendable } = usePlugins(store);
   const available = useAvailable();
   const [query, setQuery] = useState("");
@@ -215,6 +228,31 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
         .filter((r) => (query ? r.name.toLowerCase().includes(query.toLowerCase()) : true))
         .map((r): Option => ({ key: r.id, label: r.name, hint: PLUGIN_SEND_NOTE, pick: { kind: "send", ruleId: r.id } }));
     }
+    if (mode === "tag" || mode === "assignee") {
+      const chosen = data.tasks.filter((t) => selectedIds.has(t.id));
+      const q = query.trim().toLowerCase();
+      const has = (name: string) => !q || name.toLowerCase().includes(q);
+      if (mode === "tag") {
+        const tags = tagsForWorkspace(data.tags, workspaceId, chosen.flatMap((t) => t.tagIds)).filter((t) => has(t.name));
+        const items = tags.map((t): Option => {
+          const coverage = tagCoverage(chosen, t.id);
+          const hint = coverage === "all" ? "zdejmij ze wszystkich" : coverage === "some" ? `dodaj pozostałym (ma ${chosen.filter((x) => x.tagIds.includes(t.id)).length} z ${chosen.length})` : "dodaj";
+          return { key: t.id, label: `${coverage === "all" ? "−" : "+"} ${t.name}`, hint, pick: { kind: "tag", name: t.name, tagId: t.id, remove: coverage === "all" } };
+        });
+        const name = query.trim().replace(/^[@#]/, "");
+        if (name && !data.tags.some((t) => t.name.toLowerCase() === name.toLowerCase())) items.push({ key: `new:${name}`, label: `+ ${name}`, hint: "nowy tag", pick: { kind: "tag", name, tagId: null, remove: false } });
+        return items;
+      }
+      const current = chosen.map((t) => t.assigneeId ?? null);
+      const same = (id: string | null) => chosen.length > 0 && current.every((c) => c === id);
+      const me = selfCollaborator(data.collaborators, { email });
+      const people = assigneeChoices(collaboratorsForWorkspace(data.collaborators, workspaceId), null).filter((c) => c.id !== me?.id && has(c.name));
+      return [
+        ...(has("ja") ? [{ key: "self", label: "Ja", hint: same(me?.id ?? "-") ? "wszystkie już mają" : me ? me.name : "powstanie wpis z Twoim e-mailem", pick: { kind: "assignee", collaboratorId: me?.id ?? null, self: true } } satisfies Option] : []),
+        ...(has("twórca") || has("bez") ? [{ key: "creator", label: "Twórca zadania", hint: same(null) ? "wszystkie już mają" : "bez wskazanej osoby", pick: { kind: "assignee", collaboratorId: null } } satisfies Option] : []),
+        ...people.map((c): Option => ({ key: c.id, label: c.name, hint: same(c.id) ? "wszystkie już mają" : c.shared ? "z udostępnionej przestrzeni" : undefined, pick: { kind: "assignee", collaboratorId: c.id } })),
+      ];
+    }
     if (mode === "date") {
       // Gotowe dni jak w arkuszu daty na telefonie (core `datePresets`) i „Bez terminu”; inna data — pole pod listą.
       const presets = datePresets(today).map((d): Option => ({ key: d.date + d.label, label: d.label, hint: dayChip(d.date), pick: { kind: "date", date: d.date } }));
@@ -236,7 +274,7 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
             : KIND_HINT[r.item.kind],
       pick: { kind: "item", item: r.item },
     }));
-  }, [mode, index, query, data.lists, data.workspaces, listName, names, sendable, today]);
+  }, [mode, index, query, data.lists, data.workspaces, data.tasks, data.tags, data.collaborators, selectedIds, workspaceId, email, listName, names, sendable, today]);
 
   const current = Math.min(active, Math.max(0, options.length - 1));
   useEffect(() => {

@@ -4,7 +4,7 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, BOARD_BY, bulkTaskOps, dayLabel, sharedText, habitsForDay, isEmptyFilter, isOpen, keepShownSelection, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, tagsForWorkspace, VIEW_SECTION, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type QuickAddSlot, type ViewContext, type WebClip } from "@taskplanner/core";
+import { applyFilter, assignSelfOps, BOARD_BY, bulkTaskOps, dayLabel, sharedText, habitsForDay, isEmptyFilter, isOpen, keepShownSelection, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, tagsForWorkspace, VIEW_SECTION, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type QuickAddSlot, type ViewContext, type WebClip } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -13,6 +13,7 @@ import { useAdhocFilter } from "@/lib/adhoc-filters";
 import { useAppData, useLateCount, useToday, type List, type Workspace } from "@/lib/app-data";
 import { GOOGLE_RETURN_PARAM } from "@/lib/calendars";
 import { DEFAULT_ROUTE, routeHash, useRoute, type Route } from "@/lib/route";
+import { useLocalQuery } from "@/lib/local-store";
 import { dropClip, pendingClip } from "@/lib/web-clip";
 
 import { AppEnvProvider, useAppEnv, visibleTaskIds, type TaskPanelMode } from "./app-env";
@@ -839,17 +840,17 @@ const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, 
 
 /** Akcja na zaznaczonych z dymkiem „Cofnij”. */
 function useBulk(selected: readonly string[]) {
-  const { data, today, timeZone } = useAppEnv();
+  const { data, today, timeZone, userId } = useAppEnv();
   const { run, notify } = useTaskActions();
   return useCallback(
     (action: BulkAction, label: string) => {
       const tasks = data.tasks.filter((t) => selected.includes(t.id));
       if (!tasks.length) return notify("Najpierw zaznacz zadanie (klik albo J / K).");
-      const { ops, undo } = bulkTaskOps(tasks, data.tasks, action, { today, now: new Date(), timeZone });
-      if (!ops.length) return notify("Nic do zmiany.");
+      const { ops, undo } = bulkTaskOps(tasks, data.tasks, action, { today, now: new Date(), timeZone, tagScope: { userId, tags: data.tags } });
+      if (!ops.length || (action.kind === "assignee" && ops.length === (action.prepare?.length ?? 0))) return notify("Nic do zmiany.");
       void run(ops, { text: `${label}: ${tasks.length === 1 ? `„${tasks[0]!.title}”` : plural(tasks.length, ["zadanie", "zadania", "zadań"])}`, undo });
     },
-    [data.tasks, selected, today, timeZone, run, notify],
+    [data.tasks, data.tags, userId, selected, today, timeZone, run, notify],
   );
 }
 
@@ -869,6 +870,8 @@ function BulkBar({ selected, setSelected, openPalette }: { selected: readonly st
     { label: "📅", title: "Wybierz termin… (D)", onClick: () => openPalette("date") },
     { label: "!", title: "Zmień priorytet… (1–4)", onClick: () => openPalette("priority") },
     { label: "→", title: "Przenieś do listy…", onClick: () => openPalette("move") },
+    { label: "#", title: "Dodaj albo zdejmij tag…", onClick: () => openPalette("tag") },
+    { label: "👤", title: "Zmień odpowiedzialnego…", onClick: () => openPalette("assignee") },
     { label: "🗑", title: "Przenieś do kosza (Del)", onClick: () => bulk({ kind: "delete" }, "W koszu"), danger: true },
   ];
   return (
@@ -1042,9 +1045,10 @@ function PaletteHost({
   openShortcuts: () => void;
   settings: ProfileSettings;
 }) {
-  const { data, store, userId, openTask, select } = useAppEnv();
+  const { data, store, userId, email, openTask, select } = useAppEnv();
   const { notify, run } = useTaskActions();
   const bulk = useBulk(selected);
+  const displayName = useLocalQuery<{ display_name: string | null }>(store, "select display_name from profiles where id = ?", [userId], ["profiles"]).rows[0]?.display_name ?? null;
   const close = () => setMode(null);
   const then = (work: () => void) => {
     close();
@@ -1056,6 +1060,17 @@ function PaletteHost({
     if (pick.kind === "move") return then(() => bulk({ kind: "move", listId: pick.listId }, `Przeniesiono do „${data.lists.find((l) => l.id === pick.listId)?.name}”`));
     if (pick.kind === "date") return then(() => (pick.date ? bulk({ kind: "date", date: pick.date as LocalDate }, "Nowy termin") : bulk({ kind: "someday" }, "Bez terminu")));
     if (pick.kind === "workspace") return then(() => writeWorkspace(pick.workspaceId ?? ALL));
+    if (pick.kind === "tag")
+      return then(() => (pick.remove && pick.tagId ? bulk({ kind: "removeTag", tagId: pick.tagId }, `Bez tagu „${pick.name}”`) : bulk({ kind: "addTag", name: pick.name }, `Tag „${pick.name}”`)));
+    if (pick.kind === "assignee") {
+      return then(() => {
+        if (!pick.self) return bulk({ kind: "assignee", collaboratorId: pick.collaboratorId }, pick.collaboratorId ? `Odpowiedzialny: ${data.collaborators.find((c) => c.id === pick.collaboratorId)?.name ?? "?"}` : "Odpowiedzialny: twórca zadania");
+        // „Ja”: własny wpis (może dopiero powstać — bez cofania), potem zmiana na zaznaczonych.
+        const self = assignSelfOps(data.collaborators, { userId, email, displayName }, selected[0] ?? "", []);
+        if (!self.ok) return notify(self.error);
+        bulk({ kind: "assignee", collaboratorId: self.collaboratorId, prepare: self.ops.filter((o) => o.table !== "tasks") }, "Odpowiedzialny: Ja");
+      });
+    }
     if (pick.kind === "send") {
       return then(() => {
         if (!selected.length) return notify("Zaznacz zadania do wysłania.");
@@ -1101,6 +1116,8 @@ function PaletteHost({
       "task.delete": () => then(() => bulk({ kind: "delete" }, "W koszu")),
       "task.priority": () => setMode("priority"),
       "task.move": () => setMode("move"),
+      "task.tag": () => setMode("tag"),
+      "task.assignee": () => setMode("assignee"),
       "plugin.send": () => setMode("send"),
       "task.date": () => setMode("date"),
       "workspace.switch": () => setMode("workspace"),

@@ -36,6 +36,8 @@ export const COMMANDS: readonly Command[] = [
   { id: 'task.tomorrow', kind: 'action', label: 'Zaplanuj na jutro', keys: ['M'], needsSelection: true },
   { id: 'task.date', kind: 'action', label: 'Wybierz datę…', keys: ['D'], keywords: ['termin'], needsSelection: true },
   { id: 'task.move', kind: 'action', label: 'Przenieś do…', keywords: ['lista', 'projekt'], needsSelection: true },
+  { id: 'task.tag', kind: 'action', label: 'Dodaj albo zdejmij tag…', keywords: ['tagi', 'etykieta'], needsSelection: true },
+  { id: 'task.assignee', kind: 'action', label: 'Zmień odpowiedzialnego…', keywords: ['osoba', 'przypisz', 'współpracownik'], needsSelection: true },
   { id: 'task.delete', kind: 'action', label: 'Przenieś do kosza', keys: ['Del'], keywords: ['usuń'], needsSelection: true },
   { id: 'plugin.send', kind: 'action', label: 'Wyślij do…', keywords: ['integracja', 'webhook', 'wyślij'], needsSelection: true },
   { id: 'focus.start', kind: 'action', label: 'Tryb skupienia', keys: ['F'], keywords: ['pomodoro', 'timer'] },

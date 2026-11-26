@@ -13,7 +13,7 @@ import { BackHandler, Pressable, SectionList, StyleSheet, Text, View } from 'rea
 import { useAppData } from '@/lib/app-data';
 
 import { useTaskActions } from './actions';
-import { bulkDate, pickList, pickPriority } from './task-menus';
+import { bulkAssignee, bulkDate, bulkTag, pickList, pickPriority } from './task-menus';
 import { RowsInteractive, RowsSelectable, TaskRow, type TaskRowProps } from './task-row';
 import { usePalette } from './ui';
 
@@ -168,6 +168,8 @@ function BulkBar({ reorder }: { reorder?: readonly string[] }) {
         then(pickPriority(`Priorytet: ${selected.size} zaznaczonych`), (priority) => priority && bulk({ kind: 'priority', priority })),
     },
     { label: '→', onPress: () => then(pickList(data, `Przenieś ${selected.size} zaznaczonych do`), (listId) => listId && bulk({ kind: 'move', listId })) },
+    { label: '#', onPress: () => void bulkTag(actions, data) },
+    { label: '👤', onPress: () => void bulkAssignee(actions, data) },
     { label: '🗑', tone: 'bad', onPress: () => void bulk({ kind: 'delete' }) },
   ];
   const bar = (
@@ -184,7 +186,9 @@ function BulkBar({ reorder }: { reorder?: readonly string[] }) {
           onPress={item.onPress}
           style={({ pressed }) => [styles.bulkButton, { backgroundColor: pressed ? p.border : 'transparent' }]}
         >
-          <Text style={{ color: item.tone === 'bad' ? p.bad : p.accent, fontWeight: '700', fontSize: 15 }}>{item.label}</Text>
+          <Text style={{ color: item.tone === 'bad' ? p.bad : p.accent, fontWeight: '700', fontSize: 15 }} numberOfLines={1} adjustsFontSizeToFit>
+            {item.label}
+          </Text>
         </Pressable>
       ))}
     </View>
@@ -236,6 +240,8 @@ const BULK_LABEL: Record<string, string> = {
   '📅': 'Wybierz termin',
   '!': 'Zmień priorytet',
   '→': 'Przenieś do listy',
+  '#': 'Dodaj albo zdejmij tag',
+  '👤': 'Zmień odpowiedzialnego',
   '🗑': 'Przenieś do kosza',
 };
 

@@ -7,6 +7,7 @@ import { completionId, tagId, taskTagId } from '../ids.ts';
 import { parseQuickAdd } from '../quick-add.ts';
 import {
   bulkTaskOps,
+  tagCoverage,
   attachSubtaskOps,
   canAddSubtask,
   subtaskCandidates,
@@ -434,6 +435,35 @@ describe('bulkTaskOps', () => {
     const { ops, undo } = bulkTaskOps([a, c], all, { kind: 'complete' }, ctx);
     expect(ops.map((o) => o.id)).toEqual(['a']);
     expect(undo).toEqual([{ table: 'tasks', id: 'a', patch: { status: 'todo', completed_at: null } }]);
+  });
+
+  it('tag: dostają go tylko zadania bez niego, nowy tag powstaje raz; cofnięcie zdejmuje dodane', () => {
+    const scope = { userId: 'u', tags: [{ id: 'T1', name: 'pilne', sortKey: 'a0' }] };
+    const tagged = { ...a, tagIds: ['T1'] };
+    const add = bulkTaskOps([tagged, b], all, { kind: 'addTag', name: 'Pilne' }, { ...ctx, tagScope: scope });
+    expect(add.ops).toEqual([{ table: 'task_tags', id: taskTagId('b', 'T1'), patch: { task_id: 'b', tag_id: 'T1', deleted_at: null } }]);
+    expect(add.undo).toEqual([{ table: 'task_tags', id: taskTagId('b', 'T1'), patch: { deleted_at: NOW } }]);
+    const created = bulkTaskOps([a, b], all, { kind: 'addTag', name: 'nowy' }, { ...ctx, tagScope: scope });
+    expect(created.ops.filter((o) => o.table === 'tags')).toHaveLength(1);
+    expect(created.ops.filter((o) => o.table === 'task_tags').map((o) => o.patch.task_id)).toEqual(['a', 'b']);
+    expect(bulkTaskOps([a], all, { kind: 'addTag', name: 'x' }, ctx).ops).toEqual([]);
+  });
+
+  it('zdjęcie tagu tylko tam, gdzie jest; cofnięcie przywraca', () => {
+    const tagged = { ...a, tagIds: ['T1'] };
+    const { ops, undo } = bulkTaskOps([tagged, b], all, { kind: 'removeTag', tagId: 'T1' }, ctx);
+    expect(ops).toEqual([{ table: 'task_tags', id: taskTagId('a', 'T1'), patch: { deleted_at: NOW } }]);
+    expect(undo).toEqual([{ table: 'task_tags', id: taskTagId('a', 'T1'), patch: { deleted_at: null } }]);
+    expect([tagCoverage([tagged, b], 'T1'), tagCoverage([tagged], 'T1'), tagCoverage([b], 'T1')]).toEqual(['some', 'all', 'none']);
+  });
+
+  it('odpowiedzialny: zmiana tylko innych, cofnięcie poprzedniego; „prepare” przed zmianą bez cofania', () => {
+    const mine = { ...a, assigneeId: 'C1' };
+    const prepare = [{ table: 'collaborators' as const, id: 'C2', patch: { name: 'Ja' } }];
+    const { ops, undo } = bulkTaskOps([mine, b], [mine, b, c], { kind: 'assignee', collaboratorId: 'C2', prepare }, ctx);
+    expect(ops).toEqual([prepare[0], { table: 'tasks', id: 'a', patch: { assignee_id: 'C2' } }, { table: 'tasks', id: 'b', patch: { assignee_id: 'C2' } }]);
+    expect(undo).toEqual([{ table: 'tasks', id: 'a', patch: { assignee_id: 'C1' } }, { table: 'tasks', id: 'b', patch: { assignee_id: null } }]);
+    expect(bulkTaskOps([b], all, { kind: 'assignee', collaboratorId: null }, ctx).ops).toEqual([]);
   });
 });
 

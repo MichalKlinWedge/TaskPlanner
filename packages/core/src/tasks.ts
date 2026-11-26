@@ -634,7 +634,21 @@ export type BulkAction =
   /** Bez terminu (przegląd: „Kiedyś”); seria zostaje bez zmian. */
   | { kind: 'someday' }
   | { kind: 'move'; listId: string }
-  | { kind: 'delete' };
+  | { kind: 'delete' }
+  /** Tag po nazwie (własny, wspólny z przestrzeni zadania albo nowy — jak `taskTagOps`); wymaga `tagScope`. */
+  | { kind: 'addTag'; name: string }
+  | { kind: 'removeTag'; tagId: string }
+  /**
+   * Odpowiedzialny (`collaborators.id`; `null` = twórca zadania). `prepare` — operacje przed zmianą bez
+   * „Cofnij” (np. własny wpis „Ja” z `assignSelfOps`, który dopiero powstaje).
+   */
+  | { kind: 'assignee'; collaboratorId: string | null; prepare?: readonly TaskOp[] };
+
+/** Ile zaznaczonych ma tag: wszystkie (akcja grupowa go zdejmie), część albo żadne (doda). */
+export function tagCoverage(selected: readonly Pick<ViewTask, 'tagIds'>[], tagId: string): 'all' | 'some' | 'none' {
+  const count = selected.reduce((n, t) => (t.tagIds.includes(tagId) ? n + 1 : n), 0);
+  return count === 0 ? 'none' : count === selected.length ? 'all' : 'some';
+}
 
 const BEFORE: Record<string, (t: ViewTask) => unknown> = {
   list_id: (t) => t.listId,
@@ -648,6 +662,7 @@ const BEFORE: Record<string, (t: ViewTask) => unknown> = {
   postpone_count: (t) => t.postponeCount,
   canvas_pos: (t) => t.canvasPos ?? null,
   derived_from: (t) => t.derivedFrom ?? null,
+  assignee_id: (t) => t.assigneeId ?? null,
   deleted_at: () => null,
 };
 
@@ -662,15 +677,18 @@ const undoOf = (op: TaskOp, task: ViewTask | undefined): TaskOp => ({
  * Jedna akcja na wielu zadaniach naraz, z operacjami „Cofnij”. Zadania zamknięte pomija ukończenie;
  * „Dziś / Jutro / data” liczy `reschedulePatch` (godzina zostaje, zakres przesuwa się w całości,
  * przesunięcie na później zwiększa licznik). Podzadania zaznaczone razem z rodzicem przy
- * przeniesieniu i usunięciu idą z nim (bez podwójnych operacji).
+ * przeniesieniu i usunięciu idą z nim (bez podwójnych operacji). Tag dostają tylko zadania, które go
+ * nie mają (zdejmowany jest tylko z tych, które go mają); odpowiedzialny zmienia się tylko tam, gdzie
+ * jest inny.
  */
 export function bulkTaskOps(
   selected: readonly ViewTask[],
   all: readonly ViewTask[],
   action: BulkAction,
-  { today, now, timeZone }: { today: LocalDate; now: Date | string; timeZone?: string },
+  { today, now, timeZone, tagScope }: { today: LocalDate; now: Date | string; timeZone?: string; tagScope?: Pick<QuickAddScope, 'userId' | 'tags'> },
 ): { ops: TaskOp[]; undo: TaskOp[] } {
   const byId = new Map(all.map((t) => [t.id, t]));
+  const stamp = typeof now === 'string' ? now : now.toISOString();
   const ops: TaskOp[] = [];
   const undo: TaskOp[] = [];
   const push = (list: readonly TaskOp[]) => {
@@ -687,6 +705,7 @@ export function bulkTaskOps(
     return true;
   });
 
+  if (action.kind === 'assignee' && action.prepare) ops.push(...action.prepare);
   for (const task of action.kind === 'move' || action.kind === 'delete' ? tops : selected) {
     switch (action.kind) {
       case 'complete': {
@@ -717,6 +736,23 @@ export function bulkTaskOps(
         break;
       case 'delete':
         push(deleteTaskOps(all, task.id, now));
+        break;
+      case 'addTag': {
+        if (!tagScope) break;
+        const tagOps = taskTagOps(tagScope, task.id, [action.name], task.workspaceId);
+        const link = tagOps.find((o) => o.table === 'task_tags');
+        if (!link || task.tagIds.includes(String(link.patch.tag_id))) break;
+        for (const op of tagOps) if (!ops.some((o) => o.table === op.table && o.id === op.id)) ops.push(op);
+        undo.push({ table: 'task_tags', id: link.id, patch: { deleted_at: stamp } });
+        break;
+      }
+      case 'removeTag':
+        if (!task.tagIds.includes(action.tagId)) break;
+        ops.push({ table: 'task_tags', id: taskTagId(task.id, action.tagId), patch: { deleted_at: stamp } });
+        undo.push({ table: 'task_tags', id: taskTagId(task.id, action.tagId), patch: { deleted_at: null } });
+        break;
+      case 'assignee':
+        if ((task.assigneeId ?? null) !== action.collaboratorId) push([{ table: 'tasks', id: task.id, patch: { assignee_id: action.collaboratorId } }]);
         break;
     }
   }
