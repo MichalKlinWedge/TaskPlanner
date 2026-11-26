@@ -1,5 +1,6 @@
 /** Klocki ekranów: kolory (jasny / ciemny), ekran, sekcja, tekst, przyciski, pola, chipy, kropka koloru. */
-import type { ReactNode } from 'react';
+import Storage from 'expo-sqlite/kv-store';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, useColorScheme, View, type TextInputProps } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -20,12 +21,47 @@ export function Screen({ children, scroll = true }: { children: ReactNode; scrol
   );
 }
 
-export function Section({ title, children }: { title?: string; children: ReactNode }) {
+/**
+ * Ekran z sekcjami zwijanymi nagłówkiem (Ustawienia). Stan zwinięcia jest urządzenia (kv-store, klucz = `id`
+ * albo tytuł sekcji); zwinięta sekcja nie renderuje treści.
+ */
+const CollapsibleContext = createContext(false);
+export const CollapsibleSections = CollapsibleContext.Provider;
+
+const COLLAPSED_KEY = 'ui.collapsedSections';
+
+function readCollapsed(): Record<string, boolean> {
+  try {
+    return (JSON.parse(Storage.getItemSync(COLLAPSED_KEY) ?? '{}') as Record<string, boolean>) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+export function Section({ id, title, alwaysOpen, children }: { id?: string; title?: string; alwaysOpen?: boolean; children: ReactNode }) {
   const p = usePalette();
+  const collapsible = useContext(CollapsibleContext) && !!title && !alwaysOpen;
+  const key = id ?? title ?? '';
+  const [collapsed, setCollapsed] = useState(() => !!readCollapsed()[key]);
+  const shut = collapsible && collapsed;
+  const toggle = () => {
+    const all = readCollapsed();
+    if (collapsed) delete all[key];
+    else all[key] = true;
+    Storage.setItemSync(COLLAPSED_KEY, JSON.stringify(all));
+    setCollapsed(!collapsed);
+  };
   return (
     <View style={[styles.section, { backgroundColor: p.card, borderColor: p.border }]}>
-      {title ? <Text style={[styles.sectionTitle, { color: p.fg }]}>{title}</Text> : null}
-      {children}
+      {collapsible ? (
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: !shut }} accessibilityLabel={`${title}. ${shut ? 'Rozwiń' : 'Zwiń'}`} hitSlop={6} onPress={toggle} style={styles.sectionHead}>
+          <Text style={[styles.sectionTitle, { color: p.fg, flex: 1 }]}>{title}</Text>
+          <Text style={{ color: p.muted, fontSize: 14 }}>{shut ? '▸' : '▾'}</Text>
+        </Pressable>
+      ) : title ? (
+        <Text style={[styles.sectionTitle, { color: p.fg }]}>{title}</Text>
+      ) : null}
+      {shut ? null : children}
     </View>
   );
 }
@@ -101,6 +137,7 @@ const styles = StyleSheet.create({
   body: { flex: 1, padding: 16, gap: 12 },
   section: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12, gap: 8 },
   sectionTitle: { fontSize: 16, fontWeight: '600' },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   p: { fontSize: 14, lineHeight: 20 },
   mono: { fontFamily: 'monospace', fontSize: 12, lineHeight: 16 },
   button: { borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center' },

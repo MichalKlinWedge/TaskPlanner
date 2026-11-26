@@ -1,6 +1,6 @@
 /**
- * Nagłówek zakładek: przełącznik przestrzeni (M2, „Wszystkie” albo jedna), wyszukiwarka i kropka
- * stanu synchronizacji (zielona / szara w trakcie / czerwona po błędzie; dotknięcie = Ustawienia),
+ * Nagłówek zakładek: przełącznik przestrzeni (M2, „Wszystkie” albo jedna), wyszukiwarka i zębatka ustawień
+ * z kropką stanu synchronizacji w rogu (zielona / kółko w trakcie / czerwona po błędzie / szara offline),
  * obok niej ikona dostępnej aktualizacji aplikacji (dotknięcie = Ustawienia → „Aktualizacje”).
  */
 import { focusRemaining, focusElapsed, formatTimer } from '@taskplanner/core';
@@ -43,20 +43,20 @@ export function WorkspaceSwitcher() {
   );
 }
 
-export function SyncDot() {
+/** Ustawienia (konto, synchronizacja, przypomnienia…) — zębatka z kropką stanu synchronizacji w rogu. */
+export function SettingsButton() {
   const p = usePalette();
   const status = useSyncStatus();
   const online = sessionUser().online;
   const color = !online || status.offline ? p.muted : status.error ? p.bad : status.lastAt ? p.ok : p.muted;
+  const sync = !online ? 'tryb offline bez konta' : status.offline ? 'offline — zmiany czekają na telefonie' : status.syncing ? 'synchronizacja trwa' : status.error ? `błąd synchronizacji: ${status.error}` : 'zsynchronizowano';
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={!online ? 'Tryb offline bez konta' : status.offline ? 'Offline — zmiany czekają na telefonie' : status.syncing ? 'Synchronizacja trwa' : status.error ? `Błąd synchronizacji: ${status.error}` : 'Zsynchronizowano'}
-      hitSlop={10}
-      onPress={() => router.push('/settings')}
-      style={styles.dotWrap}
-    >
-      {status.syncing && !status.offline ? <ActivityIndicator size="small" color={p.accent} /> : <View style={[styles.dot, { backgroundColor: color }]} />}
+    <Pressable accessibilityRole="button" accessibilityLabel={`Ustawienia; ${sync}`} hitSlop={10} onPress={() => router.push('/settings')} style={styles.gear}>
+      {/* U+FE0E — znak tekstowy, nie kolorowe emoji. */}
+      <Text style={{ color: p.fg, fontSize: 21, lineHeight: 24 }}>{'⚙︎'}</Text>
+      <View style={[styles.badge, { backgroundColor: p.card }]}>
+        {status.syncing && !status.offline ? <ActivityIndicator size={10} color={p.accent} /> : <View style={[styles.dot, { backgroundColor: color }]} />}
+      </View>
     </Pressable>
   );
 }
@@ -115,7 +115,7 @@ export function HeaderRight() {
         <Text style={{ color: p.fg, fontSize: 19 }}>⌕</Text>
       </Pressable>
       <UpdateIcon />
-      <SyncDot />
+      <SettingsButton />
     </View>
   );
 }
@@ -123,8 +123,9 @@ export function HeaderRight() {
 const styles = StyleSheet.create({
   right: { flexDirection: 'row', alignItems: 'center', gap: 14, marginRight: 12 },
   switcher: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4 },
-  dotWrap: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
-  dot: { width: 10, height: 10, borderRadius: 5 },
+  gear: { width: 26, height: 26, alignItems: 'center', justifyContent: 'center' },
+  badge: { position: 'absolute', right: -3, bottom: -2, width: 13, height: 13, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
+  dot: { width: 9, height: 9, borderRadius: 5 },
   update: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' },
   updateText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
 });

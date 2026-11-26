@@ -10,7 +10,7 @@ import { ErrorsSection } from '@/components/errors-section';
 import { InvitesSection } from '@/components/invites-section';
 import { ProfileSection } from '@/components/profile-section';
 import { SyncIndicator } from '@/components/sync-indicator';
-import { Button, Field, P, Row, Screen, Section, usePalette } from '@/components/ui';
+import { Button, CollapsibleSections, Field, P, Row, Screen, Section, usePalette } from '@/components/ui';
 import { useView } from '@/lib/app-data';
 import { deleteAccount, sendMagicLink, signInWithGoogle, signOut, verifyEmailCode } from '@/lib/auth';
 import { CLOUD_SERVER, saveServerConfig, serverConfig, sessionUser } from '@/lib/config';
@@ -193,7 +193,9 @@ export default function Settings() {
 
   return (
     <Screen>
-      <Section title={user.online ? `Zalogowano: ${user.email ?? '—'}` : 'Tryb offline (bez konta)'}>
+      <CollapsibleSections value>
+      {/* Logowanie (bez konta / po wygaśnięciu sesji) zawsze widoczne. */}
+      <Section id="account" title={user.online ? `Zalogowano: ${user.email ?? '—'}` : 'Tryb offline (bez konta)'} alwaysOpen={!user.online || relogin}>
         {relogin ? (
           <>
             <P tone="bad">
@@ -276,6 +278,7 @@ export default function Settings() {
           />
         ) : null}
       </Section>
+      </CollapsibleSections>
     </Screen>
   );
 }
