@@ -6,7 +6,7 @@
  * wejściu, koniec ze statystykami). Przegląd dnia: kolejka zaległych i dzisiejszych ustalona na
  * starcie, klawisze 1–6, na końcu podsumowanie i plan jutra. Przegląd tygodnia: kroki liczone na
  * żywo (załatwione znikają), na koniec Inbox pusty i każdy aktywny projekt z następnym krokiem.
- * Zadanie otwiera się w prawym panelu jak na listach (tytuł, ✎, oko, Enter); `data-task-id` na wierszu
+ * Zadanie otwiera się w prawym panelu jak na listach (tytuł, oko, Enter); `data-task-id` na wierszu
  * trzyma panel otwarty przy klikaniu decyzji, a Esc najpierw zamyka panel.
  */
 import {
@@ -93,30 +93,24 @@ const onControl = (target: EventTarget | null) => target instanceof Element && t
 /** Wiersz zadania otwartego w panelu. */
 const openRowClass = "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]";
 
-/** Ikony przy tytule: edycja i podgląd zadania w prawym panelu. */
+/** Ikona przy tytule: podgląd zadania w prawym panelu (edycję otwiera klik w tytuł). */
 function OpenButtons({ task, className = "", hover = false }: { task: ViewTask; className?: string; hover?: boolean }) {
   const { openTask, openTaskId, openTaskMode } = useAppEnv();
-  // `hover` — w długich listach podsumowań ikony dopiero po najechaniu / fokusie (na dotyku zawsze), żeby nie zasłaniały tytułów.
+  // `hover` — w długich listach podsumowań ikona dopiero po najechaniu / fokusie (na dotyku zawsze), żeby nie zasłaniała tytułów.
   const quiet = hover && openTaskId !== task.id ? "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100" : "";
   return (
     <span className={`flex shrink-0 items-center ${quiet} ${className}`}>
-      {(["edit", "preview"] as const).map((mode) => {
-        const label = mode === "edit" ? "Edytuj zadanie" : "Podgląd zadania";
-        return (
-          <button
-            key={mode}
-            type="button"
-            aria-label={`${label} „${task.title}”`}
-            title={label}
-            aria-pressed={openTaskId === task.id && openTaskMode === mode}
-            onClick={() => openTask(task.id, mode)}
-            className="flex h-5 items-center rounded px-1 text-sm font-normal text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--accent)] aria-pressed:text-[var(--accent)]"
-            data-testid={mode === "edit" ? "review-edit" : "review-preview"}
-          >
-            {mode === "edit" ? "✎" : <EyeIcon />}
-          </button>
-        );
-      })}
+      <button
+        type="button"
+        aria-label={`Podgląd zadania „${task.title}”`}
+        title="Podgląd zadania"
+        aria-pressed={openTaskId === task.id && openTaskMode === "preview"}
+        onClick={() => openTask(task.id, "preview")}
+        className="flex h-5 items-center rounded px-1 text-sm font-normal text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--accent)] aria-pressed:text-[var(--accent)]"
+        data-testid="review-preview"
+      >
+        <EyeIcon />
+      </button>
     </span>
   );
 }

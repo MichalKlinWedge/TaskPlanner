@@ -33,10 +33,10 @@ test('przegląd: panel zadania z kolejki dnia i z kroków tygodnia', async ({ pa
   await expect(panel).toHaveCount(0);
   await expect(daily).toBeVisible();
 
-  // Podgląd i edycja z ikon; zmiana tytułu widać na karcie.
+  // Podgląd z ikony, edycja z tytułu; zmiana tytułu widać na karcie.
   await card.getByTestId('review-preview').click();
   await expect(panel.getByTestId('task-preview')).toContainText(current);
-  await card.getByTestId('review-edit').click();
+  await card.getByRole('button', { name: current, exact: true }).click();
   await title.fill(`${current} zm`);
   await title.press('Tab');
   await expect(card).toContainText(`${current} zm`);
@@ -66,7 +66,7 @@ test('przegląd: panel zadania z kolejki dnia i z kroków tygodnia', async ({ pa
   const weekly = page.getByTestId('review-weekly');
   await weekly.getByRole('button', { name: /Inbox do zera/ }).click();
   const row = page.getByTestId('review-step-inbox').locator(`[data-task-id="${ids[2]}"]`);
-  await row.getByTestId('review-edit').click();
+  await row.getByRole('button', { name: later, exact: true }).click();
   await expect(title).toHaveValue(later);
   // Klawisz decyduje o zadaniu z panelu, a nie o pierwszym na liście; panel zostaje.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
