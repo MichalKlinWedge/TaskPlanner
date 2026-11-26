@@ -43,6 +43,7 @@ import {
   type Span,
   type TimelineModel,
   type ViewContext,
+  type ViewTask,
 } from "@taskplanner/core";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
@@ -54,6 +55,7 @@ import { useRoute } from "@/lib/route";
 import { useAppEnv } from "./app-env";
 import { ExportButton } from "./export";
 import { Check, Popover } from "./filter-bar";
+import { PeopleBadges } from "./people-badges";
 import { useTaskActions } from "./task-item";
 
 type Scale = "day" | "week" | "month";
@@ -97,14 +99,31 @@ const SCALES: Record<Scale, { label: string; cellWidth: number; scales: IScaleCo
 };
 
 const shortDay = (d: unknown) => (d instanceof Date ? `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${String(d.getFullYear()).slice(2)}` : "");
+const tasksById = new WeakMap<readonly ViewTask[], Map<string, ViewTask>>();
+/** Tytuł w siatce + znaczki osób (odpowiedzialny, uczestnicy) jak na liście; projekt — sam tytuł. */
+function TitleCell({ row: cellRow }: { row: object }) {
+  const row = cellRow as { id?: unknown; text?: unknown };
+  const { data } = useAppEnv();
+  let byId = tasksById.get(data.tasks);
+  if (!byId) tasksById.set(data.tasks, (byId = new Map(data.tasks.map((t) => [t.id, t]))));
+  const task = byId.get(String(row.id));
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <span className="truncate">{String(row.text ?? "")}</span>
+      {task ? <PeopleBadges task={task} /> : null}
+    </span>
+  );
+}
+
 // Wiersz bez żadnej daty (`barless`) ma w SVAR zastępczy dzisiejszy dzień — w tabeli „—”.
+// `resize` = szerokość kolumny przeciągana na krawędzi nagłówka (ostatniej kolumnie SVAR jej nie daje — tam jest podział siatka / oś).
 const COLUMNS: IColumnConfig[] = [
-  { id: "text", header: "Zadanie", flexgrow: 1, width: 200, sort: false },
-  { id: "start", header: "Początek", width: 78, align: "center", sort: false, template: (v: unknown, row: object) => ("barless" in row ? "—" : shortDay(v)) },
-  { id: "duration", header: "Dni", width: 44, align: "center", sort: false, template: (v: unknown, row: object) => ("barless" in row ? "—" : String(v ?? "")) },
+  { id: "text", header: "Zadanie", flexgrow: 1, width: 200, sort: false, resize: true, cell: TitleCell },
+  { id: "start", header: "Początek", width: 78, align: "center", sort: false, resize: true, template: (v: unknown, row: object) => ("barless" in row ? "—" : shortDay(v)) },
+  { id: "duration", header: "Dni", width: 56, align: "center", sort: false, resize: true, template: (v: unknown, row: object) => ("barless" in row ? "—" : String(v ?? "")) },
 ];
 /** Z „Ścieżką krytyczną”: zapas zadania w dniach (roboczych); projekt, ukończone i bez paska — „—”. */
-const CRITICAL_COLUMNS: IColumnConfig[] = [...COLUMNS, { id: "float", header: "Zapas", width: 52, align: "center", sort: false, template: (v: unknown) => (typeof v === "number" ? String(v) : "—") }];
+const CRITICAL_COLUMNS: IColumnConfig[] = [...COLUMNS, { id: "float", header: "Zapas", width: 60, align: "center", sort: false, resize: true, template: (v: unknown) => (typeof v === "number" ? String(v) : "—") }];
 
 function readStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
