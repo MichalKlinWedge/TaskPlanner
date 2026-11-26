@@ -9,7 +9,7 @@
  * jako przerywane bloki do „Zastosuj”). Przełącznik „Dziś | Jutro” wybiera dzień, chyba że ekran podaje `date`.
  */
 import { addDays, blockLanes, blocksForDay, conflictIds, conflicts, DAY_PLANNER, dayLabel, freeSlots, habitSlots, isOpen, localDateTimeAt, plural, PRIORITY, relativeDay, scheduleBlockPatch, withDraft, withoutBlock, zonedInstant, type Block, type LocalDate, type ProfileSettings, type ViewContext, type ViewTask } from "@taskplanner/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { listEditable, type AppData } from "@/lib/app-data";
 import { useCalendarEvents } from "@/lib/calendar-events";
@@ -34,6 +34,27 @@ function useNowMinute(dayStartMs: number): number {
     return () => clearInterval(timer);
   }, []);
   return Math.round((now - dayStartMs) / 60_000);
+}
+
+/**
+ * Czy panel mieści się w wysokości przewijanego widoku — tylko wtedy się przykleja. Wyższy przewija się
+ * razem ze stroną (własne przewijanie dawało drugi suwak obok głównego). `frozen` (przeciąganie) trzyma
+ * ostatni wynik, żeby układ nie skoczył pod kursorem, gdy oś na chwilę sięga do północy.
+ */
+function useFitsView(ref: RefObject<HTMLElement | null>, frozen: boolean): boolean {
+  const [fits, setFits] = useState(true);
+  useEffect(() => {
+    const el = ref.current;
+    const view = el?.closest("main");
+    if (!el || !view || frozen) return;
+    const check = () => setFits(el.offsetHeight <= view.clientHeight);
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    observer.observe(view);
+    check();
+    return () => observer.disconnect();
+  }, [ref, frozen]);
+  return fits;
 }
 
 /** `date` — dzień ustalony przez ekran (przegląd dnia ma własny przełącznik); bez niego „Dziś | Jutro” tutaj. */
@@ -80,6 +101,7 @@ export function DayPlan({ data, ctx, settings, date: fixed }: { data: AppData; c
 
   const { run } = useTaskActions();
   const axis = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLElement>(null);
   /** Godzina zegara ściennego w minucie osi (przy zmianie czasu minuty od północy ≠ zegar). */
   const wallAt = (min: number) => localDateTimeAt(new Date(dayStart + min * 60_000), timeZone).slice(11);
   /** Przyszłe wystąpienia serii, zadania zamknięte i z list tylko do podglądu stoją w miejscu. */
@@ -93,6 +115,7 @@ export function DayPlan({ data, ctx, settings, date: fixed }: { data: AppData; c
     void run([{ table: "tasks", id, patch }], { text: `„${task.title}” → ${relativeDay(date, today)} ${String(patch.due_time)}`, undo: [{ table: "tasks", id, patch: undo }] });
   };
   const { drag, start, wasDragged } = usePlanDrag(axis, { from, to: day.dayMinutes, px: PX }, schedule);
+  const fits = useFitsView(panel, !!drag);
   // W trakcie przeciągania oś sięga do północy — zadanie da się położyć też po godzinach pracy.
   const to = drag ? day.dayMinutes : axisEnd;
   const dragged = drag ? taskById.get(drag.id) : undefined;
@@ -107,7 +130,7 @@ export function DayPlan({ data, ctx, settings, date: fixed }: { data: AppData; c
   };
 
   return (
-    <aside className="mt-6 text-sm lg:sticky lg:top-0 lg:mt-0 lg:max-h-[calc(100dvh-4rem)] lg:self-start lg:overflow-y-auto" aria-label="Plan dnia" data-testid="day-plan">
+    <aside ref={panel} className={`mt-6 text-sm lg:mt-0 lg:self-start ${fits ? "lg:sticky lg:top-0" : ""}`} aria-label="Plan dnia" data-testid="day-plan">
       <header className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <h2 className="text-sm font-semibold whitespace-nowrap">Plan dnia</h2>
         <span className="text-xs whitespace-nowrap text-[var(--muted)]">{plural(plan.day.timed.filter((b) => !b.passive).length, ["blok", "bloki", "bloków"])}</span>
