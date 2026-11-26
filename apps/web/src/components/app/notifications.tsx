@@ -30,6 +30,7 @@ import { useEffect, useRef, useState } from "react";
 import { parseSettings } from "@/lib/app-data";
 import { useLocalQuery } from "@/lib/local-store";
 import { requestOpenTask, useNotifications } from "@/lib/notifications";
+import { browserDeviceId } from "@/lib/push";
 import { routeHash } from "@/lib/route";
 
 import { SettingsSection } from "./settings-section";
@@ -49,11 +50,13 @@ const ICON: Record<AppNotification["kind"], string> = {
   role_changed: "🎚️",
 };
 
-/** Licznik w tytule karty: „(3) Task Planner”. */
+/** Licznik w tytule karty: „(3) Task Planner”, a w zainstalowanej aplikacji — znaczek na ikonie (Badging API). */
 function useTitleCount(count: number) {
   useEffect(() => {
     const base = document.title.replace(/^\(\d+\) /, "");
     document.title = count ? `(${count}) ${base}` : base;
+    const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
+    void (count ? nav.setAppBadge?.(count) : nav.clearAppBadge?.())?.catch(() => undefined);
   }, [count]);
 }
 
@@ -233,9 +236,16 @@ export function NotificationToasts({ store, userId }: { store: TabStore; userId:
   return null;
 }
 
-/** Ustawienia → „Powiadomienia”: kanał każdej grupy i dymek. */
+/** Ustawienia → „Powiadomienia”: kanał każdej grupy, dymek i cisza nocna dla push. */
 export function NotificationsCard({ store, userId }: { store: TabStore; userId: string }) {
   const { rows } = useLocalQuery<{ settings: string | null }>(store, "select settings from profiles where id = ?", [userId], ["profiles"]);
+  // Push idzie na urządzenia z włączonymi przypomnieniami (ta sama zgoda i subskrypcja) — stan tej przeglądarki.
+  const { rows: device } = useLocalQuery<{ id: string }>(
+    store,
+    "select id from devices where id = ? and deleted_at is null and reminder_channel = 'enabled' and push_subscription is not null",
+    [browserDeviceId(userId)],
+    ["devices"],
+  );
   const [error, setError] = useState<string | null>(null);
   const raw = (() => {
     try {
@@ -250,7 +260,8 @@ export function NotificationsCard({ store, userId }: { store: TabStore; userId: 
     // Pełne ustawienia z tej samej migawki — `settings` to jedno pole LWW.
     void store.mutate("profiles", userId, { settings: { ...parseSettings(raw), notifications: { ...prefs, ...patch } } }).catch((e: unknown) => setError(String(e)));
   };
-  const channels: NotificationChannel[] = ["app", "off"];
+  const channels: NotificationChannel[] = ["push", "app", "off"];
+  const wantsPush = prefs.tasks === "push" || prefs.sharing === "push";
   return (
     <SettingsSection title="Powiadomienia">
       <p className="mb-3 text-xs text-[var(--muted)]">
@@ -264,7 +275,7 @@ export function NotificationsCard({ store, userId }: { store: TabStore; userId: 
               <span className="block text-xs text-[var(--muted)]">{NOTIFICATION_GROUP_LABEL[group].hint}</span>
             </span>
             <Select
-              value={prefs[group] === "push" ? "app" : prefs[group]}
+              value={prefs[group]}
               onChange={(e) => save({ [group]: e.target.value as NotificationChannel })}
               className="w-40"
               data-testid={`notifications-${group}`}
@@ -281,8 +292,46 @@ export function NotificationsCard({ store, userId }: { store: TabStore; userId: 
           <input type="checkbox" checked={prefs.toast} onChange={(e) => save({ toast: e.target.checked })} />
           Dymek przy nowym powiadomieniu, gdy aplikacja jest na wierzchu
         </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={prefs.quiet.enabled} onChange={(e) => save({ quiet: { ...prefs.quiet, enabled: e.target.checked } })} data-testid="notifications-quiet" />
+            Cisza nocna (bez push) od
+          </label>
+          <TimeInput value={prefs.quiet.from} label="Początek ciszy nocnej" disabled={!prefs.quiet.enabled} onChange={(from) => save({ quiet: { ...prefs.quiet, from } })} />
+          do
+          <TimeInput value={prefs.quiet.to} label="Koniec ciszy nocnej" disabled={!prefs.quiet.enabled} onChange={(to) => save({ quiet: { ...prefs.quiet, to } })} />
+        </div>
       </div>
+      <p className="mt-3 text-xs text-[var(--muted)]">
+        „{NOTIFICATION_CHANNEL.push}” — powiadomienie systemowe minutę po zdarzeniu (seria komentarzy = jedno), także przy zamkniętej karcie, na urządzenia z włączonymi
+        przypomnieniami. Gdy karta aplikacji jest na wierzchu, wystarcza dzwonek.
+      </p>
+      {wantsPush && !device.length ? (
+        <Notice>
+          Ta przeglądarka nie dostanie push, dopóki nie włączysz w niej przypomnień:{" "}
+          <a href={routeHash({ view: "settings", id: "reminders" })} className="underline">
+            Ustawienia → Przypomnienia
+          </a>
+          .
+        </Notice>
+      ) : null}
       {error ? <Notice tone="error">{error}</Notice> : null}
     </SettingsSection>
+  );
+}
+
+/** Pole godziny zapisywane po zmianie (puste / niepełne — bez zapisu). */
+function TimeInput({ value, label, disabled, onChange }: { value: string; label: string; disabled: boolean; onChange: (value: string) => void }) {
+  return (
+    <input
+      type="time"
+      aria-label={label}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => {
+        if (/^\d{2}:\d{2}$/.test(e.target.value)) onChange(e.target.value);
+      }}
+      className="rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-sm disabled:opacity-50"
+    />
   );
 }

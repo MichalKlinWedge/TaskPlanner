@@ -6,8 +6,9 @@
  */
 import { z } from 'zod';
 
-import { addDays, localDateAt } from './dates.ts';
+import { addDays, localDateAt, localDateTimeAt } from './dates.ts';
 import { dayLabel, pluralForm } from './format.ts';
+import { LocalTime } from './schemas/primitives.ts';
 import { SCOPE_ROLE, type OwnerAfter, type ScopeRole } from './sharing.ts';
 
 export const NOTIFICATION_KINDS = [
@@ -37,7 +38,7 @@ export const NOTIFICATION_GROUP_LABEL: Record<NotificationGroup, { title: string
   sharing: { title: 'Udostępnianie', hint: 'zaproszenia, propozycje roli właściciela, osoby dołączające i odchodzące, zmiana Twojej roli' },
 };
 
-/** `push` = w aplikacji i Web Push (etap N2; do tego czasu działa jak `app`). */
+/** `push` = w aplikacji i Web Push na przeglądarki z włączonymi przypomnieniami (etap N2). */
 export const NotificationChannel = z.enum(['off', 'app', 'push']);
 export type NotificationChannel = z.infer<typeof NotificationChannel>;
 
@@ -53,6 +54,11 @@ export const NotificationPrefs = z.object({
   sharing: NotificationChannel.catch('app').default('app'),
   /** Dymek przy nowym powiadomieniu, gdy karta jest widoczna. */
   toast: z.boolean().catch(true).default(true),
+  /** Cisza nocna: bez Web Push w tych godzinach (strefa z ustawień); dzwonek w aplikacji działa dalej. */
+  quiet: z
+    .object({ enabled: z.boolean().default(false), from: LocalTime.default('22:00'), to: LocalTime.default('07:00') })
+    .catch({ enabled: false, from: '22:00', to: '07:00' })
+    .prefault({}),
 });
 export type NotificationPrefs = z.infer<typeof NotificationPrefs>;
 
@@ -233,3 +239,41 @@ export function freshNotifications(list: readonly AppNotification[], seen: Reado
 
 /** Klucz „widziane” dla dymka — scalone powiadomienie (nowy `at`) pokazuje się ponownie. */
 export const notificationSeenKey = (n: Pick<AppNotification, 'id' | 'at'>): string => `${n.id}:${n.at}`;
+
+// ── Web Push (etap N2) ──────────────────────────────────────────────────────────────────────
+
+/** Push wychodzi minutę po ostatnim zdarzeniu (seria komentarzy = jeden push; przeczytane w tym czasie — wcale). */
+export const NOTIFICATION_PUSH_DELAY_MS = 60_000;
+/** Starsze zdarzenia (przerwa crona, koniec ciszy nocnej) nie idą jako push — czekają w dzwonku. */
+export const NOTIFICATION_PUSH_WINDOW_MS = 15 * 60_000;
+
+/** Czy chwila `now` wypada w ciszy nocnej (`from` > `to` = przez północ; `from` = `to` — nigdy). */
+export function inQuietHours(prefs: Pick<NotificationPrefs, 'quiet'>, now: Date, timeZone?: string): boolean {
+  const { enabled, from, to } = prefs.quiet;
+  if (!enabled || from === to) return false;
+  const time = localDateTimeAt(now, timeZone).slice(11);
+  return from < to ? time >= from && time < to : time >= from || time < to;
+}
+
+/** Czy to powiadomienie ma teraz pójść jako Web Push: grupa z kanałem `push`, nieprzeczytane, w oknie czasu, poza ciszą. */
+export function wantsPush(n: Pick<AppNotification, 'kind' | 'at' | 'readAt'>, prefs: NotificationPrefs, now: Date, timeZone?: string): boolean {
+  if (n.readAt || prefs[NOTIFICATION_GROUP[n.kind]] !== 'push') return false;
+  const age = now.getTime() - new Date(n.at).getTime();
+  return age >= NOTIFICATION_PUSH_DELAY_MS && age < NOTIFICATION_PUSH_WINDOW_MS && !inQuietHours(prefs, now, timeZone);
+}
+
+/** Klucz wysyłki w dzienniku `reminder_deliveries`: scalone powiadomienie (nowy `at`) idzie ponownie. */
+export const notificationFireKey = (n: Pick<AppNotification, 'id' | 'at'>): string => `n:${n.id}:${new Date(n.at).getTime()}`;
+
+/** Treść Web Push (Service Worker): tytuł, treść, adres otwarcia i `tag` (nowszy push z tej grupy zastępuje starszy). */
+export function notificationPush(n: AppNotification): { title: string; body: string; url: string; tag: string; taskId?: string } {
+  const { text, detail } = notificationText(n);
+  const target = notificationTarget(n);
+  return {
+    title: text,
+    body: detail ?? '',
+    url: target.kind === 'task' ? `/?task=${target.taskId}` : target.kind === 'workspace' ? '/#/manage' : '/',
+    tag: `tp-n:${n.groupKey ?? n.id}`,
+    ...(target.kind === 'task' && { taskId: target.taskId }),
+  };
+}

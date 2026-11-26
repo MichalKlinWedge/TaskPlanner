@@ -10,6 +10,9 @@
  * (`clear_push_subscription`), błąd przejściowy — ponowienie w następnej minucie (najwyżej 5 prób).
  * Nawyki (Etap 8): wpisy `task_completions` z ostatnich dni — bez przypomnienia o dniu już zaliczonym.
  * Tryb skupienia (Etap 7): koniec etapu z `profiles.focus` na te same urządzenia (`fire_key` `<wpis>:focus`).
+ * Centrum powiadomień (v1.x, N2): nieprzeczytane `notifications` z kanałem `push` (`_shared/notification-push.ts`,
+ * `fire_key` = core `notificationFireKey`). `POST …/reminders-push/read` `{ id, token }` — akcja „Oznacz jako
+ * przeczytane” z Service Workera (podpis HMAC z `CRON_SECRET`, bez sesji) → RPC `mark_notification_read`.
  *
  * `GET …/reminders-push/key` — klucz publiczny VAPID dla przeglądarki.
  *
@@ -17,8 +20,10 @@
  */
 import * as webpush from '@negrel/webpush';
 
+import { NOTIFICATION_PUSH_DELAY_MS, NOTIFICATION_PUSH_WINDOW_MS } from '../../../packages/core/src/notifications.ts';
+import { notificationReadToken, planNotificationPushes, verifyNotificationReadToken, type NotificationRow } from '../_shared/notification-push.ts';
 import { planPushes, pushDevices, type AssignedTaskRow, type CompletionRow, type DeviceRow, type HiddenListRow, type MembershipRow, type PlannedPush, type ProfileRow, type ReminderRow } from '../_shared/reminders.ts';
-import { admin, env, HttpError, json, optionalEnv, requireCron, route, serve } from '../_shared/runtime.ts';
+import { admin, env, functionsUrl, HttpError, json, optionalEnv, requireCron, route, serve } from '../_shared/runtime.ts';
 
 let server: webpush.ApplicationServer | null = null;
 
@@ -32,6 +37,8 @@ async function appServer(): Promise<webpush.ApplicationServer> {
 
 /** `Topic` (≤ 32 znaki base64url): ta sama wysyłka zastępuje niedostarczoną kopię, różne dni się nie mieszają. */
 const pushTopic = (fireKey: string) => {
+  // Powiadomienie centrum: `n:<id>:<czas>` — temat = id (scalone nowsze zastępuje niedostarczone starsze).
+  if (fireKey.startsWith('n:')) return `n${fireKey.slice(2, 38).replaceAll('-', '')}`.slice(0, 32);
   const [reminder = '', day = ''] = fireKey.split(':');
   return `${reminder.replaceAll('-', '').slice(0, 24)}${day.replaceAll('-', '')}`.slice(0, 32);
 };
@@ -42,6 +49,14 @@ serve(async (req, url) => {
   // Klucz publiczny VAPID dla przeglądarki (`pushManager.subscribe`) — jawny, bez logowania.
   if (req.method === 'GET' && route(url, 'reminders-push') === 'key') return json({ publicKey: env('VAPID_PUBLIC_KEY') });
   if (req.method !== 'POST') throw new HttpError(405, 'Tylko POST');
+  // „Oznacz jako przeczytane” z powiadomienia systemowego (Service Worker, `no-cors` — odpowiedź i tak nieczytelna).
+  if (route(url, 'reminders-push') === 'read') {
+    const body = (await req.json().catch(() => ({}))) as { id?: unknown; token?: unknown };
+    if (!(await verifyNotificationReadToken(env('CRON_SECRET'), body.id, body.token))) throw new HttpError(403, 'Zły podpis');
+    const { data, error } = await admin().rpc('mark_notification_read', { p_id: body.id as string });
+    if (error) throw error;
+    return json({ read: data === true });
+  }
   requireCron(req);
   const started = Date.now();
   const now = new Date();
@@ -88,6 +103,17 @@ serve(async (req, url) => {
   if (assignedError) throw assignedError;
   const reminders = (reminderRows ?? []) as unknown as ReminderRow[];
 
+  // Powiadomienia centrum: nieprzeczytane z ostatnich 15 min, nie młodsze niż minuta (reszta reguł w core).
+  const { data: notificationRows, error: noteError } = await db
+    .from('notifications')
+    .select('id, user_id, kind, task_id, workspace_id, actor_id, data, group_key, at, read_at, deleted_at')
+    .in('user_id', users)
+    .is('read_at', null)
+    .is('deleted_at', null)
+    .gt('at', new Date(now.getTime() - NOTIFICATION_PUSH_WINDOW_MS).toISOString())
+    .lte('at', new Date(now.getTime() - NOTIFICATION_PUSH_DELAY_MS).toISOString());
+  if (noteError) throw noteError;
+
   // Nawyki: wpisy od początku bieżącego tygodnia / miesiąca (cel „N razy”) w każdej strefie — z zapasem dnia.
   const habitIds = [...new Set(reminders.filter((r) => r.tasks?.kind === 'habit').map((r) => r.task_id))];
   let completions: CompletionRow[] = [];
@@ -118,6 +144,14 @@ serve(async (req, url) => {
     },
     { now, allowHttp },
   );
+  const notePlan = planNotificationPushes(
+    { devices, notifications: (notificationRows ?? []) as NotificationRow[], profiles: (profileRows ?? []) as ProfileRow[] },
+    { now, allowHttp, readUrl: `${functionsUrl()}/reminders-push/read` },
+  );
+  const tokens = new Map<string, string>();
+  for (const id of new Set(notePlan.map((p) => p.payload.notification!))) tokens.set(id, await notificationReadToken(env('CRON_SECRET'), id));
+  for (const item of notePlan) item.payload.readToken = tokens.get(item.payload.notification!);
+  plan.push(...notePlan);
   const summary = { devices: devices.length, due: plan.length, claimed: 0, sent: 0, retry: 0, gone: 0, failed: 0 };
   if (!plan.length) return json({ ...summary, ms: Date.now() - started });
 

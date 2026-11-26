@@ -205,6 +205,42 @@ describe('Web Push z przypomnień', () => {
     await push('profiles', user.id, { focus: null });
   });
 
+  it('powiadomienie centrum (N2) z kanałem push → raz na urządzenie; „przeczytane” z podpisem z powiadomienia', async () => {
+    const id = uuidv7();
+    const topic = `n${id.replaceAll('-', '')}`.slice(0, 32);
+    await push('profiles', user.id, { settings: { onboarded: true, timeZone: 'UTC', notifications: { tasks: 'push' } } });
+    // Jak po wyzwalaczu `notify` (tu kluczem serwera): komentarz sprzed 2 min, za świeży — sprzed 10 s.
+    const insert = (rowId: string, ago: number) =>
+      db.from('notifications').insert({
+        id: rowId, scope_id: user.id, user_id: user.id, kind: 'comment', data: { actor: 'Jan', title: 'Raport', excerpt: 'Hej' },
+        group_key: `comment:${rowId}`, at: new Date(Date.now() - ago).toISOString(),
+      });
+    expect((await insert(id, 120_000)).error).toBeNull();
+    const fresh = uuidv7();
+    expect((await insert(fresh, 10_000)).error).toBeNull();
+    const since = Date.now();
+    await fn('reminders-push', { cron: true });
+    await fn('reminders-push', { cron: true });
+    let payload: { title: string; body: string; notification: string; readUrl: string; readToken: string; tag: string } | null = null;
+    for (const b of [b1, b2]) {
+      const reqs = received(b, topic, since);
+      expect(reqs).toHaveLength(1);
+      payload = JSON.parse(await decrypt(b, reqs[0]!.body));
+      expect(payload).toMatchObject({ title: 'Nowy komentarz w „Raport”', body: 'Jan: Hej', notification: id, tag: `tp-n:comment:${id}` });
+      expect(payload!.readUrl).toMatch(/\/reminders-push\/read$/);
+    }
+    expect(received(b1, `n${fresh.replaceAll('-', '')}`.slice(0, 32), since)).toHaveLength(0);
+
+    // Service Worker: `no-cors`, treść jako tekst; zły podpis — odmowa.
+    expect((await fn('reminders-push/read', { body: JSON.stringify({ id, token: 'zly' }), headers: { 'content-type': 'text/plain' } })).status).toBe(403);
+    const ok = await fn('reminders-push/read', { body: JSON.stringify({ id, token: payload!.readToken }), headers: { 'content-type': 'text/plain' } });
+    expect(await ok.json()).toEqual({ read: true });
+    const { data: row } = await db.from('notifications').select('read_at, field_clock').eq('id', id).single();
+    expect(row!.read_at).not.toBeNull();
+    expect(String((row!.field_clock as Record<string, string>).read_at)).toMatch(/:server$/);
+    await push('profiles', user.id, { settings: { onboarded: true, timeZone: 'UTC' } });
+  });
+
   it('klient: widzi swój dziennik, nie pisze go, nie zajmuje wysyłek; funkcja wymaga sekretu crona', async () => {
     expect(((await user.client.from('reminder_deliveries').select('id')).data ?? []).length).toBeGreaterThan(0);
     const { error } = await user.client.from('reminder_deliveries').insert({ user_id: user.id, device_id: b1.id, fire_key: 'x', task_id: uuidv7(), fire_at: new Date().toISOString() });

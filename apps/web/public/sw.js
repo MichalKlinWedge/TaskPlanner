@@ -128,6 +128,18 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      if (data.notification) {
+        // Centrum powiadomień (N2): karta na wierzchu ma dzwonek i dymek — bez powiadomienia systemowego.
+        // `tag` = grupa (np. komentarze zadania): nowszy push zastępuje starszy.
+        if (windows.some((w) => w.focused)) return;
+        return void (await self.registration.showNotification(data.title || 'Task Planner', {
+          body: data.body || '',
+          tag: data.tag || data.key,
+          icon: '/icons/icon-192.png',
+          data: { url: data.url || '/', taskId: data.taskId, notification: data.notification, readUrl: data.readUrl, readToken: data.readToken },
+          actions: data.readUrl && data.readToken ? [{ action: 'read', title: 'Oznacz jako przeczytane' }] : [],
+        }));
+      }
       if (data.focus) {
         // Koniec etapu skupienia: karta na wierzchu sama gra dźwięk i pokazuje dymek; ten sam `tag`
         // co powiadomienie z karty w tle — jedno zastępuje drugie.
@@ -162,9 +174,14 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const { url = '/', taskId, key, habit, date } = event.notification.data || {};
+  const { url = '/', taskId, key, habit, date, notification, readUrl, readToken } = event.notification.data || {};
   event.waitUntil(
     (async () => {
+      // Powiadomienie centrum: „przeczytane” podpisanym żądaniem (bez sesji); klik w treść — też przeczytane.
+      if (notification && readUrl && readToken) {
+        const read = fetch(readUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ id: notification, token: readToken }) }).catch(() => undefined);
+        if (event.action === 'read') return void (await read);
+      }
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       const open = windows.find((w) => new URL(w.url).origin === self.location.origin);
       if (event.action === 'habit-done' && habit && taskId && date) {

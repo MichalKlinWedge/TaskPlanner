@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   dismissOps,
   freshNotifications,
+  inQuietHours,
   markReadOps,
   notificationDays,
+  notificationFireKey,
+  notificationPush,
   notificationSeenKey,
   notificationTarget,
   notificationText,
@@ -13,6 +16,7 @@ import {
   toNotification,
   unreadCount,
   visibleNotifications,
+  wantsPush,
   type AppNotification,
 } from '../notifications.ts';
 import { MODEL } from '../schemas/model.ts';
@@ -148,7 +152,12 @@ describe('lista', () => {
 
 describe('ustawienia i wiersz', () => {
   it('uszkodzone ustawienia → domyślne', () => {
-    expect(NotificationPrefs.parse({ tasks: 'głośno', sharing: 'off', toast: 'tak' })).toEqual({ tasks: 'app', sharing: 'off', toast: true });
+    expect(NotificationPrefs.parse({ tasks: 'głośno', sharing: 'off', toast: 'tak', quiet: { from: '25:00' } })).toEqual({
+      tasks: 'app',
+      sharing: 'off',
+      toast: true,
+      quiet: { enabled: false, from: '22:00', to: '07:00' },
+    });
   });
 
   it('schemat wiersza przyjmuje wiersz z serwera', () => {
@@ -158,5 +167,45 @@ describe('ustawienia i wiersz', () => {
         task_id: null, workspace_id: null, actor_id: null, data: { count: 2 }, group_key: 'comment:x', at: '2026-11-18T11:00:00.123+00:00', read_at: null,
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('Web Push (N2)', () => {
+  const push = NotificationPrefs.parse({ tasks: 'push', sharing: 'push' });
+  const at = (iso: string) => new Date(iso);
+
+  it('cisza nocna przez północ i w ciągu dnia, w strefie z ustawień', () => {
+    const night = { quiet: { enabled: true, from: '22:00', to: '07:00' } };
+    expect(inQuietHours(night, at('2026-11-18T21:30:00Z'), TZ)).toBe(true); // 22:30 w Warszawie
+    expect(inQuietHours(night, at('2026-11-18T05:59:00Z'), TZ)).toBe(true); // 06:59
+    expect(inQuietHours(night, at('2026-11-18T06:00:00Z'), TZ)).toBe(false); // 07:00
+    expect(inQuietHours({ quiet: { enabled: true, from: '12:00', to: '13:00' } }, at('2026-11-18T11:30:00Z'), TZ)).toBe(true);
+    expect(inQuietHours({ quiet: { enabled: false, from: '00:00', to: '23:59' } }, NOW, TZ)).toBe(false);
+    expect(inQuietHours({ quiet: { enabled: true, from: '08:00', to: '08:00' } }, NOW, TZ)).toBe(false);
+  });
+
+  it('push: kanał grupy, nieprzeczytane, minuta po zdarzeniu, najwyżej 15 min, poza ciszą', () => {
+    const n = note({ at: '2026-11-18T11:58:00Z' });
+    expect(wantsPush(n, push, NOW, TZ)).toBe(true);
+    expect(wantsPush(n, prefs, NOW, TZ)).toBe(false);
+    expect(wantsPush({ ...n, readAt: '2026-11-18T11:59:00Z' }, push, NOW, TZ)).toBe(false);
+    expect(wantsPush({ ...n, at: '2026-11-18T11:59:30Z' }, push, NOW, TZ)).toBe(false);
+    expect(wantsPush({ ...n, at: '2026-11-18T11:40:00Z' }, push, NOW, TZ)).toBe(false);
+    expect(wantsPush(n, { ...push, quiet: { enabled: true, from: '12:00', to: '14:00' } }, NOW, TZ)).toBe(false);
+    expect(wantsPush({ ...n, kind: 'invite' }, { ...push, sharing: 'app' }, NOW, TZ)).toBe(false);
+  });
+
+  it('klucz wysyłki zmienia się ze scaleniem, treść i adres jak w dzwonku', () => {
+    expect(notificationFireKey(note())).toBe(`n:${note().id}:${Date.parse('2026-11-18T11:50:00Z')}`);
+    expect(notificationFireKey(note({ at: '2026-11-18T11:51:00Z' }))).not.toBe(notificationFireKey(note()));
+    expect(notificationPush(note({ groupKey: 'comment:x', kind: 'comment', data: { title: 'Raport', actor: 'Jan', excerpt: 'Hej' } }))).toEqual({
+      title: 'Nowy komentarz w „Raport”',
+      body: 'Jan: Hej',
+      url: `/?task=${note().taskId}`,
+      tag: 'tp-n:comment:x',
+      taskId: note().taskId,
+    });
+    expect(notificationPush(note({ kind: 'role_changed', data: { workspace: 'Dom', role: 'editor' } }))).toMatchObject({ url: '/#/manage', tag: `tp-n:${note().id}` });
+    expect(notificationPush(note({ kind: 'invite', data: {} }))).toMatchObject({ url: '/', body: '' });
   });
 });

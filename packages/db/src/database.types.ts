@@ -1184,6 +1184,9 @@ isOneToOne: false
 "lock_workspace_owner":
 { Args: { "p_scope": string }; Returns: undefined
                            },
+"mark_notification_read":
+{ Args: { "p_id": string }; Returns: boolean
+                           },
 "mirror_collaborator":
 { Args: { "p_collaborator": string,"p_scope": string }; Returns: undefined
                            },

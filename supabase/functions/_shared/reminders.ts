@@ -79,7 +79,21 @@ export interface PlannedPush {
   taskId: string | null;
   fireAt: string;
   subscription: PushSubscriptionJson;
-  payload: { key: string; title: string; body: string; url: string; taskId?: string; habit?: true; date?: string; focus?: true };
+  payload: {
+    key: string;
+    title: string;
+    body: string;
+    url: string;
+    taskId?: string;
+    habit?: true;
+    date?: string;
+    focus?: true;
+    /** Powiadomienie centrum (N2, `_shared/notification-push.ts`): id, `tag` i adres akcji „Oznacz jako przeczytane” z podpisem. */
+    notification?: string;
+    tag?: string;
+    readUrl?: string;
+    readToken?: string;
+  };
 }
 
 /** Urządzenia, które dostają Web Push: przeglądarka z włączonymi przypomnieniami i ważną subskrypcją. */
