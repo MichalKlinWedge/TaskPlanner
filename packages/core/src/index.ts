@@ -23,6 +23,7 @@ export * from './errors.ts';
 export * from './focus.ts';
 export * from './format.ts';
 export * from './habits.ts';
+export * from './home.ts';
 export * from './hlc.ts';
 export * from './ids.ts';
 export * from './invites.ts';

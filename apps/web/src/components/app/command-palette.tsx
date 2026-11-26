@@ -41,6 +41,7 @@ import { inputClass } from "./ui";
 
 /** Polecenia, które już działają (reszta przyjdzie z kolejnymi etapami — bez martwych pozycji). */
 export const AVAILABLE_COMMANDS = new Set([
+  "view.home",
   "view.inbox",
   "view.today",
   "view.overdue",

@@ -7,6 +7,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 export type Route =
+  | { view: "home" }
   | { view: "inbox" }
   | { view: "today" }
   | { view: "overdue" }
@@ -28,11 +29,13 @@ export type Route =
   | { view: "deliveries" }
   | { view: "changelog" };
 
-export const DEFAULT_ROUTE: Route = { view: "today" };
+/** Strona startowa: po zalogowaniu (pusty `#`) i po kliknięciu „Task Planner” w nagłówku. */
+export const DEFAULT_ROUTE: Route = { view: "home" };
 
 export function parseRoute(hash: string): Route {
   const [view, id] = hash.replace(/^#\/?/, "").split("/");
   switch (view) {
+    case "home":
     case "inbox":
     case "today":
     case "overdue":

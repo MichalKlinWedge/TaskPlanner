@@ -30,6 +30,7 @@ import { filterCount, SavedFilterView, SaveFilter, TagView } from "./filter-view
 import { AttachmentsProvider } from "./attachments";
 import { CollaboratorsView } from "./collaborators";
 import { HabitDetail, HabitNotificationActions, HabitsView } from "./habits";
+import { HomeView } from "./home";
 import { DeliveryLogScreen } from "./plugins-card";
 import { ChangelogScreen } from "./changelog";
 import { NotificationToasts } from "./notifications";
@@ -346,7 +347,9 @@ export function Shell({
   const props = { data: viewData, ctx, targetInbox, toolbar };
   const boardTasks = route.view === "board" ? viewData.tasks.filter((t) => !workspaceId || t.workspaceId === workspaceId) : [];
   const body =
-    route.view === "inbox" ? (
+    route.view === "home" ? (
+      <HomeView data={data} ctx={ctx} targetInbox={targetInbox} navigate={navigate} />
+    ) : route.view === "inbox" ? (
       <InboxView {...props} />
     ) : route.view === "today" ? (
       <TodayView {...props} aside={<DayPlan key={`${today}:${workspaceId ?? ""}`} data={data} ctx={ctx} settings={settings} />} />
@@ -442,6 +445,7 @@ export function Shell({
   // Tagi przypisane do innych przestrzeni chowają się (otwarty zostaje do wyjścia z jego widoku).
   const sidebarTags = tagsForWorkspace(data.tags, workspaceId, route.view === "tag" ? [route.id] : []);
   const mainNav: NavEntry[] = [
+    { route: { view: "home" }, icon: "🏠", label: "Start" },
     { route: { view: "inbox" }, icon: "📥", label: "Inbox", count: counts.inbox },
     { route: { view: "today" }, icon: "☀️", label: "Dziś", count: counts.today, alert: counts.overdue > 0 },
     { route: { view: "overdue" }, icon: "⏰", label: VIEW_SECTION.overdue, count: overdueCount || undefined, alert: overdueCount > 0 },
@@ -604,7 +608,7 @@ export function Shell({
             </div>
           </aside>
           <main ref={mainRef} className="@container relative min-w-0 flex-1 overflow-y-auto lg:[&:has(~[data-task-panel=full])]:hidden">
-            <div className={route.view === "settings" ? "h-full" : `mx-auto w-full p-4 pb-20 [--tp-pad:1rem] sm:p-6 sm:[--tp-pad:1.5rem] ${wide ? "" : route.view === "today" ? (hasColumns ? "max-w-7xl" : "max-w-5xl") : hasColumns ? "max-w-6xl" : "max-w-3xl"}`}>{content}</div>
+            <div className={route.view === "settings" ? "h-full" : `mx-auto w-full p-4 pb-20 [--tp-pad:1rem] sm:p-6 sm:[--tp-pad:1.5rem] ${wide ? "" : route.view === "today" || route.view === "home" ? (hasColumns && route.view === "today" ? "max-w-7xl" : "max-w-5xl") : hasColumns ? "max-w-6xl" : "max-w-3xl"}`}>{content}</div>
           </main>
           {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>
@@ -848,7 +852,7 @@ function readShare(params: URLSearchParams): Shared | null {
   return result.text ? result : null;
 }
 
-const GO: Record<string, Route> = { i: { view: "inbox" }, t: { view: "today" }, z: { view: "overdue" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" }, h: { view: "habits" } };
+const GO: Record<string, Route> = { s: { view: "home" }, i: { view: "inbox" }, t: { view: "today" }, z: { view: "overdue" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" }, h: { view: "habits" } };
 
 /** Akcja na zaznaczonych z dymkiem „Cofnij”. */
 function useBulk(selected: readonly string[]) {
@@ -1110,6 +1114,7 @@ function PaletteHost({
     if (item.kind === "filter") return then(() => navigate({ view: "filter", id: item.id.slice("filter:".length) }));
 
     const actions: Record<string, () => void> = {
+      "view.home": () => then(() => navigate({ view: "home" })),
       "view.inbox": () => then(() => navigate({ view: "inbox" })),
       "view.today": () => then(() => navigate({ view: "today" })),
       "view.overdue": () => then(() => navigate({ view: "overdue" })),

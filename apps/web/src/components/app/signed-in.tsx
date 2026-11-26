@@ -243,7 +243,13 @@ function AppHeader({ store, userId, email, settingsLink }: { store: TabStore; us
     <>
       <header className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-sm">
         <span className="flex items-baseline gap-1.5">
-          <span className="font-semibold">Task Planner</span>
+          {settingsLink ? (
+            <a href={routeHash({ view: "home" })} title="Strona startowa" className="-mx-1 rounded px-1 font-semibold outline-none hover:bg-[var(--hover)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]" data-testid="home-link">
+              Task Planner
+            </a>
+          ) : (
+            <span className="font-semibold">Task Planner</span>
+          )}
           {APP_NUMBER && !settingsLink ? <span className="font-mono text-[11px] text-[var(--muted)]">{APP_NUMBER}</span> : null}
           {APP_NUMBER && settingsLink ? (
             <a href="#/changelog" title="Historia zmian" className="rounded px-0.5 font-mono text-[11px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]" data-testid="app-version-link">
