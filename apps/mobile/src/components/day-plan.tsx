@@ -133,6 +133,7 @@ export function DayPlanCard({ data, today, workspaceId, initial }: { data: AppDa
               free={plan.free}
               info={plan.info}
               tasks={plan.tasks}
+              listColors={plan.listColors}
               from={range.from}
               to={range.to}
               hour={HOUR}

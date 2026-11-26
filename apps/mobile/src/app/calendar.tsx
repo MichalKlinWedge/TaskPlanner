@@ -77,7 +77,7 @@ import { Chip, usePalette } from '@/components/ui';
 import { listEditable, useView, type AppData } from '@/lib/app-data';
 import { useCalendarHidden, useExternalCalendars, type CalendarHidden } from '@/lib/calendar-sources';
 import { deviceCalendars, setDeviceCalendarIds, useCalendarEvents, useDeviceCalendarIds, type EventInfo } from '@/lib/calendar-events';
-import { useDayPlan, useNowMinute } from '@/lib/day-plan';
+import { useDayPlan, useListColors, useNowMinute } from '@/lib/day-plan';
 import { perfMeasure, usePerfReady } from '@/lib/perf';
 
 type Mode = 'day' | 'week' | 'month';
@@ -532,6 +532,7 @@ function DayView({ slot, hiddenCalendars, data, date, today, workspaceId, bottom
         work={work}
         info={plan.info}
         tasks={plan.tasks}
+        listColors={plan.listColors}
         from={0}
         to={day.dayMinutes}
         hour={hour}
@@ -639,6 +640,12 @@ function MonthView({ hiddenCalendars, data, date, today, workspaceId, onSelect, 
   const days = useMemo(() => new Map(perfMeasure('kalendarz: agenda', () => agendaDays(entries, from, to)).map((d) => [d.date, d.entries])), [entries, from, to]);
   const month = date.slice(0, 7);
   const selected = days.get(date) ?? [];
+  // Kropka zadania w kolorze jego listy (jak bloki osi dnia).
+  const listColors = useListColors(data);
+  const taskColor = (id: string) => {
+    const listId = tasks.get(id)?.listId;
+    return (listId && listColors.get(listId)) || p.accent;
+  };
   return (
     <ScrollView contentContainerStyle={{ padding: 8, gap: 10, paddingBottom: bottom + 88 }}>
       <ConflictNote count={conflictCount(entries)} />
@@ -670,7 +677,7 @@ function MonthView({ hiddenCalendars, data, date, today, workspaceId, onSelect, 
                   <Text style={{ color: d === today ? p.accent : d.slice(0, 7) === month ? p.fg : p.muted, fontSize: 13, fontWeight: d === today ? '700' : '400' }}>{Number(d.slice(8, 10))}</Text>
                   <View style={styles.dots}>
                     {dots.slice(0, 4).map((e) => (
-                      <View key={e.key} style={[styles.dot, { opacity: e.passive ? 0.4 : 1, backgroundColor: e.conflict ? p.bad : e.kind === 'event' ? (info.get(e.id)?.color ?? p.muted) : e.kind === 'habit' ? HABIT_COLOR : p.accent }]} />
+                      <View key={e.key} style={[styles.dot, { opacity: e.passive ? 0.4 : 1, backgroundColor: e.conflict ? p.bad : e.kind === 'event' ? (info.get(e.id)?.color ?? p.muted) : e.kind === 'habit' ? HABIT_COLOR : taskColor(e.id) }]} />
                     ))}
                   </View>
                   {dots.length > 4 ? <Text style={{ color: p.muted, fontSize: 9 }}>+{dots.length - 4}</Text> : null}

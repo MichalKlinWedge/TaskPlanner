@@ -11,6 +11,7 @@ import {
   conflicts,
   freeSlots,
   habitSlots,
+  listColor,
   zonedInstant,
   type Block,
   type CalendarEventLike,
@@ -35,6 +36,8 @@ export interface DayPlanModel {
   events: readonly CalendarEventLike[];
   info: Map<string, EventInfo>;
   tasks: Map<string, ViewTask>;
+  /** Kolor bloków listy (`listColor`: lista, przestrzeń) — id listy → kolor; `null` = domyślny. */
+  listColors: Map<string, string | null>;
   /** Początek dnia (ms) — minuta „teraz” liczy się od niego. */
   dayStart: number;
 }
@@ -52,6 +55,7 @@ export function useDayPlan(data: AppData, date: LocalDate, workspaceId: string |
     [data.tasks, data.habitCompletions, workspaceId, date, today],
   );
   const byId = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
+  const listColors = useListColors(data);
   return useMemo(() => {
     const day = blocksForDay(tasks, events.list, date, { timeZone, defaultDurationMin, habits });
     const list = conflicts(day.timed);
@@ -64,9 +68,18 @@ export function useDayPlan(data: AppData, date: LocalDate, workspaceId: string |
       events: events.list,
       info: events.info,
       tasks: byId,
+      listColors,
       dayStart: zonedInstant(date, '00:00', timeZone).getTime(),
     };
-  }, [tasks, events, habits, byId, date, timeZone, defaultDurationMin, workHours]);
+  }, [tasks, events, habits, byId, listColors, date, timeZone, defaultDurationMin, workHours]);
+}
+
+/** Kolory bloków list (jak na webie i w „Pokaż”): id listy → kolor listy albo przestrzeni. */
+export function useListColors(data: Pick<AppData, 'lists' | 'workspaces'>): Map<string, string | null> {
+  return useMemo(() => {
+    const workspaces = new Map(data.workspaces.map((w) => [w.id, w]));
+    return new Map(data.lists.map((l) => [l.id, listColor(l, workspaces.get(l.workspaceId))]));
+  }, [data.lists, data.workspaces]);
 }
 
 /** Zakres osi: godziny pracy poszerzone o bloki spoza nich (pełne godziny, w granicach dnia). */

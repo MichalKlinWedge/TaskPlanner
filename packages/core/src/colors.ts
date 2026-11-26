@@ -69,3 +69,10 @@ export function readableColor(color: string, background: string, text: string): 
   }
   return text;
 }
+
+/** Kolor bloków listy (kalendarz, plan dnia, „Pokaż”): kolor listy, bez niego — przestrzeni; `null` = domyślny (akcent). */
+export const listColor = (list: { color: string | null } | undefined, workspace: { color: string | null } | undefined): string | null =>
+  (list?.color && parseHexColor(list.color)) || (workspace?.color && parseHexColor(workspace.color)) || null;
+
+/** Tekst na tle w kolorze listy: biały, gdy da się go przeczytać, inaczej prawie czarny. */
+export const inkOn = (background: string): string => (contrastRatio(background, '#FFFFFF') >= MIN_CONTRAST ? '#FFFFFF' : '#18181B');

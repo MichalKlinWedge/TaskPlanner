@@ -4,9 +4,10 @@
  * `core` (`blocksForDay`, `conflicts`, `freeSlots`) — tu jest tylko rysowanie i gesty. Z `editable`
  * blok zadania przesuwa się po przytrzymaniu i przeciągnięciu, a uchwyt na dole zmienia długość
  * (co 15 min, `snapMinutes`); zapis robi ekran (`onMove` / `onResize`). Dotknięcie bloku → `onPress`,
- * pustego miejsca → `onEmpty` (minuta od północy). `slot` — wysokość wiersza: linie co tyle minut.
+ * pustego miejsca → `onEmpty` (minuta od północy). `slot` — wysokość wiersza: linie co tyle minut. Blok zadania
+ * ma tło w kolorze swojej listy (`listColors`, jak na webie), lewa krawędź — kolor priorytetu.
  */
-import { minutesToTime, PRIORITY, snapMinutes, type Block, type CalendarSlot, type DayPlan, type FreeSlot, type ViewTask } from '@taskplanner/core';
+import { inkOn, minutesToTime, PRIORITY, snapMinutes, type Block, type CalendarSlot, type DayPlan, type FreeSlot, type ViewTask } from '@taskplanner/core';
 import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -39,6 +40,8 @@ export interface DayTimelineProps {
   work?: FreeSlot | null;
   info: ReadonlyMap<string, EventInfo>;
   tasks: ReadonlyMap<string, ViewTask>;
+  /** Kolor tła bloków zadań: id listy → kolor (`useListColors`); bez wpisu — tło karty. */
+  listColors?: ReadonlyMap<string, string | null>;
   /** Zakres osi w minutach od północy dnia (pełne godziny). */
   from: number;
   to: number;
@@ -187,6 +190,7 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
   const gesture = useExclusiveGestures(move, tap);
   const animated = useAnimatedStyle(() => ({ top: top.value, height: Math.max(MIN_BLOCK, height.value - 1), transform: [{ translateY: shift.value }], opacity: active.value ? 0.85 : 1, zIndex: active.value ? 10 : 1, elevation: active.value ? 6 : 0 }));
 
+  const fill = task?.listId ? (props.listColors?.get(task.listId) ?? null) : null;
   const color = task ? (PRIORITY[task.priority]?.color ?? p.border) : block.kind === 'habit' ? HABIT_COLOR : (source?.color ?? p.muted);
   const event = block.kind === 'event';
   const mark = block.kind === 'habit' ? (block.habitState === 'done' ? '✓ ' : '◎ ') : '';
@@ -198,7 +202,7 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
       left: `${(lane.lane / lane.lanes) * 100}%` as const,
       width: `${100 / lane.lanes}%` as const,
       borderLeftColor: color,
-      backgroundColor: event ? `${color}26` : p.card,
+      backgroundColor: event ? `${color}26` : (fill ?? p.card),
       borderColor: hot ? p.bad : draft ? p.accent : p.border,
       borderWidth: hot ? 2 : draft ? 1 : StyleSheet.hairlineWidth,
       borderStyle: block.virtual || draft ? ('dashed' as const) : ('solid' as const),
@@ -213,6 +217,7 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
       location={source?.location}
       tall={tall}
       struck={!!block.passive && !event}
+      ink={fill ? inkOn(fill) : undefined}
       live={live}
       top={top}
       shift={shift}
@@ -248,6 +253,8 @@ interface BlockTextProps {
   location?: string | null;
   tall: boolean;
   struck: boolean;
+  /** Kolor tekstu na tle w kolorze listy (domyślnie z motywu). */
+  ink?: string;
   live: SharedValue<number>;
   top: SharedValue<number>;
   shift: SharedValue<number>;
@@ -270,11 +277,11 @@ function BlockText({ live, top, shift, height, toMin, ...props }: BlockTextProps
   const time = moved ?? props.time;
   return (
     <View style={{ flex: 1, paddingHorizontal: 5, paddingVertical: props.tall ? 2 : 0 }}>
-      <Text style={{ color: p.fg, fontSize: props.tall ? 12 : 11, lineHeight: props.tall ? 16 : 14, fontWeight: '600', textDecorationLine: props.struck ? 'line-through' : 'none' }} numberOfLines={props.tall ? 2 : 1}>
+      <Text style={{ color: props.ink ?? p.fg, fontSize: props.tall ? 12 : 11, lineHeight: props.tall ? 16 : 14, fontWeight: '600', textDecorationLine: props.struck ? 'line-through' : 'none' }} numberOfLines={props.tall ? 2 : 1}>
         {props.tall ? props.label : `${time} ${props.label}`}
       </Text>
       {props.tall ? (
-        <Text style={{ color: p.muted, fontSize: 11 }} numberOfLines={1}>
+        <Text style={{ color: props.ink ?? p.muted, opacity: props.ink ? 0.85 : 1, fontSize: 11 }} numberOfLines={1}>
           {time}
           {props.location ? ` · ${props.location}` : ''}
         </Text>

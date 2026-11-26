@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { COLOR_GRID, contrastRatio, hslHex, isPaletteColor, parseHexColor, readableColor } from '../colors.ts';
+import { COLOR_GRID, contrastRatio, hslHex, inkOn, isPaletteColor, listColor, parseHexColor, readableColor } from '../colors.ts';
 import { COLORS } from '../labels.ts';
 import { Color } from '../schemas/model.ts';
 
@@ -52,4 +52,19 @@ describe('readableColor', () => {
   });
 
   it('czytelny kolor zostaje', () => expect(readableColor('#0F766E', '#FFFFFF', '#171717')).toBe('#0F766E'));
+});
+
+describe('kolor bloków listy', () => {
+  it('lista, potem przestrzeń, potem domyślny', () => {
+    expect(listColor({ color: '#16a34a' }, { color: '#4F46E5' })).toBe('#16A34A');
+    expect(listColor({ color: null }, { color: '#4F46E5' })).toBe('#4F46E5');
+    expect(listColor({ color: 'zły' }, { color: null })).toBeNull();
+    expect(listColor(undefined, undefined)).toBeNull();
+  });
+
+  it('tekst na bloku da się przeczytać', () => {
+    for (const c of [...COLORS.map((x) => x.value), ...COLOR_GRID.flat()]) expect(contrastRatio(inkOn(c), c)).toBeGreaterThanOrEqual(3);
+    expect(inkOn('#4F46E5')).toBe('#FFFFFF');
+    expect(inkOn('#FDE68A')).toBe('#18181B');
+  });
 });
