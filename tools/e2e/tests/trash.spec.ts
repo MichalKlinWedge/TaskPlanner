@@ -8,7 +8,7 @@ test('szczegóły zadania z kosza: podgląd, podzadanie, przywrócenie; nowe urz
 
   // Zadanie z tagami, opisem, komentarzem i podzadaniem.
   await page.keyboard.press('q');
-  const input = page.getByRole('dialog', { name: 'Szybkie dodawanie' }).getByRole('textbox');
+  const input = page.getByRole('dialog', { name: 'Szybkie dodawanie' }).getByRole('textbox', { name: 'Dodaj zadanie' });
   await input.fill(`${title} jutro !wysoki @kosz-jeden @kosz-dwa`);
   await input.press('Enter');
   const created = await server.waitForTask(title);
@@ -87,7 +87,7 @@ test('definitywne usunięcie: potwierdzenie, z listy i z panelu, znika z serwera
   await openApp(page, '#/inbox');
   const add = async (title: string) => {
     await page.keyboard.press('q');
-    const input = page.getByRole('dialog', { name: 'Szybkie dodawanie' }).getByRole('textbox');
+    const input = page.getByRole('dialog', { name: 'Szybkie dodawanie' }).getByRole('textbox', { name: 'Dodaj zadanie' });
     await input.fill(title);
     await input.press('Enter');
     return server.waitForTask(title);

@@ -9,7 +9,7 @@ test('przegląd: panel zadania z kolejki dnia i z kroków tygodnia', async ({ pa
   for (const text of [`${first} dziś !krytyczny`, `${second} dziś !krytyczny`, `${later} jutro`]) {
     await page.keyboard.press('q');
     const dialog = page.getByRole('dialog', { name: 'Szybkie dodawanie' });
-    await dialog.getByRole('textbox').fill(text);
+    await dialog.getByRole('textbox', { name: 'Dodaj zadanie' }).fill(text);
     await page.keyboard.press('Enter');
     await expect(dialog).toHaveCount(0);
   }

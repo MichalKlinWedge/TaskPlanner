@@ -9,7 +9,7 @@ test('podgląd zadania z listy i przejście do edycji i z powrotem', async ({ pa
 
   for (const text of [`${title} jutro 14:30 !wysoki @podglad-tag`, bare]) {
     await page.keyboard.press('q');
-    const input = page.getByRole('dialog', { name: 'Szybkie dodawanie' }).getByRole('textbox');
+    const input = page.getByRole('dialog', { name: 'Szybkie dodawanie' }).getByRole('textbox', { name: 'Dodaj zadanie' });
     await input.fill(text);
     await input.press('Enter');
     await page.keyboard.press('Escape');

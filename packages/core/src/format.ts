@@ -4,7 +4,7 @@
  * Podstawa z ExpeditionPlan (`packages/core/src/format.ts`).
  */
 import { addDays, daysBetween, isoWeekday } from './dates.ts';
-import { AUTH_ERROR, MONTH_SHORT, PRIORITY, QUICK_ADD_KIND, SIGNUP_NOT_INVITED, WEEKDAY } from './labels.ts';
+import { AUTH_ERROR, MONTH_SHORT, PRIORITY, QUICK_ADD_FIELD, QUICK_ADD_KIND, SIGNUP_NOT_INVITED, WEEKDAY } from './labels.ts';
 import type { QuickAddResult, QuickAddToken } from './quick-add.ts';
 import { describeRecurrence } from './recurrence.ts';
 import type { IsoWeekday, LocalDate } from './schemas/primitives.ts';
@@ -141,6 +141,7 @@ export function authErrorMessage(error: { code?: string | null; message?: string
  * rodzaju jest kilka (tagi, przypomnienia) — z tekstu fragmentu.
  */
 export function quickAddChip(token: QuickAddToken, { fields }: QuickAddResult, today: LocalDate): string {
+  if (token.overridden) return `${QUICK_ADD_KIND[token.kind]}: ${token.text} — ${QUICK_ADD_FIELD.overridden}`;
   const value = (() => {
     switch (token.kind) {
       case 'date':

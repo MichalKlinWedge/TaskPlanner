@@ -7,7 +7,7 @@ test('odhaczenie pola listy zadań w podglądzie opisu', async ({ page, server }
   await openApp(page, '#/inbox');
   const title = unique('Lista zakupów');
   await page.keyboard.press('q');
-  const input = page.getByRole('dialog', { name: 'Szybkie dodawanie' }).getByRole('textbox');
+  const input = page.getByRole('dialog', { name: 'Szybkie dodawanie' }).getByRole('textbox', { name: 'Dodaj zadanie' });
   await input.fill(title);
   await input.press('Enter');
   await page.keyboard.press('Escape');

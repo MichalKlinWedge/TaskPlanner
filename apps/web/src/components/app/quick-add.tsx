@@ -3,9 +3,10 @@
 /**
  * Szybkie dodawanie (M13): pole z parserem z `core/quick-add.ts`, rozpoznane fragmenty jako chipy
  * (klik cofa rozpoznanie), podgląd tytułu i listy docelowej, wiele linii naraz (wklejenie).
- * Ten sam komponent w widokach (pole na górze) i w oknie wywoływanym klawiszem `Q` / `Ctrl+Spacja`.
+ * Ten sam komponent w widokach (pole na górze) i w oknie wywoływanym klawiszem `Q` / `Ctrl+Spacja`;
+ * okno pokazuje od razu pola opisu, terminu i godziny (`details`, pierwszeństwo: core `quickAddWhenContext`).
  */
-import { clipQuote, findUrl, linkName, localDateTimeAt, parseQuickAdd, withLinkOps, plural, QUICK_ADD_HELP, QUICK_ADD_HELP_NOTES, quickAddChip, quickAddTaskOps, suppressToken, taskTagOps, type LocalDate, type TaskOp, type QuickAddContext, type QuickAddSlot, type QuickAddTokenKind, type WebClip } from "@taskplanner/core";
+import { CLIP_DESCRIPTION_MAX, clipQuote, findUrl, linkName, localDateTimeAt, parseQuickAdd, withLinkOps, plural, QUICK_ADD_FIELD, QUICK_ADD_HELP, QUICK_ADD_HELP_NOTES, quickAddChip, quickAddTaskOps, quickAddWhenContext, quickAddWhenInitial, suppressToken, taskTagOps, type LocalDate, type TaskOp, type QuickAddContext, type QuickAddSlot, type QuickAddTokenKind, type QuickAddWhen, type WebClip } from "@taskplanner/core";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 
 import { lastSortKey, useAppEnv } from "./app-env";
@@ -46,9 +47,11 @@ export interface QuickAddProps {
   link?: { url: string; shared: true };
   /** Wycinek strony z zakładki: edytowalny opis (cytat zaznaczenia) i „✨ Streść” — tylko pierwsze zadanie. */
   clip?: WebClip;
+  /** Pola opisu (pierwsze zadanie), terminu i godziny widoczne od razu (okno `Q`). */
+  details?: boolean;
 }
 
-export function QuickAdd({ listId, dueDate, slot, parent, defaults, placeholder = "Dodaj zadanie", autoFocus, onAdded, onCancel, initialText, link: sharedLink, clip: initialClip }: QuickAddProps) {
+export function QuickAdd({ listId, dueDate, slot, parent, defaults, placeholder = "Dodaj zadanie", autoFocus, onAdded, onCancel, initialText, link: sharedLink, clip: initialClip, details }: QuickAddProps) {
   const { data, userId, timeZone, today, workspaceId } = useAppEnv();
   const { run, notify } = useTaskActions();
   const [text, setText] = useState(initialText ?? "");
@@ -57,6 +60,9 @@ export function QuickAdd({ listId, dueDate, slot, parent, defaults, placeholder 
   const [description, setDescription] = useState(() => (initialClip ? clipQuote(initialClip) : ""));
   const link = initialClip && !clip ? undefined : sharedLink;
   const input = useRef<HTMLInputElement>(null);
+  // Termin i godzina z pól okna: na start domyślne widoku; ustawione przez użytkownika wygrywają z wpisem.
+  const [when, setWhen] = useState(() => quickAddWhenInitial({ dueDate, slot }));
+  const whenContext = useMemo((): ReturnType<typeof quickAddWhenContext> => (details ? quickAddWhenContext(when, { dueDate, slot }) : { ...(slot && { slot }), defaultDueDate: dueDate ?? null }), [details, when, dueDate, slot]);
 
   useEffect(() => {
     if (autoFocus) input.current?.focus();
@@ -72,9 +78,10 @@ export function QuickAdd({ listId, dueDate, slot, parent, defaults, placeholder 
       workspaces: data.workspaces.map((w) => w.name),
       lists: data.lists.filter((l) => l.kind !== "inbox").map((l) => ({ workspace: names.get(l.workspaceId) ?? "", name: l.name, kind: l.kind })),
       tags: data.tags.map((t) => t.name),
-      ...(slot && { slot }),
+      ...(whenContext.slot && { slot: whenContext.slot }),
+      ...(whenContext.fixed && { fixed: whenContext.fixed }),
     }),
-    [data.workspaces, data.lists, data.tags, names, defaultWorkspace, slot],
+    [data.workspaces, data.lists, data.tags, names, defaultWorkspace, whenContext],
   );
   const parse = (value: string) => parseQuickAdd(value, { ...parserContext, now: localDateTimeAt(new Date(), timeZone) });
   const result = useMemo(() => parse(text), [text, parserContext, timeZone]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -85,7 +92,7 @@ export function QuickAdd({ listId, dueDate, slot, parent, defaults, placeholder 
     lists: data.lists,
     tags: data.tags,
     defaultListId: listIdFallback,
-    defaultDueDate: dueDate ?? null,
+    defaultDueDate: whenContext.defaultDueDate,
     parent,
     lastSortKey: (id: string) => lastSortKey(data, id),
   });
@@ -106,7 +113,7 @@ export function QuickAdd({ listId, dueDate, slot, parent, defaults, placeholder 
       const parsed = parse(line);
       if (!parsed.title.trim()) continue;
       const base = scope(defaultListId);
-      const result = quickAddTaskOps(parsed, line, { ...base, lastSortKey: (id) => keys.get(id) ?? base.lastSortKey(id), description: clip && !added.length ? description : null });
+      const result = quickAddTaskOps(parsed, line, { ...base, lastSortKey: (id) => keys.get(id) ?? base.lastSortKey(id), description: !added.length ? description : null });
       keys.set(parent?.id ?? result.listId, result.ops[0]!.patch.sort_key as string);
       if (defaults?.status) Object.assign(result.ops[0]!.patch, { status: defaults.status }, defaults.status === "done" ? { completed_at: new Date().toISOString() } : {});
       if (defaults?.priority && !parsed.fields.priority) result.ops[0]!.patch.priority = defaults.priority;
@@ -193,7 +200,7 @@ export function QuickAdd({ listId, dueDate, slot, parent, defaults, placeholder 
                   setText(suppressToken(text, token));
                   input.current?.focus();
                 }}
-                className={`rounded-full px-2 py-0.5 font-medium ${KIND_STYLE[token.kind]}`}
+                className={`rounded-full px-2 py-0.5 font-medium ${KIND_STYLE[token.kind]} ${token.overridden ? "line-through opacity-70" : ""}`}
               >
                 {label} <span aria-hidden>×</span>
               </button>
@@ -201,6 +208,16 @@ export function QuickAdd({ listId, dueDate, slot, parent, defaults, placeholder 
           })}
           <span className="ml-auto text-[var(--muted)]">Enter — dodaj{onAdded ? " · Ctrl+Enter — dodaj i pisz dalej" : ""}</span>
         </div>
+      ) : null}
+      {details ? (
+        <DetailsFields
+          when={when}
+          setWhen={setWhen}
+          description={clip ? null : description}
+          setDescription={setDescription}
+          focusTitle={() => input.current?.focus()}
+          add={() => void (text.trim() && add([text], false))}
+        />
       ) : null}
       {clip ? (
         <ClipFieldset
@@ -218,6 +235,74 @@ export function QuickAdd({ listId, dueDate, slot, parent, defaults, placeholder 
   );
 }
 
+/**
+ * Pola okna pod wpisem: termin + godzina i opis (Markdown). Wyczyszczenie terminu czyści też
+ * nietkniętą godzinę (domyślną z kalendarza) — godzina bez dnia nie miałaby do czego się odnieść.
+ * `description` `null` = opis pokazuje wycinek (`ClipFieldset`).
+ */
+function DetailsFields({ when, setWhen, description, setDescription, focusTitle, add }: { when: QuickAddWhen; setWhen: (next: QuickAddWhen) => void; description: string | null; setDescription: (value: string) => void; focusTitle: () => void; add: () => void }) {
+  const keys = (event: KeyboardEvent<HTMLElement>, multiline: boolean) => {
+    if (event.key === "Escape") {
+      // Escape wraca do wpisu (nie gubi pól); drugi Escape zamyka okno.
+      event.preventDefault();
+      event.stopPropagation();
+      focusTitle();
+    } else if (event.key === "Enter" && (!multiline || event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      add();
+    }
+  };
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      <div className="flex flex-wrap items-end gap-2 text-xs text-[var(--muted)]">
+        <label className="flex flex-col gap-1">
+          {QUICK_ADD_FIELD.date}
+          <input
+            type="date"
+            value={when.date ?? ""}
+            onChange={(e) => {
+              const date = (e.target.value || null) as LocalDate | null;
+              setWhen({ ...when, date, dateSet: true, ...(!date && !when.timeSet && { time: null }) });
+            }}
+            onKeyDown={(e) => keys(e, false)}
+            className={`${inputClass} text-[var(--foreground)]`}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          {QUICK_ADD_FIELD.time}
+          <input
+            type="time"
+            value={when.time ?? ""}
+            onChange={(e) => setWhen({ ...when, time: (e.target.value || null) as QuickAddWhen["time"], timeSet: true })}
+            onKeyDown={(e) => keys(e, false)}
+            className={`${inputClass} text-[var(--foreground)]`}
+          />
+        </label>
+        {when.date || when.time ? (
+          <button type="button" onClick={() => setWhen({ date: null, time: null, dateSet: true, timeSet: true })} className="mb-1.5 rounded px-1.5 py-0.5 hover:bg-black/5 hover:text-[var(--foreground)] dark:hover:bg-white/10">
+            ✕ {QUICK_ADD_FIELD.clear}
+          </button>
+        ) : null}
+        <span className="mb-1.5 basis-full">{QUICK_ADD_FIELD.note}</span>
+      </div>
+      {description !== null ? (
+        <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+          {QUICK_ADD_FIELD.description}
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            onKeyDown={(e) => keys(e, true)}
+            maxLength={CLIP_DESCRIPTION_MAX}
+            placeholder={QUICK_ADD_FIELD.descriptionPlaceholder}
+            rows={3}
+            className={`${inputClass} max-h-64 min-h-20 w-full resize-y font-mono text-[13px] leading-relaxed text-[var(--foreground)] [field-sizing:content]`}
+          />
+        </label>
+      ) : null}
+    </div>
+  );
+}
+
 /** Okno szybkiego dodawania nad bieżącym widokiem. */
 export function QuickAddDialog({ open, onClose, heading, ...props }: QuickAddProps & { open: boolean; onClose: () => void; heading?: string }) {
   if (!open) return null;
@@ -225,9 +310,9 @@ export function QuickAddDialog({ open, onClose, heading, ...props }: QuickAddPro
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-[15vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div role="dialog" aria-modal="true" aria-label="Szybkie dodawanie" className="max-h-[80vh] w-full max-w-xl overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3 shadow-2xl">
         {heading ? <h2 className="px-1 text-sm font-medium">{heading}</h2> : null}
-        <QuickAdd {...props} autoFocus onAdded={(more) => !more && onClose()} onCancel={onClose} />
+        <QuickAdd {...props} details autoFocus onAdded={(more) => !more && onClose()} onCancel={onClose} />
         <p className="px-1 text-xs text-[var(--muted)]">
-          Np. „Zapłacić rachunek jutro o 10 #dom !wysoki @telefon ~15m” · Esc — zamknij
+          Np. „Zapłacić rachunek jutro o 10 #dom !wysoki @telefon ~15m” · Ctrl+Enter w opisie — dodaj · Esc — zamknij
         </p>
         <SyntaxHelp />
       </div>

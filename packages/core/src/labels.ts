@@ -149,6 +149,19 @@ export const QUICK_ADD_KIND: Record<'date' | 'time' | 'duration' | 'priority' | 
   reminder: 'Przypomnienie',
 };
 
+/** Pola okna szybkiego dodawania (web, klawisz `Q`) obok wpisu z parserem. */
+export const QUICK_ADD_FIELD = {
+  description: 'Opis',
+  descriptionPlaceholder: 'Opis (Markdown) — opcjonalnie; trafi do pierwszego zadania',
+  date: 'Termin',
+  time: 'Godzina',
+  clear: 'Wyczyść termin',
+  /** Dopisek chipa, gdy fragment wpisu przegrał z polem okna. */
+  overridden: 'wygrywa pole',
+  /** Podpowiedź pod polami. */
+  note: 'Termin i godzina wybrane tutaj mają pierwszeństwo przed wpisanymi w treści.',
+} as const;
+
 /** Nazwy sekcji widoków (`views.ts`) i grup bez wartości. */
 export const VIEW_SECTION = {
   overdue: 'Zaległe',

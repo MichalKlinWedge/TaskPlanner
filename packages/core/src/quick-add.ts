@@ -24,10 +24,21 @@ export interface QuickAddContext {
    * Każde pole osobno: sama godzina we wpisie zostaje w klikniętym dniu, sama data — o klikniętej godzinie.
    */
   slot?: QuickAddSlot;
+  /**
+   * Data / godzina wybrane przez użytkownika w polach okna szybkiego dodawania — mają pierwszeństwo
+   * przed treścią. Fragment daty / godziny we wpisie i tak znika z tytułu, a jego token dostaje
+   * `overridden` (chip pokazuje, że wygrało pole). Reszta liczy się od tych wartości (cykl, przypomnienia).
+   */
+  fixed?: QuickAddFixed;
 }
 
 export interface QuickAddSlot {
   date: LocalDate;
+  time?: LocalTime;
+}
+
+export interface QuickAddFixed {
+  date?: LocalDate;
   time?: LocalTime;
 }
 
@@ -55,6 +66,8 @@ export interface QuickAddToken {
   start: number;
   end: number;
   text: string;
+  /** Fragment rozpoznany, ale wartość wzięta z pola okna (`QuickAddContext.fixed`). */
+  overridden?: true;
 }
 
 export interface QuickAddResult {
@@ -628,6 +641,8 @@ export function parseQuickAdd(text: string, ctx: QuickAddContext): QuickAddResul
   } else if (ctx.slot?.time) {
     fields.dueTime = ctx.slot.time;
   }
+  // Godzina z pola okna wygrywa z wpisem (zakres „10-12” zostawia tylko czas trwania).
+  if (ctx.fixed?.time) fields.dueTime = ctx.fixed.time;
   const duration = value('duration');
   if (duration) fields.durationMin = duration.minutes;
   const priority = value('priority');
@@ -641,7 +656,9 @@ export function parseQuickAdd(text: string, ctx: QuickAddContext): QuickAddResul
   const recurrence = value('recurrence');
   // Bez daty we wpisie liczy się od klikniętego dnia, inaczej od dziś.
   const day = ctx.slot?.date ?? today;
-  if (date) fields.dueDate = resolveDate(date.spec, today, fields.dueTime, nowTime);
+  // Data z pola okna wygrywa z wpisem; cykl i przypomnienia liczą się od niej jak od daty we wpisie.
+  if (ctx.fixed?.date) fields.dueDate = ctx.fixed.date;
+  else if (date) fields.dueDate = resolveDate(date.spec, today, fields.dueTime, nowTime);
 
   if (recurrence) {
     const spec = recurrence.spec;
@@ -678,7 +695,8 @@ export function parseQuickAdd(text: string, ctx: QuickAddContext): QuickAddResul
   const tokens: QuickAddToken[] = kept.map((f) => {
     const first = words[f.index]!;
     const last = words[f.index + f.length - 1]!;
-    return { kind: f.value.kind, start: first.start, end: last.end, text: text.slice(first.start, last.end) };
+    const overridden = (f.value.kind === 'date' && ctx.fixed?.date) || (f.value.kind === 'time' && ctx.fixed?.time);
+    return { kind: f.value.kind, start: first.start, end: last.end, text: text.slice(first.start, last.end), ...(overridden && { overridden: true as const }) };
   });
 
   const title = words
@@ -691,4 +709,41 @@ export function parseQuickAdd(text: string, ctx: QuickAddContext): QuickAddResul
     .trim();
 
   return { title, fields, tokens };
+}
+
+/**
+ * Pola „Termin” i „Godzina” okna szybkiego dodawania: pokazana wartość (`null` = puste) i czy
+ * ustawił ją użytkownik (inaczej to tylko wartość domyślna widoku — `dueDate` z „Dziś”, `slot` z kalendarza).
+ */
+export interface QuickAddWhen {
+  date: LocalDate | null;
+  time: LocalTime | null;
+  dateSet: boolean;
+  timeSet: boolean;
+}
+
+/** Pola na start okna: wypełnione domyślnymi widoku, jeszcze nieustawione przez użytkownika. */
+export function quickAddWhenInitial(defaults: { dueDate?: LocalDate | null; slot?: QuickAddSlot | null }): QuickAddWhen {
+  return { date: defaults.slot?.date ?? defaults.dueDate ?? null, time: defaults.slot?.time ?? null, dateSet: false, timeSet: false };
+}
+
+/**
+ * Pierwszeństwo daty i godziny z pól okna przed treścią wpisu — każde pole osobno:
+ * - pole ustawione przez użytkownika (niepuste) wygrywa z datą / godziną we wpisie (`fixed`);
+ * - pole wyczyszczone = bez wartości domyślnej, decyduje wpis;
+ * - pole nietknięte = wartość domyślna widoku, wpis wygrywa (jak dotąd: `slot` / `defaultDueDate`).
+ * Gdy użytkownik ruszył tylko jedno pole, pokazana wartość drugiego działa jak kliknięte miejsce
+ * kalendarza (`slot`): „o 15” z nietkniętym dniem = ten dzień, nie „dziś albo jutro”.
+ */
+export function quickAddWhenContext(
+  when: QuickAddWhen,
+  defaults: { dueDate?: LocalDate | null; slot?: QuickAddSlot | null },
+): { slot?: QuickAddSlot; fixed?: QuickAddFixed; defaultDueDate: LocalDate | null } {
+  if (!when.dateSet && !when.timeSet) return { ...(defaults.slot && { slot: defaults.slot }), defaultDueDate: defaults.dueDate ?? null };
+  const fixed: QuickAddFixed = {};
+  if (when.dateSet && when.date) fixed.date = when.date;
+  if (when.timeSet && when.time) fixed.time = when.time;
+  const defaultTime = when.timeSet ? null : when.time;
+  const slot = when.date ? { date: when.date, ...(defaultTime && { time: defaultTime }) } : undefined;
+  return { ...(slot && { slot }), ...((fixed.date || fixed.time) && { fixed }), defaultDueDate: null };
 }

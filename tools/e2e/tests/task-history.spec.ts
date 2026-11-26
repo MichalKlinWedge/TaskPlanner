@@ -21,7 +21,7 @@ test('historia zadania: tagi, reguła integracji i wysyłka', async ({ page, ser
   await openApp(page, '#/inbox');
   const title = unique('Z historią');
   await page.keyboard.press('q');
-  const input = page.getByRole('dialog', { name: 'Szybkie dodawanie' }).getByRole('textbox');
+  const input = page.getByRole('dialog', { name: 'Szybkie dodawanie' }).getByRole('textbox', { name: 'Dodaj zadanie' });
   await input.fill(`${title} @hist-jeden @hist-dwa`);
   await input.press('Enter');
   const task = await server.waitForTask(title);
