@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Ustawienia → „Wersja aplikacji”: data zbudowania wczytanego kodu strony (web nie ma numeru jak APK),
- * pod nią skrót commita z Vercela (ta sama wersja,
- * którą dostaje dziennik błędów, `APP_VERSION`) i informacja o nowej wersji, gdy nowy Service Worker
+ * Ustawienia → „Wersja aplikacji”: numer wersji wczytanego kodu strony (`x.y.w.z` z `apps/web/version.json`,
+ * liczony przez `scripts/web-version.mjs`), pod nim data zbudowania i skrót commita z Vercela (ten sam,
+ * który dostaje dziennik błędów, `APP_VERSION`) oraz informacja o nowej wersji, gdy nowy Service Worker
  * przejął stronę (`updated` w `lib/service-worker.ts`).
  */
 import { APP_RELEASES_REPO } from "@taskplanner/core";
@@ -11,6 +11,7 @@ import { useSyncExternalStore } from "react";
 
 import { APP_VERSION } from "@/lib/error-log";
 import { offlineStatus, subscribeOffline } from "@/lib/service-worker";
+import { APP_NUMBER as NUMBER, BUILD_TIME } from "@/lib/version";
 
 import { SettingsSection } from "./settings-section";
 import { Notice } from "./ui";
@@ -18,8 +19,6 @@ import { Notice } from "./ui";
 /** Pełny SHA commita wdrożenia (zmienna systemowa Vercela); lokalnie brak. */
 const COMMIT = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? null;
 
-/** Chwila zbudowania (`env` w `next.config.ts`) — web nie ma numeru wersji, więc wersją jest data. */
-const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME ?? null;
 
 function buildDate(iso: string | null): string | null {
   const date = iso ? new Date(iso) : null;
@@ -53,16 +52,16 @@ export function VersionCard() {
   return (
     <SettingsSection title="Wersja aplikacji">
       <div className="flex flex-col gap-3 text-sm">
-        {date ? (
-          <p>
-            Wersja z dnia:{" "}
-            <span className="font-semibold" data-testid="app-version-date">
-              {date}
-            </span>
-          </p>
-        ) : null}
-        <p className={date ? "text-xs text-[var(--muted)]" : undefined}>
-          {date ? "Commit" : "Wersja"}:{" "}
+        <p>
+          Wersja{" "}
+          <span className="font-mono font-semibold" data-testid="app-version-number">
+            {NUMBER ?? APP_VERSION}
+          </span>{" "}
+          · <a href="#/changelog" className="text-[var(--accent)] underline">Historia zmian</a>
+        </p>
+        <p className="text-xs text-[var(--muted)]">
+          {date ? <>Zbudowano {date} · </> : null}
+          commit{" "}
           {COMMIT ? (
             <a href={`https://github.com/${APP_RELEASES_REPO}/commit/${COMMIT}`} target="_blank" rel="noreferrer" className="font-mono text-[var(--accent)] underline" data-testid="app-version">
               {APP_VERSION}
@@ -72,11 +71,11 @@ export function VersionCard() {
               {APP_VERSION}
             </span>
           )}
-          {BUILD[APP_VERSION] ? <span className="text-[var(--muted)]"> · {BUILD[APP_VERSION]}</span> : null}
+          {BUILD[APP_VERSION] ? <> · {BUILD[APP_VERSION]}</> : null}
         </p>
         {updated ? <UpdateNotice /> : null}
         <p className="text-xs text-[var(--muted)]">
-          Nowa wersja wczytuje się przy otwarciu albo odświeżeniu strony z dostępem do sieci. Ta karta pokazuje wersję wczytaną teraz — ta sama trafia do „Błędów aplikacji”.
+          Numer: całkowita zmiana . duża zmiana . mała zmiana . kosmetyka. Nowa wersja wczytuje się przy otwarciu albo odświeżeniu strony z dostępem do sieci. Ta karta pokazuje wersję wczytaną teraz — jej commit trafia do „Błędów aplikacji”.
         </p>
       </div>
     </SettingsSection>

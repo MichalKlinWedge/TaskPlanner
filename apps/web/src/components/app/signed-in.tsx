@@ -9,6 +9,7 @@ import { routeHash, useRoute } from "@/lib/route";
 import { closeStore, storeFor, useLocalQuery, useStaleLeader, useStoreStatus } from "@/lib/local-store";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useTheme } from "@/lib/theme";
+import { APP_NUMBER } from "@/lib/version";
 
 import { ProfileForm, type ProfileValues } from "./profile-form";
 import { ScopeInvites } from "./sharing";
@@ -240,7 +241,15 @@ function AppHeader({ store, email, settingsLink }: { store: TabStore; email: str
   return (
     <>
       <header className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-sm">
-        <span className="font-semibold">Task Planner</span>
+        <span className="flex items-baseline gap-1.5">
+          <span className="font-semibold">Task Planner</span>
+          {APP_NUMBER && !settingsLink ? <span className="font-mono text-[11px] text-[var(--muted)]">{APP_NUMBER}</span> : null}
+          {APP_NUMBER && settingsLink ? (
+            <a href="#/changelog" title="Historia zmian" className="rounded px-0.5 font-mono text-[11px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]" data-testid="app-version-link">
+              {APP_NUMBER}
+            </a>
+          ) : null}
+        </span>
         {/* Klik = „Synchronizuj teraz” (wysyłka i pobranie od razu, bez czekania na sygnał). */}
         <button
           type="button"

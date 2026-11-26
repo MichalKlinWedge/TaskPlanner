@@ -29,6 +29,7 @@ import { AttachmentsProvider } from "./attachments";
 import { CollaboratorsView } from "./collaborators";
 import { HabitDetail, HabitNotificationActions, HabitsView } from "./habits";
 import { DeliveryLogScreen } from "./plugins-card";
+import { ChangelogScreen } from "./changelog";
 import { QuickAddDialog } from "./quick-add";
 import { ReminderNotificationActions } from "./reminder-actions";
 import { TaskPanel } from "./task-panel";
@@ -389,6 +390,8 @@ export function Shell({
       settingsView
     ) : route.view === "deliveries" ? (
       <DeliveryLogScreen />
+    ) : route.view === "changelog" ? (
+      <ChangelogScreen />
     ) : route.view === "trash" ? (
       <TrashView data={data} store={store} today={today} />
     ) : route.view === "people" ? (

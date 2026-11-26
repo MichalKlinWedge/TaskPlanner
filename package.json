@@ -24,6 +24,7 @@
     "test:db": "npx --yes supabase@2.122.0 test db",
     "seed:dev": "npm run seed --workspace tools/seed-dev --",
     "brand": "node scripts/brand.mjs",
+    "web:version": "node scripts/web-version.mjs",
     "dev:user": "npm run dev-user --workspace tools/seed-dev"
   },
   "engines": {
