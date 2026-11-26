@@ -185,28 +185,33 @@ function useDecide() {
 
 /**
  * Przyciski decyzji. `compact` (listy przeglądu tygodnia) = lekkie przyciski bez ramek, żeby tytuł zadania
- * był najmocniejszy w wierszu; numer klawisza tylko przy wierszu, na który działają klawisze (`keys`).
+ * był najmocniejszy w wierszu, z ikonami jak pasek akcji zbiorczych (`REVIEW_ACTION[k].icon`); numer klawisza tylko
+ * przy wierszu, na który działają klawisze (`keys`).
  */
 function DecisionButtons({ onPick, compact, keys = true, disabled }: { onPick: (kind: Kind) => void; compact?: boolean; keys?: boolean; disabled?: readonly Kind[] }) {
   return (
     <div className={`flex flex-wrap items-center ${compact ? "gap-0.5" : "gap-2"}`}>
-      {KINDS.map((k) => (
-        <button
-          key={k}
-          type="button"
-          disabled={disabled?.includes(k)}
-          onClick={() => onPick(k)}
-          title={keys ? undefined : `${REVIEW_ACTION[k].label} (klawisz ${REVIEW_ACTION[k].key} przy zadaniu otwartym w panelu)`}
-          className={`inline-flex items-center gap-1.5 rounded-md ${
-            compact
-              ? `px-1.5 py-0.5 text-xs hover:bg-[var(--hover)] ${k === "delete" ? "ml-2 text-[var(--danger)]/80 hover:text-[var(--danger)]" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`
-              : `border border-[var(--line)] px-3 py-1.5 text-sm hover:bg-[var(--hover)] ${k === "delete" ? "text-[var(--danger)]" : ""}`
-          } disabled:pointer-events-none disabled:opacity-40`}
-        >
-          {keys ? <kbd className="rounded bg-black/5 px-1 text-[10px] dark:bg-white/10">{REVIEW_ACTION[k].key}</kbd> : null}
-          {REVIEW_ACTION[k].label}
-        </button>
-      ))}
+      {KINDS.map((k) => {
+        const { key, label, icon } = REVIEW_ACTION[k];
+        return (
+          <button
+            key={k}
+            type="button"
+            disabled={disabled?.includes(k)}
+            onClick={() => onPick(k)}
+            aria-label={compact ? label : undefined}
+            title={keys ? (compact ? label : undefined) : `${label} (klawisz ${key} przy zadaniu otwartym w panelu)`}
+            className={`inline-flex items-center gap-1.5 ${
+              compact
+                ? `rounded-full px-2.5 py-1 text-sm font-semibold hover:bg-[var(--hover)] ${k === "delete" ? "text-[var(--danger)]" : "text-[var(--accent)]"}`
+                : `rounded-md border border-[var(--line)] px-3 py-1.5 text-sm hover:bg-[var(--hover)] ${k === "delete" ? "text-[var(--danger)]" : ""}`
+            } disabled:pointer-events-none disabled:opacity-40`}
+          >
+            {keys ? <kbd className="rounded bg-black/5 px-1 text-[10px] font-normal text-[var(--muted)] dark:bg-white/10">{key}</kbd> : null}
+            {compact ? <span aria-hidden>{icon}</span> : label}
+          </button>
+        );
+      })}
     </div>
   );
 }

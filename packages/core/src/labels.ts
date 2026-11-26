@@ -277,12 +277,12 @@ export const REMINDER_MODE = {
 
 /** Decyzje przeglądu (M16) z klawiszami 1–6 na webie. */
 export const REVIEW_ACTION = {
-  done: { key: '1', label: 'Ukończ' },
-  today: { key: '2', label: 'Dziś' },
-  tomorrow: { key: '3', label: 'Jutro' },
-  date: { key: '4', label: 'Wybierz datę' },
-  someday: { key: '5', label: 'Kiedyś' },
-  delete: { key: '6', label: 'Usuń' },
+  done: { key: '1', label: 'Ukończ', icon: '✓' },
+  today: { key: '2', label: 'Dziś', icon: 'Dziś' },
+  tomorrow: { key: '3', label: 'Jutro', icon: 'Jutro' },
+  date: { key: '4', label: 'Wybierz datę', icon: '📅' },
+  someday: { key: '5', label: 'Kiedyś', icon: 'Kiedyś' },
+  delete: { key: '6', label: 'Usuń', icon: '🗑' },
 } as const;
 
 /** Tabele kopii JSON (Etap 13) — podsumowanie importu w Ustawieniach. */

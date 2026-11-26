@@ -81,7 +81,7 @@ export function useDecide() {
 
 /**
  * Przyciski decyzji 1–6 (Ukończ / Dziś / Jutro / Wybierz datę / Kiedyś / Usuń). `compact` (listy przeglądu
- * tygodnia) = lekkie przyciski bez ramek, żeby tytuł zadania był najmocniejszy w wierszu; `trailing` — dodatkowy
+ * tygodnia) = lekkie przyciski bez ramek z ikonami jak pasek akcji zbiorczych (`REVIEW_ACTION[k].icon`); `trailing` — dodatkowy
  * przycisk w tym samym rzędzie.
  */
 export function DecisionButtons({ onPick, disabled, compact, trailing }: { onPick: (kind: ReviewKindKey) => void; disabled?: readonly ReviewKindKey[]; compact?: boolean; trailing?: ReactNode }) {
@@ -90,11 +90,12 @@ export function DecisionButtons({ onPick, disabled, compact, trailing }: { onPic
     <View style={compact ? styles.compactButtons : styles.buttons}>
       {REVIEW_KINDS.map((k) => {
         const off = disabled?.includes(k);
-        const color = k === 'delete' ? p.bad : k === 'done' ? p.ok : compact ? p.muted : p.fg;
+        const color = k === 'delete' ? p.bad : compact ? p.accent : k === 'done' ? p.ok : p.fg;
         return (
           <Pressable
             key={k}
             accessibilityRole="button"
+            accessibilityLabel={compact ? REVIEW_ACTION[k].label : undefined}
             accessibilityState={{ disabled: !!off }}
             disabled={off}
             hitSlop={compact ? 4 : undefined}
@@ -105,7 +106,7 @@ export function DecisionButtons({ onPick, disabled, compact, trailing }: { onPic
                 : [styles.button, { borderColor: k === 'done' ? p.ok : p.border, backgroundColor: pressed ? p.border : p.card, opacity: off ? 0.35 : 1 }]
             }
           >
-            <Text style={{ color, fontSize: compact ? 13 : 14, fontWeight: compact ? '500' : '600' }}>{REVIEW_ACTION[k].label}</Text>
+            <Text style={{ color, fontSize: 14, fontWeight: '600' }}>{compact ? REVIEW_ACTION[k].icon : REVIEW_ACTION[k].label}</Text>
           </Pressable>
         );
       })}
