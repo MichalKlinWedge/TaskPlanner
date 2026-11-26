@@ -24,6 +24,7 @@ import { PluginsCard } from "./plugins-card";
 import { InstallCard, OfflineCard } from "./pwa-cards";
 import { RemindersCard } from "./reminders-card";
 import { SettingsSection } from "./settings-section";
+import { VersionCard } from "./version-card";
 
 interface Section {
   id: string;
@@ -62,6 +63,7 @@ export function SettingsScreen({ store, userId, email, timeZone, general }: { st
     { id: "install", icon: "🖥️", label: "Aplikacja na pulpicie", body: <InstallCard /> },
     { id: "errors", icon: "🐞", label: "Błędy aplikacji", body: <ErrorsCard /> },
     { id: "offline", icon: "📴", label: "Praca bez sieci", body: <OfflineCard /> },
+    { id: "version", icon: "ℹ️", label: "Wersja aplikacji", body: <VersionCard /> },
     // Tylko dla administratora.
     ...(admin ? [{ id: "invites", icon: "✉️", label: "Zaproszenia", body: <InvitesCard /> }] : []),
     { id: "account", icon: "👤", label: "Usuń konto", body: <AccountCard email={email} /> },

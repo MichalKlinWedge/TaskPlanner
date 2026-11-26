@@ -181,7 +181,7 @@ export function Shell({
           !!target?.isConnected &&
           e.button === 0 &&
           !scrollbar &&
-          !target.closest('aside[aria-label="Zadanie"], [data-task-panel], #sidebar, [role=dialog], [role=status], [data-task-id], [data-card]'),
+          !target.closest('aside[aria-label="Zadanie"], [data-task-panel], #sidebar, [role=dialog], [role=status], [data-task-id], [data-card], [data-bulk-bar]'),
       };
     };
     const onClick = () => {
@@ -421,6 +421,7 @@ export function Shell({
     { route: { view: "calendar" }, icon: "🗓", label: "Kalendarz" },
     { route: { view: "timeline" }, icon: "📊", label: "Oś czasu" },
     { route: { view: "habits" }, icon: "🌱", label: "Cykliczne", count: counts.habits || undefined },
+    ...(settings.focus.enabled ? [{ route: { view: "focus" } as Route, icon: "🎯", label: "Skupienie" }] : []),
   ];
   const bottomNav: NavEntry[] = [
     { route: { view: "manage" }, icon: "🗂️", label: "Przestrzenie i listy" },
@@ -576,6 +577,7 @@ export function Shell({
           </main>
           {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>
+        {selected.length && route.view !== "focus" && route.view !== "review" && palette === null ? <BulkBar selected={selected} setSelected={setSelected} openPalette={setPalette} /> : null}
         <QuickAddDialog
           key={shared ? "shared" : "quick"}
           open={quickOpen}
@@ -833,6 +835,61 @@ function useBulk(selected: readonly string[]) {
   );
 }
 
+/**
+ * Pasek akcji na zaznaczonych (jak na telefonie, `M/components/task-list.tsx` `BulkBar`): te same akcje co
+ * skróty E / T / M / D / 1–4 / → / Del, widoczne bez znajomości klawiszy. Nad dymkiem „Cofnij” (ten stoi niżej).
+ */
+function BulkBar({ selected, setSelected, openPalette }: { selected: readonly string[]; setSelected: (ids: string[]) => void; openPalette: (mode: PaletteMode) => void }) {
+  const { data } = useAppEnv();
+  const bulk = useBulk(selected);
+  const count = data.tasks.reduce((n, t) => (selected.includes(t.id) ? n + 1 : n), 0);
+  if (!count) return null;
+  const items: { label: string; title: string; onClick: () => void; danger?: boolean }[] = [
+    { label: "✓", title: "Ukończ zaznaczone (E)", onClick: () => bulk({ kind: "complete" }, "Ukończono") },
+    { label: "Dziś", title: "Na dziś (T)", onClick: () => bulk({ kind: "today" }, "Na dziś") },
+    { label: "Jutro", title: "Na jutro (M)", onClick: () => bulk({ kind: "tomorrow" }, "Na jutro") },
+    { label: "📅", title: "Wybierz termin… (D)", onClick: () => openPalette("date") },
+    { label: "!", title: "Zmień priorytet… (1–4)", onClick: () => openPalette("priority") },
+    { label: "→", title: "Przenieś do listy…", onClick: () => openPalette("move") },
+    { label: "🗑", title: "Przenieś do kosza (Del)", onClick: () => bulk({ kind: "delete" }, "W koszu"), danger: true },
+  ];
+  return (
+    <div
+      role="toolbar"
+      aria-label="Akcje na zaznaczonych"
+      data-bulk-bar
+      data-testid="bulk-bar"
+      className="fixed bottom-16 left-1/2 z-30 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-full border border-[var(--line)] bg-[var(--surface)] px-1.5 py-1 text-sm shadow-lg"
+    >
+      <button
+        type="button"
+        onClick={() => setSelected([])}
+        title="Anuluj zaznaczenie (Esc)"
+        aria-label={`Anuluj zaznaczenie (${count})`}
+        className="flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 hover:bg-[var(--hover)]"
+      >
+        <span aria-hidden className="text-[var(--muted)]">
+          ✕
+        </span>
+        <span className="font-semibold tabular-nums">{count}</span>
+      </button>
+      <span aria-hidden className="mx-0.5 h-5 border-l border-[var(--line)]" />
+      {items.map((item) => (
+        <button
+          key={item.label}
+          type="button"
+          onClick={item.onClick}
+          title={item.title}
+          aria-label={item.title}
+          className={`shrink-0 rounded-full px-2.5 py-1 font-semibold hover:bg-[var(--hover)] ${item.danger ? "text-[var(--danger)]" : "text-[var(--accent)]"}`}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Skróty klawiszowe (M17); jednoklawiszowe nie działają w polach tekstowych ani przy otwartym oknie. */
 /** Przypomnienie push przy otwartej karcie — także dymek w aplikacji (M8). */
 function ReminderToasts() {
@@ -937,8 +994,8 @@ function Keyboard({
         ...(focusOn && { f: () => navigate(focusRoute(focusTaskId)) }),
       };
       const handler = handlers[key];
-      // Enter bez zaznaczenia zostaje przyciskom i linkom.
-      if (!handler || (key === "Enter" && !selected.length)) return;
+      // Enter bez zaznaczenia zostaje przyciskom i linkom (także w pasku akcji na zaznaczonych).
+      if (!handler || (key === "Enter" && (!selected.length || (event.target instanceof Element && event.target.closest("[data-bulk-bar]"))))) return;
       event.preventDefault();
       handler();
     };
@@ -979,7 +1036,7 @@ function PaletteHost({
   const onPick = (pick: PalettePick) => {
     if (pick.kind === "priority") return then(() => bulk({ kind: "priority", priority: pick.priority }, "Priorytet"));
     if (pick.kind === "move") return then(() => bulk({ kind: "move", listId: pick.listId }, `Przeniesiono do „${data.lists.find((l) => l.id === pick.listId)?.name}”`));
-    if (pick.kind === "date") return then(() => bulk({ kind: "date", date: pick.date as LocalDate }, "Nowy termin"));
+    if (pick.kind === "date") return then(() => (pick.date ? bulk({ kind: "date", date: pick.date as LocalDate }, "Nowy termin") : bulk({ kind: "someday" }, "Bez terminu")));
     if (pick.kind === "workspace") return then(() => writeWorkspace(pick.workspaceId ?? ALL));
     if (pick.kind === "send") {
       return then(() => {

@@ -1,17 +1,19 @@
 "use client";
 
-import { canEditScope, COLORS, GUEST_ACCESS, GUEST_ACCESS_HINT, inboxId, keyBetween, LIST_KIND, listAccess, listKindPatch, plural, reorderPatches, SCOPE_ROLE, TRASH_DAYS, uuidv7, type GuestAccess, type ListKind, type ProjectStatus, type ScopeRole } from "@taskplanner/core";
+import { canEditScope, COLORS, columnDate, GUEST_ACCESS, GUEST_ACCESS_HINT, inboxId, keyBetween, LIST_KIND, listAccess, listKindPatch, plural, projectDatesOps, reorderPatches, SCOPE_ROLE, TRASH_DAYS, uuidv7, type GuestAccess, type ListKind, type LocalDate, type ProjectStatus, type ScopeRole } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useRef, useState, type FormEvent } from "react";
 
 import { useLocalQuery } from "@/lib/local-store";
 import { useClickOutside } from "@/lib/use-click-outside";
 
+import { useAppEnv } from "./app-env";
 import { CustomColorPanel, CustomColorSwatch } from "./color-picker";
 import { ProjectStatusSelect } from "./project-status";
 import { SharingPanel } from "./sharing";
+import { useTaskActions } from "./task-item";
 import { TemplatePicker, TemplatesCard, useCreateFromTemplate, useProjectTemplates, type TemplateChoice } from "./templates";
-import { Button, Card, IconButton, Input, Notice, Select } from "./ui";
+import { Button, Card, CommitInput, IconButton, Input, Notice, Select } from "./ui";
 import { WorkspaceExportButton, WorkspaceImportCard } from "./workspace-transfer";
 
 interface WorkspaceRow extends Record<string, string | number | null> {
@@ -48,7 +50,7 @@ type NewListKind = Exclude<ListKind, "inbox">;
 
 const byKey = <T extends { sort_key: string; id: string }>(a: T, b: T) => (a.sort_key < b.sort_key ? -1 : a.sort_key > b.sort_key ? 1 : a.id < b.id ? -1 : 1);
 
-/** Przestrzenie i listy (MVP-1): tworzenie, nazwa, kolor, kolejność, archiwizacja; osoby i udostępnianie (v1.x). */
+/** Przestrzenie i listy (MVP-1): tworzenie, nazwa, kolor, kolejność, archiwizacja, daty projektu; osoby i udostępnianie (v1.x). */
 export function WorkspacesScreen({ store, email }: { store: TabStore; email: string | null }) {
   const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -314,6 +316,7 @@ function ListItem({
         </Select>
       )}
       {list.kind === "project" ? <ProjectStatusSelect name={list.name} value={list.project_status} onChange={editable ? (status) => void update({ project_status: status }) : undefined} /> : null}
+      {list.kind === "project" ? <ProjectDates list={list} editable={editable} /> : null}
       {owner && guestAccess !== "edit" ? (
         <span className="rounded bg-[var(--hover)] px-2 py-0.5 text-xs" title={GUEST_ACCESS_HINT[guestAccess]} data-testid="list-guest-access">
           dla gości: {GUEST_ACCESS[guestAccess].toLowerCase()}
@@ -345,6 +348,37 @@ function ListItem({
         </>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * Początek i koniec projektu (`lists.start_date` / `end_date`; pasek projektu na osi czasu). Zadań nie
+ * przesuwa (to robi przeciągnięcie paska na osi); koniec przed początkiem przesuwa drugą datę (core
+ * `projectDatesOps`); puste pole czyści datę. Zapis z „Cofnij”.
+ */
+function ProjectDates({ list, editable }: { list: ListRow; editable: boolean }) {
+  const { run } = useTaskActions();
+  const { today } = useAppEnv();
+  const start = list.start_date as LocalDate | null;
+  const end = list.end_date as LocalDate | null;
+  if (!editable) {
+    if (!start && !end) return null;
+    return (
+      <span className="text-xs text-[var(--muted)]" title="Początek – koniec projektu">
+        {start ? columnDate(start, today) : "…"} – {end ? columnDate(end, today) : "…"}
+      </span>
+    );
+  }
+  const change = (next: { startDate: LocalDate | null } | { endDate: LocalDate | null }) => {
+    const { ops, undo } = projectDatesOps({ id: list.id, startDate: start, endDate: end }, next);
+    if (ops.length) void run(ops, { text: `Daty projektu „${list.name}” zmienione`, undo });
+  };
+  return (
+    <span className="flex items-center gap-1 text-xs" role="group" aria-label={`Daty projektu ${list.name}`} data-testid="project-dates">
+      <CommitInput type="date" aria-label={`Początek projektu ${list.name}`} title="Początek projektu" value={start ?? ""} onCommit={(v) => change({ startDate: (v || null) as LocalDate | null })} className="px-1.5 py-0.5 text-xs" />
+      <span aria-hidden>–</span>
+      <CommitInput type="date" aria-label={`Koniec projektu ${list.name}`} title="Koniec projektu" value={end ?? ""} onCommit={(v) => change({ endDate: (v || null) as LocalDate | null })} className="px-1.5 py-0.5 text-xs" />
+    </span>
   );
 }
 

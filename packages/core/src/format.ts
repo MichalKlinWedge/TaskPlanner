@@ -3,7 +3,7 @@
  * się w UTC z południa, bo to daty pływające (bez strefy), a nie chwile w czasie.
  * Podstawa z ExpeditionPlan (`packages/core/src/format.ts`).
  */
-import { daysBetween, isoWeekday } from './dates.ts';
+import { addDays, daysBetween, isoWeekday } from './dates.ts';
 import { AUTH_ERROR, MONTH_SHORT, PRIORITY, QUICK_ADD_KIND, SIGNUP_NOT_INVITED, WEEKDAY } from './labels.ts';
 import type { QuickAddResult, QuickAddToken } from './quick-add.ts';
 import { describeRecurrence } from './recurrence.ts';
@@ -72,6 +72,21 @@ export const shortDate = (date: string): string => localDate(date, { day: 'numer
 /** „5 gru”, a spoza roku `today` — „5 gru 2027” (kolumny dat w widoku listy). */
 export const columnDate = (date: string, today: string): string =>
   date.slice(0, 4) === today.slice(0, 4) ? shortDate(date) : localDate(date, { day: 'numeric', month: 'short', year: 'numeric' });
+
+/**
+ * Gotowe dni wyboru terminu (arkusz daty na telefonie, paleta „Wybierz datę…” na webie): Dziś, Jutro,
+ * Pojutrze, najbliższy poniedziałek po dzisiejszym („Pon. 23.11”) i Za tydzień. W niedzielę „Pon.” = jutro.
+ */
+export function datePresets(today: LocalDate): { label: string; date: LocalDate }[] {
+  const nextMonday = addDays(today, (8 - isoWeekday(today)) % 7 || 7);
+  return [
+    { label: 'Dziś', date: today },
+    { label: 'Jutro', date: addDays(today, 1) },
+    { label: 'Pojutrze', date: addDays(today, 2) },
+    { label: `Pon. ${localDate(nextMonday, { day: 'numeric', month: 'numeric' })}`, date: nextMonday },
+    { label: 'Za tydzień', date: addDays(today, 7) },
+  ];
+}
 
 /** „listopad 2026”: nagłówek miesiąca w kalendarzu wyboru dnia. */
 export const monthLabel = (date: string): string => localDate(date, { month: 'long', year: 'numeric' });

@@ -10,6 +10,8 @@ import {
   buildSearchIndex,
   COMMANDS,
   commandSearchItems,
+  datePresets,
+  dayChip,
   isEmptyFilter,
   LIST_KIND,
   LIST_SHORTCUTS,
@@ -93,7 +95,8 @@ export type PalettePick =
   | { kind: "item"; item: SearchItem }
   | { kind: "priority"; priority: Priority }
   | { kind: "move"; listId: string }
-  | { kind: "date"; date: string }
+  /** `null` = „Bez terminu”. */
+  | { kind: "date"; date: string | null }
   | { kind: "workspace"; workspaceId: string | null }
   | { kind: "send"; ruleId: string };
 
@@ -135,7 +138,7 @@ const PLACEHOLDER: Record<PaletteMode, string> = {
   priority: "Priorytet zaznaczonych — 1–4 albo strzałki",
   move: "Przenieś zaznaczone do… (nazwa listy)",
   send: "Wyślij zaznaczone do… (reguła z Ustawień → Integracje)",
-  date: "Termin zaznaczonych",
+  date: "Termin zaznaczonych — Dziś, Jutro… albo data niżej",
   workspace: "Przestrzeń",
   search: "Szukaj zadań, list, przestrzeni, tagów, filtrów",
   all: "Szukaj albo wpisz polecenie (> — tylko polecenia)",
@@ -212,7 +215,13 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
         .filter((r) => (query ? r.name.toLowerCase().includes(query.toLowerCase()) : true))
         .map((r): Option => ({ key: r.id, label: r.name, hint: PLUGIN_SEND_NOTE, pick: { kind: "send", ruleId: r.id } }));
     }
-    if (mode === "date") return [];
+    if (mode === "date") {
+      // Gotowe dni jak w arkuszu daty na telefonie (core `datePresets`) i „Bez terminu”; inna data — pole pod listą.
+      const presets = datePresets(today).map((d): Option => ({ key: d.date + d.label, label: d.label, hint: dayChip(d.date), pick: { kind: "date", date: d.date } }));
+      const none: Option = { key: "none", label: "Bez terminu", hint: "zdejmuje termin", pick: { kind: "date", date: null } };
+      const q = query.trim().toLowerCase();
+      return [...presets, none].filter((o) => !q || String(o.label).toLowerCase().includes(q));
+    }
     if (!index) return [];
     const kinds: SearchKind[] | undefined = mode === "search" ? ["task", "list", "workspace", "tag", "filter"] : query.startsWith(">") ? ["action", "view"] : undefined;
     const text = query.replace(/^>/, "");
@@ -227,7 +236,7 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
             : KIND_HINT[r.item.kind],
       pick: { kind: "item", item: r.item },
     }));
-  }, [mode, index, query, data.lists, data.workspaces, listName, names, sendable]);
+  }, [mode, index, query, data.lists, data.workspaces, listName, names, sendable, today]);
 
   const current = Math.min(active, Math.max(0, options.length - 1));
   useEffect(() => {
@@ -245,21 +254,6 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-[12vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div role="dialog" aria-modal="true" aria-label="Paleta poleceń" className="flex max-h-[70vh] w-full max-w-xl flex-col rounded-xl border border-[var(--line)] bg-[var(--surface)] shadow-2xl">
-        {mode === "date" ? (
-          <form
-            className="flex gap-2 p-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const value = new FormData(e.currentTarget).get("date");
-              if (value) onPick({ kind: "date", date: String(value) });
-            }}
-          >
-            <input name="date" type="date" autoFocus defaultValue={today} aria-label={placeholder} className={`${inputClass} flex-1`} onKeyDown={(e) => e.key === "Escape" && onClose()} />
-            <button type="submit" className="rounded-md bg-[var(--accent)] px-3 text-sm font-medium text-white">
-              Ustaw
-            </button>
-          </form>
-        ) : (
           <>
             <input
               ref={input}
@@ -326,13 +320,30 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
                 <li className="px-3 py-6 text-center text-sm text-[var(--muted)]">{query ? (filtered ? "Żadne pasujące do filtra zadanie tego nie zawiera." : "Nic nie znaleziono.") : mode === "all" || mode === "search" ? "Zacznij pisać — ostatnio używane pojawią się tutaj." : mode === "send" ? "Brak reguł — dodaj je w Ustawieniach → „Integracje”." : "Brak pozycji."}</li>
               ) : null}
             </ul>
+            {mode === "date" ? (
+              <form
+                className="flex items-center gap-2 border-t border-[var(--line)] p-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const value = new FormData(e.currentTarget).get("date");
+                  if (value) onPick({ kind: "date", date: String(value) });
+                }}
+              >
+                <label htmlFor="palette-date" className="text-sm text-[var(--muted)]">
+                  Inna data
+                </label>
+                <input id="palette-date" name="date" type="date" defaultValue={today} className={`${inputClass} flex-1`} onKeyDown={(e) => e.key === "Escape" && onClose()} />
+                <button type="submit" className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white">
+                  Ustaw
+                </button>
+              </form>
+            ) : null}
             {mode === "all" ? (
               <p className="border-t border-[var(--line)] px-4 py-2 text-xs text-[var(--muted)]">
                 {selectedIds.size ? `Zaznaczone: ${selectedIds.size} — akcje działają na nich. ` : "Zaznacz zadania (klik, Ctrl/Shift + klik, J/K), żeby zobaczyć akcje na nich. "}↑↓ Enter · Esc
               </p>
             ) : null}
           </>
-        )}
       </div>
     </div>
   );

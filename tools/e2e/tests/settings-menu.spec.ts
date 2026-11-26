@@ -13,6 +13,7 @@ const SECTIONS = {
   'Aplikacja na pulpicie': 'Aplikacja na pulpicie',
   'Błędy aplikacji': 'Błędy aplikacji',
   'Praca bez sieci': 'Praca bez sieci w tej przeglądarce',
+  'Wersja aplikacji': 'Wersja aplikacji',
   'Usuń konto': 'Usuń konto',
 };
 

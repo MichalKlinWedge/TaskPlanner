@@ -36,6 +36,7 @@ export * from './onboarding.ts';
 export * from './pdf.ts';
 export * from './plugins/index.ts';
 export * from './quick-add.ts';
+export * from './quick-add-help.ts';
 export * from './recurrence.ts';
 export * from './recurrence-editor.ts';
 export * from './reminder-actions.ts';

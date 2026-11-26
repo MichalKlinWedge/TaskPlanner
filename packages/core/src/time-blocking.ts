@@ -5,7 +5,7 @@
  * blok liczy się w strefie urządzenia (albo strefie przypiętej do zadania), wydarzenia są chwilami.
  */
 import { addDays, isoWeekday, localDateTimeAt, zonedInstant } from './dates.ts';
-import { compareCode, compareText } from './format.ts';
+import { compareCode, compareText, formatMinutes, relativeDay } from './format.ts';
 import type { DayState, HabitSlot } from './habits.ts';
 import { occurrences, type Recurrence } from './recurrence.ts';
 import type { LocalDate, LocalTime } from './schemas/primitives.ts';
@@ -409,3 +409,24 @@ export const resizeBlockPatch = (startMin: number, endMin: number): Record<strin
 
 /** Blok z powrotem do panelu zadań: zostaje dzień, znika godzina (czas trwania zostaje jako szacunek). */
 export const unscheduleBlockPatch = (): Record<string, unknown> => ({ due_time: null });
+
+/**
+ * Kiedy jest wydarzenie kalendarza zewnętrznego (okienko szczegółów w kalendarzu): „dziś · 10:00–11:30
+ * (1 h 30 min)”, „pt 27 lis 22:00 – sob 28 lis 01:00”, „jutro · cały dzień”, „pt 27 lis – ndz 29 lis · cały
+ * dzień”. Godziny na zegarze ściennym strefy `timeZone`; koniec całodniowego jest bez włączenia.
+ */
+export function calendarEventWhen(event: Pick<CalendarEventLike, 'allDay' | 'startAt' | 'endAt' | 'startDate' | 'endDate'>, today: LocalDate, timeZone?: string): string {
+  if (event.allDay) {
+    if (!event.startDate) return 'cały dzień';
+    const last = event.endDate && event.endDate > addDays(event.startDate, 1) ? addDays(event.endDate, -1) : event.startDate;
+    return `${relativeDay(event.startDate, today)}${last !== event.startDate ? ` – ${relativeDay(last, today)}` : ''} · cały dzień`;
+  }
+  if (!event.startAt) return '';
+  const start = localDateTimeAt(event.startAt, timeZone);
+  const end = event.endAt ? localDateTimeAt(event.endAt, timeZone) : start;
+  const [startDay, startTime] = [start.slice(0, 10), start.slice(11)];
+  const [endDay, endTime] = [end.slice(0, 10), end.slice(11)];
+  if (startDay !== endDay) return `${relativeDay(startDay, today)} ${startTime} – ${relativeDay(endDay, today)} ${endTime}`;
+  const minutes = event.endAt ? Math.round((Date.parse(event.endAt) - Date.parse(event.startAt)) / 60_000) : 0;
+  return `${relativeDay(startDay, today)} · ${startTime}${minutes > 0 ? `–${endTime} (${formatMinutes(minutes)})` : ''}`;
+}

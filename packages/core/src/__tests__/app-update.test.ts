@@ -1,7 +1,7 @@
 /** Aktualizacje APK: wybór wydania z GitHub Releases i porównanie wersji. */
 import { describe, expect, it } from 'vitest';
 
-import { availableUpdate, compareVersions, latestAppRelease, parseVersion, shouldCheckUpdate, UPDATE_CHECK_INTERVAL_MS } from '../app-update.ts';
+import { APP_RELEASES_API_URL, APP_RELEASES_PAGE_URL, availableUpdate, compareVersions, latestAppRelease, parseVersion, shouldCheckUpdate, UPDATE_CHECK_INTERVAL_MS } from '../app-update.ts';
 
 const asset = (name: string, size = 100) => ({ name, browser_download_url: `https://github.com/o/r/releases/download/x/${name}`, size });
 const release = (tag: string, over: Record<string, unknown> = {}) => ({
@@ -67,5 +67,15 @@ describe('wydania', () => {
     expect(shouldCheckUpdate(now - 1000, now)).toBe(false);
     expect(shouldCheckUpdate(now - UPDATE_CHECK_INTERVAL_MS, now)).toBe(true);
     expect(shouldCheckUpdate(now + 60_000, now)).toBe(true);
+  });
+});
+
+describe('adresy wydań', () => {
+  it('API i strona wskazują to samo repozytorium, strona zawężona do wydań Androida', () => {
+    const repo = /^https:\/\/api\.github\.com\/repos\/([^/]+\/[^/]+)\/releases\?/.exec(APP_RELEASES_API_URL)?.[1];
+    expect(repo).toBeTruthy();
+    const page = new URL(APP_RELEASES_PAGE_URL);
+    expect(page.origin + page.pathname).toBe(`https://github.com/${repo}/releases`);
+    expect(page.searchParams.get('q')).toBe('android-v');
   });
 });

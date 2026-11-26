@@ -7,6 +7,12 @@ import { z } from 'zod';
 
 export const APP_RELEASE_TAG_PREFIX = 'android-v';
 export const APK_MIME = 'application/vnd.android.package-archive';
+/** Repozytorium z wydaniami APK (publiczne GitHub Releases). */
+export const APP_RELEASES_REPO = 'MichalKlinWedge/TaskPlanner';
+/** Lista wydań w API GitHuba (bez tokenu; `latestAppRelease` wybiera z niej wydanie Androida). */
+export const APP_RELEASES_API_URL = `https://api.github.com/repos/${APP_RELEASES_REPO}/releases?per_page=20`;
+/** Strona wydań dla ludzi — zawężona do wydań Androida (`android-v…`). */
+export const APP_RELEASES_PAGE_URL = `https://github.com/${APP_RELEASES_REPO}/releases?q=${APP_RELEASE_TAG_PREFIX}&expanded=true`;
 /** Jak często sprawdzać same (przycisk „Sprawdź” w ustawieniach pomija ten odstęp). */
 export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 

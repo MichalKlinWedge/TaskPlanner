@@ -10,6 +10,7 @@ import {
   blockLanes,
   blocksForDay,
   calendarEntries,
+  calendarEventWhen,
   clickedTime,
   parseCalendarSlot,
   freeSlotTimes,
@@ -198,5 +199,21 @@ describe('agenda i siatka miesiąca', () => {
     expect(weeks[5]![6]).toBe('2026-12-06');
     const sunday = monthWeeks('2026-02-10', 7);
     expect(sunday.map((w) => w[0])).toEqual(['2026-02-01', '2026-02-08', '2026-02-15', '2026-02-22']);
+  });
+});
+
+describe('calendarEventWhen', () => {
+  const today = '2026-11-19';
+  it('wydarzenie z godzinami jednego dnia: dzień, godziny i długość w strefie ustawień', () => {
+    expect(calendarEventWhen({ allDay: false, startAt: '2026-11-19T09:00:00Z', endAt: '2026-11-19T10:30:00Z' }, today, WAW)).toBe('dziś · 10:00–11:30 (1 h 30 min)');
+    expect(calendarEventWhen({ allDay: false, startAt: '2026-11-20T08:00:00Z', endAt: '2026-11-20T08:00:00Z' }, today, WAW)).toBe('jutro · 09:00');
+  });
+  it('przez północ: dzień i godzina początku i końca', () => {
+    expect(calendarEventWhen({ allDay: false, startAt: '2026-11-20T21:00:00Z', endAt: '2026-11-21T00:30:00Z' }, today, WAW)).toBe('jutro 22:00 – sob 21 lis 01:30');
+  });
+  it('całodniowe: koniec bez włączenia', () => {
+    expect(calendarEventWhen({ allDay: true, startDate: '2026-11-19', endDate: '2026-11-20' }, today)).toBe('dziś · cały dzień');
+    expect(calendarEventWhen({ allDay: true, startDate: '2026-11-20', endDate: '2026-11-23' }, today)).toBe('jutro – ndz 22 lis · cały dzień');
+    expect(calendarEventWhen({ allDay: true, startDate: '2026-11-20', endDate: null }, today)).toBe('jutro · cały dzień');
   });
 });

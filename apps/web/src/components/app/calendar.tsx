@@ -8,7 +8,9 @@
  * (`resizeBlockPatch`), blok z powrotem na panel zdejmuje godzinę (`unscheduleBlockPatch`).
  * Klik w puste miejsce otwiera szybkie dodawanie na ten dzień i godzinę (`onAdd`). Wysokość wiersza
  * (15 min / 30 min / 1 h) przełącza się nad siatką dnia i tygodnia; przeciąganie zawsze co 15 min.
- * „Pokaż” (`calendar-sources.tsx`) wybiera listy i kalendarze zewnętrzne w widoku.
+ * „Pokaż” (`calendar-sources.tsx`) wybiera listy i kalendarze zewnętrzne w widoku. Prawy przycisk (albo
+ * klawisz menu / Shift+F10) na bloku zadania otwiera jego menu, klik w wydarzenie zewnętrzne — szczegóły
+ * (`calendar-menus.tsx`).
  *
  * Czas zadań jest pływający, więc kalendarz pracuje w „UTC” jako zegarze ściennym (bez stref) —
  * „teraz” to zegar ścienny strefy z ustawień.
@@ -49,13 +51,14 @@ import {
   type ViewContext,
   type ViewTask,
 } from "@taskplanner/core";
-import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from "react";
 
-import type { AppData } from "@/lib/app-data";
+import { listEditable, type AppData } from "@/lib/app-data";
 import { useCalendarEvents } from "@/lib/calendar-events";
 import { useRoute } from "@/lib/route";
 
 import { useAppEnv } from "./app-env";
+import { CalendarEventDetails, CalendarTaskMenu, pointAnchor, rectAnchor, type PopupAnchor } from "./calendar-menus";
 import { CalendarSources, readCalendarHidden, storeCalendarHidden, useExternalCalendars, type CalendarHidden } from "./calendar-sources";
 import { FilterBar, type Field as FilterField } from "./filter-bar";
 import { useTaskActions } from "./task-item";
@@ -110,6 +113,9 @@ function readSlot(): CalendarSlot {
 /** Pola terminu do „Cofnij”. */
 const datesBefore = (t: ViewTask): Record<string, unknown> => ({ start_date: t.startDate, due_date: t.dueDate, due_time: t.dueTime, duration_min: t.durationMin });
 const pick = (all: Record<string, unknown>, keys: string[]) => Object.fromEntries(keys.map((k) => [k, all[k] ?? null]));
+
+/** Otwarte okienko kalendarza: menu bloku zadania albo szczegóły wydarzenia zewnętrznego. */
+type Popup = { kind: "task"; taskId: string; allDay: boolean; editable: boolean; anchor: PopupAnchor; el: HTMLElement } | { kind: "event"; eventId: string; anchor: PopupAnchor; el: HTMLElement };
 
 const PANEL_SOURCES = (data: AppData) => ["today", "inbox", "none", ...data.savedFilters.map((f) => `filter:${f.id}`)];
 
@@ -201,6 +207,8 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
     () => (hidden.calendars.size ? { ...allEvents, list: allEvents.list.filter((e) => !hidden.calendars.has(allEvents.info.get(e.id)?.calendar_id ?? "")) } : allEvents),
     [allEvents, hidden.calendars],
   );
+  // Dostęp do list (rola w przestrzeni + dostęp gości) — bloki list tylko do podglądu są nieprzesuwalne.
+  const access = useMemo(() => ({ lists: data.lists, workspaces: data.workspaces }), [data.lists, data.workspaces]);
 
   const events = useMemo<EventInput[]>(() => {
     if (!range) return [];
@@ -210,6 +218,8 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
       const task = e.kind === "task" ? byId.get(e.id) : undefined;
       const source = e.kind === "event" ? calendarEvents.info.get(e.id) : undefined;
       const color = task ? (PRIORITY[task.priority]?.color ?? PRIORITY[4].color) : (source?.color ?? undefined);
+      // Lista tylko do podglądu (współdzielona przestrzeń) — bez przeciągania i zmian z menu.
+      const changeable = e.kind === "task" && !e.virtual && !e.passive && !!task && listEditable(access, task.listId);
       return {
         ...(source && { backgroundColor: "var(--surface)", textColor: "var(--foreground)" }),
         id: e.key,
@@ -217,11 +227,11 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
         start: e.start,
         end: e.end,
         allDay: e.allDay,
-        editable: e.kind === "task" && !e.virtual && !e.passive,
-        durationEditable: e.kind === "task" && !e.virtual && !e.passive && !e.allDay,
+        editable: changeable,
+        durationEditable: changeable && !e.allDay,
         borderColor: e.conflict ? "var(--danger)" : color,
         classNames: [`tp-${e.kind}`, e.passive ? "tp-passive" : "", e.virtual ? "tp-virtual" : "", e.conflict ? "tp-conflict" : ""].filter(Boolean),
-        extendedProps: { taskId: e.kind === "task" ? e.id : null, habitId: e.kind === "habit" ? e.id : null, conflict: e.conflict, hint: source ? [source.calendar, source.location].filter(Boolean).join(" · ") : e.kind === "habit" ? "Cykliczne" : null },
+        extendedProps: { taskId: e.kind === "task" ? e.id : null, habitId: e.kind === "habit" ? e.id : null, eventId: e.kind === "event" ? e.id : null, changeable, conflict: e.conflict, hint: source ? [source.calendar, source.location].filter(Boolean).join(" · ") : e.kind === "habit" ? "Cykliczne" : null },
       };
     });
     // Wolne okna w godzinach pracy — tylko w widoku dnia (M11).
@@ -231,7 +241,7 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
       }
     }
     return out;
-  }, [range, tasks, byId, shown, habits, calendarEvents, timeZone, duration, view, settings.workHours]);
+  }, [range, tasks, byId, shown, habits, calendarEvents, timeZone, duration, view, settings.workHours, access]);
 
   const conflictCount = useMemo(() => events.filter((e) => e.extendedProps?.conflict).length, [events]);
   const candidates = useMemo(() => {
@@ -284,6 +294,42 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
     return () => draggable.destroy();
   }, [duration, panelOpen]);
 
+  /** Zapis łatki terminu z „Cofnij” (menu bloku); bez zmiany — nic. */
+  const save = (task: ViewTask, patch: Record<string, unknown>, text: string) => {
+    const before = datesBefore(task);
+    if (!Object.keys(patch).length || Object.entries(patch).every(([k, v]) => before[k] === v)) return;
+    void run([{ table: "tasks", id: task.id, patch }], { text: `„${task.title}” ${text}`, undo: [{ table: "tasks", id: task.id, patch: pick(before, Object.keys(patch)) }] });
+  };
+
+  const [popup, setPopup] = useState<Popup | null>(null);
+  const closePopup = () => setPopup(null);
+  // Po zamknięciu fokus wraca na blok, chyba że przeszedł gdzie indziej (po zmianie dnia FullCalendar rysuje
+  // blok od nowa — wtedy na nowy element zadania).
+  const lastPopup = useRef<Popup | null>(null);
+  useEffect(() => {
+    const last = lastPopup.current;
+    lastPopup.current = popup;
+    if (popup || !last) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    const back = last.el.isConnected ? last.el : last.kind === "task" ? grid.current?.querySelector<HTMLElement>(`[data-tp-task="${last.taskId}"]`) : null;
+    back?.focus({ preventScroll: true });
+  }, [popup]);
+  // Prawy przycisk / klawisz menu / Shift+F10 na bloku: menu zadania albo szczegóły wydarzenia.
+  const onContextMenu = (e: MouseEvent<HTMLDivElement>) => {
+    const el = (e.target as Element).closest<HTMLElement>("[data-tp-key]");
+    const event = el ? calendar.current?.getApi().getEventById(el.dataset.tpKey ?? "") : null;
+    if (!el || !event) return;
+    const props = event.extendedProps as { taskId: string | null; eventId: string | null; changeable: boolean };
+    if (!props.taskId && !props.eventId) return;
+    e.preventDefault();
+    const box = el.getBoundingClientRect();
+    // Z klawiatury przeglądarka podaje punkt poza blokiem (albo 0, 0) — wtedy okienko pod blokiem.
+    const inside = e.clientX >= box.left && e.clientX <= box.right && e.clientY >= box.top && e.clientY <= box.bottom;
+    const anchor = inside ? pointAnchor(e.clientX, e.clientY) : rectAnchor(el);
+    setPopup(props.taskId ? { kind: "task", taskId: props.taskId, allDay: event.allDay, editable: props.changeable, anchor, el } : { kind: "event", eventId: props.eventId!, anchor, el });
+  };
+
   /** Zapis terminu z kalendarza; `false` — nic się nie zmienia. */
   const schedule = (task: ViewTask, start: Date, allDay: boolean, durationMin?: number): boolean => {
     const date = wallDate(start);
@@ -331,6 +377,8 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
   const onClick = (info: EventClickArg) => {
     const habitId = info.event.extendedProps.habitId as string | null;
     if (habitId) return navigate({ view: "habit", id: habitId });
+    const eventId = info.event.extendedProps.eventId as string | null;
+    if (eventId) return setPopup({ kind: "event", eventId, anchor: rectAnchor(info.el), el: info.el });
     const id = info.event.extendedProps.taskId as string | null;
     if (!id) return;
     select(id);
@@ -424,7 +472,7 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
         </ul>
       </aside>
       )}
-      <div ref={grid} className="tp-calendar min-w-0 flex-1" data-testid="calendar">
+      <div ref={grid} className="tp-calendar min-w-0 flex-1" data-testid="calendar" onContextMenu={onContextMenu}>
         <FilterBar query={filter} onChange={setFilter} hide={HIDDEN_FILTERS}>
           <CalendarSources data={data} workspaceId={ctx.workspaceId ?? null} calendars={externalCalendars} hidden={hidden} onChange={setHidden} />
           {view !== "dayGridMonth" ? (
@@ -477,13 +525,39 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
             eventClick: onClick,
             dateClick: onDateClick,
             eventDidMount: (info) => {
-              const hint = info.event.extendedProps.hint as string | null;
-              info.el.title = hint ? `${info.event.title}
-${hint}` : info.event.title;
+              const { hint, taskId, eventId } = info.event.extendedProps as { hint: string | null; taskId: string | null; eventId: string | null };
+              const menu = taskId ? "Prawy przycisk, Shift+F10 — menu bloku" : eventId ? "Klik — szczegóły" : null;
+              info.el.title = [info.event.title, hint, menu].filter(Boolean).join("\n");
+              // Menu bloku (`onContextMenu`) szuka wydarzenia po kluczu; fokus wraca na blok zadania po `data-tp-task`.
+              info.el.dataset.tpKey = info.event.id;
+              if (taskId) {
+                info.el.dataset.tpTask = taskId;
+                info.el.setAttribute("aria-haspopup", "menu");
+              }
             },
           }}
         />
       </div>
+      {popup?.kind === "task" && byId.get(popup.taskId) ? (
+        <CalendarTaskMenu
+          key={`${popup.taskId}:${popup.anchor.left}:${popup.anchor.top}`}
+          task={byId.get(popup.taskId)!}
+          allDay={popup.allDay}
+          editable={popup.editable}
+          anchor={popup.anchor}
+          today={ctx.today}
+          defaultDurationMin={duration}
+          workStart={settings.workHours.start}
+          onOpen={() => {
+            select(popup.taskId);
+            openTask(popup.taskId);
+          }}
+          onSave={(patch, text) => save(byId.get(popup.taskId)!, patch, text)}
+          onClose={closePopup}
+        />
+      ) : popup?.kind === "event" && calendarEvents.info.get(popup.eventId) ? (
+        <CalendarEventDetails key={`${popup.eventId}:${popup.anchor.left}:${popup.anchor.top}`} event={calendarEvents.info.get(popup.eventId)!} anchor={popup.anchor} today={ctx.today} timeZone={timeZone} onClose={closePopup} />
+      ) : null}
     </div>
   );
 }

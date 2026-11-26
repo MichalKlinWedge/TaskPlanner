@@ -39,11 +39,12 @@ async function googleAvailable(): Promise<boolean | null> {
   }
 }
 
-/** Logowanie (M1): Google albo link na e-mail. Konto powstaje przy pierwszym logowaniu. */
+/** Logowanie (M1): Google albo link na e-mail (albo kod z tego maila, gdy szablon go zawiera). Konto powstaje przy pierwszym logowaniu. */
 export function LoginScreen() {
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     const fromRedirect = redirectError();
@@ -81,7 +82,28 @@ export function LoginScreen() {
     const { error: e } = await supabaseBrowser().auth.signInWithOtp({ email: address, options: { emailRedirectTo: redirectTo } });
     setBusy(false);
     if (e) setError(authErrorMessage(e));
-    else setSentTo(address);
+    else {
+      setCode("");
+      setSentTo(address);
+    }
+  };
+
+  // Kod z maila zamiast linku (link otwarty na innym urządzeniu albo w innej przeglądarce).
+  // Sesję podchwytuje `onAuthStateChange` w `AppRoot` — tu tylko błąd.
+  const verifyCode = async (event: FormEvent) => {
+    event.preventDefault();
+    const token = code.replace(/\s/g, "");
+    if (!sentTo || token.length < 6) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { error: e } = await supabaseBrowser().auth.verifyOtp({ email: sentTo, token, type: "email" });
+      if (e) setError(authErrorMessage(e));
+    } catch (e) {
+      setError(authErrorMessage(e instanceof Error ? e : String(e)));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -105,12 +127,30 @@ export function LoginScreen() {
           <span className="h-px flex-1 bg-[var(--line)]" />
         </div>
         {sentTo ? (
-          <Notice tone="ok">
-            Wysłano link na <strong>{sentTo}</strong>. Otwórz go w tej przeglądarce.{" "}
-            <button type="button" className="underline" onClick={() => setSentTo(null)}>
-              Inny adres
-            </button>
-          </Notice>
+          <>
+            <Notice tone="ok">
+              Wysłano link na <strong>{sentTo}</strong>. Otwórz go w tej przeglądarce.{" "}
+              <button type="button" className="underline" onClick={() => setSentTo(null)}>
+                Inny adres
+              </button>
+            </Notice>
+            <form onSubmit={(e) => void verifyCode(e)} className="flex flex-col gap-3">
+              <Field label="Kod z maila" hint="Kod jest w mailu tylko wtedy, gdy serwer go dopisuje — zwykle wystarczy link.">
+                <Input
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={10}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="123456"
+                  data-testid="login-code"
+                />
+              </Field>
+              <Button kind="secondary" type="submit" disabled={busy || code.replace(/\s/g, "").length < 6}>
+                Zaloguj kodem
+              </Button>
+            </form>
+          </>
         ) : (
           <form onSubmit={(e) => void magicLink(e)} className="flex flex-col gap-3">
             <Field label="E-mail">

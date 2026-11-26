@@ -10,9 +10,14 @@ export interface OfflineStatus {
   serviceWorker: "active" | "installing" | "unsupported" | "dev";
   /** `navigator.storage.persist()` — przeglądarka nie wyczyści lokalnej bazy przy braku miejsca. */
   persisted: boolean | null;
+  /**
+   * Nowy Service Worker (nowe `VERSION` w `sw.js`) przejął stronę, która już działała pod
+   * poprzednim — ta karta ma jeszcze stary kod; odświeżenie wczyta nowy (Ustawienia → „Wersja aplikacji”).
+   */
+  updated: boolean;
 }
 
-let status: OfflineStatus = { serviceWorker: "installing", persisted: null };
+let status: OfflineStatus = { serviceWorker: "installing", persisted: null, updated: false };
 const listeners = new Set<() => void>();
 const update = (patch: Partial<OfflineStatus>) => {
   status = { ...status, ...patch };
@@ -54,9 +59,11 @@ export function startOfflineSupport() {
   // Nowy SW (pierwsza wizyta albo nowe `VERSION` w `sw.js`) zaczyna z pustą pamięcią plików, a ta
   // strona wczytała już swoje skrypty przez poprzedniego — bez ponownej listy start offline by nie
   // działał do następnego wejścia z siecią.
+  // Strona miała już kontrolera = to nie pierwsza instalacja, tylko aktualizacja SW.
+  const hadController = navigator.serviceWorker.controller !== null;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     navigator.serviceWorker.controller?.postMessage({ type: "cache-urls", urls: loadedUrls() });
-    update({ serviceWorker: "active" });
+    update({ serviceWorker: "active", ...(hadController && { updated: true }) });
   });
 }
 

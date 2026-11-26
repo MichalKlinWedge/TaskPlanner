@@ -5,7 +5,7 @@
  * (klik cofa rozpoznanie), podgląd tytułu i listy docelowej, wiele linii naraz (wklejenie).
  * Ten sam komponent w widokach (pole na górze) i w oknie wywoływanym klawiszem `Q` / `Ctrl+Spacja`.
  */
-import { clipQuote, findUrl, linkName, localDateTimeAt, parseQuickAdd, withLinkOps, plural, quickAddChip, quickAddTaskOps, suppressToken, taskTagOps, type LocalDate, type TaskOp, type QuickAddContext, type QuickAddSlot, type QuickAddTokenKind, type WebClip } from "@taskplanner/core";
+import { clipQuote, findUrl, linkName, localDateTimeAt, parseQuickAdd, withLinkOps, plural, QUICK_ADD_HELP, QUICK_ADD_HELP_NOTES, quickAddChip, quickAddTaskOps, suppressToken, taskTagOps, type LocalDate, type TaskOp, type QuickAddContext, type QuickAddSlot, type QuickAddTokenKind, type WebClip } from "@taskplanner/core";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 
 import { lastSortKey, useAppEnv } from "./app-env";
@@ -229,7 +229,63 @@ export function QuickAddDialog({ open, onClose, heading, ...props }: QuickAddPro
         <p className="px-1 text-xs text-[var(--muted)]">
           Np. „Zapłacić rachunek jutro o 10 #dom !wysoki @telefon ~15m” · Esc — zamknij
         </p>
+        <SyntaxHelp />
       </div>
     </div>
+  );
+}
+
+const HELP_KEY = "tp-quick-add-help";
+
+/** Rozwijana ściąga składni (core `QUICK_ADD_HELP`, SPECYFIKACJA §4); rozwinięcie pamiętane per przeglądarka. */
+function SyntaxHelp() {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(HELP_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  return (
+    <details
+      open={open}
+      onToggle={(e) => {
+        const next = e.currentTarget.open;
+        setOpen(next);
+        try {
+          localStorage.setItem(HELP_KEY, next ? "1" : "0");
+        } catch {
+          // Bez pamięci przeglądarki — do zamknięcia okna.
+        }
+      }}
+      className="mt-2 px-1 text-xs"
+      data-testid="quick-add-help"
+    >
+      <summary className="cursor-pointer text-[var(--muted)] select-none hover:text-[var(--foreground)]">Składnia — co rozpoznaje pole</summary>
+      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
+        {QUICK_ADD_HELP.map((row) => (
+          <div key={row.kind} className="contents">
+            <dt className="pt-0.5">
+              <span className={`rounded-full px-2 py-0.5 font-medium whitespace-nowrap ${KIND_STYLE[row.kind]}`}>{row.label}</span>
+            </dt>
+            <dd className="text-[var(--muted)]">
+              <span className="flex flex-wrap gap-1">
+                {row.examples.map((example) => (
+                  <code key={example} className="rounded bg-black/5 px-1 text-[var(--foreground)] dark:bg-white/10">
+                    {example}
+                  </code>
+                ))}
+              </span>
+              {row.note ? <span className="mt-0.5 block">{row.note}</span> : null}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <ul className="mt-2 list-disc space-y-0.5 pl-4 text-[var(--muted)]">
+        {QUICK_ADD_HELP_NOTES.map((note) => (
+          <li key={note}>{note}</li>
+        ))}
+      </ul>
+    </details>
   );
 }

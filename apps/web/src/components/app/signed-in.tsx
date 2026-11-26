@@ -15,6 +15,7 @@ import { ScopeInvites } from "./sharing";
 import { SettingsScreen } from "./settings-screen";
 import { Shell } from "./shell";
 import { Card, Notice, Splash } from "./ui";
+import { UpdateNotice, useAppUpdated } from "./version-card";
 import { WorkspacesScreen } from "./workspaces-screen";
 
 interface ProfileRow extends Record<string, string | number | null> {
@@ -162,6 +163,7 @@ function AppHeader({ store, email, settingsLink }: { store: TabStore; email: str
   const status = useStoreStatus();
   const [route] = useRoute();
   const stale = useStaleLeader(store);
+  const updated = useAppUpdated();
   const [pending, setPending] = useState(0);
   const [online, setOnline] = useState(true);
 
@@ -198,6 +200,16 @@ function AppHeader({ store, email, settingsLink }: { store: TabStore; email: str
     if (online) void store.sync().catch(() => undefined);
   }, [online, store]);
 
+  const [busy, setBusy] = useState(false);
+  const syncNow = () => {
+    if (busy) return;
+    setBusy(true);
+    void store
+      .sync()
+      .catch(() => undefined)
+      .finally(() => setBusy(false));
+  };
+
   const signOut = async () => {
     let left = await store.pendingCount();
     if (left > 0) {
@@ -229,10 +241,26 @@ function AppHeader({ store, email, settingsLink }: { store: TabStore; email: str
     <>
       <header className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-sm">
         <span className="font-semibold">Task Planner</span>
-        <span className="flex items-center gap-1.5 text-xs opacity-80" role="status" title={status.error ?? (status.lastSyncAt ? `Ostatnio: ${new Date(status.lastSyncAt).toLocaleTimeString("pl-PL")}` : undefined)} data-testid="sync-status">
-          <span className={`h-2 w-2 rounded-full ${dot}`} />
-          {label}
-        </span>
+        {/* Klik = „Synchronizuj teraz” (wysyłka i pobranie od razu, bez czekania na sygnał). */}
+        <button
+          type="button"
+          onClick={syncNow}
+          disabled={!online || busy}
+          aria-busy={busy || status.syncing}
+          title={[
+            online ? "Synchronizuj teraz" : "Brak sieci",
+            status.error ?? (status.lastSyncAt ? `Ostatnio: ${new Date(status.lastSyncAt).toLocaleTimeString("pl-PL")}` : null),
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+          className="-mx-1 rounded px-1 outline-none hover:bg-[var(--line)] focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-default disabled:hover:bg-transparent"
+          data-testid="sync-now"
+        >
+          <span className="flex items-center gap-1.5 text-xs opacity-80" role="status" data-testid="sync-status">
+            <span className={`h-2 w-2 rounded-full ${dot} ${busy ? "animate-pulse" : ""}`} />
+            {label}
+          </span>
+        </button>
         <span className="flex-1" />
         {email ? <span className="hidden text-xs opacity-60 sm:inline">{email}</span> : null}
         {settingsLink ? (
@@ -258,6 +286,10 @@ function AppHeader({ store, email, settingsLink }: { store: TabStore; email: str
         <p role="alert" className="border-b border-amber-400 bg-amber-100 px-4 py-2 text-sm text-amber-900 dark:bg-amber-900/40 dark:text-amber-100" data-testid="stale-leader">
           {STALE_LEADER_MESSAGE}
         </p>
+      ) : updated ? (
+        <div className="border-b border-[var(--line)] [&>p]:rounded-none [&>p]:border-0" data-testid="app-updated">
+          <UpdateNotice />
+        </div>
       ) : null}
     </>
   );

@@ -52,6 +52,7 @@ import { STALE_LEADER_MESSAGE } from "@taskplanner/sync";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useAiAccount } from "@/lib/ai";
+import { listEditable } from "@/lib/app-data";
 import { useLocalQuery } from "@/lib/local-store";
 import type { Route } from "@/lib/route";
 import { useOnline } from "@/lib/use-online";
@@ -60,7 +61,7 @@ import { useAppEnv } from "./app-env";
 import { DayPlan } from "./day-plan";
 import { FilterBar } from "./filter-bar";
 import { QuickAdd } from "./quick-add";
-import { useTaskActions } from "./task-item";
+import { DoneCircle, useTaskActions } from "./task-item";
 import { Button, EyeIcon, Input, navLinkClass, Select } from "./ui";
 import { WeekSummaryStep } from "./week-summary";
 
@@ -115,6 +116,35 @@ function OpenButtons({ task, className = "" }: { task: ViewTask; className?: str
         );
       })}
     </span>
+  );
+}
+
+/**
+ * Wiersz zadania w listach podsumowań (plan dnia, „Ukończone dziś”, „Nadchodzący tydzień”):
+ * kółko ukończenia (z „Cofnij”; przy ukończonym — przywrócenie), tytuł otwiera panel.
+ * Przyszłe wystąpienie serii (`virtual`) ma puste kółko — odhacza się bieżące, nie to.
+ */
+function ReviewTaskRow({ task, virtual = false, done = false, className = "" }: { task: ViewTask; virtual?: boolean; done?: boolean; className?: string }) {
+  const { data, openTask, openTaskId } = useAppEnv();
+  const { toggle } = useTaskActions();
+  const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
+  return (
+    <li
+      className={`flex items-center gap-2 ${virtual ? "opacity-60" : ""} ${openTaskId === task.id ? openRowClass : ""} ${className}`}
+      data-task-id={task.id}
+      data-virtual={virtual ? "" : undefined}
+    >
+      {virtual ? (
+        <span className="h-[18px] w-[18px] shrink-0 rounded-full border border-dashed" style={{ borderColor: color }} title="Przyszłe wystąpienie serii" />
+      ) : (
+        <DoneCircle task={task} closed={done} readOnly={!listEditable(data, task.listId)} onToggle={() => void toggle(task)} />
+      )}
+      <button type="button" className={`min-w-0 flex-1 truncate text-left hover:underline ${done ? "text-[var(--muted)] line-through" : ""}`} onClick={() => openTask(task.id)}>
+        {task.title}
+      </button>
+      {task.dueTime && !done ? <span className="text-xs text-[var(--muted)]">{task.dueTime}</span> : null}
+      <OpenButtons task={task} />
+    </li>
   );
 }
 
@@ -353,7 +383,7 @@ export function DailyReview({ ctx, settings, onExit, navigate }: { ctx: ViewCont
 }
 
 function DailyDone({ ctx, settings, log, total, onExit, navigate }: { ctx: ViewContext; settings: ProfileSettings; log: LogEntry[]; total: number; onExit: () => void; navigate: (route: Route) => void }) {
-  const { data, openTask, openTaskId } = useAppEnv();
+  const { data } = useAppEnv();
   const stats = reviewStats(log, ctx);
   const summary = useMemo(() => dailySummary(data.tasks, ctx), [data.tasks, ctx]);
   const tomorrow = addDays(ctx.today, 1);
@@ -391,16 +421,9 @@ function DailyDone({ ctx, settings, log, total, onExit, navigate }: { ctx: ViewC
             </div>
           </div>
           {planTasks.length ? (
-            <ul className="divide-y divide-[var(--line)] rounded-md border border-[var(--line)] text-sm">
+            <ul className="divide-y divide-[var(--line)] rounded-md border border-[var(--line)] text-sm" data-testid="review-plan">
               {planTasks.map((t) => (
-                <li key={t.id} className={`flex items-center gap-2 px-3 py-1.5 ${openTaskId === t.id ? openRowClass : ""}`} data-task-id={t.id}>
-                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: PRIORITY[t.priority].color }} />
-                  <button type="button" className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => openTask(t.id)}>
-                    {t.title}
-                  </button>
-                  {t.dueTime ? <span className="text-xs text-[var(--muted)]">{t.dueTime}</span> : null}
-                  <OpenButtons task={t} />
-                </li>
+                <ReviewTaskRow key={t.id} task={t} className="px-3 py-1.5" />
               ))}
             </ul>
           ) : (
@@ -409,6 +432,18 @@ function DailyDone({ ctx, settings, log, total, onExit, navigate }: { ctx: ViewC
         </div>
         <DayPlan key={planDate} data={data} ctx={ctx} date={planDate} settings={settings} />
       </section>
+      {summary.doneToday.length ? (
+        <section aria-label="Ukończone dziś">
+          <h2 className="mb-2 text-sm font-semibold">
+            Ukończone dziś · {summary.doneToday.length}
+          </h2>
+          <ul className="divide-y divide-[var(--line)] rounded-md border border-[var(--line)] text-sm" data-testid="review-done-today">
+            {summary.doneToday.map((t) => (
+              <ReviewTaskRow key={t.id} task={t} done className="px-3 py-1.5" />
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <div>
         <Button kind="primary" onClick={onExit}>
           Gotowe
@@ -738,14 +773,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
                   {d.items.length ? (
                     <ul className="flex flex-col gap-0.5">
                       {d.items.map((it) => (
-                        <li key={`${it.task.id}:${it.date}`} className={`flex items-center gap-2 ${it.virtual ? "opacity-60" : ""} ${openTaskId === it.task.id ? openRowClass : ""}`} data-task-id={it.task.id} data-virtual={it.virtual ? "" : undefined}>
-                          <span className="h-1.5 w-1.5 rounded-full" style={{ background: PRIORITY[it.task.priority].color }} />
-                          <button type="button" className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => openTask(it.task.id)}>
-                            {it.task.title}
-                          </button>
-                          {it.task.dueTime ? <span className="text-xs text-[var(--muted)]">{it.task.dueTime}</span> : null}
-                          <OpenButtons task={it.task} />
-                        </li>
+                        <ReviewTaskRow key={`${it.task.id}:${it.date}`} task={it.task} virtual={it.virtual} />
                       ))}
                     </ul>
                   ) : (

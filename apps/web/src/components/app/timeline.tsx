@@ -4,7 +4,8 @@
  * Oś czasu (M12, Etap 6): SVAR React Gantt (D18) nad `core/timeline.ts` — projekty → zadania →
  * podzadania, paski od `start_date` do `due_date`, postęp, linia „dziś”, skale dzień / tydzień /
  * miesiąc. Przesunięcie i rozciągnięcie paska zapisuje daty (`timelineChangeOps`, z „Przesuń zależne”
- * albo „Tylko to zadanie”), pasek projektu przesuwa cały projekt (`shiftProjectOps`). Zależność
+ * albo „Tylko to zadanie”), pasek projektu przesuwa cały projekt (`shiftProjectOps`). Klik w wiersz
+ * albo pasek zadania otwiera panel zadania, a projektu — listę projektu. Zależność
  * koniec→początek: przeciągnięcie z końca paska na początek drugiego — zapis dopiero po
  * `addDependencyOps` (blokada cyklu; SVAR cykle przyjmuje). Naruszenia: czerwone paski i strzałki
  * oraz lista z „Popraw”. „Ścieżka krytyczna” (core `criticalPath`, zapas w dniach roboczych z ustawień) barwi
@@ -48,6 +49,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExterna
 import type { AppData } from "@/lib/app-data";
 import { useDependencies } from "@/lib/dependencies";
 import { GANTT_PL } from "@/lib/gantt-locale";
+import { useRoute } from "@/lib/route";
 
 import { useAppEnv } from "./app-env";
 import { ExportButton } from "./export";
@@ -260,6 +262,7 @@ interface Latest {
 export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: ViewContext; active: boolean }) {
   const { store: tabStore, openTask, openTaskId, select, settings, userId } = useAppEnv();
   const { run, notify } = useTaskActions();
+  const [, navigate] = useRoute();
   const deps = useDependencies(tabStore);
   const dark = useDark();
   const [scale, setScaleState] = useState<Scale>(() => readStored(SCALE_KEY, ["day", "week", "month"], "day"));
@@ -409,12 +412,13 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
         }
         return false;
       });
-      // Pojedyncze kliknięcie paska albo wiersza też otwiera panel zadania. SVAR wysyła `select-task`
-      // z `toggle`/`range` tylko z kliknięcia myszą (nie po przeciągnięciu paska, nie ze strzałek ani
-      // menu kontekstowego); Ctrl / Shift zostawiamy na zaznaczanie w SVAR.
+      // Pojedyncze kliknięcie paska albo wiersza też otwiera panel zadania, a projektu — jego listę. SVAR
+      // wysyła `select-task` z `toggle`/`range` tylko z kliknięcia myszą (nie po przeciągnięciu paska, nie ze
+      // strzałek, menu kontekstowego ani strzałki zwijania); Ctrl / Shift zostawiamy na zaznaczanie w SVAR.
       gantt.on("select-task", (ev: { id: string | number; toggle?: boolean; range?: boolean }) => {
         const id = String(ev.id);
-        if (typeof ev.toggle !== "boolean" || ev.toggle || ev.range || id.startsWith(PROJECT)) return;
+        if (typeof ev.toggle !== "boolean" || ev.toggle || ev.range) return;
+        if (id.startsWith(PROJECT)) return navigate({ view: "list", id: id.slice(PROJECT.length) });
         select(id);
         openTask(id);
       });
