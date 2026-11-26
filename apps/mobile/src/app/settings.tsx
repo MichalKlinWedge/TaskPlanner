@@ -10,6 +10,7 @@ import { BackupSection } from '@/components/backup-section';
 import { CalendarsSection } from '@/components/calendars-section';
 import { ErrorsSection } from '@/components/errors-section';
 import { InvitesSection } from '@/components/invites-section';
+import { NotificationsSection } from '@/components/notifications';
 import { PluginsSection } from '@/components/plugins-section';
 import { ProfileSection } from '@/components/profile-section';
 import { SyncIndicator } from '@/components/sync-indicator';
@@ -242,6 +243,8 @@ export default function Settings() {
       <ProfileSection />
 
       <FocusSection />
+
+      <NotificationsSection />
 
       <AiSection />
 

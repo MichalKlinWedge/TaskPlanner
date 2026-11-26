@@ -12,6 +12,7 @@ import { refreshWidgets } from '../widget/refresh';
 import { readJson, serverConfig, sessionUser, writeJson } from './config';
 import { flushErrors, reportError } from './error-log';
 import { fillLinkPreviews, flushFiles } from './files';
+import { showNotificationPushes } from './notifications';
 import { scheduleReminders } from './scheduler';
 import { syncNow } from './sync';
 
@@ -39,6 +40,8 @@ export async function runBackgroundSync(): Promise<BackgroundRun> {
     if (sessionUser().online && serverConfig()) {
       await syncNow();
       run.synced = true;
+      // Nowe powiadomienia centrum → zasobnik (telefon nie ma Web Push).
+      await showNotificationPushes().catch((error: unknown) => reportError('error', error, { background: true, step: 'notifications' }));
       // Pliki i podglądy linków po synchronizacji (zadania już na serwerze).
       await flushFiles();
       await fillLinkPreviews();

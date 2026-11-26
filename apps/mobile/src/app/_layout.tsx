@@ -9,6 +9,7 @@ import { AppState, ScrollView, Text } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { TaskActionsProvider, useTaskActions } from '@/components/actions';
+import { NotificationToasts, openNotificationRoute } from '@/components/notifications';
 import { PickerHost } from '@/components/pickers';
 import { Button, usePalette } from '@/components/ui';
 
@@ -20,6 +21,7 @@ import { startDevice } from '@/lib/device';
 import { flushErrors, reportError, setErrorRoute } from '@/lib/error-log';
 import { startCapture } from '@/lib/files';
 import { startFocusWork, syncFocusNotifications } from '@/lib/focus';
+import { markNotificationReadById, showNotificationPushes } from '@/lib/notifications';
 import { loadProfile, onboardingGateHeld, onOnboardingGateRelease } from '@/lib/profile';
 import { handleResponse, setupNotifications } from '@/lib/reminders';
 import { scheduleReminders } from '@/lib/scheduler';
@@ -189,7 +191,11 @@ function useAppStart() {
     // Wpisy z poprzedniego uruchomienia (np. błąd krytyczny) i po każdej udanej synchronizacji.
     void flushErrors();
     startCapture();
-    const offSynced = onSynced(() => void flushErrors());
+    const offSynced = onSynced(() => {
+      void flushErrors();
+      // Aplikacja w tle (proces jeszcze żyje): nowe powiadomienia do zasobnika; na wierzchu — dymek.
+      if (AppState.currentState !== 'active') void showNotificationPushes().catch(() => undefined);
+    });
     // Telefon na liście urządzeń; wyłączone przypomnienia (tu albo na webie) i skończony przegląd działają od razu.
     const stopDevice = startDevice(() => {
       void scheduleReminders();
@@ -229,7 +235,7 @@ function InviteLink() {
   return null;
 }
 
-/** Dotknięcie powiadomienia (nie przycisku): timer → ekran skupienia, nawyk → „Cykliczne”, zadanie → szczegóły. */
+/** Dotknięcie powiadomienia (nie przycisku): timer → ekran skupienia, nawyk → „Cykliczne”, zadanie → szczegóły, centrum powiadomień → przeczytane + cel. */
 function NotificationTap() {
   const response = Notifications.useLastNotificationResponse();
   const handled = useRef<string | null>(null);
@@ -238,8 +244,11 @@ function NotificationTap() {
     const key = `${response.notification.request.identifier}:${response.notification.date}`;
     if (handled.current === key) return;
     handled.current = key;
-    const data = (response.notification.request.content.data ?? {}) as { focus?: boolean; review?: 'daily' | 'weekly'; taskId?: string; habit?: boolean; batch?: string };
-    if (data.focus) router.push('/focus');
+    const data = (response.notification.request.content.data ?? {}) as { focus?: boolean; review?: 'daily' | 'weekly'; taskId?: string; habit?: boolean; batch?: string; notification?: string; route?: string };
+    if (data.notification) {
+      void markNotificationReadById(data.notification).catch(() => undefined);
+      openNotificationRoute(data.route ?? '/notifications');
+    } else if (data.focus) router.push('/focus');
     else if (data.review) router.push(data.review === 'weekly' ? '/review/weekly' : '/review/daily');
     else if (data.habit) router.push('/habits');
     else if (data.taskId && !data.batch) router.push({ pathname: '/task/[id]', params: { id: data.taskId } });
@@ -259,6 +268,7 @@ export default function RootLayout() {
           <OnboardingGate />
           <BackgroundWork />
           <NotificationTap />
+          <NotificationToasts />
           <InviteLink />
           {/* Systemowy pasek nawigacji schowany; przesunięcie od dolnej krawędzi pokazuje go na chwilę. */}
           <NavigationBar hidden />
@@ -279,6 +289,7 @@ export default function RootLayout() {
             <Stack.Screen name="tag/[id]" options={{ title: 'Tag' }} />
             <Stack.Screen name="filter/[id]" options={{ title: 'Filtr' }} />
             <Stack.Screen name="search" options={{ title: 'Szukaj' }} />
+            <Stack.Screen name="notifications" options={{ title: 'Powiadomienia' }} />
             <Stack.Screen name="trash" options={{ title: 'Kosz' }} />
             <Stack.Screen name="workspaces" options={{ title: 'Przestrzenie i listy' }} />
             <Stack.Screen name="workspace/[id]" options={{ title: 'Przestrzeń' }} />

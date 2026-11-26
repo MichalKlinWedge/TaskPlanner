@@ -1,7 +1,7 @@
 /**
  * Nagłówek zakładek: przełącznik przestrzeni (M2, „Wszystkie” albo jedna), wyszukiwarka i zębatka ustawień
  * z kropką stanu synchronizacji w rogu (zielona / kółko w trakcie / czerwona po błędzie / szara offline),
- * obok niej ikona dostępnej aktualizacji aplikacji (dotknięcie = Ustawienia → „Aktualizacje”).
+ * obok niej ikona dostępnej aktualizacji aplikacji (dotknięcie = Ustawienia → „Aktualizacje”) i dzwonek powiadomień.
  */
 import { focusRemaining, focusElapsed, formatTimer } from '@taskplanner/core';
 import { router } from 'expo-router';
@@ -14,6 +14,7 @@ import { sessionUser } from '@/lib/config';
 import { isTicking, useFocusData } from '@/lib/focus';
 import { useSyncStatus } from '@/lib/local-query';
 
+import { NotificationBell } from './notifications';
 import { pickOption } from './pickers';
 import { usePalette } from './ui';
 
@@ -118,6 +119,7 @@ export function HeaderRight() {
       <Pressable accessibilityRole="button" accessibilityLabel="Szukaj" hitSlop={10} onPress={() => router.push('/search')}>
         <Text style={{ color: p.fg, fontSize: 19 }}>⌕</Text>
       </Pressable>
+      <NotificationBell />
       <UpdateIcon />
       <SettingsButton />
     </View>

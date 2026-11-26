@@ -94,6 +94,16 @@ Przed testem: Konto i synchronizacja → „Przypomnienia i praca w tle” → �
 6. Bez odpowiedzi 2 min → cisza, ciche powiadomienie z przyciskami. Restart telefonu → zaplanowane alarmy dalej przychodzą.
 7. Cykliczne: „Zakończ” → wpis `done`; powrót na „Powiadomienie na belce” → kolejne przypomnienie zwykłym powiadomieniem, bez duplikatu.
 
+## E15. Centrum powiadomień
+
+Przed testem: drugie konto we wspólnej przestrzeni (web), na telefonie Konto i synchronizacja → „Powiadomienia” → „Zadania we wspólnych przestrzeniach” = „W aplikacji i w zasobniku”; zgoda na powiadomienia.
+
+1. Aplikacja otwarta; drugie konto przypisuje zadanie i dodaje komentarz → w ≤ 5 s dymek „🔔 …”, licznik na dzwonku w nagłówku zakładek; brak powiadomienia w zasobniku.
+2. Dzwonek → ekran „Powiadomienia”: dni, filtry „Nieprzeczytane” / rodzaj / przestrzeń; dotknięcie → zadanie i znika kropka; ✕ usuwa wpis (też na webie po synchronizacji).
+3. Aplikacja w tle (Home); drugie konto zmienia termin zadania → powiadomienie w zasobniku po synchronizacji (od razu, póki proces żyje, inaczej przy synchronizacji w tle ~15 min). „Oznacz jako przeczytane” → znika, licznik na webie maleje bez otwierania aplikacji.
+4. Dotknięcie powiadomienia w zasobniku → otwiera się zadanie, wpis przeczytany. Przeczytanie na webie → powiadomienie znika z zasobnika przy następnej synchronizacji.
+5. Cisza nocna obejmująca teraz → w zasobniku nic, dzwonek dalej liczy. Pierwsze uruchomienie nowej wersji → starsze nieprzeczytane bez zalewu powiadomień.
+
 ## Wyniki
 
 | Scenariusz | Data | Wynik | Uwagi |

@@ -369,3 +369,32 @@ export function notificationPush(n: AppNotification): { title: string; body: str
     ...(target.kind === 'task' && { taskId: target.taskId }),
   };
 }
+
+// ── Telefon: powiadomienie systemowe po synchronizacji ──────────────────────────────────────
+
+/**
+ * Telefon nie dostaje Web Push — pokazuje powiadomienia systemowe sam, po synchronizacji w tle (WorkManager, co
+ * kilkanaście minut). Stąd szersze okno niż na serwerze; starsze zdarzenia czekają tylko w dzwonku.
+ */
+export const NOTIFICATION_PHONE_WINDOW_MS = 24 * 3_600_000;
+
+/**
+ * Które powiadomienia telefon ma teraz pokazać w zasobniku: nieprzeczytane, grupa z kanałem `push`, nie starsze niż
+ * okno, jeszcze nie pokazane (`shown` = klucze `notificationFireKey`, także wyświetlone jako dymek w aplikacji).
+ * W ciszy nocnej — nic (po jej końcu pokażą się te, które zmieszczą się w oknie). Najstarsze pierwsze.
+ */
+export function phoneNotificationPushes(
+  list: readonly AppNotification[],
+  prefs: NotificationPrefs,
+  shown: ReadonlySet<string>,
+  now: Date,
+  timeZone?: string,
+): AppNotification[] {
+  if (inQuietHours(prefs, now, timeZone)) return [];
+  return list
+    .filter((n) => {
+      const age = now.getTime() - new Date(n.at).getTime();
+      return !n.readAt && prefs[NOTIFICATION_GROUP[n.kind]] === 'push' && age >= 0 && age < NOTIFICATION_PHONE_WINDOW_MS && !shown.has(notificationFireKey(n));
+    })
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+}

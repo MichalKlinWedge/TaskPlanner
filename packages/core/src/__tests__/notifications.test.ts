@@ -15,6 +15,7 @@ import {
   notificationTime,
   notificationWorkspaces,
   NotificationPrefs,
+  phoneNotificationPushes,
   toNotification,
   unreadCount,
   visibleNotifications,
@@ -267,5 +268,22 @@ describe('zdarzenia systemowe i terminy (N3)', () => {
       { id: a.workspaceId, name: 'Dom' },
       { id: W2, name: 'Praca' },
     ]);
+  });
+});
+
+describe('telefon: powiadomienie systemowe po synchronizacji', () => {
+  const push = { ...prefs, tasks: 'push' as const };
+  it('nieprzeczytane z kanałem push, w oknie 24 h, jeszcze nie pokazane; najstarsze pierwsze; cisza nocna — nic', () => {
+    const a = note({ id: 'a', at: '2026-11-18T11:00:00Z' });
+    const b = note({ id: 'b', at: '2026-11-18T09:00:00Z' });
+    const old = note({ id: 'old', at: '2026-11-17T11:00:00Z' });
+    const read = note({ id: 'r', readAt: '2026-11-18T11:30:00Z' });
+    const invite = note({ id: 'i', kind: 'invite' });
+    const shown = new Set([notificationFireKey(note({ id: 'b', at: '2026-11-18T09:00:00Z' }))]);
+    expect(phoneNotificationPushes([a, b, old, read, invite], push, new Set(), NOW, TZ).map((n) => n.id)).toEqual(['b', 'a']);
+    expect(phoneNotificationPushes([a, b], push, shown, NOW, TZ).map((n) => n.id)).toEqual(['a']);
+    expect(phoneNotificationPushes([a], prefs, new Set(), NOW, TZ)).toEqual([]);
+    // 13:00 w Warszawie.
+    expect(phoneNotificationPushes([a], { ...push, quiet: { enabled: true, from: '12:30', to: '14:00' } }, new Set(), NOW, TZ)).toEqual([]);
   });
 });

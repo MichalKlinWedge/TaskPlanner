@@ -20,6 +20,7 @@ import { Platform } from 'react-native';
 import { readJson, writeJson } from './config';
 import { FOCUS_ACTION, setupFocusNotifications, syncFocusNotifications, type FocusNotificationData } from './focus';
 import { completeTaskById, focusCommand, habitDoneById, postponeTaskById, pushNow, type FocusCommand } from './headless';
+import { markNotificationReadById, NOTIFICATION_READ_ACTION, setupNotificationCenter, type CenterNotificationData } from './notifications';
 import { ACTION, CATEGORY_ID, CHANNEL_ID, HABIT_CATEGORY_ID, LEGACY_CHANNEL_IDS, scheduleReminders, snoozeNotification, type ReminderData } from './scheduler';
 import { createTask, reminderListId } from './tasks';
 import { toLocalDate, toLocalTime } from './time';
@@ -118,6 +119,7 @@ export async function setupNotifications() {
   ]);
   await Notifications.setNotificationCategoryAsync(HABIT_CATEGORY_ID, [{ identifier: ACTION.habitDone, buttonTitle: 'Zrobione', options: { opensAppToForeground: false } }]);
   await setupFocusNotifications();
+  await setupNotificationCenter();
   if (!(await TaskManager.isTaskRegisteredAsync(NOTIFICATION_TASK))) await Notifications.registerTaskAsync(NOTIFICATION_TASK);
 }
 
@@ -286,6 +288,19 @@ export async function handleResponse(response: Notifications.NotificationRespons
     if (focusData?.focus) {
       entry.taskId = 'focus';
       await handleFocusAction(action, focusData, entry);
+      writeJson(K.handled, [...handled.slice(-499), key]);
+      return;
+    }
+    // Centrum powiadomień: „Oznacz jako przeczytane” (zapis z outboxem, potem wysyłka).
+    const center = data as Partial<CenterNotificationData> | undefined;
+    if (typeof center?.notification === 'string') {
+      entry.taskId = 'notification';
+      if (notificationId) await Notifications.dismissNotificationAsync(notificationId).catch(() => undefined);
+      if (action === NOTIFICATION_READ_ACTION) {
+        await markNotificationReadById(center.notification);
+        await pushNow();
+      }
+      entry.ms = Date.now() - entry.at;
       writeJson(K.handled, [...handled.slice(-499), key]);
       return;
     }
