@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * Ustawienia → „Wersja aplikacji”: wersja wczytanego kodu strony (skrót commita z Vercela — ta sama,
+ * Ustawienia → „Wersja aplikacji”: data zbudowania wczytanego kodu strony (web nie ma numeru jak APK),
+ * pod nią skrót commita z Vercela (ta sama wersja,
  * którą dostaje dziennik błędów, `APP_VERSION`) i informacja o nowej wersji, gdy nowy Service Worker
  * przejął stronę (`updated` w `lib/service-worker.ts`).
  */
@@ -16,6 +17,15 @@ import { Notice } from "./ui";
 
 /** Pełny SHA commita wdrożenia (zmienna systemowa Vercela); lokalnie brak. */
 const COMMIT = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? null;
+
+/** Chwila zbudowania (`env` w `next.config.ts`) — web nie ma numeru wersji, więc wersją jest data. */
+const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME ?? null;
+
+function buildDate(iso: string | null): string | null {
+  const date = iso ? new Date(iso) : null;
+  if (!date || Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString("pl-PL", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
 
 const BUILD: Record<string, string> = { dev: "serwer deweloperski (next dev)", local: "build lokalny" };
 
@@ -38,12 +48,21 @@ export function UpdateNotice() {
 
 export function VersionCard() {
   const updated = useAppUpdated();
+  const date = buildDate(BUILD_TIME);
 
   return (
     <SettingsSection title="Wersja aplikacji">
       <div className="flex flex-col gap-3 text-sm">
-        <p>
-          Wersja:{" "}
+        {date ? (
+          <p>
+            Wersja z dnia:{" "}
+            <span className="font-semibold" data-testid="app-version-date">
+              {date}
+            </span>
+          </p>
+        ) : null}
+        <p className={date ? "text-xs text-[var(--muted)]" : undefined}>
+          {date ? "Commit" : "Wersja"}:{" "}
           {COMMIT ? (
             <a href={`https://github.com/${APP_RELEASES_REPO}/commit/${COMMIT}`} target="_blank" rel="noreferrer" className="font-mono text-[var(--accent)] underline" data-testid="app-version">
               {APP_VERSION}
