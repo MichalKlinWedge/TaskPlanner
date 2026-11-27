@@ -312,13 +312,16 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
     <li
       ref={dnd?.ref}
       className={`group relative flex items-start gap-2 py-1.5 text-sm ${virtualDate ? "opacity-60" : ""} ${
-        // Po czasie: czerwone tło zostaje także przy zaznaczeniu (otwarte w panelu) — pasek po lewej mówi, że zaznaczone.
-        lateMin > 0
-          ? selected
-            ? "bg-[color-mix(in_srgb,var(--danger)_12%,var(--background))] shadow-[inset_3px_0_0_var(--accent)]"
-            : "bg-[color-mix(in_srgb,var(--danger)_7%,var(--background))] shadow-[inset_3px_0_0_var(--danger)]"
-          : selected
-            ? "bg-[var(--hover)] shadow-[inset_3px_0_0_var(--accent)]"
+        // Zaznaczenie (też otwarte w panelu) = odcień akcentu + obwódka, zawsze inne niż czerwone „po czasie”;
+        // zaznaczony wiersz po czasie zostawia czerwony pasek po lewej (i czerwoną godzinę).
+        selected
+          ? `bg-[color-mix(in_srgb,var(--accent)_12%,var(--background))] ${
+              lateMin > 0
+                ? "shadow-[inset_3px_0_0_var(--danger),inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_55%,transparent)]"
+                : "shadow-[inset_3px_0_0_var(--accent),inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_55%,transparent)]"
+            }`
+          : lateMin > 0
+            ? "bg-[color-mix(in_srgb,var(--danger)_7%,var(--background))] shadow-[inset_3px_0_0_var(--danger)]"
             : "bg-[var(--background)]"
       } ${dnd?.dragging ? "z-10 opacity-80 shadow-lg" : ""}`}
       style={{ ...dnd?.style, paddingLeft: depth * 20 }}
