@@ -20,6 +20,8 @@ import {
   moveTaskOps,
   nudgeTaskOps,
   openDescendants,
+  overdueLaterLabel,
+  overdueLaterOps,
   overdueToTodayOps,
   parentCandidates,
   quickAddTaskOps,
@@ -592,5 +594,44 @@ describe('tagi innych członków przestrzeni (scope_tags)', () => {
     // Klucz kolejności nowego tagu tylko z własnych (cudze mają `~nazwa`).
     expect(String((elsewhere[0]!.patch as { sort_key: string }).sort_key) > 'a1').toBe(true);
     expect(String((elsewhere[0]!.patch as { sort_key: string }).sort_key).startsWith('~')).toBe(false);
+  });
+});
+
+describe('overdueLaterOps', () => {
+  const at = { today: '2026-11-19' as const, now: '2026-11-19T13:07' };
+  const base = { status: 'todo' as const, kind: 'task' as const, recurrence: null, startDate: null, dueTime: null, durationMin: null, postponeCount: 0 };
+  const later = (minutes: number, over: Partial<ViewTask>, when = at) => overdueLaterOps({ ...base, id: 'x', title: 'Raport', dueDate: '2026-11-19', dueTime: '12:00', ...over } as ViewTask, minutes, when);
+
+  it('dzisiejsze po godzinie: godzina = teraz + N, w górę do 5 min, „Cofnij”', () => {
+    expect(later(15, {})).toEqual({
+      ops: [{ table: 'tasks', id: 'x', patch: { due_time: '13:25' } }],
+      undo: [{ table: 'tasks', id: 'x', patch: { due_time: '12:00' } }],
+      text: '„Raport” → dziś, 13:25',
+    });
+    expect(later(30, {})!.ops[0]!.patch).toEqual({ due_time: '13:40' });
+    expect(later(60, {}, { ...at, now: '2026-11-19T13:05' })!.ops[0]!.patch).toEqual({ due_time: '14:05' });
+  });
+
+  it('z wcześniejszego dnia: termin na dziś z godziną, zakres w całości, licznik odłożeń', () => {
+    expect(later(30, { dueDate: '2026-11-17', dueTime: null, startDate: '2026-11-16', postponeCount: 1 })!.ops[0]!.patch).toEqual({
+      due_date: '2026-11-19',
+      start_date: '2026-11-18',
+      postpone_count: 2,
+      due_time: '13:40',
+    });
+  });
+
+  it('po północy — jutro', () => {
+    const move = later(60, {}, { today: '2026-11-19', now: '2026-11-19T23:30' })!;
+    expect(move.ops[0]!.patch).toMatchObject({ due_date: '2026-11-20', due_time: '00:30' });
+    expect(move.text).toBe('„Raport” → jutro, 00:30');
+  });
+
+  it('seria — bez przesunięcia', () => {
+    expect(later(15, { recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY', anchor: '2026-11-01' } })).toBeNull();
+  });
+
+  it('etykiety', () => {
+    expect([15, 30, 60].map(overdueLaterLabel)).toEqual(['+15 min', '+30 min', '+1 h']);
   });
 });

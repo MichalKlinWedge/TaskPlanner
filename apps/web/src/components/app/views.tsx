@@ -26,6 +26,7 @@ import {
   matchesFilter,
   minutesLate,
   orderedColumns,
+  overdueLaterOps,
   overdueToTodayOps,
   plural,
   progress,
@@ -304,6 +305,18 @@ function useToToday(ctx: ViewContext, now: string) {
   };
 }
 
+/** Przyciski „+15 min / +30 min / +1 h” przy zaległym zadaniu (`overdueLaterOps`); `undefined` = seria. */
+function useLater(ctx: ViewContext, now: string) {
+  const { run } = useTaskActions();
+  return (task: ViewTask) =>
+    task.recurrence
+      ? undefined
+      : (minutes: number) => {
+          const move = overdueLaterOps(task, minutes, { today: ctx.today, now });
+          if (move) void run(move.ops, { text: move.text, undo: move.undo });
+        };
+}
+
 // ── Dziś ─────────────────────────────────────────────────────────────────────────────────────
 
 /** `aside` — „Plan dnia” obok listy (na szerokim ekranie po prawej, na wąskim pod listą); tablica zajmuje całą szerokość, bez planu i „Cyklicznych”. */
@@ -315,6 +328,7 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
   const names = listNames(data);
   const now = useLocalMinute(ctx.timeZone);
   const toTomorrow = useToTomorrow(data, ctx);
+  const later = useLater(ctx, now);
   const open = view.overdue.length + view.today.length;
   const empty = !open && !view.ongoing.length && !view.habits.length && !view.done.length;
   return (
@@ -346,12 +360,12 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
           {open || view.ongoing.length || view.done.length ? smart.columnsHeader : null}
           {view.overdue.length ? (
             <Section title={VIEW_SECTION.overdue} count={view.overdue.length} tone="danger">
-              <Paged items={view.overdue}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} {...smart.cols} />}</Paged>
+              <Paged items={view.overdue}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} onLater={later(t)} onTomorrow={() => toTomorrow(t)} {...smart.cols} />}</Paged>
             </Section>
           ) : null}
           {view.today.length ? (
             <Section title={VIEW_SECTION.today} count={view.today.length}>
-              <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} lateMin={minutesLate(t, now)} listName={names.get(t.listId)} onTomorrow={() => toTomorrow(t)} {...smart.cols} />}</Paged>
+              <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} lateMin={minutesLate(t, now)} listName={names.get(t.listId)} onLater={minutesLate(t, now) > 0 ? later(t) : undefined} onTomorrow={() => toTomorrow(t)} {...smart.cols} />}</Paged>
             </Section>
           ) : null}
           {view.ongoing.length ? (
@@ -390,6 +404,7 @@ export function OverdueView({ data, ctx, targetInbox, toolbar }: ViewProps) {
   const names = listNames(data);
   const toTomorrow = useToTomorrow(data, ctx);
   const toToday = useToToday(ctx, now);
+  const later = useLater(ctx, now);
   const count = view.today.length + view.earlier.length;
   const smart = useSmartView("overdue", ctx, targetInbox);
   return (
@@ -413,12 +428,12 @@ export function OverdueView({ data, ctx, targetInbox, toolbar }: ViewProps) {
       {count ? smart.columnsHeader : null}
       {view.today.length ? (
         <Section title={VIEW_SECTION.lateToday} count={view.today.length} tone="danger">
-          <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} lateMin={minutesLate(t, now)} listName={names.get(t.listId)} onToday={toToday(t)} onTomorrow={() => toTomorrow(t)} {...smart.cols} />}</Paged>
+          <Paged items={view.today}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} showDate={false} lateMin={minutesLate(t, now)} listName={names.get(t.listId)} onLater={later(t)} onToday={toToday(t)} onTomorrow={() => toTomorrow(t)} {...smart.cols} />}</Paged>
         </Section>
       ) : null}
       {view.earlier.length ? (
         <Section title={VIEW_SECTION.earlier} count={view.earlier.length} tone="danger">
-          <Paged items={view.earlier}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} onToday={toToday(t)} onTomorrow={() => toTomorrow(t)} {...smart.cols} />}</Paged>
+          <Paged items={view.earlier}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} listName={names.get(t.listId)} onLater={later(t)} onToday={toToday(t)} onTomorrow={() => toTomorrow(t)} {...smart.cols} />}</Paged>
         </Section>
       ) : null}
       {count ? null : <Empty>Nic nie zalega.</Empty>}

@@ -4,7 +4,7 @@
  * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
  * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { columnDate, completeTaskOps, descendants, describeRecurrence, formatMinutes, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, LIST_COLUMN, type ListColumn, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { columnDate, completeTaskOps, descendants, describeRecurrence, formatMinutes, isOpen, localDateAt, needsDecision, openDescendants, OVERDUE_LATER_OPTIONS, overdueLaterLabel, plural, PRIORITY, relativeDay, reopenTaskPatch, LIST_COLUMN, type ListColumn, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
@@ -164,6 +164,8 @@ export interface TaskItemProps {
   onToday?: () => void;
   /** Przycisk „→ Jutro” po prawej tytułu, przed kolumnami (widok „Dziś”: zaległe i dzisiejsze); ukryty przy zadaniu tylko do podglądu. */
   onTomorrow?: () => void;
+  /** Przyciski „+15 min / +30 min / +1 h” (`OVERDUE_LATER_OPTIONS`, zaległe): termin = teraz + N; ukryte przy zadaniu tylko do podglądu. */
+  onLater?: (minutes: number) => void;
   /** Ile minut po godzinie zadania (`minutesLate`, widok „Dziś”) — wyróżnia wiersz i godzinę; 0 / brak = w czasie. */
   lateMin?: number;
   /** Tagi pokazywane w kolumnie „Tagi” (`view_prefs.columnTags`); `null` / brak = wszystkie. */
@@ -280,7 +282,7 @@ export function DoneCircle({ task, closed, readOnly, onToggle, className = "" }:
   );
 }
 
-export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, onToday, onTomorrow, lateMin = 0, columnTags, widths = {} }: TaskItemProps) {
+export function TaskItem({ task, today, showDate = true, listName, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, dnd, columns = [], onAddSubtask, onToday, onTomorrow, onLater, lateMin = 0, columnTags, widths = {} }: TaskItemProps) {
   const { toggle } = useTaskActions();
   const { openTask, openTaskId, openTaskMode, selectedIds, select, data, trashed } = useAppEnv();
   const inTrash = trashed?.has(task.id) ?? false;
@@ -419,8 +421,24 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           +
         </button>
       ) : null}
-      {(onToday || onTomorrow) && !readOnly ? (
+      {(onToday || onTomorrow || onLater) && !readOnly ? (
         <span className="ml-auto flex shrink-0 gap-2">
+          {onLater
+            ? OVERDUE_LATER_OPTIONS.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  aria-label={`Przesuń „${task.title}” o ${overdueLaterLabel(m).slice(1)} od teraz`}
+                  title={`Termin za ${overdueLaterLabel(m).slice(1)} od teraz`}
+                  onClick={() => onLater(m)}
+                  className="mt-px shrink-0 rounded-md px-2 py-0.5 text-xs whitespace-nowrap text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]"
+                  data-testid="task-later"
+                  data-minutes={m}
+                >
+                  {overdueLaterLabel(m)}
+                </button>
+              ))
+            : null}
           {onToday ? (
             <button
               type="button"

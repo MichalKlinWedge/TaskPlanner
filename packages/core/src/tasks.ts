@@ -3,14 +3,14 @@
  * ukończenia jako operacje `mutate` (M3, §7.2). Web i telefon wołają te same funkcje — reguła
  * „seria przesuwa termin, zamiast się zamykać” jest tylko tutaj.
  */
-import { addDays, daysBetween, localDateAt } from './dates.ts';
+import { addDays, daysBetween, localDateAt, parseLocalDateTime } from './dates.ts';
 import { HabitSettings } from './habits.ts';
 import { isHlc, parseHlc } from './hlc.ts';
 import { completionId, tagId, taskTagId, uuidv7 } from './ids.ts';
 import { normalizeWord, type QuickAddResult } from './quick-add.ts';
 import { nextDue, Recurrence } from './recurrence.ts';
 import { reschedulePatch } from './review.ts';
-import { compareText } from './format.ts';
+import { compareText, relativeDay } from './format.ts';
 import { keyBetween, renumber } from './sort-key.ts';
 import type { LocalDate, LocalTime, Priority, TaskStatus } from './schemas/primitives.ts';
 import { minutesLate, type ViewTask } from './views.ts';
@@ -780,6 +780,36 @@ export function overdueToTodayOps(task: ViewTask, { today, now }: { today: Local
   const op: TaskOp = { table: 'tasks', id: task.id, patch };
   const note = droppedTime ? `, bez godziny (${droppedTime} minęła)` : '';
   return { ops: [op], undo: [undoOf(op, task)], text: `„${task.title}” → dziś${note}` };
+}
+
+/** Przesunięcia zaległego zadania „za chwilę” (minuty od teraz) — przyciski w „Zaległych”. */
+export const OVERDUE_LATER_OPTIONS = [15, 30, 60] as const;
+
+/** Etykieta przesunięcia: „+15 min”, „+1 h”. */
+export const overdueLaterLabel = (minutes: number): string => `+${minutes % 60 ? `${minutes} min` : `${minutes / 60} h`}`;
+
+/**
+ * „+15 min / +30 min / +1 h” w widoku „Zaległe”: termin = teraz + `minutes`, zaokrąglone w górę do 5 minut
+ * (po północy — jutro). Data zmienia się jak w `reschedulePatch` (zakres, licznik odłożeń), czas trwania
+ * zostaje. `now` — zegar ścienny jak w `minutesLate`. `null` = seria (zmiana godziny objęłaby całą serię).
+ */
+export function overdueLaterOps(task: ViewTask, minutes: number, { today, now }: { today: LocalDate; now: string }): { ops: TaskOp[]; undo: TaskOp[]; text: string } | null {
+  if (task.recurrence || task.kind !== 'task') return null;
+  const { date, time } = parseLocalDateTime(now);
+  const total = Math.ceil((Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5)) + minutes) / 5) * 5;
+  const dueDate = addDays(date, Math.floor(total / 1440));
+  const rest = total % 1440;
+  const dueTime = `${String(Math.floor(rest / 60)).padStart(2, '0')}:${String(rest % 60).padStart(2, '0')}`;
+  const move = reschedulePatch(task, { kind: 'date', date: dueDate }, { today });
+  const patch: Record<string, unknown> = {
+    ...(move && { due_date: move.dueDate }),
+    ...(move?.startDate !== undefined && { start_date: move.startDate }),
+    ...(move?.postponeCount !== undefined && { postpone_count: move.postponeCount }),
+    ...(dueTime !== task.dueTime && { due_time: dueTime }),
+  };
+  if (!Object.keys(patch).length) return null;
+  const op: TaskOp = { table: 'tasks', id: task.id, patch };
+  return { ops: [op], undo: [undoOf(op, task)], text: `„${task.title}” → ${relativeDay(dueDate, today)}, ${dueTime}` };
 }
 
 // ── Przeciąganie w liście (kolejność ręczna, drzewo podzadań) ────────────────────────────────

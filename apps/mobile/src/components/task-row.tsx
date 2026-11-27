@@ -51,6 +51,8 @@ export interface TaskRowProps {
   lateMin?: number;
   /** Przycisk „→ Dziś” po prawej (ekran „Zaległe”). */
   onToday?: () => void;
+  /** Przycisk „⏱” po prawej (ekran „Zaległe”): wybór „+15 min / +30 min / +1 h” (`overdueLaterOps`). */
+  onLater?: () => void;
   depth?: number;
   progress?: { done: number; total: number };
   /** `true`/`false` — węzeł z podzadaniami (zwinięty / rozwinięty); brak — bez podzadań. */
@@ -140,7 +142,7 @@ export const RowsInteractive = createContext(true);
 /** Przytrzymanie zaznacza tylko tam, gdzie jest pasek akcji (`TaskSections`); gdzie indziej dotknięcie zawsze otwiera zadanie. */
 export const RowsSelectable = createContext(false);
 
-export const TaskRow = memo(function TaskRow({ task, today, showDate = true, listName, lateMin = 0, onToday, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, tagNames, tagItems, columns, highlights, onOpen }: TaskRowProps) {
+export const TaskRow = memo(function TaskRow({ task, today, showDate = true, listName, lateMin = 0, onToday, onLater, depth = 0, progress, collapsed, onCollapse, virtualDate, habitDone, tagNames, tagItems, columns, highlights, onOpen }: TaskRowProps) {
   const tagBubbles = columns?.includes('tags') ? (tagItems ?? (tagNames ?? []).map((name) => ({ id: name, name, color: null }))) : [];
   const p = usePalette();
   const actions = useTaskActions();
@@ -275,6 +277,17 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
           </Text>
         ) : null}
       </View>
+      {onLater && !readOnly && !selecting ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Przesuń „${task.title}” o kilka minut od teraz`}
+          hitSlop={10}
+          onPress={onLater}
+          style={({ pressed }) => [styles.today, { borderColor: p.border, backgroundColor: pressed ? p.border : 'transparent' }]}
+        >
+          <Text style={{ color: p.accent, fontSize: 13, fontWeight: '600' }}>⏱</Text>
+        </Pressable>
+      ) : null}
       {onToday && !readOnly && !selecting ? (
         <Pressable
           accessibilityRole="button"
