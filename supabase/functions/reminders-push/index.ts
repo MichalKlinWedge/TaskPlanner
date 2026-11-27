@@ -4,7 +4,7 @@
  * Liczy należne przypomnienia z bazy tak samo jak telefon (`_shared/reminders.ts` → `core/reminders.ts`):
  * urządzenia `devices` (przeglądarka, `reminder_channel = 'enabled'`, `push_subscription`), przypomnienia
  * ich właścicieli i ustawienia profilu (strefa, domyślna godzina), a w udostępnionych przestrzeniach także
- * automatyczne przypomnienie osoby odpowiedzialnej w chwili terminu (`assignee_reminder_tasks`). Każdą wysyłkę najpierw zajmuje w
+ * automatyczne przypomnienie według ustawień konta (`auto_reminder_tasks`: odpowiedzialny, śledzący, tryb, wyprzedzenie). Każdą wysyłkę najpierw zajmuje w
  * dzienniku `reminder_deliveries` (`claim_reminder_deliveries` — jedno urządzenie i wystąpienie raz, także
  * przy równoległych uruchomieniach), potem wysyła i zapisuje wynik. Subskrypcja 404/410 jest czyszczona
  * (`clear_push_subscription`), błąd przejściowy — ponowienie w następnej minucie (najwyżej 5 prób).
@@ -94,7 +94,7 @@ serve(async (req, url) => {
     db.from('profiles').select('id, settings, focus').in('id', users),
     db.from('scope_members').select('scope_id, user_id, role').in('user_id', users),
     db.from('lists').select('id, scope_id').eq('guest_access', 'hidden'),
-    db.rpc('assignee_reminder_tasks', { p_users: users, p_from: day(-2), p_to: day(2) }),
+    db.rpc('auto_reminder_tasks', { p_users: users, p_from: day(-2), p_to: day(2) }),
   ]);
   if (remError) throw remError;
   if (profError) throw profError;

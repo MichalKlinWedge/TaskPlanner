@@ -121,7 +121,7 @@ export interface HiddenListRow {
   scope_id: string;
 }
 
-/** Zadanie z automatycznym przypomnieniem konta `user_id` (RPC `assignee_reminder_tasks`). */
+/** Zadanie z automatycznym przypomnieniem konta `user_id` (RPC `auto_reminder_tasks` — według ustawień konta). */
 export type AssignedTaskRow = { user_id: string } & Omit<NonNullable<ReminderRow['tasks']>, 'list_id' | 'habit' | 'deleted_at'>;
 
 const reminderTask = (t: Omit<NonNullable<ReminderRow['tasks']>, 'list_id' | 'deleted_at'>): ReminderTask => {
@@ -211,7 +211,7 @@ export function planPushes(
     const tasks = new Map<string, ReminderTask>();
     for (const t of mine) tasks.set(t.id, reminderTask(t));
     for (const r of rows) tasks.set(r.tasks!.id, reminderTask(r.tasks!));
-    const fires = reminderFireTimes([...tasks.values()], [...rows.map(toReminderRule), ...mine.map((t) => assigneeReminderRule(t.id))], {
+    const fires = reminderFireTimes([...tasks.values()], [...rows.map(toReminderRule), ...mine.map((t) => assigneeReminderRule(t.id, s.notifications.autoReminderOffset))], {
       from: new Date(at - LOOKBACK_MS),
       to: new Date(at + LEAD_MS),
       timeZone: s.timeZone,

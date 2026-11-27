@@ -113,9 +113,12 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
     const data = given ?? (await headlessData());
     const engine = await localEngine();
     const userId = sessionUser().id;
-    // Udostępnione przestrzenie: odpowiedzialny dostaje też automatyczne przypomnienie w chwili terminu.
+    // Automatyczne przypomnienie według ustawień konta (`NotificationPrefs`): odpowiedzialny we wspólnych przestrzeniach
+    // albo wszędzie, śledzący (twórca / uczestnik), wyprzedzenie.
     const shared = new Set(data.workspaces.filter((w) => w.members > 1).map((w) => w.id));
-    const [on, rules, zones, creators, mine] = await Promise.all([
+    const prefs = data.settings.notifications;
+    const auto = prefs.autoReminder === 'all' || (prefs.autoReminder === 'shared' && shared.size > 0);
+    const [on, rules, zones, creators, mine, joined] = await Promise.all([
       phoneRemindersOn(engine),
       engine.db.all<{ id: string; task_id: string; kind: string; offset_min: number | null; at_date: string | null; at_time: string | null }>(
         // Przypomnienie dostaje jego autor (jak `reminders-push`) — we wspólnej przestrzeni nie dzwonią cudze.
@@ -123,11 +126,18 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
         [userId],
       ),
       engine.db.all<{ id: string; time_zone: string }>('select id, time_zone from tasks where time_zone is not null and deleted_at is null'),
-      shared.size
+      auto
         ? engine.db.all<{ id: string; created_by: string | null }>('select id, created_by from tasks where due_date is not null and due_time is not null and deleted_at is null')
         : [],
-      shared.size ? engine.db.all<{ scope_id: string; collaborator_id: string }>('select scope_id, collaborator_id from scope_collaborators where user_id = ?', [userId]) : [],
+      auto ? engine.db.all<{ scope_id: string; collaborator_id: string }>('select scope_id, collaborator_id from scope_collaborators where user_id = ?', [userId]) : [],
+      auto && prefs.follow.participating
+        ? engine.db.all<{ task_id: string }>(
+            'select distinct p.task_id from task_participants p join scope_collaborators sc on sc.collaborator_id = p.collaborator_id where p.deleted_at is null and sc.user_id = ?',
+            [userId],
+          )
+        : [],
     ]);
+    const participating = new Set(joined.map((r) => r.task_id));
     const createdBy = new Map(creators.map((t) => [t.id, t.created_by]));
     const myEntries = new Set(mine.map((c) => `${c.scope_id}|${c.collaborator_id}`));
     const assigned = assigneeReminderRules(data.tasks, {
@@ -135,6 +145,8 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
       shared,
       createdBy: (id) => createdBy.get(id),
       accountOf: (workspaceId, id) => (myEntries.has(`${workspaceId}|${id}`) ? userId : null),
+      participates: (id) => participating.has(id),
+      prefs,
     });
     const zoneOf = new Map(zones.map((z) => [z.id, z.time_zone]));
     const tasks: ReminderTask[] = data.tasks.map((t) => ({ ...t, timeZone: zoneOf.get(t.id) ?? null }));

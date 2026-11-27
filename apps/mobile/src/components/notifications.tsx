@@ -4,17 +4,25 @@
  * i powiadomienie systemowe w `lib/notifications.ts`; ekran — `app/notifications.tsx`.
  */
 import {
+  AUTO_REMINDER,
+  AUTO_REMINDER_OFFSETS,
+  autoReminderOffsetLabel,
   freshNotifications,
   NOTIFICATION_CHANNEL,
   NOTIFICATION_GROUP_LABEL,
   NOTIFICATION_GROUPS,
+  NOTIFICATION_KIND_LABEL,
+  notificationKindsOf,
   notificationSeenKey,
   notificationText,
   unreadCount,
+  toggleMuted,
   visibleNotifications,
   type AppNotification,
+  type AutoReminderMode,
   type NotificationChannel,
   type NotificationPrefs,
+  type ServerNotificationKind,
 } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -25,7 +33,7 @@ import { dismissSettledPushes, markNotificationsShown, useNotificationsData } fr
 import { mutate } from '@/lib/sync';
 
 import { useTaskActions } from './actions';
-import { pickOption, pickTime } from './pickers';
+import { pickMany, pickOption, pickTime } from './pickers';
 import { P, Section, usePalette } from './ui';
 
 export const NOTIFICATION_ICON: Record<AppNotification['kind'], string> = {
@@ -128,26 +136,95 @@ export function NotificationsSection() {
         Dzwonek 🔔 w nagłówku: zdarzenia z udostępnionych przestrzeni (to, co zrobili inni) i problemy z integracjami, kalendarzem, kluczem AI czy miejscem na załączniki. Ustawienia
         wspólne z komputerem.
       </P>
-      {NOTIFICATION_GROUPS.map((group) => (
+      {NOTIFICATION_GROUPS.map((group) => {
+        const kinds = notificationKindsOf(group);
+        const on = kinds.filter((k) => !prefs.muted.includes(k));
+        return (
+          <View key={group}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${NOTIFICATION_GROUP_LABEL[group].title}: ${label(prefs[group])}. Zmień`}
+              onPress={() =>
+                void pickOption<NotificationChannel>(
+                  NOTIFICATION_GROUP_LABEL[group].title,
+                  channels.map((c) => ({ label: label(c), value: c, selected: prefs[group] === c })),
+                ).then((c) => c && c !== prefs[group] && save({ [group]: c }))
+              }
+              style={[styles.row, { borderColor: p.border }]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: p.fg, fontWeight: '600' }}>{NOTIFICATION_GROUP_LABEL[group].title}</Text>
+                <Text style={{ color: p.muted, fontSize: 12 }}>{NOTIFICATION_GROUP_LABEL[group].hint}</Text>
+              </View>
+              <Text style={{ color: p.accent }}>{label(prefs[group])}</Text>
+            </Pressable>
+            {prefs[group] === 'off' ? null : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${NOTIFICATION_GROUP_LABEL[group].title} — rodzaje: ${on.length} z ${kinds.length}. Zmień`}
+                onPress={() =>
+                  void pickMany<ServerNotificationKind>(
+                    'Rodzaje powiadomień',
+                    kinds.map((k) => ({ label: `${NOTIFICATION_ICON[k]} ${NOTIFICATION_KIND_LABEL[k]}`, value: k, selected: !prefs.muted.includes(k) })),
+                  ).then((picked) => picked && save({ muted: kinds.reduce<string[]>((m, k) => toggleMuted(m, k, picked.includes(k)), prefs.muted) }))
+                }
+                style={styles.kinds}
+              >
+                <Text style={{ color: p.muted, fontSize: 12 }}>Rodzaje: {on.length === kinds.length ? 'wszystkie' : `${on.length} z ${kinds.length}`} ›</Text>
+              </Pressable>
+            )}
+          </View>
+        );
+      })}
+      <Text style={{ color: p.fg, fontWeight: '600', marginTop: 10 }}>Zadania, które śledzę</Text>
+      <Text style={{ color: p.muted, fontSize: 12 }}>
+        Poza zadaniami, za które odpowiadasz: ukończenie i zmiana terminu przez kogoś innego oraz automatyczne przypomnienie. Komentarze przychodzą zawsze.
+      </Text>
+      <View style={styles.switchRow}>
+        <Text style={{ color: p.fg, flex: 1 }}>Utworzone przeze mnie (także przypisane innym)</Text>
+        <Switch accessibilityLabel="Śledź zadania utworzone przeze mnie" value={prefs.follow.created} onValueChange={(created) => save({ follow: { ...prefs.follow, created } })} />
+      </View>
+      <View style={styles.switchRow}>
+        <Text style={{ color: p.fg, flex: 1 }}>Te, w których jestem uczestnikiem</Text>
+        <Switch
+          accessibilityLabel="Śledź zadania, w których jestem uczestnikiem"
+          value={prefs.follow.participating}
+          onValueChange={(participating) => save({ follow: { ...prefs.follow, participating } })}
+        />
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Automatyczne przypomnienie: ${AUTO_REMINDER[prefs.autoReminder]}. Zmień`}
+        onPress={() =>
+          void pickOption<AutoReminderMode>(
+            'Automatyczne przypomnienie',
+            (['shared', 'all', 'off'] as const).map((v) => ({ label: AUTO_REMINDER[v], value: v, selected: prefs.autoReminder === v })),
+          ).then((v) => v && v !== prefs.autoReminder && save({ autoReminder: v }))
+        }
+        style={[styles.row, { borderColor: p.border }]}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: p.fg, fontWeight: '600' }}>Automatyczne przypomnienie</Text>
+          <Text style={{ color: p.muted, fontSize: 12 }}>O zadaniu z datą i godziną, za które odpowiadasz i które śledzisz — bez ustawiania ręcznie</Text>
+        </View>
+        <Text style={{ color: p.accent }}>{AUTO_REMINDER[prefs.autoReminder]}</Text>
+      </Pressable>
+      {prefs.autoReminder === 'off' ? null : (
         <Pressable
-          key={group}
           accessibilityRole="button"
-          accessibilityLabel={`${NOTIFICATION_GROUP_LABEL[group].title}: ${label(prefs[group])}. Zmień`}
+          accessibilityLabel={`Kiedy: ${autoReminderOffsetLabel(prefs.autoReminderOffset)}. Zmień`}
           onPress={() =>
-            void pickOption<NotificationChannel>(
-              NOTIFICATION_GROUP_LABEL[group].title,
-              channels.map((c) => ({ label: label(c), value: c, selected: prefs[group] === c })),
-            ).then((c) => c && c !== prefs[group] && save({ [group]: c }))
+            void pickOption<number>(
+              'Kiedy przypomnieć',
+              [...new Set([...AUTO_REMINDER_OFFSETS, prefs.autoReminderOffset])].map((m) => ({ label: autoReminderOffsetLabel(m), value: m, selected: prefs.autoReminderOffset === m })),
+            ).then((m) => m !== undefined && m !== prefs.autoReminderOffset && save({ autoReminderOffset: m }))
           }
           style={[styles.row, { borderColor: p.border }]}
         >
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: p.fg, fontWeight: '600' }}>{NOTIFICATION_GROUP_LABEL[group].title}</Text>
-            <Text style={{ color: p.muted, fontSize: 12 }}>{NOTIFICATION_GROUP_LABEL[group].hint}</Text>
-          </View>
-          <Text style={{ color: p.accent }}>{label(prefs[group])}</Text>
+          <Text style={{ color: p.fg, flex: 1 }}>Kiedy</Text>
+          <Text style={{ color: p.accent }}>{autoReminderOffsetLabel(prefs.autoReminderOffset)}</Text>
         </Pressable>
-      ))}
+      )}
       <View style={styles.switchRow}>
         <Text style={{ color: p.fg, flex: 1 }}>Dymek przy nowym powiadomieniu, gdy aplikacja jest otwarta</Text>
         <Switch accessibilityLabel="Dymek przy nowym powiadomieniu" value={prefs.toast} onValueChange={(toast) => save({ toast })} />
@@ -192,5 +269,6 @@ const styles = StyleSheet.create({
   countText: { color: '#ffffff', fontSize: 10, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
+  kinds: { paddingVertical: 6, paddingLeft: 8 },
   time: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 },
 });

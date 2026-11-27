@@ -71,7 +71,7 @@ export function useNotifications(store: TabStore | null, userId: string): { list
       return parseSettings({});
     }
   }, [profile]);
-  const reminders = useReminderNotifications(store, userId, settings.timeZone, settings.defaultReminderTime);
+  const reminders = useReminderNotifications(store, userId, settings.timeZone, settings.defaultReminderTime, settings.notifications);
   const list = useMemo(
     () => [...rows.map((r) => toNotification(r)).filter((n): n is AppNotification => n !== null), ...reminders],
     [rows, reminders],
@@ -188,7 +188,13 @@ const parse = (value: string | number | null): unknown => {
 };
 
 /** Wybite przypomnienia z lokalnych danych; przeliczane co minutę i przy zmianie zadań / przypomnień. */
-function useReminderNotifications(store: TabStore | null, userId: string, timeZone: string | undefined, defaultTime: string): AppNotification[] {
+function useReminderNotifications(
+  store: TabStore | null,
+  userId: string,
+  timeZone: string | undefined,
+  defaultTime: string,
+  prefs: NotificationPrefs,
+): AppNotification[] {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000);
@@ -210,8 +216,9 @@ function useReminderNotifications(store: TabStore | null, userId: string, timeZo
        from tasks t join lists l on l.id = t.list_id
       where t.deleted_at is null and t.status not in ('done', 'cancelled')
         and (t.id in (select r.task_id from reminders r where r.deleted_at is null and (r.created_by is null or r.created_by = ?))
-             or (t.due_time is not null and t.due_date between ? and ? and l.scope_id in (select id from _scopes where members > 1)))`,
-    [userId, addDays(today, -1), today],
+             or (t.due_time is not null and t.due_date between ? and ?))`,
+    // Do jutra: automatyczne przypomnienie może wybić przed terminem (`autoReminderOffset`).
+    [userId, addDays(today, -1), addDays(today, 1)],
     ["tasks", "reminders", "lists"],
   );
   const { rows: mine } = useLocalQuery<{ scope_id: string; collaborator_id: string }>(
@@ -219,6 +226,13 @@ function useReminderNotifications(store: TabStore | null, userId: string, timeZo
     "select scope_id, collaborator_id from scope_collaborators where user_id = ?",
     [userId],
     ["scope_collaborators"],
+  );
+  const { rows: joined } = useLocalQuery<{ task_id: string }>(
+    store,
+    `select distinct p.task_id from task_participants p join scope_collaborators sc on sc.collaborator_id = p.collaborator_id
+      where p.deleted_at is null and sc.user_id = ?`,
+    [userId],
+    ["task_participants", "scope_collaborators"],
   );
   const { rows: completions } = useLocalQuery<TaskRow>(
     store,
@@ -250,6 +264,7 @@ function useReminderNotifications(store: TabStore | null, userId: string, timeZo
       };
     });
     const byId = new Map(list.map((t) => [t.id, t]));
+    const participating = new Set(joined.map((r) => r.task_id));
     const mineSet = new Set(mine.map((c) => `${c.scope_id}|${c.collaborator_id}`));
     // Udostępnione przestrzenie (więcej niż jeden członek): odpowiedzialny dostaje też przypomnienie w chwili terminu.
     const shared = new Set(tasks.filter((r) => Number(r.members) > 1).map((r) => String(r.workspace_id)));
@@ -258,6 +273,8 @@ function useReminderNotifications(store: TabStore | null, userId: string, timeZo
       shared,
       createdBy: (id) => byId.get(id)?.createdBy ?? userId,
       accountOf: (workspaceId, id) => (mineSet.has(`${workspaceId}|${id}`) ? userId : null),
+      participates: (id) => participating.has(id),
+      prefs,
     });
     const habitCompletions = new Map<string, HabitCompletion[]>();
     for (const c of completions) {
@@ -272,7 +289,7 @@ function useReminderNotifications(store: TabStore | null, userId: string, timeZo
       habitCompletions,
     });
     return reminderNotifications(fires, byId, state, at, timeZone);
-  }, [tasks, rules, mine, completions, state, minute, userId, timeZone, defaultTime]);
+  }, [tasks, rules, mine, joined, completions, state, minute, userId, timeZone, defaultTime, prefs]);
 }
 
 export const OPEN_TASK_EVENT = "tp-open-task";

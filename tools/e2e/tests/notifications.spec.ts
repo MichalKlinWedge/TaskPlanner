@@ -198,3 +198,65 @@ test('okno przypomnienia na środku ekranu: „Ukończ” i „Przypomnij za 30 
       .toBe('app');
   }
 });
+
+test('ustawienia: automatyczne przypomnienie o każdym zadaniu z godziną i wyciszony rodzaj', async ({ page, server }) => {
+  const settings = async () =>
+    ((await server.client.from('profiles').select('settings').eq('id', server.userId).single()).data?.settings as { notifications?: Record<string, unknown> } | null)?.notifications ?? {};
+  await openApp(page, '#/settings/notifications');
+  const auto = page.getByTestId('notifications-auto');
+  try {
+    // Zadanie z godziną minutę temu, bez przypomnienia, w przestrzeni jednej osoby: domyślnie („wspólne”) nic w dzwonku.
+    await page.evaluate(() => (location.hash = '#/today'));
+    const title = unique('Auto na czas');
+    const at = localDateTimeAt(new Date(Date.now() - 60_000), TIME_ZONE).slice(11, 16);
+    const input = page.getByRole('textbox', { name: 'Dodaj zadanie na dziś' });
+    await input.fill(`${title} dziś o ${at}`);
+    await input.press('Enter');
+    await server.waitForTask(title);
+    const bell = page.getByTestId('notifications-bell');
+    const panel = page.getByTestId('notifications-panel');
+    const item = panel.getByTestId('notification').filter({ hasText: title });
+    await bell.click();
+    await panel.getByRole('button', { name: 'Wszystkie', exact: true }).click();
+    await expect(item).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    await page.evaluate(() => (location.hash = '#/settings/notifications'));
+    await auto.selectOption('all');
+    await expect.poll(async () => (await settings()).autoReminder).toBe('all');
+    await bell.click();
+    await panel.getByRole('button', { name: 'Wszystkie', exact: true }).click();
+    await expect(item).toContainText(`Przypomnienie: „${title}”`, { timeout: 45_000 });
+    await page.keyboard.press('Escape');
+
+    // „Rodzaje”: odznaczone „Ukończenie…” trafia do `muted`.
+    const kinds = page.getByTestId('notifications-kinds-tasks');
+    await kinds.locator('summary').click();
+    // Pola są sterowane z bazy (zapis przez `mutate`) — klik i czekanie na stan zamiast `uncheck()`.
+    const completed = kinds.getByLabel('Ukończenie zadania przez kogoś innego');
+    await completed.click();
+    await expect(completed).not.toBeChecked();
+    await expect(kinds.locator('summary')).toHaveText('Rodzaje: 4 z 5');
+    await expect.poll(async () => (await settings()).muted).toEqual(['completed']);
+    await page.getByTestId('notifications-follow-created').click();
+    await expect(page.getByTestId('notifications-follow-created')).toBeChecked();
+    await expect.poll(async () => (await settings()).follow).toEqual({ created: true, participating: false });
+  } finally {
+    await page.evaluate(() => (location.hash = '#/settings/notifications'));
+    await auto.selectOption('shared');
+    const kinds = page.getByTestId('notifications-kinds-tasks');
+    if ((await kinds.getAttribute('open')) === null) await kinds.locator('summary').click();
+    const completed = kinds.getByLabel('Ukończenie zadania przez kogoś innego');
+    if (!(await completed.isChecked())) await completed.click();
+    await expect(completed).toBeChecked();
+    const follow = page.getByTestId('notifications-follow-created');
+    if (await follow.isChecked()) await follow.click();
+    await expect(follow).not.toBeChecked();
+    await expect
+      .poll(async () => {
+        const n = await settings();
+        return [n.autoReminder, n.muted, (n.follow as { created?: boolean } | undefined)?.created];
+      })
+      .toEqual(['shared', [], false]);
+  }
+});

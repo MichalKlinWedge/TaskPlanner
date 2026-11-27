@@ -47,7 +47,7 @@ export const NOTIFICATION_GROUP: Record<NotificationKind, NotificationGroup> = {
 };
 
 export const NOTIFICATION_GROUP_LABEL: Record<NotificationGroup, { title: string; hint: string }> = {
-  tasks: { title: 'Zadania we wspólnych przestrzeniach', hint: 'przypisanie, komentarz, dodanie jako uczestnik, ukończenie i zmiana terminu Twojego zadania' },
+  tasks: { title: 'Zadania we wspólnych przestrzeniach', hint: 'przypisanie, komentarz, dodanie jako uczestnik, ukończenie i zmiana terminu Twojego (albo śledzonego) zadania' },
   sharing: { title: 'Udostępnianie', hint: 'zaproszenia, propozycje roli właściciela, osoby dołączające i odchodzące, zmiana Twojej roli' },
   system: { title: 'Integracje i konto', hint: 'nieudane wysyłki integracji, wyłączone połączenie, kalendarz bez synchronizacji, odrzucony klucz AI, kończące się miejsce na załączniki' },
   reminders: {
@@ -55,6 +55,44 @@ export const NOTIFICATION_GROUP_LABEL: Record<NotificationGroup, { title: string
     hint: 'Twoje przypomnienia, które już wybiły (ostatnie 24 h, póki zadanie jest otwarte) — w dzwonku, a na życzenie także jako okno na środku ekranu z „Ukończ” i „Przypomnij za…”; powiadomienie systemowe — w „Przypomnieniach”',
   },
 };
+
+/** Rodzaje z serwera (bez lokalnego `reminder`) — przełączniki „Rodzaje” w ustawieniach. */
+export type ServerNotificationKind = Exclude<NotificationKind, 'reminder'>;
+export const NOTIFICATION_KIND_LABEL: Record<ServerNotificationKind, string> = {
+  assigned: 'Przypisanie zadania do mnie',
+  comment: 'Nowe komentarze',
+  participant: 'Dodanie mnie jako uczestnika',
+  completed: 'Ukończenie zadania przez kogoś innego',
+  due_changed: 'Zmiana terminu przez kogoś innego',
+  invite: 'Zaproszenia do przestrzeni',
+  owner_offer: 'Propozycje roli właściciela',
+  member_joined: 'Ktoś dołączył do mojej przestrzeni',
+  member_left: 'Ktoś opuścił moją przestrzeń',
+  member_removed: 'Usunięcie mnie z przestrzeni',
+  role_changed: 'Zmiana mojej roli',
+  delivery_failed: 'Nieudane wysyłki integracji',
+  connection_error: 'Wyłączone połączenie integracji',
+  calendar_error: 'Kalendarz bez synchronizacji',
+  ai_error: 'Odrzucony klucz AI',
+  storage_quota: 'Kończące się miejsce na załączniki',
+};
+
+/** Rodzaje danej grupy w kolejności listy. */
+export const notificationKindsOf = (group: Exclude<NotificationGroup, 'reminders'>): ServerNotificationKind[] =>
+  NOTIFICATION_KINDS.filter((k): k is ServerNotificationKind => k !== 'reminder' && NOTIFICATION_GROUP[k] === group);
+
+/** Automatyczne przypomnienie o zadaniu z datą i godziną (bez wiersza `reminders`; reguła `a-<id>`). */
+export const AutoReminderMode = z.enum(['off', 'shared', 'all']);
+export type AutoReminderMode = z.infer<typeof AutoReminderMode>;
+export const AUTO_REMINDER: Record<AutoReminderMode, string> = {
+  shared: 'Tylko we wspólnych przestrzeniach',
+  all: 'Każde moje zadanie z godziną',
+  off: 'Wyłączone',
+};
+/** Kiedy przychodzi automatyczne przypomnienie: minuty przed terminem (0 = w chwili terminu). */
+export const AUTO_REMINDER_OFFSETS = [0, 5, 10, 15, 30, 60] as const;
+export const autoReminderOffsetLabel = (minutes: number): string =>
+  minutes === 0 ? 'W chwili terminu' : `${minutes % 60 ? `${minutes} min` : `${minutes / 60} h`} przed terminem`;
 
 /** Krótka nazwa grupy (filtry widoku `#/notifications`). */
 export const NOTIFICATION_GROUP_SHORT: Record<NotificationGroup, string> = { tasks: 'Zadania', sharing: 'Udostępnianie', system: 'Integracje i konto', reminders: 'Przypomnienia' };
@@ -90,6 +128,23 @@ export const NotificationPrefs = z.object({
   reminders: ReminderDisplay.catch('app').default('app'),
   /** Dymek przy nowym powiadomieniu, gdy karta jest widoczna. */
   toast: z.boolean().catch(true).default(true),
+  /**
+   * Automatyczne przypomnienie o zadaniach z datą i godziną: `shared` = za które odpowiadam we wspólnych przestrzeniach
+   * (jak dotąd), `all` = także we własnych przestrzeniach; `autoReminderOffset` minut przed terminem.
+   * Czyta je też serwer (`public.auto_reminder_tasks`, `reminders-push`).
+   */
+  autoReminder: AutoReminderMode.catch('shared').default('shared'),
+  autoReminderOffset: z.number().int().min(0).max(1440).catch(0).default(0),
+  /**
+   * Zadania, które śledzę poza tymi, za które odpowiadam: utworzone przeze mnie (także przypisane innym) i te,
+   * w których jestem uczestnikiem — ukończenie, zmiana terminu i automatyczne przypomnienie (serwer: `notification_follows`).
+   */
+  follow: z
+    .object({ created: z.boolean().catch(false).default(false), participating: z.boolean().catch(false).default(false) })
+    .catch({ created: false, participating: false })
+    .prefault({}),
+  /** Wyłączone pojedyncze rodzaje (dzwonek, dymek, push); grupa `off` wyłącza wszystkie. */
+  muted: z.array(z.string().max(40)).max(40).catch([]).default([]),
   /** Cisza nocna: bez Web Push w tych godzinach (strefa z ustawień); dzwonek w aplikacji działa dalej. */
   quiet: z
     .object({ enabled: z.boolean().default(false), from: LocalTime.default('22:00'), to: LocalTime.default('07:00') })
@@ -97,6 +152,14 @@ export const NotificationPrefs = z.object({
     .prefault({}),
 });
 export type NotificationPrefs = z.infer<typeof NotificationPrefs>;
+
+/** Czy rodzaj trafia do użytkownika (grupa nie `off`, rodzaj nie wyciszony). */
+export const kindEnabled = (prefs: Pick<NotificationPrefs, 'tasks' | 'sharing' | 'system' | 'reminders' | 'muted'>, kind: NotificationKind): boolean =>
+  prefs[NOTIFICATION_GROUP[kind]] !== 'off' && !prefs.muted.includes(kind);
+
+/** Przełączenie wyciszenia rodzaju (do zapisu w `muted`). */
+export const toggleMuted = (muted: readonly string[], kind: ServerNotificationKind, on: boolean): string[] =>
+  on ? muted.filter((k) => k !== kind) : [...new Set([...muted, kind])];
 
 /** `notifications.data` (camelCase); nieznane pola pomijane. */
 export const NotificationData = z.object({
@@ -268,7 +331,7 @@ export function visibleNotifications(
 ): AppNotification[] {
   const since = new Date(now.getTime() - NOTIFICATION_RETENTION_DAYS * 86_400_000).toISOString();
   return list
-    .filter((n) => prefs[NOTIFICATION_GROUP[n.kind]] !== 'off' && new Date(n.at).toISOString() >= since && (only === 'all' || !n.readAt))
+    .filter((n) => kindEnabled(prefs, n.kind) && new Date(n.at).toISOString() >= since && (only === 'all' || !n.readAt))
     .sort((a, b) => (a.at === b.at ? (a.id < b.id ? 1 : -1) : new Date(b.at).getTime() - new Date(a.at).getTime()));
 }
 
@@ -368,7 +431,7 @@ export function inQuietHours(prefs: Pick<NotificationPrefs, 'quiet'>, now: Date,
 
 /** Czy to powiadomienie ma teraz pójść jako Web Push: grupa z kanałem `push`, nieprzeczytane, w oknie czasu, poza ciszą. */
 export function wantsPush(n: Pick<AppNotification, 'kind' | 'at' | 'readAt'>, prefs: NotificationPrefs, now: Date, timeZone?: string): boolean {
-  if (n.readAt || prefs[NOTIFICATION_GROUP[n.kind]] !== 'push') return false;
+  if (n.readAt || prefs[NOTIFICATION_GROUP[n.kind]] !== 'push' || prefs.muted.includes(n.kind)) return false;
   const age = now.getTime() - new Date(n.at).getTime();
   return age >= NOTIFICATION_PUSH_DELAY_MS && age < NOTIFICATION_PUSH_WINDOW_MS && !inQuietHours(prefs, now, timeZone);
 }
@@ -422,7 +485,7 @@ export function phoneNotificationPushes(
   return list
     .filter((n) => {
       const age = now.getTime() - new Date(n.at).getTime();
-      return !n.readAt && prefs[NOTIFICATION_GROUP[n.kind]] === 'push' && age >= 0 && age < NOTIFICATION_PHONE_WINDOW_MS && !shown.has(notificationFireKey(n));
+      return !n.readAt && prefs[NOTIFICATION_GROUP[n.kind]] === 'push' && !prefs.muted.includes(n.kind) && age >= 0 && age < NOTIFICATION_PHONE_WINDOW_MS && !shown.has(notificationFireKey(n));
     })
     .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 }

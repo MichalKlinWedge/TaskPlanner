@@ -19,6 +19,12 @@ import {
   notificationTime,
   notificationWorkspaces,
   plural,
+  AUTO_REMINDER,
+  AUTO_REMINDER_OFFSETS,
+  autoReminderOffsetLabel,
+  NOTIFICATION_KIND_LABEL,
+  notificationKindsOf,
+  toggleMuted,
   REMINDER_DISPLAY,
   REMINDER_SNOOZE_OPTIONS,
   reminderSnoozeLabel,
@@ -28,6 +34,7 @@ import {
   type NotificationChannel,
   type NotificationFilter,
   type NotificationPrefs,
+  type AutoReminderMode,
   type ReminderDisplay,
 } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
@@ -444,26 +451,91 @@ export function NotificationsCard({ store, userId }: { store: TabStore; userId: 
         czy miejscem na załączniki. Przypomnienia o zadaniach ustawiasz osobno w „Przypomnieniach”.
       </p>
       <div className="flex flex-col gap-3 text-sm">
-        {NOTIFICATION_GROUPS.map((group) => (
-          <label key={group} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="min-w-0 flex-1">
-              <span className="block font-medium">{NOTIFICATION_GROUP_LABEL[group].title}</span>
-              <span className="block text-xs text-[var(--muted)]">{NOTIFICATION_GROUP_LABEL[group].hint}</span>
-            </span>
-            <Select
-              value={prefs[group]}
-              onChange={(e) => save({ [group]: e.target.value as NotificationChannel })}
-              className="w-40"
-              data-testid={`notifications-${group}`}
-            >
-              {channels.map((c) => (
-                <option key={c} value={c}>
-                  {NOTIFICATION_CHANNEL[c]}
-                </option>
-              ))}
-            </Select>
+        {NOTIFICATION_GROUPS.map((group) => {
+          const kinds = notificationKindsOf(group);
+          const on = kinds.filter((k) => !prefs.muted.includes(k)).length;
+          return (
+            <div key={group}>
+              <label className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium">{NOTIFICATION_GROUP_LABEL[group].title}</span>
+                  <span className="block text-xs text-[var(--muted)]">{NOTIFICATION_GROUP_LABEL[group].hint}</span>
+                </span>
+                <Select
+                  value={prefs[group]}
+                  onChange={(e) => save({ [group]: e.target.value as NotificationChannel })}
+                  className="w-40"
+                  data-testid={`notifications-${group}`}
+                >
+                  {channels.map((c) => (
+                    <option key={c} value={c}>
+                      {NOTIFICATION_CHANNEL[c]}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              {prefs[group] === "off" ? null : (
+                <details className="mt-1 text-xs" data-testid={`notifications-kinds-${group}`}>
+                  <summary className="cursor-pointer text-[var(--muted)] hover:text-[var(--foreground)]">
+                    Rodzaje: {on === kinds.length ? "wszystkie" : `${on} z ${kinds.length}`}
+                  </summary>
+                  <div className="mt-1 grid gap-1 pl-4 sm:grid-cols-2">
+                    {kinds.map((kind) => (
+                      <label key={kind} className="flex items-center gap-2">
+                        <input type="checkbox" checked={!prefs.muted.includes(kind)} onChange={(e) => save({ muted: toggleMuted(prefs.muted, kind, e.target.checked) })} />
+                        <span aria-hidden>{ICON[kind]}</span>
+                        {NOTIFICATION_KIND_LABEL[kind]}
+                      </label>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          );
+        })}
+        <div className="flex flex-col gap-1">
+          <span className="font-medium">Zadania, które śledzę</span>
+          <span className="text-xs text-[var(--muted)]">
+            Poza zadaniami, za które odpowiadasz: ukończenie i zmiana terminu przez kogoś innego oraz automatyczne przypomnienie. Komentarze do takich zadań przychodzą zawsze.
+          </span>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={prefs.follow.created} onChange={(e) => save({ follow: { ...prefs.follow, created: e.target.checked } })} data-testid="notifications-follow-created" />
+            Utworzone przeze mnie — także gdy są przypisane komuś innemu
           </label>
-        ))}
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={prefs.follow.participating} onChange={(e) => save({ follow: { ...prefs.follow, participating: e.target.checked } })} data-testid="notifications-follow-participating" />
+            Te, w których jestem uczestnikiem
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium">Automatyczne przypomnienie</span>
+            <span className="block text-xs text-[var(--muted)]">
+              O zadaniu z datą i godziną, bez ustawiania przypomnienia ręcznie: za które odpowiadasz i które śledzisz. Przychodzi jak zwykłe przypomnienie (dzwonek, okno, push, telefon).
+            </span>
+          </span>
+          <Select value={prefs.autoReminder} onChange={(e) => save({ autoReminder: e.target.value as AutoReminderMode })} className="w-64" aria-label="Automatyczne przypomnienie" data-testid="notifications-auto">
+            {(["shared", "all", "off"] as const).map((v) => (
+              <option key={v} value={v}>
+                {AUTO_REMINDER[v]}
+              </option>
+            ))}
+          </Select>
+          <Select
+            value={String(prefs.autoReminderOffset)}
+            onChange={(e) => save({ autoReminderOffset: Number(e.target.value) })}
+            disabled={prefs.autoReminder === "off"}
+            className="w-48"
+            aria-label="Kiedy automatyczne przypomnienie"
+            data-testid="notifications-auto-offset"
+          >
+            {[...new Set([...AUTO_REMINDER_OFFSETS, prefs.autoReminderOffset])].map((m) => (
+              <option key={m} value={m}>
+                {autoReminderOffsetLabel(m)}
+              </option>
+            ))}
+          </Select>
+        </div>
         <label className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="min-w-0 flex-1">
             <span className="block font-medium">{NOTIFICATION_GROUP_LABEL.reminders.title}</span>

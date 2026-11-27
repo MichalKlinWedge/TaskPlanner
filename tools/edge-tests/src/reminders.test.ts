@@ -113,6 +113,12 @@ describe('planPushes — osoba odpowiedzialna', () => {
     expect(keys(reminder({ offset_min: 0, created_by: OTHER }))).toEqual(['a-t1:2026-11-19']);
   });
 
+  it('wyprzedzenie z ustawień konta (autoReminderOffset)', () => {
+    const early = [{ id: U, settings: { ...profiles[0]!.settings, notifications: { autoReminderOffset: 15 } } }];
+    const plan = planPushes({ devices: [device('d1')], reminders: [], profiles: early, assigned: assigned(U) }, { now: '2026-11-19T08:45:00.000Z' });
+    expect(plan.map((p) => [p.fireKey, p.fireAt])).toEqual([['a-t1:2026-11-19', '2026-11-19T08:45:00.000Z']]);
+  });
+
   it('seria: wystąpienie po dawnym terminie', () => {
     const series = [{ ...assigned(U)[0]!, due_date: '2026-11-10', recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY', anchor: '2026-11-01' } }];
     expect(planPushes({ devices: [device('d1')], reminders: [], profiles, assigned: series }, { now: DUE }).map((p) => p.fireKey)).toEqual(['a-t1:2026-11-19']);

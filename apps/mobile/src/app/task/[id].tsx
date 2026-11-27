@@ -843,6 +843,7 @@ function RemindersField({ task, data, today, trashed }: { task: ViewTask; data: 
       return {
         responsible: responsibleAccount({ assigneeId: task.assigneeId, createdBy: creator[0]?.created_by ?? engine.userId }, () => person[0]?.user_id),
         participant: participant.length > 0,
+        creator: creator[0]?.created_by ?? engine.userId,
       };
     },
     [task.id, task.workspaceId, task.assigneeId ?? ''],
@@ -853,6 +854,10 @@ function RemindersField({ task, data, today, trashed }: { task: ViewTask; data: 
         userId: data.userId,
         assigneeName: assigneeOf(task.assigneeId, data.collaborators)?.name ?? null,
         account: people.responsible,
+        prefs: data.settings.notifications,
+        follows:
+          (data.settings.notifications.follow.created && people.creator === data.userId) ||
+          (data.settings.notifications.follow.participating && people.participant),
       })
     : null;
   const allowed = canSetOwnReminder({ editable: listEditable(data, task.listId), userId: data.userId, responsible: people?.responsible ?? null, participant: people?.participant ?? false });

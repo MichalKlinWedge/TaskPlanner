@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { zonedInstant } from '../dates.ts';
-import { assigneeReminderNote, assigneeReminderRule, assigneeReminderRules, canSetOwnReminder, isAssigneeReminder, reminderBody, reminderFireTimes, snoozeUntil, toReminderRule, type ReminderRule, type ReminderTask } from '../reminders.ts';
+import { assigneeReminderNote, assigneeReminderRule, assigneeReminderRules, canSetOwnReminder, DEFAULT_AUTO_REMINDER, isAssigneeReminder, reminderBody, reminderFireTimes, snoozeUntil, toReminderRule, type ReminderRule, type ReminderTask } from '../reminders.ts';
 
 const WAW = 'Europe/Warsaw';
 const task = (over: Partial<ReminderTask> = {}): ReminderTask => ({ id: 't1', kind: 'task', status: 'todo', title: 'Lekarz', dueDate: '2026-11-20', dueTime: '10:00', recurrence: null, ...over });
@@ -187,5 +187,38 @@ describe('osoba odpowiedzialna (udostępniona przestrzeń)', () => {
     expect(note({ account: 'anna-konto', assigneeName: 'Anna' })).toContain('Osoba odpowiedzialna (Anna) dostanie');
     expect(note({ account: 'inny' })).toContain('(twórca zadania)');
     expect(note({ account: null, assigneeName: 'Dorota' })).toContain('Dorota nie dostanie');
+  });
+
+  it('podpowiedź według własnych ustawień: wyprzedzenie, wyłączone, śledzone, każde zadanie', () => {
+    const base = { shared: true, userId: 'me', assigneeName: null, account: 'me' };
+    const prefs = (over: Partial<typeof DEFAULT_AUTO_REMINDER> = {}) => ({ ...DEFAULT_AUTO_REMINDER, ...over });
+    expect(assigneeReminderNote(task(), { ...base, prefs: prefs({ autoReminderOffset: 15 }) })).toContain('15 min przed terminem przypomnienie');
+    expect(assigneeReminderNote(task(), { ...base, prefs: prefs({ autoReminder: 'off' }) })).toContain('masz wyłączone');
+    expect(assigneeReminderNote(task(), { ...base, account: 'anna', follows: true })).toContain('Śledzisz to zadanie');
+    expect(assigneeReminderNote(task(), { ...base, shared: false })).toBeNull();
+    expect(assigneeReminderNote(task(), { ...base, shared: false, prefs: prefs({ autoReminder: 'all' }) })).toBe('Odpowiadasz za to zadanie, więc w chwili terminu przypomnienie przyjdzie Ci też automatycznie.');
+  });
+
+  it('reguły automatyczne według ustawień: tryb, wyprzedzenie, twórca, uczestnik', () => {
+    const tasks = [
+      { id: 'mine', kind: 'task' as const, status: 'todo' as const, dueDate: '2026-11-20' as const, dueTime: '10:00' as const, assigneeId: null, workspaceId: 'ws' },
+      { id: 'solo', kind: 'task' as const, status: 'todo' as const, dueDate: '2026-11-20' as const, dueTime: '10:00' as const, assigneeId: null, workspaceId: 'own' },
+      { id: 'given', kind: 'task' as const, status: 'todo' as const, dueDate: '2026-11-20' as const, dueTime: '10:00' as const, assigneeId: 'anna', workspaceId: 'ws' },
+      { id: 'theirs', kind: 'task' as const, status: 'todo' as const, dueDate: '2026-11-20' as const, dueTime: '10:00' as const, assigneeId: null, workspaceId: 'ws' },
+    ];
+    const ctx = {
+      userId: 'me',
+      shared: new Set(['ws']),
+      createdBy: (id: string) => (id === 'theirs' ? 'ola' : 'me'),
+      accountOf: () => 'anna-konto',
+      participates: (id: string) => id === 'theirs',
+    };
+    const ids = (prefs?: typeof DEFAULT_AUTO_REMINDER) => assigneeReminderRules(tasks, { ...ctx, prefs }).map((r) => r.taskId);
+    expect(ids()).toEqual(['mine']);
+    expect(ids({ ...DEFAULT_AUTO_REMINDER, autoReminder: 'all' })).toEqual(['mine', 'solo']);
+    expect(ids({ ...DEFAULT_AUTO_REMINDER, autoReminder: 'off' })).toEqual([]);
+    expect(ids({ ...DEFAULT_AUTO_REMINDER, follow: { created: true, participating: false } })).toEqual(['mine', 'given']);
+    expect(ids({ ...DEFAULT_AUTO_REMINDER, follow: { created: false, participating: true } })).toEqual(['mine', 'theirs']);
+    expect(assigneeReminderRules(tasks, { ...ctx, prefs: { ...DEFAULT_AUTO_REMINDER, autoReminderOffset: 30 } })[0]).toMatchObject({ id: 'a-mine', offsetMin: 30 });
   });
 });

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  kindEnabled,
+  notificationKindsOf,
+  toggleMuted,
   REMINDER_SNOOZE_OPTIONS,
   reminderPopups,
   reminderSnoozeLabel,
@@ -167,6 +170,10 @@ describe('ustawienia i wiersz', () => {
       system: 'app',
       reminders: 'app',
       toast: true,
+      autoReminder: 'shared',
+      autoReminderOffset: 0,
+      follow: { created: false, participating: false },
+      muted: [],
       quiet: { enabled: false, from: '22:00', to: '07:00' },
     });
   });
@@ -292,6 +299,19 @@ describe('telefon: powiadomienie systemowe po synchronizacji', () => {
     expect(phoneNotificationPushes([a], prefs, new Set(), NOW, TZ)).toEqual([]);
     // 13:00 w Warszawie.
     expect(phoneNotificationPushes([a], { ...push, quiet: { enabled: true, from: '12:30', to: '14:00' } }, new Set(), NOW, TZ)).toEqual([]);
+  });
+});
+
+describe('rodzaje osobno', () => {
+  it('wyciszony rodzaj znika z dzwonka i pusha, reszta grupy zostaje', () => {
+    const prefs = NotificationPrefs.parse({ muted: toggleMuted([], 'completed', false) });
+    expect(prefs.muted).toEqual(['completed']);
+    expect(kindEnabled(prefs, 'completed')).toBe(false);
+    expect(kindEnabled(prefs, 'assigned')).toBe(true);
+    expect(kindEnabled({ ...prefs, tasks: 'off' }, 'assigned')).toBe(false);
+    expect(toggleMuted(prefs.muted, 'completed', true)).toEqual([]);
+    expect(notificationKindsOf('tasks')).toEqual(['assigned', 'comment', 'participant', 'completed', 'due_changed']);
+    expect(NotificationPrefs.parse({ follow: 'zle', autoReminder: 'x', autoReminderOffset: -5 })).toMatchObject({ follow: { created: false, participating: false }, autoReminder: 'shared', autoReminderOffset: 0 });
   });
 });
 

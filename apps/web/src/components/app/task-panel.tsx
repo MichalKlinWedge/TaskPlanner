@@ -1271,10 +1271,10 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
 
 /** Własne przypomnienia — także w zadaniu do podglądu, gdy użytkownik jest uczestnikiem albo odpowiedzialnym. */
 function RemindersField({ task, trashed }: { task: ViewTask; trashed: boolean }) {
-  const { store, data, today, userId } = useAppEnv();
+  const { store, data, today, userId, settings } = useAppEnv();
   const { run } = useTaskActions();
   const rows = useTaskReminders(store, task.id, today, userId);
-  const { note, allowed } = useReminderRules(store, data, task, userId);
+  const { note, allowed } = useReminderRules(store, data, task, userId, settings.notifications);
   const [choice, setChoice] = useState("");
   const [at, setAt] = useState({ date: task.dueDate ?? "", time: "09:00" });
 

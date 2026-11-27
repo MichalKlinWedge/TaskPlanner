@@ -156,8 +156,18 @@ const ASSIGNEE_PREFIX = 'a-';
 /** Czy id reguły to automatyczne przypomnienie osoby odpowiedzialnej (nie wiersz `reminders`). */
 export const isAssigneeReminder = (reminderId: string): boolean => reminderId.startsWith(ASSIGNEE_PREFIX);
 
-/** Automatyczne przypomnienie w chwili terminu; stałe id z zadania, bez wiersza w bazie. */
-export const assigneeReminderRule = (taskId: string): ReminderRule => ({ id: ASSIGNEE_PREFIX + taskId, taskId, kind: 'relative', offsetMin: 0, atDate: null, atTime: null });
+/** Automatyczne przypomnienie `offsetMin` przed terminem (domyślnie w chwili terminu); stałe id z zadania, bez wiersza w bazie. */
+export const assigneeReminderRule = (taskId: string, offsetMin = 0): ReminderRule => ({ id: ASSIGNEE_PREFIX + taskId, taskId, kind: 'relative', offsetMin, atDate: null, atTime: null });
+
+/** Ustawienia automatycznych przypomnień konta (`NotificationPrefs`: `autoReminder`, `autoReminderOffset`, `follow`). */
+export interface AutoReminderPrefs {
+  autoReminder: 'off' | 'shared' | 'all';
+  autoReminderOffset: number;
+  follow: { created: boolean; participating: boolean };
+}
+
+/** Dotychczasowe zachowanie: odpowiedzialny we wspólnych przestrzeniach, w chwili terminu. */
+export const DEFAULT_AUTO_REMINDER: AutoReminderPrefs = { autoReminder: 'shared', autoReminderOffset: 0, follow: { created: false, participating: false } };
 
 /** Konto osoby odpowiedzialnej: wskazany współpracownik (`null` — bez konta w przestrzeni) albo twórca zadania. */
 export const responsibleAccount = (
@@ -169,7 +179,12 @@ export const responsibleAccount = (
 export const hasAssigneeReminder = (task: Pick<ReminderTask, 'kind' | 'status' | 'dueDate' | 'dueTime'>): boolean =>
   task.kind === 'task' && !isClosed(task) && !!task.dueDate && !!task.dueTime;
 
-/** Reguły automatyczne konta `userId`: zadania udostępnionych przestrzeni, za które odpowiada. */
+/**
+ * Reguły automatyczne konta `userId` według jego ustawień (`prefs`, domyślnie dotychczasowe): zadania z datą i godziną,
+ * za które odpowiada — we wspólnych przestrzeniach (`shared`) albo wszędzie (`all`) — oraz śledzone: utworzone przez
+ * nie (`follow.created`) i te, w których jest uczestnikiem (`follow.participating`, `participates`). Tak samo liczy
+ * serwer (`public.auto_reminder_tasks`).
+ */
 export function assigneeReminderRules(
   tasks: readonly (Pick<ViewTask, 'id' | 'kind' | 'status' | 'dueDate' | 'dueTime' | 'assigneeId' | 'workspaceId'>)[],
   context: {
@@ -178,17 +193,25 @@ export function assigneeReminderRules(
     shared: ReadonlySet<string>;
     createdBy: (taskId: string) => string | null | undefined;
     accountOf: (workspaceId: string, collaboratorId: string) => string | null | undefined;
+    /** Czy konto jest uczestnikiem zadania (dla `follow.participating`). */
+    participates?: (taskId: string) => boolean;
+    prefs?: AutoReminderPrefs;
   },
 ): ReminderRule[] {
+  const prefs = context.prefs ?? DEFAULT_AUTO_REMINDER;
+  if (prefs.autoReminder === 'off') return [];
   return tasks
-    .filter(
-      (t) =>
-        context.shared.has(t.workspaceId) &&
-        hasAssigneeReminder(t) &&
-        // Zadanie jeszcze niewysłane na serwer nie ma twórcy — jest z tego konta.
-        responsibleAccount({ assigneeId: t.assigneeId ?? null, createdBy: context.createdBy(t.id) ?? context.userId }, (id) => context.accountOf(t.workspaceId, id)) === context.userId,
-    )
-    .map((t) => assigneeReminderRule(t.id));
+    .filter((t) => {
+      if (!hasAssigneeReminder(t) || (prefs.autoReminder === 'shared' && !context.shared.has(t.workspaceId))) return false;
+      // Zadanie jeszcze niewysłane na serwer nie ma twórcy — jest z tego konta.
+      const creator = context.createdBy(t.id) ?? context.userId;
+      return (
+        responsibleAccount({ assigneeId: t.assigneeId ?? null, createdBy: creator }, (id) => context.accountOf(t.workspaceId, id)) === context.userId ||
+        (prefs.follow.created && creator === context.userId) ||
+        (prefs.follow.participating && !!context.participates?.(t.id))
+      );
+    })
+    .map((t) => assigneeReminderRule(t.id, prefs.autoReminderOffset));
 }
 
 /** Podpowiedź przy zadaniu do podglądu, w którym nie można ustawić własnego przypomnienia. */
@@ -204,14 +227,32 @@ export const canSetOwnReminder = (context: { editable: boolean; userId: string; 
 /** Objaśnienie pod przypomnieniami zadania w udostępnionej przestrzeni; `null` poza nią. */
 export function assigneeReminderNote(
   task: Pick<ReminderTask, 'kind' | 'status' | 'dueDate' | 'dueTime'>,
-  context: { shared: boolean; userId: string; assigneeName: string | null; account: string | null },
+  context: {
+    shared: boolean;
+    userId: string;
+    assigneeName: string | null;
+    account: string | null;
+    /** Własne ustawienia automatycznych przypomnień (domyślnie dotychczasowe). */
+    prefs?: AutoReminderPrefs;
+    /** Konto śledzi zadanie (utworzone przez nie / uczestnik) i ma to włączone w ustawieniach. */
+    follows?: boolean;
+  },
 ): string | null {
-  if (!context.shared || task.kind !== 'task') return null;
-  const own = 'Każdy ustawia przypomnienia dla siebie.';
-  if (!hasAssigneeReminder(task)) return own;
-  if (context.account === context.userId) return `${own} Odpowiadasz za to zadanie, więc w chwili terminu przypomnienie przyjdzie Ci też automatycznie.`;
-  if (context.account) return `${own} Osoba odpowiedzialna (${context.assigneeName ?? 'twórca zadania'}) dostanie automatyczne przypomnienie w chwili terminu.`;
-  return `${own} ${context.assigneeName ?? 'Osoba odpowiedzialna'} nie dostanie automatycznego przypomnienia — w tej przestrzeni nie ma konta z e-mailem tej osoby.`;
+  const prefs = context.prefs ?? DEFAULT_AUTO_REMINDER;
+  const enabled = prefs.autoReminder === 'all' || (prefs.autoReminder === 'shared' && context.shared);
+  if (task.kind !== 'task' || (!context.shared && !enabled)) return null;
+  const own = context.shared ? 'Każdy ustawia przypomnienia dla siebie.' : '';
+  const join = (text: string) => (own ? `${own} ${text}` : text);
+  if (!hasAssigneeReminder(task)) return own || null;
+  const when = prefs.autoReminderOffset ? `${prefs.autoReminderOffset} min przed terminem` : 'w chwili terminu';
+  const mine = context.account === context.userId;
+  if ((mine || context.follows) && enabled) {
+    return join(`${mine ? 'Odpowiadasz za to zadanie' : 'Śledzisz to zadanie'}, więc ${when} przypomnienie przyjdzie Ci też automatycznie.`);
+  }
+  if (mine) return join('Automatyczne przypomnienie masz wyłączone w ustawieniach powiadomień.');
+  if (!context.shared) return null;
+  if (context.account) return join(`Osoba odpowiedzialna (${context.assigneeName ?? 'twórca zadania'}) dostanie automatyczne przypomnienie, jeśli nie wyłączy go w ustawieniach.`);
+  return join(`${context.assigneeName ?? 'Osoba odpowiedzialna'} nie dostanie automatycznego przypomnienia — w tej przestrzeni nie ma konta z e-mailem tej osoby.`);
 }
 
 /** Wiersz lokalnej bazy `reminders` → `ReminderRule`. */

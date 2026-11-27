@@ -1,7 +1,7 @@
 "use client";
 
 /** Dane jednego zadania z lokalnej bazy — wspólne dla formularza (`task-panel.tsx`) i podglądu (`task-preview.tsx`). */
-import { assigneeOf, assigneeReminderNote, canSetOwnReminder, relativeDay, reminderOffset, responsibleAccount, sortComments, type LocalDate, type ViewTask } from "@taskplanner/core";
+import { assigneeOf, assigneeReminderNote, canSetOwnReminder, relativeDay, reminderOffset, responsibleAccount, sortComments, type AutoReminderPrefs, type LocalDate, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { useMemo } from "react";
 
@@ -45,7 +45,7 @@ export function useTaskReminders(store: TabStore, taskId: string, today: LocalDa
  * Przypomnienia w udostępnionej przestrzeni: kto dostanie automatyczne w chwili terminu (`note`, `null` — bez
  * objaśnienia) i czy użytkownik może ustawić sobie własne (`allowed` — z podglądem tylko uczestnik / odpowiedzialny).
  */
-export function useReminderRules(store: TabStore, data: AppData, task: ViewTask, userId: string): { note: string | null; allowed: boolean } {
+export function useReminderRules(store: TabStore, data: AppData, task: ViewTask, userId: string, prefs?: AutoReminderPrefs): { note: string | null; allowed: boolean } {
   const creator = useLocalQuery<Row>(store, "select created_by from tasks where id = ?", [task.id], ["tasks"]);
   const person = useLocalQuery<Row>(store, "select user_id from scope_collaborators where scope_id = ? and collaborator_id = ?", [task.workspaceId, task.assigneeId ?? ""], ["scope_collaborators"]);
   const participant = useLocalQuery<Row>(
@@ -61,6 +61,8 @@ export function useReminderRules(store: TabStore, data: AppData, task: ViewTask,
     userId,
     assigneeName: assigneeOf(task.assigneeId, data.collaborators)?.name ?? null,
     account: responsible,
+    prefs,
+    follows: !!prefs && ((prefs.follow.created && createdBy === userId) || (prefs.follow.participating && participant.rows.length > 0)),
   });
   return { note, allowed: canSetOwnReminder({ editable: listEditable(data, task.listId), userId, responsible: creator.rows.length ? responsible : null, participant: participant.rows.length > 0 }) };
 }

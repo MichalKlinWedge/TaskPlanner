@@ -1038,6 +1038,11 @@ isOneToOne: false
 "attachment_usage":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"auto_reminder_tasks":
+{ Args: { "p_from": string,"p_to": string,"p_users": (string)[] }; Returns: {
+              "due_date": string,"due_time": string,"id": string,"kind": string,"recurrence": Json,"status": string,"time_zone": string,"title": string,"user_id": string
+            }[]
+                           },
 "calendar_kick":
 { Args: { "p_user": string }; Returns: undefined
                            },
@@ -1205,6 +1210,9 @@ isOneToOne: false
 "notification_actor_name":
 { Args: { "p_actor": string,"p_user": string }; Returns: string
                            },
+"notification_pref":
+{ Args: { "p_path": (string)[],"p_user": string }; Returns: string
+                           },
 "notify":
 { Args: { "p_actor": string,"p_data": Json,"p_group"?: string,"p_kind": string,"p_task"?: string,"p_user": string,"p_workspace"?: string }; Returns: undefined
                            },
@@ -1282,6 +1290,9 @@ isOneToOne: false
                            },
 "plugins_tick":
 { Args: Record<PropertyKey, never>; Returns: number
+                           },
+"prune_collaborator_copy":
+{ Args: { "p_collaborator": string,"p_scope": string }; Returns: undefined
                            },
 "pull_changes":
 { Args: { "p_limit"?: number,"p_since"?: Json }; Returns: Json
@@ -1366,6 +1377,9 @@ isOneToOne: false
                            },
 "tag_used_in":
 { Args: { "p_scope": string,"p_tag": string }; Returns: boolean
+                           },
+"task_followers":
+{ Args: { "p_creator": string,"p_scope": string,"p_task": string }; Returns: string[]
                            },
 "task_responsible_account":
 { Args: { "p_assignee": string,"p_creator": string,"p_scope": string }; Returns: string
