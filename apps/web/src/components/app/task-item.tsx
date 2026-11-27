@@ -321,7 +321,7 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
                 : "shadow-[inset_3px_0_0_var(--accent),inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_55%,transparent)]"
             }`
           : lateMin > 0
-            ? "bg-[color-mix(in_srgb,var(--danger)_7%,var(--background))] shadow-[inset_3px_0_0_var(--danger)]"
+            ? "bg-[color-mix(in_srgb,var(--danger)_7%,var(--background))] dark:bg-[color-mix(in_srgb,var(--danger)_16%,var(--background))] shadow-[inset_3px_0_0_var(--danger)]"
             : "bg-[var(--background)]"
       } ${dnd?.dragging ? "z-10 opacity-80 shadow-lg" : ""}`}
       style={{ ...dnd?.style, paddingLeft: depth * 20 }}
