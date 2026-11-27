@@ -7,9 +7,10 @@
  *
  * Niżej, tylko do odczytu: konta i zaproszenia z udostępnionych przestrzeni (`workspace_sharing`,
  * wymaga sieci; „+ Dodaj” wypełnia formularz nowej osoby) oraz osoby wpisane przez innych członków
- * (`scope_collaborators`, `shared`).
+ * (`scope_collaborators`, `shared`); „Przejmij” robi z takiej osoby własny wpis (albo łączy z własnym o tej
+ * nazwie) i przepina na niego zadania przestrzeni — jak na webie.
  */
-import { collaboratorBadge, collaboratorBadgeColors, collaboratorSaveOps, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, nameFromEmail, memberSince, plural, SCOPE_ROLE, spacePeople, type Collaborator, type SpaceSharing } from '@taskplanner/core';
+import { canEditScope, collaboratorBadge, collaboratorBadgeColors, collaboratorSaveOps, takeOverCollaboratorOps, takeOverTarget, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, nameFromEmail, memberSince, plural, SCOPE_ROLE, spacePeople, type Collaborator, type SpaceSharing } from '@taskplanner/core';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -17,7 +18,9 @@ import { confirm, useTaskActions } from '@/components/actions';
 import { ColorPicker } from '@/components/color-picker';
 import { Button, Field, P, Row, Screen, Section, usePalette } from '@/components/ui';
 import { WorkspaceChips } from '@/components/workspace-chips';
-import { useAppData, type AppData } from '@/lib/app-data';
+import { readTakeOverUsage } from '@taskplanner/sync';
+
+import { listEditable, useAppData, type AppData } from '@/lib/app-data';
 import { useLocalQuery } from '@/lib/local-query';
 import { workspaceSharing } from '@/lib/sharing';
 import { localEngine } from '@/lib/sync';
@@ -76,6 +79,19 @@ export default function Collaborators() {
     setError(null);
     setEditing(null);
     if (result.ops.length) void run(result.ops);
+  };
+  /** Przestrzenie osoby z kopii, w których można edytować (tam ją się przejmuje). */
+  const takeOverSpaces = (person: Collaborator) => (person.workspaceIds ?? []).filter((id) => canEditScope(data.workspaces.find((w) => w.id === id)?.role));
+  const takeOver = async (person: Collaborator) => {
+    const spaces = takeOverSpaces(person);
+    const target = takeOverTarget(data.collaborators, person);
+    const engine = await localEngine();
+    const usage = await readTakeOverUsage(engine.db.all.bind(engine.db), person.id, target?.id ?? null, spaces, (listId) => listEditable(data, listId));
+    const result = takeOverCollaboratorOps(data.userId, data.collaborators, person, spaces, usage);
+    if (!result.ok) return setError(result.error);
+    setError(null);
+    const moved = usage.assignedTaskIds.length + usage.participations.length;
+    void run(result.ops, { text: `${result.created ? `Przejęto „${person.name}”` : `Połączono „${person.name}” z Twoim wpisem`}${moved ? ` · ${plural(moved, ['zadanie', 'zadania', 'zadań'])}` : ''}`, undo: result.undo });
   };
   const remove = async (person: Collaborator) => {
     const count = usage.get(person.id);
@@ -178,7 +194,7 @@ export default function Collaborators() {
 
       {shared.length ? (
         <Section title="Wpisani przez innych członków przestrzeni">
-          <P muted>Można ich wskazać w zadaniach tych przestrzeni; zmienia ich osoba, która ich wpisała.</P>
+          <P muted>Można ich wskazać w zadaniach tych przestrzeni; zmienia ich osoba, która ich wpisała. „Przejmij” zakłada z osoby Twój wpis (albo łączy ją z Twoim o tej samej nazwie) i przepina na niego zadania przestrzeni.</P>
           {shared.map((person) => (
             <View key={person.id} style={[styles.person, styles.line, { borderColor: p.border, opacity: isActiveCollaborator(person) ? 1 : 0.55 }]}>
               <PersonBadge person={person} />
@@ -194,6 +210,7 @@ export default function Collaborators() {
                     .join(', ')}
                 </Text>
               </View>
+              {takeOverSpaces(person).length ? <Button title={takeOverTarget(data.collaborators, person) ? 'Połącz z moim' : 'Przejmij'} kind="secondary" onPress={() => void takeOver(person)} /> : null}
             </View>
           ))}
         </Section>

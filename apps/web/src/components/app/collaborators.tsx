@@ -10,12 +10,16 @@
  *
  * Niżej, tylko do odczytu: konta i zaproszenia z udostępnionych przestrzeni (`workspace_sharing`,
  * wymaga sieci; „+ Dodaj” zakłada z nich własnego współpracownika) oraz osoby wpisane przez
- * innych członków (`scope_collaborators`, `shared`).
+ * innych członków (`scope_collaborators`, `shared`). „Przejmij” robi z takiej osoby własny wpis (albo
+ * łączy z własnym o tej nazwie) i przepina na niego zadania przestrzeni — np. osoby po poprzednim
+ * właścicielu, których nikt już nie może zmienić.
  */
-import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, nameFromEmail, memberSince, plural, SCOPE_ROLE, spacePeople, type Collaborator, type SpaceSharing } from "@taskplanner/core";
+import { canEditScope, collaboratorBadge, collaboratorSaveOps, takeOverCollaboratorOps, takeOverTarget, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, nameFromEmail, memberSince, plural, SCOPE_ROLE, spacePeople, type Collaborator, type SpaceSharing } from "@taskplanner/core";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
-import type { AppData } from "@/lib/app-data";
+import { readTakeOverUsage } from "@taskplanner/sync";
+
+import { listEditable, type AppData } from "@/lib/app-data";
 import { useLocalQuery } from "@/lib/local-store";
 import { workspaceSharing } from "@/lib/sharing";
 
@@ -90,6 +94,18 @@ export function CollaboratorsView() {
     const { ops, undo } = deleteCollaboratorOps(person, { assignedTaskIds: assigned.map((r) => r.id), participantRowIds: participants.map((r) => r.id) }, new Date());
     setEditing(null);
     void run(ops, { text: `Usunięto współpracownika „${person.name}”`, undo });
+  };
+  /** Przestrzenie osoby z kopii, w których można edytować (tam ją się przejmuje). */
+  const takeOverSpaces = (person: Collaborator) => (person.workspaceIds ?? []).filter((id) => canEditScope(data.workspaces.find((w) => w.id === id)?.role));
+  const takeOver = async (person: Collaborator) => {
+    const spaces = takeOverSpaces(person);
+    const target = takeOverTarget(data.collaborators, person);
+    const usage = await readTakeOverUsage(store.query, person.id, target?.id ?? null, spaces, (listId) => listEditable(data, listId));
+    const result = takeOverCollaboratorOps(userId, data.collaborators, person, spaces, usage);
+    if (!result.ok) return setError(result.error);
+    setError(null);
+    const moved = usage.assignedTaskIds.length + usage.participations.length;
+    void run(result.ops, { text: `${result.created ? `Przejęto „${person.name}”` : `Połączono „${person.name}” z Twoim wpisem`}${moved ? ` · ${plural(moved, ["zadanie", "zadania", "zadań"])}` : ""}`, undo: result.undo });
   };
   const open = (person: Collaborator) => {
     setError(null);
@@ -239,7 +255,9 @@ export function CollaboratorsView() {
       {shared.length ? (
         <section className="mt-6" aria-label="Wpisani przez innych członków przestrzeni">
           <h2 className="border-b border-[var(--line)] pb-1 text-sm font-semibold">Wpisani przez innych członków przestrzeni</h2>
-          <p className="pt-1 text-xs text-[var(--muted)]">Można ich wskazać w zadaniach tych przestrzeni; zmienia ich osoba, która ich wpisała.</p>
+          <p className="pt-1 text-xs text-[var(--muted)]">
+            Można ich wskazać w zadaniach tych przestrzeni; zmienia ich osoba, która ich wpisała. „Przejmij” zakłada z osoby Twój wpis (albo łączy ją z Twoim o tej samej nazwie) i przepina na niego zadania przestrzeni.
+          </p>
           <ul className="divide-y divide-[var(--line)] text-sm" data-testid="shared-collaborators">
             {shared.map((person) => (
               <li key={person.id} className={`flex items-center gap-3 px-1 py-2 ${isActiveCollaborator(person) ? "" : "opacity-60"}`}>
@@ -253,6 +271,15 @@ export function CollaboratorsView() {
                   </span>
                   <span className="block text-xs text-[var(--muted)]">{(person.workspaceIds ?? []).map(workspaceName).filter(Boolean).join(", ")}</span>
                 </span>
+                {takeOverSpaces(person).length ? (
+                  <Button
+                    kind="ghost"
+                    title={takeOverTarget(data.collaborators, person) ? "Połącz z Twoim wpisem o tej nazwie i przepnij na niego zadania przestrzeni" : "Załóż z tej osoby Twój wpis (nazwa, akronim, kolor) i przepnij na niego zadania przestrzeni"}
+                    onClick={() => void takeOver(person)}
+                  >
+                    {takeOverTarget(data.collaborators, person) ? "Połącz z moim" : "Przejmij"}
+                  </Button>
+                ) : null}
               </li>
             ))}
           </ul>

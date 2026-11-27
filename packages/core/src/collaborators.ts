@@ -214,6 +214,75 @@ export function deleteCollaboratorOps(
   };
 }
 
+// ── Przejęcie osoby z udostępnionej przestrzeni ─────────────────────────────────────────────
+
+/**
+ * Własny wpis, na który przejdzie cudza osoba (`shared`): własny o tej samej nazwie (np. ten sam
+ * człowiek wpisany przez dwie osoby) albo nowy — `null`.
+ */
+export const takeOverTarget = (collaborators: readonly Collaborator[], shared: Pick<Collaborator, 'name'>): Collaborator | null =>
+  findCollaborator(ownCollaborators(collaborators), shared.name) ?? null;
+
+/** Użycie cudzej osoby w przestrzeniach, które się przejmuje (z lokalnej bazy). */
+export interface TakeOverUsage {
+  /** Zadania z tą osobą jako odpowiedzialną. */
+  assignedTaskIds: readonly string[];
+  /** Jej wiersze uczestnictwa (`task_participants`). */
+  participations: readonly { id: string; taskId: string }[];
+  /** Zadania, w których wpis docelowy (`takeOverTarget`) już jest uczestnikiem. */
+  targetParticipantTaskIds: readonly string[];
+}
+
+/**
+ * „Przejmij”: cudza osoba (kopia z przestrzeni, np. po poprzednim właścicielu, którego wpisu nikt już
+ * nie zmieni) staje się własnym współpracownikiem — nowym (nazwa, akronim, kolor, przestrzenie) albo
+ * istniejącym o tej nazwie (dostaje przestrzenie, jeśli ma listę) — a zadania przestrzeni
+ * (`usage`) przechodzą na niego: odpowiedzialny i uczestnicy. Jedna paczka z cofnięciem; serwer
+ * usuwa nieużywaną kopię, gdy jej autor nie jest już członkiem przestrzeni.
+ */
+export function takeOverCollaboratorOps(
+  userId: string,
+  collaborators: readonly Collaborator[],
+  shared: Collaborator,
+  spaces: readonly string[],
+  usage: TakeOverUsage,
+  now: Date | string = new Date(),
+): Result<{ collaboratorId: string; created: boolean; ops: TaskOp[]; undo: TaskOp[] }> {
+  const at = new Date(now).toISOString();
+  const ops: TaskOp[] = [];
+  const undo: TaskOp[] = [];
+  const twin = takeOverTarget(collaborators, shared);
+  let id: string;
+  if (twin) {
+    id = twin.id;
+    const missing = spaces.filter((s) => twin.workspaceIds?.length && !twin.workspaceIds.includes(s));
+    if (missing.length) {
+      ops.push({ table: 'collaborators', id, patch: tagWorkspacesPatch([...(twin.workspaceIds ?? []), ...missing]) });
+      undo.push({ table: 'collaborators', id, patch: { workspace_ids: [...(twin.workspaceIds ?? [])] } });
+    }
+  } else {
+    const saved = collaboratorSaveOps(userId, collaborators, { name: shared.name, acronym: shared.acronym ?? null, color: shared.color ?? null, active: isActiveCollaborator(shared), workspaceIds: spaces });
+    if (!saved.ok) return saved;
+    id = saved.id;
+    ops.push(...saved.ops);
+    undo.push({ table: 'collaborators', id, patch: { deleted_at: at } });
+  }
+  for (const taskId of usage.assignedTaskIds) {
+    ops.push(...assignTaskOps(taskId, id));
+    undo.unshift(...assignTaskOps(taskId, shared.id));
+  }
+  const already = new Set(usage.targetParticipantTaskIds);
+  for (const row of usage.participations) {
+    ops.push({ table: 'task_participants', id: row.id, patch: { deleted_at: at } });
+    undo.unshift({ table: 'task_participants', id: row.id, patch: { deleted_at: null } });
+    if (already.has(row.taskId)) continue;
+    already.add(row.taskId);
+    ops.push(...addParticipantOps(row.taskId, id));
+    undo.unshift({ table: 'task_participants', id: participantId(row.taskId, id), patch: { deleted_at: at } });
+  }
+  return { ok: true, collaboratorId: id, created: !twin, ops, undo };
+}
+
 // ── Uczestnicy zadania ───────────────────────────────────────────────────────────────────────
 
 /** Dodanie współpracownika do uczestników (powtórka i ponowne dodanie usuniętego — ten sam wiersz). */

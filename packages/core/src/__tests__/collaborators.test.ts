@@ -26,6 +26,8 @@ import {
   selfName,
   sortCollaborators,
   spacePeople,
+  takeOverCollaboratorOps,
+  takeOverTarget,
   withSharedCollaborators,
   type Collaborator,
 } from '../collaborators.ts';
@@ -229,6 +231,51 @@ describe('osoby z udostępnionych przestrzeni', () => {
     { scopeId: W2, collaboratorId: ewa, name: 'Ewa Kot', acronym: 'EK' },
     { scopeId: W1, collaboratorId: anna.id, name: 'Anna (kopia)' },
   ];
+
+  it('przejęcie: nowy własny wpis z nazwą, akronimem i kolorem; zadania i uczestnicy przechodzą na niego', () => {
+    const at = '2026-11-27T08:00:00.000Z';
+    const shared: Collaborator = { id: ewa, name: 'Ewa Kot', email: null, acronym: 'EK', color: '#DC2626', workspaceIds: [W1], shared: true };
+    const T2 = '01900000-0000-7000-8000-000000000002';
+    const pRow = participantId(T2, ewa);
+    expect(takeOverTarget(people, shared)).toBeNull();
+    const result = takeOverCollaboratorOps(USER, people, shared, [W1], { assignedTaskIds: [TASK], participations: [{ id: pRow, taskId: T2 }], targetParticipantTaskIds: [] }, at);
+    const id = collaboratorId(USER, 'Ewa Kot');
+    expect(result).toEqual({
+      ok: true,
+      collaboratorId: id,
+      created: true,
+      ops: [
+        { table: 'collaborators', id, patch: { scope_id: USER, name: 'Ewa Kot', acronym: 'EK', color: '#DC2626', archived_at: null, workspace_ids: [W1], deleted_at: null } },
+        { table: 'tasks', id: TASK, patch: { assignee_id: id } },
+        { table: 'task_participants', id: pRow, patch: { deleted_at: at } },
+        { table: 'task_participants', id: participantId(T2, id), patch: { task_id: T2, collaborator_id: id, deleted_at: null } },
+      ],
+      undo: [
+        { table: 'task_participants', id: participantId(T2, id), patch: { deleted_at: at } },
+        { table: 'task_participants', id: pRow, patch: { deleted_at: null } },
+        { table: 'tasks', id: TASK, patch: { assignee_id: ewa } },
+        { table: 'collaborators', id, patch: { deleted_at: at } },
+      ],
+    });
+  });
+
+  it('przejęcie duplikatu: własny wpis o tej nazwie, bez drugiego uczestnictwa; przestrzeń dopisana do jego listy', () => {
+    const at = '2026-11-27T08:00:00.000Z';
+    const own: Collaborator = { ...anna, workspaceIds: [W2] };
+    const copy: Collaborator = { id: 'e0000000-0000-4000-8000-000000000009', name: 'anna nowak', email: null, shared: true, workspaceIds: [W1] };
+    const result = takeOverCollaboratorOps(USER, [own, lukasz], copy, [W1], { assignedTaskIds: [], participations: [{ id: 'p1', taskId: TASK }], targetParticipantTaskIds: [TASK] }, at);
+    expect(result).toMatchObject({ ok: true, collaboratorId: anna.id, created: false });
+    expect(result.ok && result.ops).toEqual([
+      { table: 'collaborators', id: anna.id, patch: { workspace_ids: [W2, W1] } },
+      { table: 'task_participants', id: 'p1', patch: { deleted_at: at } },
+    ]);
+    expect(result.ok && result.undo).toEqual([
+      { table: 'task_participants', id: 'p1', patch: { deleted_at: null } },
+      { table: 'collaborators', id: anna.id, patch: { workspace_ids: [W2] } },
+    ]);
+    // Własny wpis widoczny wszędzie — bez zmiany listy przestrzeni.
+    expect(takeOverCollaboratorOps(USER, people, copy, [W1], { assignedTaskIds: [], participations: [], targetParticipantTaskIds: [] }, at)).toMatchObject({ ops: [], undo: [] });
+  });
 
   it('kopie łączą się z własnymi: jedna osoba, przestrzenie użycia, własny wpis wygrywa', () => {
     const all = withSharedCollaborators(people, copies);
