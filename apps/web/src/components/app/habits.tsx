@@ -271,23 +271,26 @@ export function HabitsView({ data, ctx, targetInbox, navigate }: { data: AppData
           <h1 className="text-xl font-semibold">Cykliczne</h1>
           <p className="text-sm text-[var(--muted)]">{HABITS_VIEW_NOTE}</p>
         </div>
-        <Button kind="primary" onClick={() => setAdding((a) => !a)} aria-expanded={adding}>
-          + Dodaj nawyk
-        </Button>
       </header>
-      {adding ? (
-        <Card className="mb-4">
-          <HabitEditor task={null} defaultListId={targetInbox?.id} onDone={(id) => (setAdding(false), id ? navigate({ view: "habit", id }) : undefined)} />
-        </Card>
-      ) : null}
       <FilterBar query={filter} onChange={setFilter} hide={HIDDEN_FILTERS} />
       <section className="mt-4" aria-label="Nawyki">
-        <h2 className="border-b border-[var(--line)] pb-1 text-sm font-semibold">
-          Nawyki <span className="text-xs font-normal text-[var(--muted)]">{open.length || ""}</span>
-        </h2>
+        {/* „Dodaj nawyk” przy sekcji nawyków — nagłówek widoku obejmuje też zwykłe zadania z powtarzaniem. */}
+        <div className="flex items-end gap-3 border-b border-[var(--line)] pb-1">
+          <h2 className="min-w-0 flex-1 text-sm font-semibold">
+            Nawyki <span className="text-xs font-normal text-[var(--muted)]">{open.length || ""}</span>
+          </h2>
+          <Button kind="primary" className="px-2.5 py-1 text-xs" onClick={() => setAdding((a) => !a)} aria-expanded={adding}>
+            + Dodaj nawyk
+          </Button>
+        </div>
         <p className="pt-1 text-xs text-[var(--muted)]">
           {open.length ? `${plural(today.length, ["nawyk", "nawyki", "nawyków"])} na dziś · ${left ? `${left} do zrobienia` : "wszystko zrobione"}` : "Codzienne i tygodniowe nawyki z passą i statystykami."}
         </p>
+        {adding ? (
+          <Card className="my-3">
+            <HabitEditor task={null} defaultListId={targetInbox?.id} onDone={(id) => (setAdding(false), id ? navigate({ view: "habit", id }) : undefined)} />
+          </Card>
+        ) : null}
         {open.length ? (
           <ul className="divide-y divide-[var(--line)]">
             {open.map((t) => (
