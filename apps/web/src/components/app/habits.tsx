@@ -15,6 +15,7 @@ import {
   deleteTaskOps,
   describeHabit,
   HABIT_BACKFILL_DAYS,
+  HABIT_CONVERT,
   HABIT_RATE_WINDOWS,
   habitDayStatus,
   habitDraft,
@@ -25,6 +26,8 @@ import {
   habitSaveOps,
   habitsForDay,
   habitStats,
+  habitToSeriesOps,
+  habitToSeriesProblem,
   habitWeeks,
   habitYear,
   habitYearRange,
@@ -342,6 +345,7 @@ function HabitRow({ task, data, today, navigate }: { task: ViewTask; data: AppDa
 
 export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: AppData; ctx: ViewContext; navigate: (route: Route) => void }) {
   const { run } = useTaskActions();
+  const { openTask } = useAppEnv();
   const [editing, setEditing] = useState(false);
   const [shownYear, setShownYear] = useState<number | null>(null);
   const task = data.tasks.find((t) => t.id === id && t.kind === "habit");
@@ -379,6 +383,14 @@ export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: App
     void run(ops, { text: `„${task.title}” w koszu`, undo: ops.map((op) => ({ ...op, patch: { deleted_at: null } })) });
     navigate({ view: "habits" });
   };
+  // Cykliczne z passą → zwykła seria (panel zadania); powód odmowy w podpowiedzi przycisku.
+  const toSeriesProblem = habitToSeriesProblem(task);
+  const toSeries = () => {
+    const result = habitToSeriesOps(task, completions, today);
+    void run(result.ops, { text: result.message, undo: result.undo });
+    navigate({ view: "habits" });
+    openTask(task.id);
+  };
 
   return (
     <>
@@ -401,6 +413,9 @@ export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: App
             Edytuj
           </Button>
           {open ? <Button onClick={end}>Zakończ</Button> : <Button onClick={() => void run([{ table: "tasks", id: task.id, patch: reopenTaskPatch() }], { text: `„${task.title}” — wznowiony` })}>Wznów</Button>}
+          <Button onClick={toSeries} disabled={Boolean(toSeriesProblem)} title={toSeriesProblem ?? "Zostaje reguła i historia wykonań; znikają passa, statystyki i cel ilościowy"}>
+            {HABIT_CONVERT.toSeries}
+          </Button>
           <Button kind="danger" onClick={remove}>
             Usuń
           </Button>

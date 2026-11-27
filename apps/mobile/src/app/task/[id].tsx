@@ -42,6 +42,7 @@ import {
   descendants,
   describeRecurrence,
   endSeriesOps,
+  HABIT_CONVERT,
   formatMinutes,
   isOpen,
   derivedLinks,
@@ -62,6 +63,8 @@ import {
   readableColor,
   responsibleAccount,
   shortDate,
+  seriesToHabitOps,
+  seriesToHabitProblem,
   skipOccurrenceOps,
   TASK_STATUS,
   taskLinks,
@@ -83,7 +86,7 @@ import {
 } from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { confirm, useTaskActions } from '@/components/actions';
 import { BreakdownField } from '@/components/ai-breakdown';
@@ -474,6 +477,15 @@ function RecurrenceField({ task, data, today, timeZone, onSave }: { task: ViewTa
     const result = endSeriesOps(task, new Date());
     void run(result.ops, { text: `Zakończono serię „${task.title}”`, undo: result.undo });
   };
+  // Zwykła seria → cykliczne z passą (ekran nawyku); przy odmowie — powód.
+  const toHabit = () => {
+    const subtasks = descendants(data.tasks, task.id).length;
+    const problem = seriesToHabitProblem(task, { subtasks });
+    if (problem) return Alert.alert(HABIT_CONVERT.toHabit, problem);
+    const result = seriesToHabitOps(task, { subtasks });
+    void run(result.ops, { text: result.message, undo: result.undo });
+    router.replace({ pathname: '/habit/[id]', params: { id: task.id } });
+  };
   return (
     <Block title="Powtarzanie">
       {editing ? (
@@ -490,6 +502,7 @@ function RecurrenceField({ task, data, today, timeZone, onSave }: { task: ViewTa
               <View style={styles.pills}>
                 <Pill label="Pomiń to wystąpienie" onPress={skip} />
                 <Pill label="Zakończ serię" color={p.bad} onPress={() => void end()} />
+                <Pill label={HABIT_CONVERT.toHabit} onPress={toHabit} />
               </View>
               <Text style={{ color: p.muted, fontSize: 12 }}>Zmiana terminu wyżej przesuwa tylko to wystąpienie.</Text>
             </>

@@ -39,6 +39,7 @@ import {
   deleteTaskOps,
   descendants,
   endSeriesOps,
+  HABIT_CONVERT,
   describeRecurrence,
   formatMinutes,
   isOpen,
@@ -57,6 +58,8 @@ import {
   removeDependencyOps,
   reparentTaskOps,
   shortDate,
+  seriesToHabitOps,
+  seriesToHabitProblem,
   skipOccurrenceOps,
   TASK_STATUS,
   taskLinks,
@@ -97,6 +100,7 @@ import { useDependencies } from "@/lib/dependencies";
 import { useLocalQuery } from "@/lib/local-store";
 import { usePlugins } from "@/lib/plugins";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { useRoute } from "@/lib/route";
 import { useReminderRules, useTaskComments, useTaskDescription, useTaskReminders } from "@/lib/task-details";
 import { useTrash } from "@/lib/trash";
 
@@ -1117,8 +1121,9 @@ function TitleField({ value, onSave }: { value: string; onSave: (title: string) 
 }
 
 function RecurrenceField({ task, onSave, timeZone, today }: { task: ViewTask; onSave: (patch: Record<string, unknown>) => void; timeZone?: string; today: LocalDate }) {
-  const { data } = useAppEnv();
+  const { data, openTask } = useAppEnv();
   const { run } = useTaskActions();
+  const [, navigate] = useRoute();
   const [editing, setEditing] = useState(false);
   const anchor = task.dueDate ?? today;
   const save = (recurrence: Recurrence) => {
@@ -1137,6 +1142,15 @@ function RecurrenceField({ task, onSave, timeZone, today }: { task: ViewTask; on
     if (!window.confirm(`Zakończyć serię „${task.title}”? Kolejne wystąpienia nie powstaną.`)) return;
     const result = endSeriesOps(task, new Date());
     void run(result.ops, { text: `Zakończono serię „${task.title}”`, undo: result.undo });
+  };
+  // Zwykła seria → cykliczne z passą (ekran nawyku); powód odmowy w podpowiedzi przycisku.
+  const subtasks = descendants(data.tasks, task.id).length;
+  const toHabitProblem = task.recurrence ? seriesToHabitProblem(task, { subtasks }) : null;
+  const toHabit = () => {
+    const result = seriesToHabitOps(task, { subtasks });
+    void run(result.ops, { text: result.message, undo: result.undo });
+    openTask(null);
+    navigate({ view: "habit", id: task.id });
   };
   return (
     <Block title="Powtarzanie">
@@ -1162,6 +1176,9 @@ function RecurrenceField({ task, onSave, timeZone, today }: { task: ViewTask; on
               </Button>
               <Button kind="ghost" onClick={end}>
                 Zakończ serię
+              </Button>
+              <Button kind="ghost" onClick={toHabit} disabled={Boolean(toHabitProblem)} title={toHabitProblem ?? "Passa, statystyki i odhaczanie dni — historia wykonań zostaje"}>
+                {HABIT_CONVERT.toHabit}
               </Button>
               <span className="text-xs text-[var(--muted)]">Zmiana terminu wyżej przesuwa tylko to wystąpienie.</span>
             </div>

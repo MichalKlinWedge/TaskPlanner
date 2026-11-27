@@ -9,8 +9,11 @@ import {
   deleteTaskOps,
   describeHabit,
   HABIT_BACKFILL_DAYS,
+  HABIT_CONVERT,
   HABIT_RATE_WINDOWS,
   habitStats,
+  habitToSeriesOps,
+  habitToSeriesProblem,
   habitWeeks,
   habitYear,
   habitYearRange,
@@ -29,7 +32,7 @@ import {
 } from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useRef, useState, type ComponentRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { confirm, useTaskActions } from '@/components/actions';
 import { completionsOf, HabitDayStrip, pct, STATE_LABEL, STREAK_UNIT, useStateColors } from '@/components/habits';
@@ -94,6 +97,14 @@ export default function HabitScreen() {
     void run(ops, { text: `„${task.title}” w koszu`, undo: ops.map((op) => ({ ...op, patch: { deleted_at: null } })) });
     router.back();
   };
+  // Cykliczne z passą → zwykła seria (ekran zadania); przy odmowie — powód.
+  const toSeries = () => {
+    const problem = habitToSeriesProblem(task);
+    if (problem) return Alert.alert(HABIT_CONVERT.toSeries, problem);
+    const result = habitToSeriesOps(task, completions, today);
+    void run(result.ops, { text: result.message, undo: result.undo });
+    router.replace({ pathname: '/task/[id]', params: { id: task.id } });
+  };
 
   return (
     <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.body}>
@@ -111,6 +122,9 @@ export default function HabitScreen() {
           <Button kind="secondary" title="Wznów" onPress={() => void run([{ table: 'tasks', id: task.id, patch: reopenTaskPatch() }], { text: `„${task.title}” — wznowiony` })} />
         )}
         <Button kind="danger" title="Usuń" onPress={() => void remove()} />
+      </Row>
+      <Row>
+        <Button kind="secondary" title={HABIT_CONVERT.toSeries} onPress={toSeries} />
       </Row>
 
       <View style={styles.stats}>

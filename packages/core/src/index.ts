@@ -22,6 +22,7 @@ export * from './dependencies.ts';
 export * from './errors.ts';
 export * from './focus.ts';
 export * from './format.ts';
+export * from './habit-convert.ts';
 export * from './habits.ts';
 export * from './home.ts';
 export * from './hlc.ts';
