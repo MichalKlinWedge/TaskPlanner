@@ -145,6 +145,14 @@ export function selectInbox(tasks: readonly ViewTask[], inboxListIds: ReadonlySe
   return tasks.filter((t) => t.kind === 'task' && isOpen(t) && inboxListIds.has(t.listId) && inWorkspace(ctx)(t)).sort(byManual);
 }
 
+/**
+ * Otwarte zadania z powtarzaniem (seria, nie nawyk) dla sekcji „Zadania z powtarzaniem” w „Cykliczne”:
+ * według najbliższego wystąpienia (`due_date` serii), bez terminu na końcu.
+ */
+export function selectSeries(tasks: readonly ViewTask[], ctx: ViewContext): ViewTask[] {
+  return tasks.filter((t) => t.kind === 'task' && t.recurrence !== null && isOpen(t) && inWorkspace(ctx)(t)).sort(COMPARE.due);
+}
+
 /** Czy nawyk ma dziś okres do odhaczenia: wystąpienie reguły albo trwająca seria z celem „N razy”. */
 export function habitDueOn(task: Pick<ViewTask, 'recurrence' | 'habit'>, date: LocalDate): boolean {
   const rec = task.recurrence;

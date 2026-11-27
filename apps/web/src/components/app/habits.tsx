@@ -41,6 +41,7 @@ import {
   REMINDER_PRESETS,
   reminderOffset,
   reopenTaskPatch,
+  selectSeries,
   shortDate,
   toHabit,
   WEEKDAY,
@@ -71,7 +72,7 @@ import { useRoute, type Route } from "@/lib/route";
 
 import { lastSortKey, useAppEnv } from "./app-env";
 import { FilterBar, type Field as FilterField } from "./filter-bar";
-import { useTaskActions } from "./task-item";
+import { TaskItem, useTaskActions } from "./task-item";
 import { Button, Card, Field, Input, navLinkClass, Select } from "./ui";
 
 const EMPTY: readonly HabitCompletion[] = [];
@@ -249,6 +250,9 @@ export function HabitsView({ data, ctx, targetInbox, navigate }: { data: AppData
   const tasks = useMemo(() => (isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, ctx.today)), [data.tasks, filter, ctx.today]);
   const habits = useMemo(() => tasks.filter((t) => t.kind === "habit" && (!ctx.workspaceId || t.workspaceId === ctx.workspaceId)).sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1)), [tasks, ctx.workspaceId]);
   const today = useMemo(() => habitsForDay(tasks, data.habitCompletions, ctx.today, ctx.today, ctx.workspaceId), [tasks, data.habitCompletions, ctx.today, ctx.workspaceId]);
+  // Zwykłe zadania z powtarzaniem (seria) — bez passy i statystyk, ale też „cykliczne” dla użytkownika.
+  const series = useMemo(() => selectSeries(tasks, ctx), [tasks, ctx]);
+  const listName = useMemo(() => new Map(data.lists.map((l) => [l.id, l.name])), [data.lists]);
   const open = habits.filter(isOpen);
   const closed = habits.filter((t) => !isOpen(t));
   const left = today.filter((h) => !h.settled).length;
@@ -280,7 +284,22 @@ export function HabitsView({ data, ctx, targetInbox, navigate }: { data: AppData
       ) : filtered ? (
         <p className="py-6 text-center text-sm text-[var(--muted)]">Żadne otwarte zadanie cykliczne nie pasuje do filtra.</p>
       ) : !adding ? (
-        <p className="py-6 text-center text-sm text-[var(--muted)]">Nie masz jeszcze zadań cyklicznych. Dodaj pierwsze — np. „Woda 8 szklanek” albo „Siłownia 3 razy w tygodniu”.</p>
+        <p className="py-6 text-center text-sm text-[var(--muted)]">
+          {series.length ? "Nie masz jeszcze zadań cyklicznych z passą." : "Nie masz jeszcze zadań cyklicznych."} Dodaj pierwsze — np. „Woda 8 szklanek” albo „Siłownia 3 razy w tygodniu”.
+        </p>
+      ) : null}
+      {series.length ? (
+        <section className="mt-6" aria-label="Zadania z powtarzaniem">
+          <h2 className="border-b border-[var(--line)] pb-1 text-sm font-semibold">
+            Zadania z powtarzaniem <span className="text-xs font-normal text-[var(--muted)]">{series.length}</span>
+          </h2>
+          <p className="pt-1 text-xs text-[var(--muted)]">Zwykłe zadania z regułą powtarzania, bez passy i statystyk. Data to najbliższe wystąpienie.</p>
+          <ul className="divide-y divide-[var(--line)]">
+            {series.map((t) => (
+              <TaskItem key={t.id} task={t} today={ctx.today} listName={listName.get(t.listId)} />
+            ))}
+          </ul>
+        </section>
       ) : null}
       {closed.length ? (
         <section className="mt-6">

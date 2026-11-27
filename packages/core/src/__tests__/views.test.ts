@@ -20,6 +20,7 @@ import {
   selectFiltered,
   selectInbox,
   selectOverdue,
+  selectSeries,
   selectToday,
   selectUpcoming,
   sortTasks,
@@ -211,6 +212,23 @@ describe('Inbox', () => {
     ];
     expect(ids(selectInbox(tasks, new Set([INBOX]), ctx))).toEqual(['i1', 'i2', 'i-other-ws']);
     expect(ids(selectInbox(tasks, new Set([INBOX]), { ...ctx, workspaceId: W1 }))).toEqual(['i1', 'i2']);
+  });
+});
+
+describe('Zadania z powtarzaniem', () => {
+  it('otwarte serie bez nawyków, według najbliższego wystąpienia', () => {
+    const rule = { mode: 'schedule', rrule: 'FREQ=MONTHLY;BYMONTHDAY=-1', anchor: '2026-10-31' } as const;
+    const tasks = [
+      task({ id: 's-late', recurrence: rule, dueDate: '2026-11-30' }),
+      task({ id: 's-soon', recurrence: rule, dueDate: '2026-11-20', dueTime: '10:00' }),
+      task({ id: 's-nodate', recurrence: rule }),
+      task({ id: 's-done', recurrence: rule, dueDate: '2026-11-19', status: 'done' }),
+      task({ id: 'habit', kind: 'habit', recurrence: rule }),
+      task({ id: 'plain', dueDate: '2026-11-19' }),
+      task({ id: 's-other-ws', recurrence: rule, dueDate: '2026-11-25', workspaceId: W2 }),
+    ];
+    expect(ids(selectSeries(tasks, ctx))).toEqual(['s-soon', 's-other-ws', 's-late', 's-nodate']);
+    expect(ids(selectSeries(tasks, { ...ctx, workspaceId: W1 }))).toEqual(['s-soon', 's-late', 's-nodate']);
   });
 });
 
