@@ -11,6 +11,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { TaskActionsProvider, useTaskActions } from '@/components/actions';
 import { NotificationToasts, openNotificationRoute } from '@/components/notifications';
 import { PickerHost } from '@/components/pickers';
+import { ReminderPopup } from '@/components/reminder-popup';
 import { Button, usePalette } from '@/components/ui';
 
 import { handleAlarmActions } from '@/lib/alarm-actions';
@@ -269,6 +270,7 @@ export default function RootLayout() {
           <BackgroundWork />
           <NotificationTap />
           <NotificationToasts />
+          <ReminderPopup />
           <InviteLink />
           {/* Systemowy pasek nawigacji schowany; przesunięcie od dolnej krawędzi pokazuje go na chwilę. */}
           <NavigationBar hidden />

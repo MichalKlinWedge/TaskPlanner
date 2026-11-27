@@ -15,6 +15,7 @@ import {
   notificationKindsOf,
   notificationSeenKey,
   notificationText,
+  REMINDER_DISPLAY,
   unreadCount,
   toggleMuted,
   visibleNotifications,
@@ -22,6 +23,7 @@ import {
   type AutoReminderMode,
   type NotificationChannel,
   type NotificationPrefs,
+  type ReminderDisplay,
   type ServerNotificationKind,
 } from '@taskplanner/core';
 import { router } from 'expo-router';
@@ -177,6 +179,23 @@ export function NotificationsSection() {
           </View>
         );
       })}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${NOTIFICATION_GROUP_LABEL.reminders.title}: ${REMINDER_DISPLAY[prefs.reminders]}. Zmień`}
+        onPress={() =>
+          void pickOption<ReminderDisplay>(
+            NOTIFICATION_GROUP_LABEL.reminders.title,
+            (['app', 'popup', 'off'] as const).map((v) => ({ label: REMINDER_DISPLAY[v], value: v, selected: prefs.reminders === v })),
+          ).then((v) => v && v !== prefs.reminders && save({ reminders: v }))
+        }
+        style={[styles.row, { borderColor: p.border }]}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: p.fg, fontWeight: '600' }}>{NOTIFICATION_GROUP_LABEL.reminders.title}</Text>
+          <Text style={{ color: p.muted, fontSize: 12 }}>{NOTIFICATION_GROUP_LABEL.reminders.hint}</Text>
+        </View>
+        <Text style={{ color: p.accent, flexShrink: 1, textAlign: 'right' }}>{REMINDER_DISPLAY[prefs.reminders]}</Text>
+      </Pressable>
       <Text style={{ color: p.fg, fontWeight: '600', marginTop: 10 }}>Zadania, które śledzę</Text>
       <Text style={{ color: p.muted, fontSize: 12 }}>
         Poza zadaniami, za które odpowiadasz: ukończenie i zmiana terminu przez kogoś innego oraz automatyczne przypomnienie. Komentarze przychodzą zawsze.

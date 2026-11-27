@@ -67,6 +67,14 @@ const subscribeBell = (listener: () => void) => {
   };
 };
 
+/** Stan przypomnień w dzwonku tego telefonu (okno na środku ekranu czyta z niego `popped`). */
+export const useReminderBellState = (): ReminderBellState => useSyncExternalStore(subscribeBell, bellState);
+
+/** Zamknięcie okna przypomnienia bez decyzji: wpis zostaje w dzwonku (nieprzeczytany), okno nie wraca. */
+export function closeBellPopups(list: readonly AppNotification[]) {
+  setBell(reminderBellUpdate(bellState(), list, 'popped'));
+}
+
 // ── Wpisy ────────────────────────────────────────────────────────────────────────────────────
 
 type Sources = { data: AppData; tasks: ReminderTask[]; byId: Map<string, ReminderTask>; rules: ReminderRule[] };
