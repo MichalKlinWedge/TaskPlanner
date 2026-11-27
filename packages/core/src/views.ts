@@ -29,6 +29,8 @@ export interface ViewTask {
   dueDate: LocalDate | null;
   dueTime: LocalTime | null;
   durationMin: number | null;
+  /** Czy zadanie ma niepusty opis (kolumna „Opis”); brak = nie wiadomo / nie. */
+  hasDescription?: boolean;
   recurrence: Recurrence | null;
   habit: HabitSettings | null;
   /** `timestamptz` (ISO). */

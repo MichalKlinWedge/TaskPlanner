@@ -527,7 +527,7 @@ const toggleId = (current: readonly string[] | undefined, id: string, on: boolea
 const orNone = <T,>(values: T[]): T[] | undefined => (values.length ? values : undefined);
 
 /**
- * „Kolumny”: dodatkowe kolumny listy (odpowiedzialny, początek, koniec, tagi — `view_prefs.columns`);
+ * „Kolumny”: dodatkowe kolumny listy (początek, koniec, czas, opis, załączniki, tagi — `view_prefs.columns`);
  * przy „Tagi” wybór tagów pokazywanych w kolumnie (`view_prefs.columnTags`, żaden = wszystkie).
  */
 function ColumnsPicker({

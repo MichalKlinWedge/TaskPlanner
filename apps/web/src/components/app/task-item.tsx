@@ -4,7 +4,7 @@
  * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
  * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { assigneeOf, columnDate, completeTaskOps, descendants, describeRecurrence, formatMinutes, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, LIST_COLUMN, type ListColumn, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { columnDate, completeTaskOps, descendants, describeRecurrence, formatMinutes, isOpen, localDateAt, needsDecision, openDescendants, plural, PRIORITY, relativeDay, reopenTaskPatch, LIST_COLUMN, type ListColumn, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
@@ -173,7 +173,7 @@ export interface TaskItemProps {
 }
 
 /** Szerokości kolumn — wspólne dla wiersza i nagłówka `TaskColumnsHeader`. */
-const COLUMN_WIDTH: Record<ListColumn, number> = { assignee: 144, start: 96, due: 96, tags: 176 };
+const COLUMN_WIDTH: Record<ListColumn, number> = { start: 96, due: 96, duration: 72, description: 56, attachments: 88, tags: 176 };
 /** Najwęższa kolumna po ściśnięciu (wąskie okno); dalej — suwak poziomy listy. */
 const COLUMN_MIN = 44;
 /** „Zadanie” bez ustawionej szerokości: zajmuje resztę miejsca, ale nie mniej niż tyle (od krawędzi wiersza). */
@@ -286,14 +286,12 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
   const inTrash = trashed?.has(task.id) ?? false;
   const selected = !inTrash && selectedIds.has(task.id);
   const attachments = data.attachments.get(task.id)?.length ?? 0;
-  const assignee = assigneeOf(task.assigneeId, data.collaborators);
   const closed = task.kind === "habit" ? Boolean(habitDone) : !isOpen(task);
   // Przestrzeń albo lista udostępniona do podglądu, zadanie w koszu: da się otworzyć, ale nie odhaczyć.
   const readOnly = inTrash || !listEditable(data, task.listId);
   const date = virtualDate ?? task.dueDate;
   const overdue = !virtualDate && !closed && task.dueDate !== null && task.dueDate < today;
   const color = PRIORITY[task.priority]?.color ?? PRIORITY[4].color;
-  // Kolumna „Koniec” / „Odpowiedzialny” zastępuje to samo w szarym wierszu pod tytułem.
   const onOpen = (e: MouseEvent) => {
     // Zadań z kosza nie zaznacza się do operacji grupowych.
     if (inTrash) return openTask(task.id);
@@ -303,7 +301,9 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
     select(task.id);
     openTask(task.id);
   };
+  // Kolumna „Koniec” / „Załączniki” zastępuje to samo w szarym wierszu pod tytułem.
   const dueColumn = columns.includes("due");
+  const attachmentsColumn = columns.includes("attachments");
   // Tagi: w kolumnie „Tagi” (wybrane), a bez niej — w szarym wierszu pod tytułem.
   const tagsColumn = columns.includes("tags");
   const tags = task.tagIds.filter((id) => !tagsColumn || !columnTags || columnTags.has(id)).flatMap((id) => data.tags.find((t) => t.id === id) ?? []);
@@ -384,7 +384,7 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
             </span>
           ) : null}
           {task.status === "in_progress" || task.status === "waiting" ? <span>{task.status === "in_progress" ? "w trakcie" : "oczekuje"}</span> : null}
-          {attachments ? <span title={`Załączniki: ${attachments}`}>📎 {attachments}</span> : null}
+          {attachments && !attachmentsColumn ? <span title={`Załączniki: ${attachments}`}>📎 {attachments}</span> : null}
           {listName ? <span className="truncate">{listName}</span> : null}
           {tagsColumn ? null : <TagChips tags={tags} />}
         </span>
@@ -447,13 +447,19 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
       </div>
       {columns.map((c) => (
         <span key={c} className={`mt-0.5 text-xs ${c === "tags" ? "" : "truncate"} ${closed ? "opacity-50" : ""}`} style={columnStyle(c, widths)} data-column={c}>
-          {c === "assignee" ? (
-            assignee ? (
-              <span title={`Odpowiedzialny: ${assignee.name}`}>{assignee.name}</span>
-            ) : (
-              <span className="text-[var(--muted)]" title="Nikt nie jest wskazany — odpowiada twórca zadania">
-                —
+          {c === "description" ? (
+            task.hasDescription ? (
+              <span title="Zadanie ma opis" aria-label="Ma opis" data-testid="has-description">
+                📝
               </span>
+            ) : null
+          ) : c === "attachments" ? (
+            attachments ? <span title={`Załączniki: ${attachments}`}>📎 {attachments}</span> : null
+          ) : c === "duration" ? (
+            task.durationMin ? (
+              <span title="Szacowany czas">{formatMinutes(task.durationMin)}</span>
+            ) : (
+              <span className="text-[var(--muted)]">—</span>
             )
           ) : c === "tags" ? (
             tags.length ? (

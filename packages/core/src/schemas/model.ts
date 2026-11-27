@@ -70,9 +70,21 @@ export type CanvasGroup = z.infer<typeof CanvasGroup>;
 /** Grupy karteczek listy; `null` = brak. */
 export const CanvasGroups = z.array(CanvasGroup).max(100);
 
-/** Dodatkowa kolumna widoku listy (v1.x): odpowiedzialny, początek, koniec (termin), tagi. */
-export const ListColumn = z.enum(['assignee', 'start', 'due', 'tags']);
+/** Dodatkowa kolumna widoku listy (v1.x): początek, koniec (termin), czas, opis (jest / brak), załączniki, tagi. */
+export const ListColumn = z.enum(['start', 'due', 'duration', 'description', 'attachments', 'tags']);
 export type ListColumn = z.infer<typeof ListColumn>;
+
+/**
+ * Zapisane kolumny: nieznane (dawne `assignee`, z nowszej wersji aplikacji) pomijane po jednej;
+ * nic znanego = brak kolumn.
+ */
+const ListColumns = z
+  .array(z.string())
+  .max(20)
+  .transform((columns): ListColumn[] | undefined => {
+    const known = columns.filter((c): c is ListColumn => ListColumn.safeParse(c).success);
+    return known.length ? known : undefined;
+  });
 
 /** Zadania na „Karteczkach”: `top` = tylko główne (bez podzadań), `all` = wszystkie zadania listy. */
 export const CanvasTasks = z.enum(['top', 'all']);
@@ -90,7 +102,7 @@ export const ViewPrefs = z.object({
   /** Filtr z chipów „+ Filtr” zapamiętany dla listy; uszkodzony nie psuje reszty ustawień. */
   filter: FilterQuery.optional().catch(undefined),
   /** Kolumny pokazane w widoku listy (kolejność stała: `LIST_COLUMN`); uszkodzone pomijane. */
-  columns: z.array(ListColumn).max(4).optional().catch(undefined),
+  columns: ListColumns.optional().catch(undefined),
   /** Tagi pokazywane w kolumnie „Tagi” (id); brak / pusto = wszystkie tagi zadania. */
   columnTags: z.array(Id).max(50).optional().catch(undefined),
   /** „Karteczki”: tylko główne zadania (brak = `top`) albo wszystkie z podzadaniami; nieznana wartość pomijana. */

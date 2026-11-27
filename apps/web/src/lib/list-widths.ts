@@ -1,6 +1,6 @@
 /**
  * Szerokości kolumn widoku listy ustawiane przeciąganiem w nagłówku (`TaskColumnsHeader`).
- * Zależą od ekranu, więc są per urządzenie: `localStorage` `tp-list-widths` = { [listId]: { title?, assignee?, … } } w px.
+ * Zależą od ekranu, więc są per urządzenie: `localStorage` `tp-list-widths` = { [listId]: { title?, due?, … } } w px.
  * `title` = cały obszar zadania (zwijanie, odhaczenie, tytuł) od lewej krawędzi wiersza do pierwszej kolumny.
  */
 import type { ListColumn } from "@taskplanner/core";
@@ -10,7 +10,7 @@ export type WidthColumn = ListColumn | "title";
 export type ColumnWidths = Partial<Record<WidthColumn, number>>;
 
 const KEY = "tp-list-widths";
-export const MIN_WIDTH: Record<WidthColumn, number> = { title: 160, assignee: 48, start: 48, due: 48, tags: 48 };
+export const MIN_WIDTH: Record<WidthColumn, number> = { title: 160, start: 48, due: 48, duration: 40, description: 32, attachments: 40, tags: 48 };
 export const MAX_WIDTH = 1200;
 
 function readAll(): Record<string, ColumnWidths> {

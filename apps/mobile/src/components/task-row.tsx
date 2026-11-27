@@ -92,7 +92,7 @@ export function Highlighted({ text, ranges }: { text: string; ranges: readonly (
 }
 
 /** Szerokości kolumn — wspólne dla wiersza i nagłówka `TaskColumnsHeader`. */
-const COLUMN_WIDTH: Record<ListColumn, number> = { assignee: 72, start: 50, due: 56, tags: 80 };
+const COLUMN_WIDTH: Record<ListColumn, number> = { start: 50, due: 56, duration: 48, description: 36, attachments: 64, tags: 80 };
 /** Najmniejsza szerokość tytułu obok kolumn — węższy ekran przewija listę w poziomie. */
 const TITLE_MIN = 180;
 
@@ -168,9 +168,9 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
     .flatMap((id) => assigneeOf(id, data.collaborators) ?? [])
     .slice(0, assignee ? 3 : 4);
 
-  // Kolumna „Koniec” / „Odpowiedzialny” zastępuje to samo w szarym wierszu pod tytułem.
+  // Kolumna „Koniec” / „Załączniki” zastępuje to samo w szarym wierszu pod tytułem.
   const dueColumn = !!columns?.includes('due');
-  const assigneeColumn = !!columns?.includes('assignee');
+  const attachmentsColumn = !!columns?.includes('attachments');
 
   const meta = [
     showDate && date && !dueColumn ? { text: relativeDay(date, today), bad: overdue } : null,
@@ -179,9 +179,9 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
     needsDecision(task) && !closed ? { text: `⇥ ${task.postponeCount}×` } : null,
     progress && progress.total > 0 ? { text: `☑ ${progress.done}/${progress.total}` } : null,
     task.status === 'in_progress' ? { text: 'w trakcie' } : task.status === 'waiting' ? { text: 'oczekuje' } : null,
-    attachments ? { text: `📎 ${attachments}` } : null,
+    attachments && !attachmentsColumn ? { text: `📎 ${attachments}` } : null,
     listName ? { text: listName } : null,
-    assignee && !assigneeColumn ? { text: `👤 ${collaboratorBadge(assignee)}`, people: [assignee], strong: true } : null,
+    assignee ? { text: `👤 ${collaboratorBadge(assignee)}`, people: [assignee], strong: true } : null,
     participants.length ? { text: `👥 ${participants.map(collaboratorBadge).join(' ')}`, people: participants } : null,
     ...(columns?.includes('tags') ? [] : (tagNames ?? [])).map((t) => ({ text: `@${t}` })),
   ].filter(Boolean) as { text: string; bad?: boolean; people?: typeof participants; strong?: boolean }[];
@@ -303,7 +303,20 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
           );
         // Sekcja „Dziś” (`showDate` false): dzisiejsza data jest oczywista, wystarczy godzina.
         const timeOnly = c === 'due' && !showDate && date === today && !!task.dueTime;
-        const value = c === 'assignee' ? (assignee?.name ?? null) : c === 'start' ? (task.startDate ? columnDate(task.startDate, today) : null) : timeOnly ? task.dueTime : date ? columnDate(date, today) : null;
+        // Opis i załączniki to znaczniki: bez nich pusta komórka zamiast „—”.
+        if (c === 'description' || c === 'attachments') {
+          const flag = c === 'description' ? (task.hasDescription ? '📝' : null) : attachments ? `📎 ${attachments}` : null;
+          return (
+            <View key={c} style={{ width: COLUMN_WIDTH[c], paddingTop: 2, opacity: closed ? 0.5 : 1 }}>
+              {flag ? (
+                <Text style={[styles.column, { color: p.fg }]} numberOfLines={1} accessibilityLabel={c === 'description' ? 'Ma opis' : `Załączniki: ${attachments}`}>
+                  {flag}
+                </Text>
+              ) : null}
+            </View>
+          );
+        }
+        const value = c === 'duration' ? (task.durationMin ? formatMinutes(task.durationMin) : null) : c === 'start' ? (task.startDate ? columnDate(task.startDate, today) : null) : timeOnly ? task.dueTime : date ? columnDate(date, today) : null;
         return (
           <View key={c} style={{ width: COLUMN_WIDTH[c], paddingTop: 2, opacity: closed ? 0.5 : 1 }}>
             <Text style={[styles.column, { color: value ? (c === 'due' && overdue ? p.bad : p.fg) : p.muted }]} numberOfLines={2}>

@@ -9,10 +9,10 @@ import type { SqlRow, SqlValue } from './local-db.ts';
 
 /**
  * Kolumny wiersza dla `toViewTask` (alias `t`). Z `field_clock` tylko `status`: widoki nie czytają
- * innych zegarów, a cały JSON przy 10 000 zadań to ~5 MB na odczyt.
+ * innych zegarów, a cały JSON przy 10 000 zadań to ~5 MB na odczyt. Z opisu tylko „czy jest” (kolumna „Opis”).
  */
 export const TASK_COLUMNS = `t.id, t.scope_id, t.list_id, t.parent_id, t.kind, t.title, t.status, t.priority, t.start_date, t.due_date, t.due_time,
-  t.duration_min, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count, t.assignee_id, t.board_column_id, t.canvas_pos, t.derived_from,
+  t.duration_min, coalesce(trim(t.description_md), '') <> '' as has_description, t.recurrence, t.habit, t.completed_at, t.created_at, t.sort_key, t.board_sort_key, t.postpone_count, t.assignee_id, t.board_column_id, t.canvas_pos, t.derived_from,
   json_object('status', json_extract(t.field_clock, '$.status')) as field_clock`;
 
 /**

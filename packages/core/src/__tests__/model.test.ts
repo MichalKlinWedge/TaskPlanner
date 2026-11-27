@@ -91,9 +91,12 @@ describe('lista', () => {
     expect(ViewPrefs.parse({ completed: 'hidden', filter: { priorities: [] } })).toEqual({ completed: 'hidden' });
   });
   it('kolumny listy; nieznana kolumna nie kasuje reszty ustawień', () => {
-    expect(ViewPrefs.parse({ columns: ['assignee', 'due'] })).toEqual({ columns: ['assignee', 'due'] });
-    expect(ViewPrefs.parse({ sortBy: 'due', columns: ['kolor'] })).toEqual({ sortBy: 'due' });
-    expect(ViewPrefs.parse({ columns: ['assignee', 'start', 'due', 'tags'] }).columns).toHaveLength(4);
+    expect(ViewPrefs.parse({ columns: ['description', 'due'] })).toEqual({ columns: ['description', 'due'] });
+    // Dawna kolumna „Odpowiedzialny” i nieznane z nowszej wersji odpadają po jednej.
+    expect(ViewPrefs.parse({ columns: ['assignee', 'due', 'kolor'] })).toEqual({ columns: ['due'] });
+    expect(ViewPrefs.parse({ sortBy: 'due', columns: ['kolor'] }).columns).toBeUndefined();
+    expect(ViewPrefs.parse({ sortBy: 'due', columns: 'due' })).toEqual({ sortBy: 'due' });
+    expect(ViewPrefs.parse({ columns: ['start', 'due', 'duration', 'description', 'attachments', 'tags'] }).columns).toHaveLength(6);
     const tag = '01900000-0000-7000-8000-000000000001';
     expect(ViewPrefs.parse({ columns: ['tags'], columnTags: [tag] })).toEqual({ columns: ['tags'], columnTags: [tag] });
     expect(ViewPrefs.parse({ sortBy: 'due', columnTags: ['x'] })).toEqual({ sortBy: 'due' });

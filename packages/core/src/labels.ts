@@ -80,11 +80,16 @@ export const CANVAS_ARRANGE_BY: Record<'color' | 'priority' | 'assignee' | 'stat
   due: 'Terminu',
 };
 
-/** Dodatkowe kolumny widoku listy, w kolejności wyświetlania. */
-export const LIST_COLUMN: Record<'assignee' | 'start' | 'due' | 'tags', string> = {
-  assignee: 'Odpowiedzialny',
+/**
+ * Dodatkowe kolumny widoku listy, w kolejności wyświetlania. Odpowiedzialnego nie ma — jego znaczek stoi
+ * przy tytule (zapisane `assignee` z dawnych ustawień `ViewPrefs` pomija).
+ */
+export const LIST_COLUMN: Record<'start' | 'due' | 'duration' | 'description' | 'attachments' | 'tags', string> = {
   start: 'Początek',
   due: 'Koniec',
+  duration: 'Czas',
+  description: 'Opis',
+  attachments: 'Załączniki',
   tags: 'Tagi',
 };
 

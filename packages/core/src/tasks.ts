@@ -29,6 +29,8 @@ export interface LocalTaskRow {
   due_date: string | null;
   due_time: string | null;
   duration_min: number | null;
+  /** Wyliczane w zapytaniu (`TASK_COLUMNS`): 1 = niepusty `description_md`. */
+  has_description?: number | boolean | null;
   recurrence: unknown;
   habit: unknown;
   completed_at: string | null;
@@ -96,6 +98,7 @@ export function toViewTask(row: LocalTaskRow, tagIds: readonly string[] = []): V
     dueDate: row.due_date as LocalDate | null,
     dueTime: row.due_time as LocalTime | null,
     durationMin: row.duration_min === null ? null : Number(row.duration_min),
+    hasDescription: Boolean(row.has_description),
     recurrence: recurrence?.success ? recurrence.data : null,
     habit: habit?.success ? habit.data : null,
     completedAt: row.completed_at,
