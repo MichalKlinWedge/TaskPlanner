@@ -1,6 +1,6 @@
 # Edge Functions
 
-Funkcje Deno (SPECYFIKACJA §2). Od PoC-6: `calendar-sync`, `inbound-email`, `reminders-push`. Dalej: `link-preview` (Etap 10), `account-delete` (v1.x — usunięcie własnego konta z danymi, plikami i kalendarzami). `plugins` (v1.x, M21 — integracje wychodzące: połączenia z sekretami w Vault, wysyłki z ponowieniami; plugin Webhook; od I2 reguły zdarzeniowe z wyzwalaczy na zadaniach, przebieg w tle przez `EdgeRuntime.waitUntil`; od I3 plugin GitLab — issue powiązane z zadaniem w `plugin_links`).
+Funkcje Deno (SPECYFIKACJA §2). Od PoC-6: `calendar-sync`, `inbound-email`, `reminders-push`. Dalej: `link-preview` (Etap 10), `account-delete` (v1.x — usunięcie własnego konta z danymi, plikami i kalendarzami). `plugins` (v1.x, M21 — integracje wychodzące: połączenia z sekretami w Vault, wysyłki z ponowieniami; plugin Webhook; od I2 reguły zdarzeniowe z wyzwalaczy na zadaniach, przebieg w tle przez `EdgeRuntime.waitUntil`; od I3 plugin GitLab — issue powiązane z zadaniem w `plugin_links`). `inbound-api` (v1.x, M22 — przychodzące API: `PUT` / `GET tasks/<klucz>` tokenem osobistym `tpk_…`, `tokens/create|revoke` z JWT; scalanie w RPC `upsert_integration_task`).
 
 - `_shared/` — wspólny kod. Wszystko poza `runtime.ts` działa bez Deno i ma testy w Node (`tools/edge-tests`).
   Logika z `packages/core` przez import względny (`../../../packages/core/src/….ts`).

@@ -48,6 +48,7 @@ function sourceText(source: unknown, names: ActivityNames): string | null {
     return name ? `reguła integracji „${name}”` : 'reguła integracji';
   }
   if (kind === 'calendar') return 'Kalendarz Google';
+  if (kind === 'api') return 'aplikacja przez token API';
   return kind ? 'integracja' : null;
 }
 

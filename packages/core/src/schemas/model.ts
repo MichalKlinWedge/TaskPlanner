@@ -122,6 +122,13 @@ export const TaskSource = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('email'), from: z.email().optional(), subject: z.string().max(500).optional(), receivedAt: Instant.optional() }),
   z.object({ kind: z.literal('link'), url: z.url(), title: z.string().max(500).optional() }),
   z.object({ kind: z.literal('calendar'), eventId: z.string() }),
+  /** Zadanie z Expedition Plan przez przychodzące API (`inbound-api`, klucz `ep:<tripId>:<ref>`, `docs/INTEGRACJA_TP.md` w EP). */
+  z.object({
+    kind: z.literal('expeditionplan'),
+    tripId: z.string().max(100),
+    ref: z.string().max(200),
+    url: z.url().optional(),
+  }),
 ]);
 export type TaskSource = z.infer<typeof TaskSource>;
 

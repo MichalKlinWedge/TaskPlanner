@@ -6,7 +6,8 @@
  * oraz zmianą zadania po udanej wysyłce (tagi, status), historia wysyłek z „Ponów” (zwijana, 10 ostatnich; całość
  * z filtrami na ekranie `#/deliveries` — `DeliveryLogScreen`). Połączenia zmienia Edge Function `plugins`
  * (online; sekret idzie od razu do Vault i nie da się go potem odczytać), reguły zapisują się lokalnie
- * (offline też), historia jest na serwerze (`plugin_deliveries`, tylko odczyt — wymaga sieci).
+ * (offline też), historia jest na serwerze (`plugin_deliveries`, tylko odczyt — wymaga sieci). Na dole tokeny
+ * przychodzącego API (`ApiTokensSection`).
  */
 import {
   afterSendSummary,
@@ -49,6 +50,7 @@ import { useLocalQuery } from "@/lib/local-store";
 import { createPluginConnection, deletePluginConnection, retryPluginDelivery, testPluginConnection, updatePluginConnection, usePlugins } from "@/lib/plugins";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
+import { ApiTokensSection } from "./api-tokens-section";
 import { useAppEnv } from "./app-env";
 import { FilterBar } from "./filter-bar";
 import { SettingsSection } from "./settings-section";
@@ -101,6 +103,8 @@ export function PluginsCard({ store, userId }: { store: TabStore; userId: string
       <Rules store={store} userId={userId} rules={rules} connections={connections} setMessage={setMessage} />
 
       <DeliveriesSection rules={rules} connections={connections} />
+
+      <ApiTokensSection store={store} />
     </SettingsSection>
   );
 }

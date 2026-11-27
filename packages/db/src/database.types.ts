@@ -53,6 +53,60 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"api_task_links": {
+                  Row: {
+                    "created_at": string,"external_key": string,"pushed": NonNullable<Json>,"task_id": string,"token_id": string | null,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"external_key": string,"pushed": NonNullable<Json>,"task_id": string,"token_id"?: string | null,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"external_key"?: string,"pushed"?: NonNullable<Json>,"task_id"?: string,"token_id"?: string | null,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "api_task_links_token_id_fkey"
+      columns: ["token_id"]
+isOneToOne: false
+      referencedRelation: "api_tokens"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"api_token_usage": {
+                  Row: {
+                    "hits": number,"token_id": string,"window_start": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "hits": number,"token_id": string,"window_start": string
+                  }
+                  Update: {
+                    "hits"?: number,"token_id"?: string,"window_start"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "api_token_usage_token_id_fkey"
+      columns: ["token_id"]
+isOneToOne: true
+      referencedRelation: "api_tokens"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"api_tokens": {
+                  Row: {
+                    "created_at": string,"id": string,"label": string,"last_used_at": string | null,"list_id": string,"revoked_at": string | null,"row_version": number,"token_hash": string,"token_hint": string | null,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"label": string,"last_used_at"?: string | null,"list_id": string,"revoked_at"?: string | null,"row_version"?: number,"token_hash": string,"token_hint"?: string | null,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"label"?: string,"last_used_at"?: string | null,"list_id"?: string,"revoked_at"?: string | null,"row_version"?: number,"token_hash"?: string,"token_hint"?: string | null,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"app_admins": {
                   Row: {
                     "created_at": string,"user_id": string
@@ -1027,6 +1081,18 @@ isOneToOne: false
 "answer_workspace_ownership_offer":
 { Args: { "p_accept": boolean,"p_id": string }; Returns: string
                            },
+"api_task_tags":
+{ Args: { "p_hlc": string,"p_tags": Json,"p_task": string,"p_user": string,"p_was": (string)[] }; Returns: boolean
+                           },
+"api_token_auth":
+{ Args: { "p_hash": string,"p_per_minute"?: number }; Returns: Json
+                           },
+"api_token_create":
+{ Args: { "p_hash": string,"p_hint": string,"p_label": string,"p_list": string,"p_user": string }; Returns: string
+                           },
+"api_token_revoke":
+{ Args: { "p_token": string,"p_user": string }; Returns: undefined
+                           },
 "assignee_reminder_tasks":
 { Args: { "p_from": string,"p_to": string,"p_users": (string)[] }; Returns: {
               "due_date": string,"due_time": string,"id": string,"kind": string,"recurrence": Json,"status": string,"time_zone": string,"title": string,"user_id": string
@@ -1168,6 +1234,9 @@ isOneToOne: false
                            },
 "inbound_context":
 { Args: { "p_user": string }; Returns: Json
+                           },
+"integration_task_state":
+{ Args: { "p_key": string,"p_task_id": string,"p_token": string }; Returns: Json
                            },
 "is_app_admin":
 { Args: Record<PropertyKey, never>; Returns: boolean
@@ -1386,6 +1455,9 @@ isOneToOne: false
                            },
 "task_visible":
 { Args: { "p_task": string }; Returns: boolean
+                           },
+"upsert_integration_task":
+{ Args: { "p_key": string,"p_source"?: Json,"p_tags"?: Json,"p_task": Json,"p_task_id": string,"p_token": string }; Returns: Json
                            },
 "workspace_name":
 { Args: { "p_scope": string }; Returns: string

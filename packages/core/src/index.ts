@@ -27,6 +27,7 @@ export * from './habits.ts';
 export * from './home.ts';
 export * from './hlc.ts';
 export * from './ids.ts';
+export * from './inbound-api.ts';
 export * from './invites.ts';
 export * from './kanban.ts';
 export * from './labels.ts';

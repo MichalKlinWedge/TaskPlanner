@@ -6,6 +6,7 @@
 import { z } from 'zod';
 
 import { uuidv5 } from '../ids.ts';
+import { TaskSource } from '../schemas/model.ts';
 import { LocalDate, LocalTime, Priority, TaskStatus } from '../schemas/primitives.ts';
 import type { PluginEvent } from './events.ts';
 import { templateValues, type TemplateField } from './template.ts';
@@ -33,6 +34,11 @@ export const PluginTaskData = z.object({
   assignee: z.string().nullable(),
   /** Zadanie z integracji (e-mail, kalendarz) — reguły zdarzeniowe domyślnie je pomijają. */
   fromIntegration: z.boolean(),
+  /**
+   * Skąd zadanie przyszło (`tasks.source`), np. `{kind:'expeditionplan', tripId, ref, url}` z przychodzącego
+   * API — webhook `task.completed` niesie wyjazd i zadanie po stronie EP. Nieczytelne / brak = `null`.
+   */
+  source: TaskSource.nullable().catch(null),
 });
 export type PluginTaskData = z.infer<typeof PluginTaskData>;
 
@@ -65,6 +71,8 @@ export interface PluginPayload {
     tags: string[];
     assignee: string | null;
     url: string;
+    /** `tasks.source` — m.in. wyjazd i zadanie EP (`tripId`, `ref`) przy zadaniu z przychodzącego API. */
+    source: TaskSource | null;
   };
   /** Wszystkie pola szablonów (`TEMPLATE_FIELDS`) z wartościami jak w `{{…}}` — niezależnie od treści reguły; brak = pusty napis. */
   fields: Record<TemplateField, string>;
@@ -117,6 +125,7 @@ export function pluginPayload(input: {
       tags: [...task.tags],
       assignee: task.assignee,
       url,
+      source: task.source ?? null,
     },
     fields: templateValues(task, { event, url }),
     ...(input.message !== undefined && input.message !== '' && { message: input.message }),
@@ -147,6 +156,7 @@ export const SAMPLE_TASK: PluginTaskData = {
   tags: ['zgłoś'],
   assignee: null,
   fromIntegration: false,
+  source: null,
 };
 
 // ── Wysyłki ──────────────────────────────────────────────────────────────────────────────────

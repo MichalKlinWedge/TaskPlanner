@@ -160,7 +160,15 @@ export function recheckEvents(context: EventContext, current: PluginTaskState | 
 /** Zadanie z lokalnej bazy → dane ładunku (nazwy list, tagów, osób z danych aplikacji). */
 export function viewTaskData(
   task: ViewTask,
-  names: { list: string; listKind: PluginTaskData['listKind']; workspace: string | null; tags: readonly string[]; assignee: string | null; description?: string | null },
+  names: {
+    list: string;
+    listKind: PluginTaskData['listKind'];
+    workspace: string | null;
+    tags: readonly string[];
+    assignee: string | null;
+    description?: string | null;
+    source?: PluginTaskData['source'];
+  },
 ): PluginTaskData {
   return {
     id: task.id,
@@ -183,6 +191,7 @@ export function viewTaskData(
     tags: [...names.tags],
     assignee: names.assignee,
     fromIntegration: false,
+    source: names.source ?? null,
   };
 }
 

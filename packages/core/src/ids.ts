@@ -66,6 +66,11 @@ export const collaboratorId = (userId: string, name: string) =>
   uuidv5(`collaborator:${userId}:${name.normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/ł/g, 'l').replace(/Ł/g, 'L').trim().toLowerCase()}`);
 /** Inbox przestrzeni (`lists.id`, `kind = 'inbox'`). */
 export const inboxId = (workspaceId: string) => uuidv5(`inbox:${workspaceId}`);
+/**
+ * Zadanie z przychodzącego API (`inbound-api`): konto + klucz zewnętrzny (`ep:<wyjazd>:<punkt>`). Powtórzony
+ * `PUT` z tym samym kluczem trafia w ten sam wiersz; dwa konta z tym samym kluczem mają osobne zadania.
+ */
+export const apiTaskId = (userId: string, externalKey: string) => uuidv5(`api-task:${userId}:${externalKey}`);
 /** Tag o danej nazwie użytkownika: ten sam tag utworzony na dwóch urządzeniach to jeden wiersz. */
 export const tagId = (userId: string, name: string) =>
   uuidv5(`tag:${userId}:${name.normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/ł/g, 'l').replace(/Ł/g, 'L').trim().toLowerCase()}`);

@@ -433,6 +433,9 @@ verify_jwt = false
 [functions.ai]
 verify_jwt = false
 
+[functions.inbound-api]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54527
