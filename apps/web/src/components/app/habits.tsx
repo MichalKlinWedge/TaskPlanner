@@ -16,6 +16,7 @@ import {
   describeHabit,
   HABIT_BACKFILL_DAYS,
   HABIT_CONVERT,
+  HABITS_VIEW_NOTE,
   HABIT_RATE_WINDOWS,
   habitDayStatus,
   habitDraft,
@@ -25,6 +26,8 @@ import {
   habitProgressLabel,
   habitSaveOps,
   habitsForDay,
+  habitNextDate,
+  habitNextLabel,
   habitStats,
   habitToSeriesOps,
   habitToSeriesProblem,
@@ -45,6 +48,7 @@ import {
   reminderOffset,
   reopenTaskPatch,
   selectSeries,
+  sortHabitsByNext,
   shortDate,
   toHabit,
   WEEKDAY,
@@ -256,7 +260,8 @@ export function HabitsView({ data, ctx, targetInbox, navigate }: { data: AppData
   // Zwykłe zadania z powtarzaniem (seria) — bez passy i statystyk, ale też „cykliczne” dla użytkownika.
   const series = useMemo(() => selectSeries(tasks, ctx), [tasks, ctx]);
   const listName = useMemo(() => new Map(data.lists.map((l) => [l.id, l.name])), [data.lists]);
-  const open = habits.filter(isOpen);
+  // Najbliższy zaplanowany dzień na górze (zrobione dziś schodzą niżej).
+  const open = sortHabitsByNext(habits.filter(isOpen), (id) => completionsOf(data, id), ctx.today);
   const closed = habits.filter((t) => !isOpen(t));
   const left = today.filter((h) => !h.settled).length;
   return (
@@ -264,12 +269,10 @@ export function HabitsView({ data, ctx, targetInbox, navigate }: { data: AppData
       <header className="tp-view-header mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold">Cykliczne</h1>
-          <p className="text-sm text-[var(--muted)]">
-            {open.length || filtered ? `${plural(today.length, ["cykliczne", "cykliczne", "cyklicznych"])} na dziś · ${left ? `${left} do zrobienia` : "wszystko zrobione"}` : "Codzienne i tygodniowe zadania cykliczne z passą i statystykami"}
-          </p>
+          <p className="text-sm text-[var(--muted)]">{HABITS_VIEW_NOTE}</p>
         </div>
         <Button kind="primary" onClick={() => setAdding((a) => !a)} aria-expanded={adding}>
-          + Nowe cykliczne
+          + Dodaj nawyk
         </Button>
       </header>
       {adding ? (
@@ -278,19 +281,27 @@ export function HabitsView({ data, ctx, targetInbox, navigate }: { data: AppData
         </Card>
       ) : null}
       <FilterBar query={filter} onChange={setFilter} hide={HIDDEN_FILTERS} />
-      {open.length ? (
-        <ul className="divide-y divide-[var(--line)]">
-          {open.map((t) => (
-            <HabitRow key={t.id} task={t} data={data} today={ctx.today} navigate={navigate} />
-          ))}
-        </ul>
-      ) : filtered ? (
-        <p className="py-6 text-center text-sm text-[var(--muted)]">Żadne otwarte zadanie cykliczne nie pasuje do filtra.</p>
-      ) : !adding ? (
-        <p className="py-6 text-center text-sm text-[var(--muted)]">
-          {series.length ? "Nie masz jeszcze zadań cyklicznych z passą." : "Nie masz jeszcze zadań cyklicznych."} Dodaj pierwsze — np. „Woda 8 szklanek” albo „Siłownia 3 razy w tygodniu”.
+      <section className="mt-4" aria-label="Nawyki">
+        <h2 className="border-b border-[var(--line)] pb-1 text-sm font-semibold">
+          Nawyki <span className="text-xs font-normal text-[var(--muted)]">{open.length || ""}</span>
+        </h2>
+        <p className="pt-1 text-xs text-[var(--muted)]">
+          {open.length ? `${plural(today.length, ["nawyk", "nawyki", "nawyków"])} na dziś · ${left ? `${left} do zrobienia` : "wszystko zrobione"}` : "Codzienne i tygodniowe nawyki z passą i statystykami."}
         </p>
-      ) : null}
+        {open.length ? (
+          <ul className="divide-y divide-[var(--line)]">
+            {open.map((t) => (
+              <HabitRow key={t.id} task={t} data={data} today={ctx.today} navigate={navigate} />
+            ))}
+          </ul>
+        ) : filtered ? (
+          <p className="py-6 text-center text-sm text-[var(--muted)]">Żaden otwarty nawyk nie pasuje do filtra.</p>
+        ) : !adding ? (
+          <p className="py-6 text-center text-sm text-[var(--muted)]">
+            Nie masz jeszcze nawyków. Dodaj pierwszy — np. „Woda 8 szklanek” albo „Siłownia 3 razy w tygodniu”.
+          </p>
+        ) : null}
+      </section>
       {series.length ? (
         <section className="mt-6" aria-label="Zadania z powtarzaniem">
           <h2 className="border-b border-[var(--line)] pb-1 text-sm font-semibold">
@@ -307,7 +318,7 @@ export function HabitsView({ data, ctx, targetInbox, navigate }: { data: AppData
       {closed.length ? (
         <section className="mt-6">
           <h2 className="border-b border-[var(--line)] pb-1 text-sm font-semibold">
-            Zakończone <span className="text-xs font-normal text-[var(--muted)]">{closed.length}</span>
+            Zakończone nawyki <span className="text-xs font-normal text-[var(--muted)]">{closed.length}</span>
           </h2>
           <ul className="divide-y divide-[var(--line)]">
             {closed.map((t) => (
@@ -328,12 +339,14 @@ function HabitRow({ task, data, today, navigate }: { task: ViewTask; data: AppDa
   const habit = toHabit(task);
   const stats = habit ? habitStats(habit, completionsOf(data, task.id), today) : null;
   if (!habit || !stats) return null;
+  const next = habitNextLabel(habitNextDate(habit, completionsOf(data, task.id), today), today);
   return (
     <li data-task-id={task.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
       <button type="button" onClick={() => navigate({ view: "habit", id: task.id })} className="min-w-[12rem] flex-1 text-left">
         <span className="block truncate text-sm font-medium hover:underline">{task.title}</span>
         <span className="block truncate text-xs text-[var(--muted)]">
           {describeHabit(habit)} · 🔥 {plural(stats.streak.current, STREAK_UNIT[stats.streak.unit])} · 30 dni: {pct(stats.rates[30].rate)}
+          {next ? ` · ${next}` : ""}
         </span>
       </button>
       <HabitDayStrip task={task} habit={habit} size="sm" />
@@ -713,7 +726,7 @@ export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | 
         lastSortKey: lastSortKey(data, listId),
         now: new Date(),
       });
-      void run(ops, { text: task ? `Zapisano „${title.trim()}”` : `Dodano cykliczne „${title.trim()}”` });
+      void run(ops, { text: task ? `Zapisano „${title.trim()}”` : `Dodano nawyk „${title.trim()}”` });
       onDone(task ? undefined : taskId);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -870,7 +883,7 @@ export function HabitEditor({ task, defaultListId, onDone }: { task: ViewTask | 
       ) : null}
       <div className="flex gap-2">
         <Button kind="primary" type="submit">
-          {task ? "Zapisz" : "Dodaj cykliczne"}
+          {task ? "Zapisz" : "Dodaj nawyk"}
         </Button>
         <Button kind="ghost" onClick={() => onDone()}>
           Anuluj

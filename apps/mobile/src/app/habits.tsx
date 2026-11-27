@@ -1,10 +1,10 @@
 /**
  * „Cykliczne” (Etap 8): otwarte nawyki bieżącej przestrzeni z opisem, passą, regularnością 30 dni
- * i paskiem 8 dni (uzupełnianie wstecz), zakończone osobno, „+ Nowe cykliczne”. Chipy filtra (lista,
+ * i paskiem 8 dni (uzupełnianie wstecz), zakończone osobno, „Dodaj nawyk”. Chipy filtra (lista,
  * godzina — reszta warunków nie dotyczy nawyków) trwają do opuszczenia ekranu, nie są zapisywane.
  * Pod nawykami sekcja „Zadania z powtarzaniem” — zwykłe serie (core `selectSeries`), bez passy.
  */
-import { applyFilter, describeHabit, habitsForDay, habitStats, isEmptyFilter, isOpen, plural, selectSeries, toHabit, type FilterQuery } from '@taskplanner/core';
+import { applyFilter, describeHabit, habitNextDate, habitNextLabel, habitsForDay, habitStats, HABITS_VIEW_NOTE, isEmptyFilter, isOpen, plural, selectSeries, sortHabitsByNext, toHabit, type FilterQuery } from '@taskplanner/core';
 import { router, Stack } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -32,25 +32,29 @@ export default function HabitsScreen() {
   );
   const forToday = useMemo(() => habitsForDay(tasks, data.habitCompletions, today, today, workspaceId), [tasks, data.habitCompletions, today, workspaceId]);
   const series = useMemo(() => selectSeries(tasks, { today, workspaceId }), [tasks, today, workspaceId]);
-  const open = habits.filter(isOpen);
+  // Najbliższy zaplanowany dzień na górze (zrobione dziś schodzą niżej).
+  const open = sortHabitsByNext(habits.filter(isOpen), (id) => completionsOf(data, id), today);
   const closed = habits.filter((t) => !isOpen(t));
   const left = forToday.filter((h) => !h.settled).length;
   const filtered = !isEmptyFilter(filter);
-  const subtitle = open.length || filtered
-    ? `${plural(forToday.length, ['cykliczne', 'cykliczne', 'cyklicznych'])} na dziś · ${left ? `${left} do zrobienia` : 'wszystko zrobione'}`
-    : 'Codzienne i tygodniowe zadania cykliczne z passą i statystykami';
+  const status = open.length
+    ? `${plural(forToday.length, ['nawyk', 'nawyki', 'nawyków'])} na dziś · ${left ? `${left} do zrobienia` : 'wszystko zrobione'}`
+    : 'Codzienne i tygodniowe nawyki z passą i statystykami.';
 
   return (
     <View style={{ flex: 1, backgroundColor: p.bg }}>
       <Stack.Screen options={{ title: 'Cykliczne' }} />
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
-        <ScreenHeader subtitle={subtitle}>
+        <ScreenHeader subtitle={HABITS_VIEW_NOTE}>
           <FilterBar query={filter} onChange={setFilter} hide={HIDDEN} />
         </ScreenHeader>
+        <Text style={[styles.head, { color: p.muted, borderColor: p.border }]}>Nawyki{open.length ? ` · ${open.length}` : ''}</Text>
+        <Text style={[styles.note, { color: p.muted }]}>{status}</Text>
         {open.map((task) => {
           const habit = toHabit(task);
           if (!habit) return null;
           const stats = habitStats(habit, completionsOf(data, task.id), today);
+          const next = habitNextLabel(habitNextDate(habit, completionsOf(data, task.id), today), today);
           return (
             <View key={task.id} style={[styles.row, { borderColor: p.border }]}>
               <Pressable accessibilityRole="link" onPress={() => router.push({ pathname: '/habit/[id]', params: { id: task.id } })}>
@@ -59,15 +63,16 @@ export default function HabitsScreen() {
                 </Text>
                 <Text style={{ color: p.muted, fontSize: 12 }} numberOfLines={1}>
                   {describeHabit(habit)} · 🔥 {plural(stats.streak.current, STREAK_UNIT[stats.streak.unit])} · 30 dni: {pct(stats.rates[30].rate)}
+                  {next ? ` · ${next}` : ''}
                 </Text>
               </Pressable>
               <HabitDayStrip task={task} habit={habit} size="sm" />
             </View>
           );
         })}
-        {!open.length && filtered ? <Text style={[styles.empty, { color: p.muted }]}>Żadne otwarte zadanie cykliczne nie pasuje do filtra.</Text> : null}
+        {!open.length && filtered ? <Text style={[styles.empty, { color: p.muted }]}>Żaden otwarty nawyk nie pasuje do filtra.</Text> : null}
         {!open.length && !filtered && data.loaded ? (
-          <Text style={[styles.empty, { color: p.muted }]}>{series.length ? 'Nie masz jeszcze zadań cyklicznych z passą.' : 'Nie masz jeszcze zadań cyklicznych.'} Dodaj pierwsze — np. „Woda 8 szklanek” albo „Siłownia 3 razy w tygodniu”.</Text>
+          <Text style={[styles.empty, { color: p.muted }]}>Nie masz jeszcze nawyków. Dodaj pierwszy — np. „Woda 8 szklanek” albo „Siłownia 3 razy w tygodniu”.</Text>
         ) : null}
         {series.length ? (
           <View style={{ marginTop: 18 }}>
@@ -80,7 +85,7 @@ export default function HabitsScreen() {
         ) : null}
         {closed.length ? (
           <View style={{ marginTop: 18 }}>
-            <Text style={[styles.head, { color: p.muted, borderColor: p.border }]}>Zakończone · {closed.length}</Text>
+            <Text style={[styles.head, { color: p.muted, borderColor: p.border }]}>Zakończone nawyki · {closed.length}</Text>
             {closed.map((t) => (
               <Pressable key={t.id} accessibilityRole="link" onPress={() => router.push({ pathname: '/habit/[id]', params: { id: t.id } })} style={[styles.closed, { borderColor: p.border }]}>
                 <Text style={{ color: p.muted, fontSize: 15 }}>{t.title}</Text>
@@ -90,7 +95,7 @@ export default function HabitsScreen() {
         ) : null}
         <Text style={[styles.hint, { color: p.muted }]}>Dotknij dnia: zrobione → dzień wolny → wyczyść (do 7 dni wstecz).</Text>
       </ScrollView>
-      <Fab label="Nowe cykliczne" bottom={16 + insets.bottom} onPress={() => router.push('/habit-form')} />
+      <Fab label="Dodaj nawyk" bottom={16 + insets.bottom} onPress={() => router.push('/habit-form')} />
     </View>
   );
 }

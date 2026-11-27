@@ -9,7 +9,7 @@
 import { z } from 'zod';
 
 import { addDays, daysBetween, isoWeekday } from './dates.ts';
-import { pluralForm } from './format.ts';
+import { compareCode, pluralForm, relativeDay } from './format.ts';
 import { completionId, uuidv7 } from './ids.ts';
 import { WEEKDAY } from './labels.ts';
 import { describeRecurrence, formatRrule, occurrences, parseRrule, WEEKDAY_CODES, type Recurrence, type RRule, type ScheduleRecurrence, type WeekdayCode } from './recurrence.ts';
@@ -672,6 +672,59 @@ export function habitSaveOps(input: HabitSaveInput): { taskId: string; ops: Task
   if (input.remind && !existing.length) ops.push({ table: 'reminders', id: newId(), patch: { task_id: taskId, kind: 'relative', offset_min: 0, at_date: null, at_time: null } });
   if (!input.remind) for (const id of existing) ops.push({ table: 'reminders', id, patch: { deleted_at: new Date(input.now).toISOString() } });
   return { taskId, ops };
+}
+
+/**
+ * Najbliższy zaplanowany dzień nawyku od `today` (włącznie), który nie jest jeszcze zaliczony ani
+ * wolny; `null` = nawyk już się skończył. Przy celu „N razy w okresie”: dziś (albo następny dzień
+ * bez wpisu), a gdy cel okresu jest już osiągnięty — pierwszy dzień następnego okresu. Częściowa
+ * wartość celu ilościowego (3 z 8) nie zalicza dnia.
+ */
+export function habitNextDate(habit: Habit, completions: readonly HabitCompletion[], today: LocalDate): LocalDate | null {
+  const { byDate, counts } = index(habit, completions);
+  const settled = (d: LocalDate) => {
+    const c = byDate.get(d);
+    return counts(c) || c?.kind === 'skipped';
+  };
+  if (!habit.goal) {
+    // Wpisy mogą zająć kolejne wystąpienia (np. dzień wolny zaznaczony na zapas) — tyle więcej dat.
+    const ahead = completions.filter((c) => c.date >= today).length;
+    return occurrences(habit.recurrence, { from: today, limit: ahead + 1 }).find((d) => !settled(d)) ?? null;
+  }
+  const { period, times } = habit.goal;
+  const last = habitEndDate(habit);
+  let day = habit.recurrence.anchor > today ? habit.recurrence.anchor : today;
+  // Bezpiecznik: rok dni naprzód (wpisy na zapas są najwyżej w bieżącym okresie i kilku następnych).
+  for (let i = 0; i < 400 && (last === null || day <= last); i++) {
+    const start = periodStart(day, period);
+    const end = periodEnd(start, period);
+    let done = 0;
+    for (let d = start; d <= end; d = addDays(d, 1)) if (counts(byDate.get(d))) done++;
+    if (done >= times) day = addDays(end, 1);
+    else if (settled(day)) day = addDays(day, 1);
+    else return day;
+  }
+  return null;
+}
+
+/** Dopisek w wierszu listy: `null`, gdy najbliższy dzień to dziś. */
+export function habitNextLabel(next: LocalDate | null, today: LocalDate): string | null {
+  if (next === today) return null;
+  return next === null ? 'bez kolejnych dni' : `następnie ${relativeDay(next, today)}`;
+}
+
+/**
+ * Kolejność listy „Cykliczne”: najbliższy zaplanowany dzień (`habitNextDate`), w tym samym dniu
+ * według pory (bez pory na końcu), potem ręcznie; zakończone reguły na końcu.
+ */
+export function sortHabitsByNext(tasks: readonly ViewTask[], completionsOf: (taskId: string) => readonly HabitCompletion[], today: LocalDate): ViewTask[] {
+  const keyed = tasks.map((task) => {
+    const habit = toHabit(task);
+    return { task, next: habit ? habitNextDate(habit, completionsOf(task.id), today) : null, time: habit?.time ?? null };
+  });
+  const last = (v: string | null) => v ?? '~';
+  keyed.sort((a, b) => compareCode(last(a.next), last(b.next)) || compareCode(last(a.time), last(b.time)) || compareCode(a.task.sortKey, b.task.sortKey));
+  return keyed.map((k) => k.task);
 }
 
 export interface HabitForDay {

@@ -10,15 +10,17 @@
  * Nie da się zamienić: nawyku z celem „N razy w okresie” (seria nie ma takiej reguły), serii „po
  * ukończeniu” (nawyk liczy passę według stałych dni), podzadania ani zadania z podzadaniami.
  */
-import { toHabit, type HabitCompletion, type HabitSettings } from './habits.ts';
-import { occurrences } from './recurrence.ts';
+import { habitNextDate, toHabit, type HabitCompletion, type HabitSettings } from './habits.ts';
 import type { LocalDate } from './schemas/primitives.ts';
 import type { TaskOp } from './tasks.ts';
 import type { ViewTask } from './views.ts';
 
+/** Podtytuł widoku „Cykliczne” (nawyki + zwykłe zadania z powtarzaniem). */
+export const HABITS_VIEW_NOTE = 'Nawyki z passą i zwykłe zadania z powtarzaniem';
+
 export const HABIT_CONVERT = {
   toSeries: 'Zamień na zadanie z powtarzaniem',
-  toHabit: 'Zamień na cykliczne z passą',
+  toHabit: 'Zamień na nawyk',
 } as const;
 
 type ConvertTask = Pick<ViewTask, 'id' | 'kind' | 'title' | 'parentId' | 'recurrence' | 'habit' | 'dueDate' | 'dueTime' | 'startDate'>;
@@ -32,8 +34,8 @@ export interface ConvertResult {
 
 /** Dlaczego nawyku nie da się zamienić na serię; `null` = da się. */
 export function habitToSeriesProblem(task: ConvertTask): string | null {
-  if (task.kind !== 'habit') return 'To nie jest zadanie cykliczne z passą.';
-  if (!toHabit(task)) return 'Zadanie cykliczne nie ma harmonogramu.';
+  if (task.kind !== 'habit') return 'To nie jest nawyk.';
+  if (!toHabit(task)) return 'Nawyk nie ma harmonogramu.';
   if (task.habit?.goal) return 'Cel „N razy w tygodniu / miesiącu” nie ma odpowiednika w zadaniu z powtarzaniem — najpierw ustaw konkretne dni.';
   return null;
 }
@@ -42,17 +44,9 @@ export function habitToSeriesProblem(task: ConvertTask): string | null {
 export function seriesToHabitProblem(task: ConvertTask, { subtasks = 0 }: { subtasks?: number } = {}): string | null {
   if (task.kind !== 'task' || !task.recurrence) return 'Zadanie się nie powtarza.';
   if (task.recurrence.mode !== 'schedule') return 'Powtarzanie „po ukończeniu” nie ma stałych dni, więc nie da się liczyć passy — najpierw ustaw powtarzanie według kalendarza.';
-  if (task.parentId) return 'Podzadanie nie może być zadaniem cyklicznym z passą.';
-  if (subtasks > 0) return 'Zadanie cykliczne z passą nie ma podzadań — najpierw je przenieś albo usuń.';
+  if (task.parentId) return 'Podzadanie nie może być nawykiem.';
+  if (subtasks > 0) return 'Nawyk nie ma podzadań — najpierw je przenieś albo usuń.';
   return null;
-}
-
-/** Najbliższe wystąpienie od `today` bez wpisu (zrobione / wolne); `null` = reguła już się skończyła. */
-function nextOpenOccurrence(task: ConvertTask, completions: readonly HabitCompletion[], today: LocalDate): LocalDate | null {
-  const habit = toHabit(task)!;
-  const settled = new Set(completions.flatMap((c) => (c.date >= today ? [c.date] : [])));
-  // Wpisy mogą zająć kolejne wystąpienia (np. dzień wolny zaznaczony na zapas) — tyle więcej dat.
-  return occurrences(habit.recurrence, { from: today, limit: settled.size + 1 }).find((d) => !settled.has(d)) ?? null;
 }
 
 const restore = (task: ConvertTask): TaskOp => ({
@@ -65,7 +59,7 @@ const restore = (task: ConvertTask): TaskOp => ({
 export function habitToSeriesOps(task: ConvertTask, completions: readonly HabitCompletion[], today: LocalDate): ConvertResult {
   const problem = habitToSeriesProblem(task);
   if (problem) throw new Error(problem);
-  const due = nextOpenOccurrence(task, completions, today);
+  const due = habitNextDate(toHabit(task)!, completions, today);
   return {
     ops: [{ table: 'tasks', id: task.id, patch: { kind: 'task', habit: null, due_date: due, due_time: due ? (task.habit?.time ?? null) : null, start_date: null } }],
     undo: [restore(task)],
@@ -81,6 +75,6 @@ export function seriesToHabitOps(task: ConvertTask, { subtasks = 0 }: { subtasks
   return {
     ops: [{ table: 'tasks', id: task.id, patch: { kind: 'habit', habit, due_date: null, due_time: null, start_date: null } }],
     undo: [restore(task)],
-    message: `„${task.title}” jest teraz zadaniem cyklicznym z passą`,
+    message: `„${task.title}” jest teraz nawykiem`,
   };
 }

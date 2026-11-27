@@ -189,7 +189,7 @@ export default function HabitFormScreen() {
         lastSortKey: lastSortKey(data, listId),
         now: new Date(),
       });
-      await run(ops, { text: task ? `Zapisano „${title.trim()}”` : `Dodano cykliczne „${title.trim()}”` });
+      await run(ops, { text: task ? `Zapisano „${title.trim()}”` : `Dodano nawyk „${title.trim()}”` });
       if (reminders.length && !(await permissionState()).notifications) await requestNotificationPermission();
       if (task) router.back();
       else router.replace({ pathname: '/habit/[id]', params: { id: taskId } });
@@ -202,7 +202,7 @@ export default function HabitFormScreen() {
 
   return (
     <ScrollView style={{ backgroundColor: p.bg }} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-      <Stack.Screen options={{ title: task ? 'Edycja cyklicznego' : 'Nowe cykliczne' }} />
+      <Stack.Screen options={{ title: task ? 'Edycja nawyku' : 'Nowy nawyk' }} />
       <Field label="Nazwa" value={title} onChangeText={setTitle} placeholder="np. Woda, Spacer 30 min" autoFocus={!task} maxLength={500} />
       <Value
         label="Lista"
@@ -379,7 +379,7 @@ export default function HabitFormScreen() {
           {error}
         </Text>
       ) : null}
-      <Button title={task ? 'Zapisz' : 'Dodaj cykliczne'} onPress={() => void submit()} />
+      <Button title={task ? 'Zapisz' : 'Dodaj nawyk'} onPress={() => void submit()} />
     </ScrollView>
   );
 }
