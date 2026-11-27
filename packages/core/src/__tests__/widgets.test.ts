@@ -1,4 +1,4 @@
-/** Etap 11: modele widżetów Android „Dziś”, „Cykliczne”, „Szybkie dodawanie” (M20). */
+/** Etap 11: modele widżetów Android „Dziś”, „Nawyki”, „Szybkie dodawanie” (M20). */
 import { describe, expect, it } from 'vitest';
 
 import type { HabitCompletion } from '../habits.ts';
@@ -70,7 +70,7 @@ describe('widżet „Dziś”', () => {
   });
 });
 
-describe('widżet „Cykliczne”', () => {
+describe('widżet „Nawyki”', () => {
   const habit = (over: Partial<ViewTask>) => task({ kind: 'habit', recurrence: daily, ...over });
 
   it('stan dnia, postęp i wpisy kliknięć (stan docelowy)', () => {

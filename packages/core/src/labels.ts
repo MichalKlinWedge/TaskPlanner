@@ -125,7 +125,7 @@ export const TASK_FIELD: Record<string, string> = {
   duration_min: 'Czas',
   time_zone: 'Strefa',
   recurrence: 'Powtarzanie',
-  habit: 'Cykliczne',
+  habit: 'Nawyk',
   kind: 'Rodzaj',
   list_id: 'Lista',
   parent_id: 'Zadanie nadrzędne',
@@ -174,7 +174,7 @@ export const VIEW_SECTION = {
   lateToday: 'Dziś, godzina minęła',
   earlier: 'Wcześniejsze dni',
   ongoing: 'Trwające',
-  habits: 'Cykliczne na dziś',
+  habits: 'Nawyki na dziś',
   done: 'Ukończone',
   later: 'Później',
   noDate: 'Bez terminu',
@@ -232,7 +232,7 @@ export const LOGIN_INVITE_NOTE = 'Dostęp na zaproszenie — zaloguj się adrese
 
 /** Ustawienia → „Usuń konto” (web i telefon, Edge Function `account-delete`). */
 export const ACCOUNT_DELETE_NOTE =
-  'Usuwa konto i wszystkie dane na serwerze: zadania, listy, zadania cykliczne, załączniki i połączone kalendarze. Przestrzenie, które udostępniasz innym, znikną także u nich, chyba że mają jeszcze innego właściciela — wtedy przejdą na niego; z cudzych przestrzeni po prostu wychodzisz. Tego nie da się cofnąć — jeśli chcesz zachować dane, najpierw zrób kopię zapasową. Wpisz adres e-mail konta, żeby potwierdzić.';
+  'Usuwa konto i wszystkie dane na serwerze: zadania, listy, nawyki, załączniki i połączone kalendarze. Przestrzenie, które udostępniasz innym, znikną także u nich, chyba że mają jeszcze innego właściciela — wtedy przejdą na niego; z cudzych przestrzeni po prostu wychodzisz. Tego nie da się cofnąć — jeśli chcesz zachować dane, najpierw zrób kopię zapasową. Wpisz adres e-mail konta, żeby potwierdzić.';
 
 export const AUTH_ERROR: Record<string, string> = {
   // GoTrue zwraca `otp_expired` także dla błędnie wpisanego kodu („Token has expired or is invalid”).
@@ -296,10 +296,10 @@ export const BACKUP_TABLE: Record<BackupTable, string> = {
   workspaces: 'Przestrzenie',
   lists: 'Listy i projekty',
   collaborators: 'Współpracownicy',
-  tasks: 'Zadania i cykliczne',
+  tasks: 'Zadania i nawyki',
   tags: 'Tagi',
   task_tags: 'Tagi zadań',
-  task_completions: 'Ukończenia i wpisy cyklicznych',
+  task_completions: 'Ukończenia i wpisy nawyków',
   reminders: 'Przypomnienia',
   task_dependencies: 'Zależności',
   time_entries: 'Wpisy czasu',
@@ -506,7 +506,7 @@ export const aiDayPlanNote = (provider: AiProvider): string =>
 export const WEEK_SUMMARY = {
   step: 'Podsumowanie',
   lists: 'Ukończone według list',
-  habits: 'Cykliczne',
+  habits: 'Nawyki',
   hint: 'Na czym się skupić (opcjonalnie), np. „praca”',
   ai: '✨ Opisz tydzień',
   again: '✨ Opisz ponownie',
@@ -520,7 +520,7 @@ export const WEEK_SUMMARY = {
 
 /** Dokąd idą dane przy „Opisz tydzień”. */
 export const aiWeekSummaryNote = (provider: AiProvider): string =>
-  `Liczby z podsumowania, nazwy list i zadań cyklicznych oraz tytuły i terminy zadań (zaległych, przekładanych, oczekujących i ukończonych) idą do ${AI_PROVIDER[provider].company} na Twoim kluczu; adresy e-mail są zasłaniane, opisy zadań nie wychodzą. Liczby w opisie wstawia aplikacja, sugestie działają dopiero po kliknięciu.`;
+  `Liczby z podsumowania, nazwy list i nawyków oraz tytuły i terminy zadań (zaległych, przekładanych, oczekujących i ukończonych) idą do ${AI_PROVIDER[provider].company} na Twoim kluczu; adresy e-mail są zasłaniane, opisy zadań nie wychodzą. Liczby w opisie wstawia aplikacja, sugestie działają dopiero po kliknięciu.`;
 
 /** Do kogo idą dane przy „Rozbij na kroki”. */
 export const aiBreakdownNote = (provider: AiProvider): string =>

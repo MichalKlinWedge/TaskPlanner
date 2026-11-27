@@ -227,7 +227,7 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
         durationEditable: changeable && !e.allDay,
         borderColor: e.conflict ? "var(--danger)" : color,
         classNames: [`tp-${e.kind}`, e.passive ? "tp-passive" : "", e.virtual ? "tp-virtual" : "", e.conflict ? "tp-conflict" : ""].filter(Boolean),
-        extendedProps: { taskId: e.kind === "task" ? e.id : null, habitId: e.kind === "habit" ? e.id : null, eventId: e.kind === "event" ? e.id : null, changeable, conflict: e.conflict, hint: source ? [source.calendar, source.location].filter(Boolean).join(" · ") : e.kind === "habit" ? "Cykliczne" : null },
+        extendedProps: { taskId: e.kind === "task" ? e.id : null, habitId: e.kind === "habit" ? e.id : null, eventId: e.kind === "event" ? e.id : null, changeable, conflict: e.conflict, hint: source ? [source.calendar, source.location].filter(Boolean).join(" · ") : e.kind === "habit" ? "Nawyk" : null },
       };
     });
     // Wolne okna w godzinach pracy — tylko w widoku dnia (M11).

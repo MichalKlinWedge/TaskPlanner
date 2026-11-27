@@ -285,7 +285,7 @@ export const TaskRow = z
   })
   .refine((t) => t.due_date || (!t.due_time && !t.start_date), { message: 'Godzina i początek wymagają terminu.', path: ['due_date'] })
   .refine((t) => !t.start_date || !t.due_date || t.start_date <= t.due_date, { message: 'Początek po terminie.', path: ['start_date'] })
-  .refine((t) => t.kind !== 'habit' || t.recurrence?.mode === 'schedule', { message: 'Zadanie cykliczne wymaga reguły według harmonogramu.', path: ['recurrence'] })
+  .refine((t) => t.kind !== 'habit' || t.recurrence?.mode === 'schedule', { message: 'Nawyk wymaga reguły według harmonogramu.', path: ['recurrence'] })
   .refine((t) => t.id !== t.parent_id, { message: 'Zadanie nie może być własnym podzadaniem.', path: ['parent_id'] });
 
 export const TagRow = z.object({

@@ -59,7 +59,7 @@ describe('zadanie', () => {
   it('reguły między polami', () => {
     expect(issues(TaskRow.safeParse({ ...task, due_date: null }))).toEqual(['due_date: Godzina i początek wymagają terminu.']);
     expect(issues(TaskRow.safeParse({ ...task, start_date: '2026-11-20' }))).toEqual(['start_date: Początek po terminie.']);
-    expect(issues(TaskRow.safeParse({ ...task, kind: 'habit' }))).toEqual(['recurrence: Zadanie cykliczne wymaga reguły według harmonogramu.']);
+    expect(issues(TaskRow.safeParse({ ...task, kind: 'habit' }))).toEqual(['recurrence: Nawyk wymaga reguły według harmonogramu.']);
     expect(issues(TaskRow.safeParse({ ...task, parent_id: ID }))).toEqual(['parent_id: Zadanie nie może być własnym podzadaniem.']);
     expect(
       TaskRow.safeParse({ ...task, kind: 'habit', recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY', anchor: '2026-11-01' }, habit: { target: 8, unit: 'szklanek' } }).success,

@@ -84,8 +84,8 @@
             },
             {
               "name": "Habits",
-              "label": "Task Planner — Cykliczne",
-              "description": "Dzisiejsze zadania cykliczne do odhaczenia",
+              "label": "Task Planner — Nawyki",
+              "description": "Dzisiejsze nawyki do odhaczenia",
               "minWidth": "250dp",
               "minHeight": "110dp",
               "targetCellWidth": 4,

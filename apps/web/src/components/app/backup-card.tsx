@@ -73,7 +73,7 @@ export function BackupCard({ store, userId, timeZone }: { store: TabStore; userI
   return (
     <SettingsSection title="Kopia zapasowa">
       <p className="mb-3 text-xs text-[var(--muted)]">
-        Plik JSON z danymi z tej przeglądarki: przestrzenie, listy, zadania i cykliczne z historią, tagi, przypomnienia, zależności, czas, filtry, przeglądy, profil (także kosz). Bez urządzeń, połączonych kalendarzy i plików załączników (jedną przestrzeń z załącznikami, osobami i rolami zapiszesz w „Przestrzenie i listy” → „Eksportuj”).
+        Plik JSON z danymi z tej przeglądarki: przestrzenie, listy, zadania i nawyki z historią, tagi, przypomnienia, zależności, czas, filtry, przeglądy, profil (także kosz). Bez urządzeń, połączonych kalendarzy i plików załączników (jedną przestrzeń z załącznikami, osobami i rolami zapiszesz w „Przestrzenie i listy” → „Eksportuj”).
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button disabled={!!busy} onClick={() => void download()} data-testid="backup-export">

@@ -251,7 +251,7 @@ export function WorkspaceImportCard({ email }: { email: string | null }) {
     <Card>
       <h3 className="mb-1 text-sm font-semibold">Import przestrzeni</h3>
       <p className="mb-3 text-xs text-[var(--muted)]">
-        Plik JSON z przycisku „Eksportuj” przy przestrzeni: listy, zadania i cykliczne z historią, komentarze, tagi, przypomnienia, zależności, czas pracy, współpracownicy, role i załączniki. Import tworzy nową przestrzeń (istniejących nie
+        Plik JSON z przycisku „Eksportuj” przy przestrzeni: listy, zadania i nawyki z historią, komentarze, tagi, przypomnienia, zależności, czas pracy, współpracownicy, role i załączniki. Import tworzy nową przestrzeń (istniejących nie
         zmienia). Bez kosza, historii zmian i integracji.
       </p>
       <div className="flex flex-wrap items-center gap-2">

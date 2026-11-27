@@ -224,7 +224,7 @@ export function DayPlan({ data, ctx, settings, date: fixed }: { data: AppData; c
           const title = `${label}${source ? `\n${[source.calendar, source.location].filter(Boolean).join(" · ")}` : ""}`;
           if (b.kind === "habit")
             return (
-              <a key={`habit:${b.id}`} href={`#/habit/${b.id}`} className={`${cls} border-l-emerald-600`} style={style} title={`${title}\nCykliczne`}>
+              <a key={`habit:${b.id}`} href={`#/habit/${b.id}`} className={`${cls} border-l-emerald-600`} style={style} title={`${title}\nNawyk`}>
                 {hot ? "⚠ " : ""}
                 {label}
               </a>

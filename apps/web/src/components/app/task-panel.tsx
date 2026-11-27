@@ -413,7 +413,7 @@ function TaskDetails({ task, trash }: { task: ViewTask; trash?: TrashPreview<Tra
         </Block>
 
         {task.kind === "habit" && !trash ? (
-          <Block id="Nawyk" title="Cykliczne">
+          <Block id="Nawyk" title="Nawyk">
             <a href={`#/habit/${task.id}`} className={`self-start ${navLinkClass}`}>
               Statystyki, harmonogram i cel →
             </a>

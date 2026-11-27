@@ -130,8 +130,8 @@ describe('nawyki (Etap 8)', () => {
   it('zamknięte nawyki nie przypominają; treść z celem', () => {
     expect(reminderFireTimes([{ ...habit, status: 'cancelled' }], [rule], win)).toEqual([]);
     const [fire] = reminderFireTimes([habit], [rule], win);
-    expect(reminderBody(habit, fire!, '2026-11-20T06:30:00Z', WAW)).toEqual({ title: 'Woda', body: 'Cykliczne na dziś · cel 8 szklanek' });
-    expect(reminderBody({ ...habit, habit: null }, fire!, '2026-11-20T06:30:00Z', WAW).body).toBe('Cykliczne na dziś — odhacz, gdy zrobisz');
+    expect(reminderBody(habit, fire!, '2026-11-20T06:30:00Z', WAW)).toEqual({ title: 'Woda', body: 'Nawyk na dziś · cel 8 szklanek' });
+    expect(reminderBody({ ...habit, habit: null }, fire!, '2026-11-20T06:30:00Z', WAW).body).toBe('Nawyk na dziś — odhacz, gdy zrobisz');
   });
 });
 

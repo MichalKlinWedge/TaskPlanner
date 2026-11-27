@@ -1,5 +1,5 @@
 /**
- * Dane i odświeżanie widżetów „Dziś”, „Cykliczne”, „Szybkie dodawanie” z lokalnej bazy — modele z core
+ * Dane i odświeżanie widżetów „Dziś”, „Nawyki”, „Szybkie dodawanie” z lokalnej bazy — modele z core
  * (`todayWidgetModel`, `habitsWidgetModel`, `inboxCount`), bieżąca przestrzeń jak w aplikacji.
  * Odświeżenie (M20): po każdej zmianie danych w aplikacji, po akcji z powiadomienia i z widżetu,
  * z zadania w tle oraz co 30 min (`updatePeriodMillis` → `WIDGET_UPDATE` w `task-handler.ts`).

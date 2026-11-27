@@ -218,7 +218,7 @@ export function TaskPreview({ task, trash }: { task: ViewTask; trash?: TrashPrev
         {task.durationMin ? <Fact label="Czas">{formatMinutes(task.durationMin)}</Fact> : null}
         {spent ? <Fact label="Czas pracy">{formatMinutes(spent)}</Fact> : null}
         {habit ? (
-          <Fact label="Cykliczne">
+          <Fact label="Nawyk">
             {describeHabit(habit)}
             {trash ? null : (
               <>

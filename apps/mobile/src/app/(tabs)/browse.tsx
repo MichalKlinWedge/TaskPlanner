@@ -100,12 +100,12 @@ export default function BrowseScreen() {
       <Group title="Planowanie">
         <Item title={VIEW_SECTION.overdue} hint="Po terminie, także dzisiejsze po godzinie" count={overdue} alert href="/overdue" />
         <Item title="Kalendarz" hint="Dzień z przeciąganiem bloków, tydzień, miesiąc" href="/calendar" />
-        <Item title="Cykliczne" hint="Passa, regularność, historia" count={habits} href="/habits" />
+        <Item title="Cykliczne" hint="Nawyki i zadania z powtarzaniem" count={habits} href="/habits" />
         {data.settings.focus.enabled ? <Item title="Skupienie" hint="Pomodoro i stoper, czas pracy" href="/focus" /> : null}
         <Item title="Tablica" hint="Kanban bieżącej przestrzeni" href="/board" />
         <Item title="Oś czasu" hint="Projekty i zadania na osi dni, tygodni, miesięcy" href="/timeline" />
         <Item title="Przegląd dnia" hint="Zaległe i dzisiejsze — gesty na karcie" href="/review/daily" />
-        <Item title="Przegląd tygodnia" hint="Inbox, projekty, oczekujące, tydzień, cykliczne" href="/review/weekly" />
+        <Item title="Przegląd tygodnia" hint="Inbox, projekty, oczekujące, tydzień, nawyki" href="/review/weekly" />
       </Group>
 
       {workspaces.map((w) => (

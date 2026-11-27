@@ -85,7 +85,7 @@ export default function HomeScreen() {
         <Tile p={p} label="Ukończone w 7 dni" value={stats.doneWeek} hint={trend === 0 ? 'jak tydzień wcześniej' : `${trend > 0 ? '▲' : '▼'} ${Math.abs(trend)} wobec 7 dni wcześniej`} />
         <Tile p={p} label="Dodane w 7 dni" value={stats.createdWeek} hint={stats.createdWeek > stats.doneWeek ? 'przybywa szybciej' : 'ubywa co najmniej tyle'} />
         {stats.habitsTotal ? (
-          <Tile p={p} label="Cykliczne dziś" value={`${stats.habitsDone}/${stats.habitsTotal}`} hint={stats.habitsDone === stats.habitsTotal ? 'wszystkie zaliczone' : 'do odhaczenia'} onPress={go('/habits')} />
+          <Tile p={p} label="Nawyki dziś" value={`${stats.habitsDone}/${stats.habitsTotal}`} hint={stats.habitsDone === stats.habitsTotal ? 'wszystkie zaliczone' : 'do odhaczenia'} onPress={go('/habits')} />
         ) : data.settings.focus.enabled ? (
           <Tile p={p} label="Skupienie dziś" value={formatMinutes(stats.focusTodayMin)} hint="w trybie skupienia" onPress={go('/focus')} />
         ) : null}

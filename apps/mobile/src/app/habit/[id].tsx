@@ -66,8 +66,8 @@ export default function HabitScreen() {
   if (!task || !habit) {
     return (
       <View style={{ flex: 1, padding: 16, backgroundColor: p.bg }}>
-        <Stack.Screen options={{ title: 'Cykliczne' }} />
-        <Text style={{ color: p.muted }}>{data.loaded ? 'Tego zadania cyklicznego nie ma (usunięte albo w zarchiwizowanej liście).' : 'Wczytywanie…'}</Text>
+        <Stack.Screen options={{ title: 'Nawyk' }} />
+        <Text style={{ color: p.muted }}>{data.loaded ? 'Tego nawyku nie ma (usunięty albo w zarchiwizowanej liście).' : 'Wczytywanie…'}</Text>
       </View>
     );
   }

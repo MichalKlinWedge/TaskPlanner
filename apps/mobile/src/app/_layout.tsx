@@ -279,8 +279,8 @@ export default function RootLayout() {
             <Stack.Screen name="task/[id]" options={{ title: 'Zadanie' }} />
             <Stack.Screen name="focus" options={{ title: 'Skupienie' }} />
             <Stack.Screen name="habits" options={{ title: 'Cykliczne' }} />
-            <Stack.Screen name="habit/[id]" options={{ title: 'Cykliczne' }} />
-            <Stack.Screen name="habit-form" options={{ title: 'Cykliczne' }} />
+            <Stack.Screen name="habit/[id]" options={{ title: 'Nawyk' }} />
+            <Stack.Screen name="habit-form" options={{ title: 'Nawyk' }} />
             <Stack.Screen name="board" options={{ title: 'Tablica' }} />
             <Stack.Screen name="calendar" options={{ title: 'Kalendarz' }} />
             <Stack.Screen name="overdue" options={{ title: 'Zaległe' }} />

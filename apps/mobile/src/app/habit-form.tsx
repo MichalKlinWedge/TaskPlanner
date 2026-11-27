@@ -110,7 +110,7 @@ export default function HabitFormScreen() {
   if (id && !task) {
     return (
       <View style={{ flex: 1, padding: 16, backgroundColor: p.bg }}>
-        <Text style={{ color: p.muted }}>{data.loaded ? 'Tego zadania cyklicznego już nie ma.' : 'Wczytywanie…'}</Text>
+        <Text style={{ color: p.muted }}>{data.loaded ? 'Tego nawyku już nie ma.' : 'Wczytywanie…'}</Text>
       </View>
     );
   }

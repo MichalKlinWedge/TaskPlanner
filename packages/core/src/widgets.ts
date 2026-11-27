@@ -1,5 +1,5 @@
 /**
- * Widżety Android (SPECYFIKACJA M20, Etap 11): co pokazują „Dziś”, „Cykliczne” i „Szybkie dodawanie”
+ * Widżety Android (SPECYFIKACJA M20, Etap 11): co pokazują „Dziś”, „Nawyki” i „Szybkie dodawanie”
  * i jaki stan docelowy niesie każde kliknięcie. Te same reguły co ekrany (`selectToday`,
  * `selectInbox`, `habitsForDay`); aplikacja tylko rysuje wynik.
  *
@@ -70,7 +70,7 @@ export interface HabitsWidgetModel {
   open: number;
 }
 
-/** „Cykliczne”: nawyki z okresem na dziś w kolejności dnia; kliknięcie = wpis dnia `date`. */
+/** „Nawyki”: nawyki z okresem na dziś w kolejności dnia; kliknięcie = wpis dnia `date`. */
 export function habitsWidgetModel(tasks: readonly ViewTask[], completions: ReadonlyMap<string, readonly HabitCompletion[]>, ctx: ViewContext): HabitsWidgetModel {
   const ordered = selectToday(tasks, ctx).habits;
   const items = habitsForDay(ordered, completions, ctx.today, ctx.today, ctx.workspaceId).map(({ task, habit, status, settled }): WidgetHabitItem => {

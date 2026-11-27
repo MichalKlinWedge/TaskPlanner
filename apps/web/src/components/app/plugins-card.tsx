@@ -585,7 +585,7 @@ function AfterSendFields({ draft, setDraft }: { draft: RuleDraftState; setDraft:
         </Select>
       </Field>
       <p className="text-xs text-[var(--muted)]">
-        Zmienia serwer zaraz po wysłaniu (także z „Wyślij do…”) — zadanie musi być do edycji. Taka zmiana liczy się jak z integracji: reguły zdarzeniowe bez „Także zadania z integracji” jej nie widzą, więc nie ma pętli. Tag wspólny (innego członka przestrzeni) trafia tylko do zadań z tej przestrzeni. Status „Gotowe” / „Anulowane” nie zmienia zadania cyklicznego.
+        Zmienia serwer zaraz po wysłaniu (także z „Wyślij do…”) — zadanie musi być do edycji. Taka zmiana liczy się jak z integracji: reguły zdarzeniowe bez „Także zadania z integracji” jej nie widzą, więc nie ma pętli. Tag wspólny (innego członka przestrzeni) trafia tylko do zadań z tej przestrzeni. Status „Gotowe” / „Anulowane” nie zmienia zadania z powtarzaniem.
       </p>
     </fieldset>
   );

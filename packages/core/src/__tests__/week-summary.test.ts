@@ -161,7 +161,7 @@ describe('weekFacts', () => {
     expect(by.get('ukonczone')).toBe('5 ukończonych zadań');
     expect(by.get('zalegle')).toBe('2 zaległe zadania');
     expect(by.get('skupienie')).toBe('1 h 20 min skupienia');
-    expect(by.get('nawyki')).toBe('zadania cykliczne wykonane 3 z 6');
+    expect(by.get('nawyki')).toBe('nawyki wykonane 3 z 6');
     expect(by.get('lista1')).toBe('3 ukończone zadania w „Praca”');
     expect(by.get('nawyk1')).toBe('„woda” 3 z 6');
     expect(by.get('pelnyDzien')).toContain('25 listopada (2 zadania)');

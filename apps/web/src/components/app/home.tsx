@@ -75,7 +75,7 @@ export function HomeView({ data, ctx, targetInbox, navigate }: { data: AppData; 
         />
         <Tile label="Dodane w 7 dni" value={stats.createdWeek} hint={stats.createdWeek > stats.doneWeek ? "przybywa szybciej, niż ubywa" : "ubywa co najmniej tyle, ile przybywa"} />
         {stats.habitsTotal ? (
-          <Tile label="Cykliczne dziś" value={`${stats.habitsDone}/${stats.habitsTotal}`} hint={stats.habitsDone === stats.habitsTotal ? "wszystkie zaliczone" : "do odhaczenia"} onClick={() => navigate({ view: "habits" })} />
+          <Tile label="Nawyki dziś" value={`${stats.habitsDone}/${stats.habitsTotal}`} hint={stats.habitsDone === stats.habitsTotal ? "wszystkie zaliczone" : "do odhaczenia"} onClick={() => navigate({ view: "habits" })} />
         ) : settings.focus.enabled ? (
           <Tile label="Skupienie dziś" value={formatMinutes(stats.focusTodayMin)} hint="minuty pracy w trybie skupienia" onClick={() => navigate({ view: "focus" })} />
         ) : null}

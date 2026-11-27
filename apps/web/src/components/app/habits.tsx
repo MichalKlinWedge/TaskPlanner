@@ -379,7 +379,7 @@ export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: App
   if (!task || !habit || !stats || !year) {
     return (
       <p className="py-6 text-sm text-[var(--muted)]">
-        Tego zadania cyklicznego nie ma (usunięte albo w zarchiwizowanej liście).{" "}
+        Tego nawyku nie ma (usunięty albo w zarchiwizowanej liście).{" "}
         <button type="button" className="text-[var(--accent)] hover:underline" onClick={() => navigate({ view: "habits" })}>
           Wróć do cyklicznych
         </button>
@@ -394,7 +394,7 @@ export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: App
       undo: [{ table: "tasks", id: task.id, patch: { status: task.status, completed_at: task.completedAt } }],
     });
   const remove = () => {
-    if (!window.confirm(`Przenieść zadanie cykliczne „${task.title}” do kosza? Historia zostaje i wróci razem z nim.`)) return;
+    if (!window.confirm(`Przenieść nawyk „${task.title}” do kosza? Historia zostaje i wróci razem z nim.`)) return;
     const ops = deleteTaskOps(data.tasks, task.id, new Date());
     void run(ops, { text: `„${task.title}” w koszu`, undo: ops.map((op) => ({ ...op, patch: { deleted_at: null } })) });
     navigate({ view: "habits" });

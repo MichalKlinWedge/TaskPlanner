@@ -65,7 +65,7 @@ export function BackupSection() {
   return (
     <Section title="Kopia zapasowa">
       <P muted>
-        Plik JSON z danymi z tego telefonu: przestrzenie, listy, zadania i cykliczne z historią, tagi, przypomnienia, zależności, czas, filtry, przeglądy, profil (także kosz). Bez
+        Plik JSON z danymi z tego telefonu: przestrzenie, listy, zadania i nawyki z historią, tagi, przypomnienia, zależności, czas, filtry, przeglądy, profil (także kosz). Bez
         urządzeń, połączonych kalendarzy i plików załączników. Ten sam format co na webie — kopię z telefonu wczytasz w przeglądarce i odwrotnie.
       </P>
       <Row>
