@@ -1,7 +1,7 @@
 /**
  * Arkusze wyboru wywoływane z dowolnego miejsca (gest na wierszu, pasek zaznaczenia, szczegóły
  * zadania): `pickOption` — lista opcji (z `search` — pole szukania nad długą listą), `pickMany` — kilka opcji z „Zastosuj”, `pickDate` — gotowe dni + kalendarz miesiąca, `pickTime` —
- * gotowe godziny + wpisanie, `pickColor` — szersza paleta + wpisanie #RRGGBB, `pickNumber` — liczba z zakresu, `pickAmount` — gotowe liczby i „Inna…”. Jeden `<PickerHost />` w układzie głównym; Promise kończy się wyborem
+ * gotowe godziny + wpisanie, `pickColor` — szersza paleta + wpisanie #RRGGBB, `pickNumber` — liczba z zakresu, `pickAmount` — gotowe liczby i „Inna…”, `pickHabitValue` — wartość dnia celu ilościowego z „Dzień wolny” / „Wyczyść”. Jeden `<PickerHost />` w układzie głównym; Promise kończy się wyborem
  * albo `undefined` po zamknięciu. Własne arkusze zamiast natywnego wyboru daty — bez dodatkowego
  * modułu natywnego, a gotowe dni („Jutro”, „Za tydzień”) są o jedno dotknięcie.
  */
@@ -15,9 +15,11 @@ import {
   dayChip,
   isoWeekday,
   monthLabel,
+  habitValueEntry,
   parseHexColor,
   search,
   WEEKDAY,
+  type HabitEntry,
   type IsoWeekday,
   type LocalDate,
   type LocalTime,
@@ -44,7 +46,8 @@ type Request =
   | { kind: 'date'; title: string; value: LocalDate | null; today: LocalDate; allowNone: boolean; resolve: (value: LocalDate | null | undefined) => void }
   | { kind: 'time'; title: string; value: LocalTime | null; allowNone: boolean; resolve: (value: LocalTime | null | undefined) => void }
   | { kind: 'color'; title: string; value: string | null; resolve: (value: string | undefined) => void }
-  | { kind: 'number'; title: string; value: number | null; min: number; max: number; unit?: string; resolve: (value: number | undefined) => void };
+  | { kind: 'number'; title: string; value: number | null; min: number; max: number; unit?: string; resolve: (value: number | undefined) => void }
+  | { kind: 'habitValue'; title: string; value: number; target: number; unit?: string; skipped: boolean; empty: boolean; resolve: (value: HabitEntry | undefined) => void };
 
 let current: Request | null = null;
 const listeners = new Set<() => void>();
@@ -99,6 +102,10 @@ export async function pickAmount(title: string, options: Option<number>[], other
   return choice === 'other' ? pickNumber(title, other) : choice;
 }
 
+/** Wartość dnia celu ilościowego: wpisana liczba (`habitValueEntry`), „Dzień wolny” albo „Wyczyść” (`null`); `undefined` = zamknięte bez zmiany. */
+export const pickHabitValue = (opts: { title: string; value: number; target: number; unit?: string; skipped: boolean; empty: boolean }): Promise<HabitEntry | undefined> =>
+  open<HabitEntry | undefined>({ kind: 'habitValue', ...opts });
+
 const close = (value?: unknown) => {
   const r = current;
   set(null);
@@ -124,6 +131,7 @@ export function PickerHost() {
           {request.kind === 'time' ? <TimePicker key={`${request.title}:${request.value}`} request={request} /> : null}
           {request.kind === 'color' ? <ColorSheet key={`${request.title}:${request.value}`} request={request} /> : null}
           {request.kind === 'number' ? <NumberPicker key={`${request.title}:${request.value}`} request={request} /> : null}
+          {request.kind === 'habitValue' ? <HabitValuePicker key={`${request.title}:${request.value}`} request={request} /> : null}
         </Sheet>
       ) : null}
     </Modal>
@@ -404,6 +412,42 @@ function NumberPicker({ request }: { request: Extract<Request, { kind: 'number' 
       <Text style={{ color: !valid && text ? p.bad : p.muted, fontSize: 12 }}>
         Od {min} do {max}.
       </Text>
+    </View>
+  );
+}
+
+const decimal = (n: number) => String(n).replace('.', ',');
+
+function HabitValuePicker({ request }: { request: Extract<Request, { kind: 'habitValue' }> }) {
+  const p = usePalette();
+  const [text, setText] = useState(decimal(request.value));
+  const entry = habitValueEntry(text);
+  const valid = entry !== undefined;
+  return (
+    <View style={{ gap: 12 }}>
+      <View style={[styles.pills, { alignItems: 'center' }]}>
+        <TextInput
+          autoFocus
+          selectTextOnFocus
+          accessibilityLabel={`Wartość${request.unit ? ` (${request.unit})` : ''}`}
+          value={text}
+          onChangeText={setText}
+          keyboardType="decimal-pad"
+          maxLength={10}
+          onSubmitEditing={() => valid && close(entry)}
+          style={[styles.timeInput, { color: p.fg, borderColor: valid ? p.border : p.bad }]}
+        />
+        <Text style={{ color: p.muted, fontSize: 15 }}>
+          / {decimal(request.target)}
+          {request.unit ? ` ${request.unit}` : ''}
+        </Text>
+        <Pill label="Ustaw" selected={valid} onPress={() => valid && close(entry)} />
+      </View>
+      {!valid ? <Text style={{ color: p.bad, fontSize: 12 }}>Wpisz liczbę, np. 1,5.</Text> : null}
+      <View style={styles.pills}>
+        {!request.skipped ? <Pill label="Dzień wolny" onPress={() => close({ kind: 'skipped' })} /> : null}
+        {!request.empty ? <Pill label="Wyczyść" tone="bad" onPress={() => close(null)} /> : null}
+      </View>
     </View>
   );
 }

@@ -8,7 +8,7 @@ import {
   dayChip,
   deleteTaskOps,
   describeHabit,
-  HABIT_BACKFILL_DAYS,
+  habitStripHint,
   HABIT_CONVERT,
   HABIT_RATE_WINDOWS,
   habitStats,
@@ -143,7 +143,7 @@ export default function HabitScreen() {
 
       <Text style={[styles.h2, { color: p.fg }]}>Ostatnie dni</Text>
       {open ? <HabitDayStrip task={task} habit={habit} /> : null}
-      <Text style={{ color: p.muted, fontSize: 12 }}>Dotknij dnia: zrobione → dzień wolny → wyczyść. Uzupełnić można do {HABIT_BACKFILL_DAYS} dni wstecz.</Text>
+      <Text style={{ color: p.muted, fontSize: 12 }}>{habitStripHint(habit, 'Dotknij')}</Text>
 
       <Text style={[styles.h2, { color: p.fg }]}>{quantity ? `Tygodnie — ${habit.unit ?? 'wartość'}` : 'Tygodnie — dni zrobione'}</Text>
       <View style={styles.chart} accessibilityLabel={weeks.map((w) => `${shortDate(w.start)}: ${value(w)}${goal(w) !== null ? ` z ${goal(w)}` : ''}`).join(', ')}>

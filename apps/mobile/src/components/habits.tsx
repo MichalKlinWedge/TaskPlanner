@@ -34,6 +34,7 @@ import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native'
 import { useAppData, useToday, type AppData } from '@/lib/app-data';
 
 import { useTaskActions } from './actions';
+import { pickHabitValue } from './pickers';
 import { usePalette } from './ui';
 
 const EMPTY: readonly HabitCompletion[] = [];
@@ -93,7 +94,12 @@ export const entryToast = (task: ViewTask, date: LocalDate, today: LocalDate, en
   return entry === null ? `„${task.title}” — ${day} wyczyszczone` : entry.kind === 'skipped' ? `„${task.title}” — ${day} dzień wolny` : `„${task.title}” — ${day} zrobione`;
 };
 
-/** Dziś i 7 poprzednich dni; dotknięcie: brak → zrobione → wolne → brak. */
+const valueToast = (task: ViewTask, habit: Habit, date: LocalDate, today: LocalDate, entry: HabitEntry) =>
+  entry?.kind === 'done' && entry.value != null
+    ? `„${task.title}” — ${date === today ? 'dziś' : dayChip(date)}: ${String(entry.value).replace('.', ',')}${habit.unit ? ` ${habit.unit}` : ''}`
+    : entryToast(task, date, today, entry);
+
+/** Dziś i 7 poprzednich dni; dotknięcie: brak → zrobione → wolne → brak, a przy celu ilościowym — arkusz z wartością dnia. */
 export function HabitDayStrip({ task, habit, size = 'md' }: { task: ViewTask; habit: Habit; size?: 'sm' | 'md' }) {
   const data = useAppData();
   const today = useToday(data.settings.timeZone);
@@ -114,9 +120,21 @@ export function HabitDayStrip({ task, habit, size = 'md' }: { task: ViewTask; ha
             key={date}
             accessibilityRole="button"
             accessibilityLabel={label}
-            accessibilityHint={editable ? 'Dotknij, żeby zmienić' : undefined}
+            accessibilityHint={editable ? (habit.target !== undefined ? 'Dotknij, żeby wpisać wartość' : 'Dotknij, żeby zmienić') : undefined}
             disabled={!editable}
-            onPress={() => {
+            onPress={async () => {
+              if (habit.target !== undefined) {
+                const entry = await pickHabitValue({
+                  title: `${task.title} — ${dayChip(date)}`,
+                  value: status.entry?.kind === 'done' ? (status.entry.value ?? habit.target) : habit.target,
+                  target: habit.target,
+                  unit: habit.unit,
+                  skipped: status.entry?.kind === 'skipped',
+                  empty: !status.entry,
+                });
+                if (entry !== undefined) save(task, habit, date, entry, valueToast(task, habit, date, today, entry));
+                return;
+              }
               const entry = nextHabitEntry(habit, status.entry);
               save(task, habit, date, entry, entryToast(task, date, today, entry));
             }}

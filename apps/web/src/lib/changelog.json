@@ -1,4 +1,5 @@
 [
+  {"version":"0.47.5.0","kind":"w","date":"2026-11-27","title":"Cykliczne: wartość dnia dla celu ilościowego — kliknięcie dnia w pasku „Ostatnie dni” pozwala wpisać np. 2,5 km, ustawić dzień wolny albo wyczyścić"},
   {"version":"0.47.4.0","kind":"w","date":"2026-11-27","title":"Nawyki nazywają się „nawyk” w całej aplikacji, „Cykliczne” to widok nawyków i zadań z powtarzaniem"},
   {"version":"0.47.3.1","kind":"z","date":"2026-11-27","title":"Cykliczne: przycisk „Dodaj nawyk” w nagłówku sekcji „Nawyki”"},
   {"version":"0.47.3.0","kind":"w","date":"2026-11-27","title":"Cykliczne: sekcja „Nawyki” sortowana według najbliższego dnia, przycisk „Dodaj nawyk”"},

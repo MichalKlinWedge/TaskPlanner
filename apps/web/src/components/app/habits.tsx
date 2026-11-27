@@ -29,7 +29,9 @@ import {
   habitNextDate,
   habitNextLabel,
   habitStats,
+  habitStripHint,
   habitToSeriesOps,
+  habitValueEntry,
   habitToSeriesProblem,
   habitWeeks,
   habitYear,
@@ -71,7 +73,7 @@ import {
   type ViewContext,
   type ViewTask,
 } from "@taskplanner/core";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from "react";
 
 import type { AppData, List } from "@/lib/app-data";
 import { useLocalQuery } from "@/lib/local-store";
@@ -137,14 +139,120 @@ const entryToast = (task: ViewTask, date: LocalDate, today: LocalDate, entry: Ha
 
 // ── Pasek dni (uzupełnianie wstecz) ──────────────────────────────────────────────────────────
 
-/** Dziś i 7 poprzednich dni; klik: brak → zrobione → wolne → brak. */
+const valueText = (value: number) => String(value).replace(".", ",");
+
+/** Okienko dnia celu ilościowego: wpisanie wartości (Enter = zapis), dzień wolny, wyczyszczenie; Esc / klik obok zamyka. */
+function DayValueEditor({
+  task,
+  habit,
+  status,
+  strip,
+  align,
+  onSave,
+  onClose,
+}: {
+  task: ViewTask;
+  habit: Habit;
+  status: HabitDayStatus;
+  /** Pasek dni — klik w nim obsługuje sam pasek (inny dzień / zamknięcie), nie „klik obok”. */
+  strip: RefObject<HTMLDivElement | null>;
+  /** Mały pasek stoi przy prawej krawędzi wiersza — okienko otwiera się wtedy w lewo. */
+  align: "left" | "right";
+  onSave: (entry: HabitEntry) => void;
+  onClose: () => void;
+}) {
+  const current = status.entry?.kind === "done" ? (status.entry.value ?? habit.target!) : habit.target!;
+  const [text, setText] = useState(valueText(current));
+  const entry = habitValueEntry(text);
+  useEffect(() => {
+    const outside = (e: PointerEvent) => {
+      if (!strip.current?.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("pointerdown", outside, true);
+    return () => document.removeEventListener("pointerdown", outside, true);
+  }, [strip, onClose]);
+  return (
+    <form
+      role="dialog"
+      aria-label={`${task.title} — ${dayChip(status.date)}`}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (entry !== undefined) onSave(entry);
+      }}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Escape") onClose();
+      }}
+      className={`absolute ${align === "right" ? "right-0" : "left-0"} top-full z-20 mt-1 w-64 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 shadow-lg`}
+    >
+      <p className="mb-2 text-xs text-[var(--muted)]">
+        {dayChip(status.date)} — {STATE_LABEL[status.state]}
+      </p>
+      <div className="flex items-center gap-2">
+        <Input
+          autoFocus
+          onFocus={(e) => e.currentTarget.select()}
+          inputMode="decimal"
+          aria-label={`Wartość${habit.unit ? ` (${habit.unit})` : ""}`}
+          aria-invalid={entry === undefined}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          className="w-20"
+        />
+        <span className="text-sm text-[var(--muted)]">
+          / {valueText(habit.target!)}
+          {habit.unit ? ` ${habit.unit}` : ""}
+        </span>
+        <Button kind="primary" type="submit" disabled={entry === undefined} className="ml-auto">
+          Zapisz
+        </Button>
+      </div>
+      {entry === undefined ? <p className="mt-1 text-xs text-[var(--danger)]">Wpisz liczbę, np. 1,5.</p> : null}
+      <div className="mt-2 flex gap-1">
+        <Button kind="ghost" className="px-2 text-xs" disabled={status.entry?.kind === "skipped"} onClick={() => onSave({ kind: "skipped" })}>
+          Dzień wolny
+        </Button>
+        <Button kind="ghost" className="px-2 text-xs" disabled={!status.entry} onClick={() => onSave(null)}>
+          Wyczyść
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+const valueToast = (task: ViewTask, habit: Habit, date: LocalDate, today: LocalDate, entry: HabitEntry) =>
+  entry?.kind === "done" && entry.value != null
+    ? `„${task.title}” — ${date === today ? "dziś" : dayChip(date)}: ${valueText(entry.value)}${habit.unit ? ` ${habit.unit}` : ""}`
+    : entryToast(task, date, today, entry);
+
+/** Dziś i 7 poprzednich dni; klik: brak → zrobione → wolne → brak, a przy celu ilościowym — okienko z wartością dnia. */
 export function HabitDayStrip({ task, habit, size = "md" }: { task: ViewTask; habit: Habit; size?: "sm" | "md" }) {
   const { data, today } = useAppEnv();
   const save = useHabitEntry();
+  const [editing, setEditing] = useState<LocalDate | null>(null);
+  const close = useCallback(() => setEditing(null), []);
+  const stripRef = useRef<HTMLDivElement>(null);
   const completions = completionsOf(data, task.id);
   const days = Array.from({ length: HABIT_BACKFILL_DAYS + 1 }, (_, i) => addDays(today, i - HABIT_BACKFILL_DAYS));
+  const quantity = habit.target !== undefined;
+  const editedStatus = editing ? habitDayStatus(habit, completions, editing, today) : null;
   return (
-    <div className="flex gap-1" role="group" aria-label={`Ostatnie dni: ${task.title}`}>
+    <div ref={stripRef} className="relative flex gap-1" role="group" aria-label={`Ostatnie dni: ${task.title}`}>
+      {editing && editedStatus ? (
+        <DayValueEditor
+          key={editing}
+          task={task}
+          habit={habit}
+          status={editedStatus}
+          strip={stripRef}
+          align={size === "sm" ? "right" : "left"}
+          onClose={close}
+          onSave={(entry) => {
+            save(task, habit, editing, entry, valueToast(task, habit, editing, today, entry));
+            close();
+          }}
+        />
+      ) : null}
       {days.map((date) => {
         const status = habitDayStatus(habit, completions, date, today);
         const editable = canEditHabitDay(habit, date, today);
@@ -156,9 +264,12 @@ export function HabitDayStrip({ task, habit, size = "md" }: { task: ViewTask; ha
             key={date}
             type="button"
             disabled={!editable}
-            title={editable ? `${label} — kliknij, aby zmienić` : label}
+            title={editable ? `${label} — kliknij, aby ${quantity ? "wpisać wartość" : "zmienić"}` : label}
             aria-label={label}
+            aria-haspopup={quantity ? "dialog" : undefined}
+            aria-expanded={quantity ? editing === date : undefined}
             onClick={() => {
+              if (quantity) return setEditing(editing === date ? null : date);
               const entry = nextHabitEntry(habit, status.entry);
               save(task, habit, date, entry, entryToast(task, date, today, entry));
             }}
@@ -465,7 +576,7 @@ export function HabitDetail({ id, data, ctx, navigate }: { id: string; data: App
       <section className="mt-6">
         <h2 className="mb-2 text-sm font-semibold">Ostatnie dni</h2>
         {open ? <HabitDayStrip task={task} habit={habit} /> : null}
-        <p className="mt-1 text-xs text-[var(--muted)]">Kliknij dzień: zrobione → dzień wolny → wyczyść. Uzupełnić można do {HABIT_BACKFILL_DAYS} dni wstecz.</p>
+        <p className="mt-1 text-xs text-[var(--muted)]">{habitStripHint(habit, "Kliknij")}</p>
       </section>
 
       <section className="mt-6">

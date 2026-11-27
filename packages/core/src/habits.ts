@@ -254,6 +254,25 @@ export function nextHabitEntry(habit: Habit, current: HabitCompletion | null): H
   return null;
 }
 
+/**
+ * Wpis dnia z wartości wpisanej dla celu ilościowego („2,5”, „2.5”): liczba > 0 (zaokrąglona do
+ * 0,01) = zrobione z tą wartością, puste pole lub 0 = wyczyszczenie dnia, co innego — `undefined`
+ * (błędne pole, nic nie zapisywać).
+ */
+export function habitValueEntry(text: string): HabitEntry | undefined {
+  const t = text.trim().replace(',', '.');
+  if (!t) return null;
+  if (!/^\d+(\.\d*)?$|^\.\d+$/.test(t)) return undefined;
+  const value = Math.round(Number(t) * 100) / 100;
+  return value > 0 ? { kind: 'done', value } : null;
+}
+
+/** Podpowiedź pod paskiem dni: przy celu ilościowym dzień otwiera wpisanie wartości. */
+export function habitStripHint(habit: Habit, verb: 'Kliknij' | 'Dotknij'): string {
+  const what = habit.target !== undefined ? `${verb} dzień, żeby wpisać wartość, ustawić dzień wolny albo wyczyścić.` : `${verb} dzień: zrobione → dzień wolny → wyczyść.`;
+  return `${what} Uzupełnić można do ${HABIT_BACKFILL_DAYS} dni wstecz.`;
+}
+
 /** Zmiana wartości celu ilościowego o `delta` (np. +1 szklanka); 0 i mniej czyści dzień. */
 export function addHabitValue(habit: Habit, current: HabitCompletion | null, delta: number): HabitEntry {
   const base = current?.kind === 'done' ? (current.value ?? habit.target ?? 0) : 0;

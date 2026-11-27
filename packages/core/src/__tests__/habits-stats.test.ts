@@ -26,6 +26,8 @@ import {
   habitsForDay,
   habitSlots,
   habitStats,
+  habitStripHint,
+  habitValueEntry,
   habitWeeks,
   habitYear,
   habitYearRange,
@@ -197,6 +199,21 @@ describe('Etap 8: odhaczanie', () => {
     expect(addHabitValue(glasses, { date: today, kind: 'done', value: null }, -1)).toEqual({ kind: 'done', value: 7 });
     expect(addHabitValue(glasses, { date: today, kind: 'done', value: 1 }, -1)).toBeNull();
     expect(addHabitValue(glasses, { date: today, kind: 'skipped' }, 1)).toEqual({ kind: 'done', value: 1 });
+  });
+
+  it('wpisana wartość dnia: przecinek lub kropka, puste / 0 czyści, błędne pole = undefined', () => {
+    expect(habitValueEntry('2,5')).toEqual({ kind: 'done', value: 2.5 });
+    expect(habitValueEntry(' 1.25 ')).toEqual({ kind: 'done', value: 1.25 });
+    expect(habitValueEntry('3')).toEqual({ kind: 'done', value: 3 });
+    expect(habitValueEntry(',5')).toEqual({ kind: 'done', value: 0.5 });
+    expect(habitValueEntry('1.234')).toEqual({ kind: 'done', value: 1.23 });
+    expect(habitValueEntry('')).toBeNull();
+    expect(habitValueEntry('0')).toBeNull();
+    expect(habitValueEntry('-1')).toBeUndefined();
+    expect(habitValueEntry('abc')).toBeUndefined();
+    expect(habitValueEntry('1,5 km')).toBeUndefined();
+    expect(habitStripHint(glasses, 'Kliknij')).toContain('wpisać wartość');
+    expect(habitStripHint(daily, 'Dotknij')).toContain('zrobione → dzień wolny → wyczyść');
   });
 
   it('stan dnia: postęp celu ilościowego i okresu „N razy”', () => {
