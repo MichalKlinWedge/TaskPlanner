@@ -8,6 +8,8 @@
 import { descendants, REMINDER_ACTIONS, relativeDay, reminderDoneOps, snoozeReminderOps, toReminderRule, type ReminderAction } from "@taskplanner/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { REMINDER_DONE_EVENT } from "@/lib/notifications";
+
 import { useAppEnv } from "./app-env";
 import { useTaskActions } from "./task-item";
 
@@ -89,13 +91,22 @@ export function ReminderNotificationActions() {
       for (const p of Object.values(PARAMS)) url.searchParams.delete(p);
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
     }
-    if (!("serviceWorker" in navigator)) return;
+    // „Ukończ” przy przypomnieniu w dzwonku (nagłówek jest poza `Shell`).
+    const onBell = (event: Event) => {
+      const { action, taskId, key } = (event as CustomEvent<Record<string, unknown>>).detail ?? {};
+      setPending((p) => [...p, ...parse(action, taskId, key)]);
+    };
+    window.addEventListener(REMINDER_DONE_EVENT, onBell);
+    if (!("serviceWorker" in navigator)) return () => window.removeEventListener(REMINDER_DONE_EVENT, onBell);
     const onMessage = (event: MessageEvent) => {
       const { type, action, taskId, key } = event.data ?? {};
       if (type === "reminder-action") setPending((p) => [...p, ...parse(action, taskId, key)]);
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
-    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener(REMINDER_DONE_EVENT, onBell);
+      navigator.serviceWorker.removeEventListener("message", onMessage);
+    };
   }, []);
 
   useEffect(() => {

@@ -42,7 +42,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { parseSettings } from "@/lib/app-data";
 import { useLocalQuery } from "@/lib/local-store";
-import { dismissNotifications, markNotificationsRead, requestOpenTask, snoozeReminderNotification, useNotifications } from "@/lib/notifications";
+import { dismissNotifications, markNotificationsRead, requestOpenTask, requestReminderDone, snoozeReminderNotification, useNotifications } from "@/lib/notifications";
 import { browserDeviceId } from "@/lib/push";
 import { routeHash } from "@/lib/route";
 
@@ -137,6 +137,7 @@ function NotificationDays({
             }}
             onDismiss={() => dismissNotifications(store, [n])}
             onSnooze={n.kind === "reminder" ? (minutes) => snooze(n, minutes) : undefined}
+            onDone={n.kind === "reminder" && n.taskId ? () => requestReminderDone(store, n) : undefined}
           />
         ))}
       </ul>
@@ -346,6 +347,7 @@ function NotificationItem({
   onOpen,
   onDismiss,
   onSnooze,
+  onDone,
 }: {
   n: AppNotification;
   now: Date;
@@ -353,6 +355,7 @@ function NotificationItem({
   onOpen: () => void;
   onDismiss: () => void;
   onSnooze?: (minutes: number) => void;
+  onDone?: () => void;
 }) {
   const { text, detail } = notificationText(n);
   return (
@@ -379,6 +382,16 @@ function NotificationItem({
                 {reminderSnoozeLabel(m)}
               </button>
             ))}
+            {onDone ? (
+              <button
+                type="button"
+                onClick={onDone}
+                className="ml-auto rounded border border-[var(--accent)] px-1.5 py-0.5 font-medium text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white"
+                data-testid="notification-done"
+              >
+                ✓ Ukończ
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>

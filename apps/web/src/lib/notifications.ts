@@ -298,3 +298,18 @@ export const OPEN_TASK_EVENT = "tp-open-task";
 export function requestOpenTask(taskId: string) {
   window.dispatchEvent(new CustomEvent(OPEN_TASK_EVENT, { detail: { taskId } }));
 }
+
+export const REMINDER_DONE_EVENT = "tp-reminder-done";
+
+/** Klucz wybicia przypomnienia z dzwonka (`r:<fire key>`) — `ReminderFire.key` dla `reminderDoneOps`. */
+export const reminderFireKey = (n: AppNotification) => n.id.slice(2);
+
+/**
+ * „Ukończ” przy przypomnieniu w dzwonku (nagłówek, poza `Shell`): akcję wykonuje `ReminderNotificationActions`
+ * w `Shell` — te same reguły co „Ukończ” z powiadomienia systemowego, z „Cofnij”. Wpis zostaje przeczytany.
+ */
+export function requestReminderDone(store: TabStore, n: AppNotification) {
+  if (!n.taskId) return;
+  window.dispatchEvent(new CustomEvent(REMINDER_DONE_EVENT, { detail: { action: "done", taskId: n.taskId, key: reminderFireKey(n) } }));
+  markNotificationsRead(store, [n]);
+}

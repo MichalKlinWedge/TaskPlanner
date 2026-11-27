@@ -1,4 +1,5 @@
 [
+  {"version":"0.46.1.0","kind":"w","date":"2026-11-27","title":"Dzwonek: „Ukończ” przy przypomnieniu"},
   {"version":"0.46.0.0","kind":"y","date":"2026-11-27","title":"Powiadomienia: rodzaje osobno, śledzenie zadań (twórca, uczestnik) i automatyczne przypomnienie według ustawień"},
   {"version":"0.45.0.0","kind":"y","date":"2026-11-27","title":"Współpracownicy: „Przejmij” osoby po poprzednim właścicielu przestrzeni i łączenie duplikatów"},
   {"version":"0.44.1.0","kind":"w","date":"2026-11-27","title":"Listy: kolumny Czas, Opis i Załączniki zamiast Odpowiedzialnego"},

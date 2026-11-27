@@ -142,12 +142,10 @@ test('wybite przypomnienie → w dzwonku „Przypomnienie: …”, klik otwiera 
     .poll(async () => ((await server.client.from('reminders').select('kind').eq('task_id', task.id).is('deleted_at', null)).data ?? []).map((r) => r.kind).sort())
     .toEqual(['absolute', 'relative']);
 
-  // Ukończone zadanie znika z dzwonka.
-  await page.keyboard.press('Escape');
-  await taskRow(page, closed).getByRole('checkbox').first().click();
+  // „✓ Ukończ” w dzwonku kończy zadanie (z „Cofnij”), a ukończone znika z dzwonka.
+  await panel.getByTestId('notification').filter({ hasText: closed }).getByTestId('notification-done').click();
   await server.waitForTask(closed, (t) => t.status === 'done');
-  await bell.click();
-  await panel.getByRole('button', { name: 'Wszystkie', exact: true }).click();
+  await expect(page.getByText(`Ukończono „${closed}” (z powiadomienia)`)).toBeVisible();
   await expect(panel.getByTestId('notification').filter({ hasText: closed })).toHaveCount(0);
 });
 

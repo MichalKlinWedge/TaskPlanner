@@ -7,16 +7,14 @@
  * z powiadomienia systemowego (`useReminderAction`, z „Cofnij”). Stan zamkniętych okien — `localStorage`
  * `tp-reminder-bell`, wspólny dla kart, więc decyzja w jednej karcie zamyka okno w pozostałych.
  */
-import { notificationText, notificationTime, REMINDER_SNOOZE_OPTIONS, reminderPopups, reminderSnoozeLabel, type AppNotification } from "@taskplanner/core";
+import { notificationText, notificationTime, REMINDER_SNOOZE_OPTIONS, reminderPopups, reminderSnoozeLabel } from "@taskplanner/core";
 import { useEffect, useRef, useState } from "react";
 
-import { closeReminderPopups, dismissNotifications, markNotificationsRead, useNotifications, useReminderBell } from "@/lib/notifications";
+import { closeReminderPopups, dismissNotifications, markNotificationsRead, reminderFireKey as fireKey, useNotifications, useReminderBell } from "@/lib/notifications";
 
 import { useAppEnv } from "./app-env";
 import { useReminderAction } from "./reminder-actions";
 import { useTaskActions } from "./task-item";
-
-const fireKey = (n: AppNotification) => n.id.slice(2);
 
 export function ReminderPopup({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
   const { store, userId, openTask } = useAppEnv();
