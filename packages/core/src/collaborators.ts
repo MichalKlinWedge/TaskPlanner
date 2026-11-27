@@ -6,6 +6,7 @@
  *
  * Web i telefon budują zmiany tylko tutaj (`mutateMany`), z cofnięciem tam, gdzie zmiana coś zabiera.
  */
+import { inkOn, parseHexColor, readableColor } from './colors.ts';
 import { collaboratorId, participantId } from './ids.ts';
 import { CollaboratorRow } from './schemas/model.ts';
 import { normalizeText } from './search.ts';
@@ -17,6 +18,8 @@ export interface Collaborator {
   email: string | null;
   /** Skrót przy zadaniu; brak = inicjały z nazwy (`collaboratorBadge`). */
   acronym?: string | null;
+  /** Kolor znaczka (`#RRGGBB`); brak = domyślny (`collaboratorBadgeColors`). */
+  color?: string | null;
   /** Nieaktywny od (ISO); brak = aktywny. */
   archivedAt?: string | null;
   /** Przestrzenie, w których osoba się podpowiada; brak / `null` = wszystkie (jak przy tagach). */
@@ -34,6 +37,7 @@ export interface ScopeCollaborator {
   collaboratorId: string;
   name: string;
   acronym?: string | null;
+  color?: string | null;
   archivedAt?: string | null;
 }
 
@@ -43,6 +47,7 @@ export const scopeCollaborator = (row: Record<string, unknown>): ScopeCollaborat
   collaboratorId: String(row.collaborator_id),
   name: String(row.name),
   acronym: (row.acronym as string | null) ?? null,
+  color: (row.color as string | null) ?? null,
   archivedAt: (row.archived_at as string | null) ?? null,
 });
 
@@ -63,6 +68,7 @@ export function withSharedCollaborators(own: readonly Collaborator[], copies: re
         name: copy.name,
         email: null,
         acronym: copy.acronym ?? null,
+        color: copy.color ?? null,
         archivedAt: copy.archivedAt ?? null,
         workspaceIds: [copy.scopeId],
         shared: true,
@@ -78,6 +84,8 @@ export interface CollaboratorInput {
   name: string;
   email?: string | null;
   acronym?: string | null;
+  /** Kolor znaczka; `null` = domyślny, brak = bez zmiany (nowy — domyślny). */
+  color?: string | null;
   /** Status; brak = bez zmiany (nowy — aktywny). */
   active?: boolean;
   /** Przestrzenie, w których osoba się podpowiada; puste = wszystkie, brak = bez zmiany. */
@@ -86,15 +94,19 @@ export interface CollaboratorInput {
 
 type Result<T> = ({ ok: true } & T) | { ok: false; error: string };
 
-const Fields = CollaboratorRow.pick({ name: true, email: true, acronym: true });
+const Fields = CollaboratorRow.pick({ name: true, email: true, acronym: true, color: true }).partial({ color: true });
 
-/** Nazwa, e-mail i akronim z formularza: przycięte, puste e-mail / akronim = brak; błąd po polsku. */
-export function collaboratorFields(input: CollaboratorInput): Result<{ name: string; email: string | null; acronym: string | null }> {
+/**
+ * Nazwa, e-mail, akronim i kolor z formularza: przycięte, puste e-mail / akronim = brak, kolor jako
+ * `#RRGGBB` (`undefined` = bez zmiany); błąd po polsku.
+ */
+export function collaboratorFields(input: CollaboratorInput): Result<{ name: string; email: string | null; acronym: string | null; color?: string | null }> {
   const email = input.email?.trim() || null;
   const acronym = input.acronym?.trim() || null;
-  const parsed = Fields.safeParse({ name: input.name, email, acronym });
+  const color = input.color === undefined ? undefined : input.color && (parseHexColor(input.color) ?? input.color);
+  const parsed = Fields.safeParse({ name: input.name, email, acronym, ...(color !== undefined && { color: color || null }) });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Niepoprawne dane.' };
-  return { ok: true, name: parsed.data.name, email: parsed.data.email, acronym: parsed.data.acronym };
+  return { ok: true, name: parsed.data.name, email: parsed.data.email, acronym: parsed.data.acronym, ...(parsed.data.color !== undefined && { color: parsed.data.color }) };
 }
 
 /** Aktywny = podpowiada się przy zadaniach. */
@@ -157,6 +169,7 @@ export function collaboratorSaveOps(
       name: fields.name,
       ...(fields.email && { email: fields.email }),
       ...(fields.acronym && { acronym: fields.acronym }),
+      ...(fields.color && { color: fields.color }),
       ...(input.active !== undefined && { archived_at: input.active ? null : new Date(now).toISOString() }),
       ...(input.workspaceIds?.length && tagWorkspacesPatch(input.workspaceIds)),
       deleted_at: null,
@@ -167,6 +180,7 @@ export function collaboratorSaveOps(
   if (fields.name !== existing.name) patch.name = fields.name;
   if (fields.email !== existing.email) patch.email = fields.email;
   if (fields.acronym !== (existing.acronym ?? null)) patch.acronym = fields.acronym;
+  if (fields.color !== undefined && fields.color !== (existing.color ?? null)) patch.color = fields.color;
   if (input.active !== undefined && input.active !== isActiveCollaborator(existing)) patch.archived_at = input.active ? null : new Date(now).toISOString();
   if (input.workspaceIds) {
     const next = tagWorkspacesPatch(input.workspaceIds).workspace_ids;
@@ -253,6 +267,27 @@ export function assigneeOf(assigneeId: string | null | undefined, collaborators:
 
 /** Znaczek przy zadaniu: akronim osoby albo inicjały z nazwy. */
 export const collaboratorBadge = (collaborator: Pick<Collaborator, 'name' | 'acronym'>): string => collaborator.acronym?.trim() || initials(collaborator.name);
+
+/** Kolory znaczka osoby w jej kolorze: pełny (odpowiedzialny) i obrys (uczestnik). */
+export interface BadgeColors {
+  /** Tło pełnego znaczka. */
+  fill: string;
+  /** Tekst na pełnym znaczku (biały albo prawie czarny). */
+  ink: string;
+  /** Obrys i tekst znaczka z obrysem — czytelne na tle `background`. */
+  line: string;
+}
+
+/**
+ * Kolory znaczka współpracownika (`color`) na tle `background`; bez koloru (albo zły zapis) — `null`,
+ * czyli domyślny wygląd aplikacji. `text` = kolor tekstu motywu, do którego zbliża się za jasny / za
+ * ciemny obrys (`readableColor`).
+ */
+export function collaboratorBadgeColors(collaborator: Pick<Collaborator, 'color'> | null | undefined, background: string, text: string): BadgeColors | null {
+  const color = collaborator?.color ? parseHexColor(collaborator.color) : null;
+  if (!color) return null;
+  return { fill: color, ink: inkOn(color), line: readableColor(color, background, text) };
+}
 
 /** Kolejność listy współpracowników: aktywni, potem nieaktywni, w grupie alfabetycznie. */
 export const collaboratorsByStatus = <T extends Collaborator>(collaborators: readonly T[]): T[] => {

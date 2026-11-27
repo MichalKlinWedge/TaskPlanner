@@ -12,6 +12,7 @@
 import {
   assigneeOf,
   collaboratorBadge,
+  collaboratorBadgeColors,
   columnDate,
   describeRecurrence,
   formatMinutes,
@@ -180,13 +181,38 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
     task.status === 'in_progress' ? { text: 'w trakcie' } : task.status === 'waiting' ? { text: 'oczekuje' } : null,
     attachments ? { text: `📎 ${attachments}` } : null,
     listName ? { text: listName } : null,
-    assignee && !assigneeColumn ? { text: `👤 ${collaboratorBadge(assignee)}` } : null,
-    participants.length ? { text: `👥 ${participants.map(collaboratorBadge).join(' ')}` } : null,
+    assignee && !assigneeColumn ? { text: `👤 ${collaboratorBadge(assignee)}`, people: [assignee], strong: true } : null,
+    participants.length ? { text: `👥 ${participants.map(collaboratorBadge).join(' ')}`, people: participants } : null,
     ...(columns?.includes('tags') ? [] : (tagNames ?? [])).map((t) => ({ text: `@${t}` })),
-  ].filter(Boolean) as { text: string; bad?: boolean }[];
-  // Wyróżniony (zaległy termin) jest zawsze pierwszy: jeden zagnieżdżony `Text` zamiast jednego na pozycję.
+  ].filter(Boolean) as { text: string; bad?: boolean; people?: typeof participants; strong?: boolean }[];
+  // Wyróżniony (zaległy termin) jest zawsze pierwszy; zwykłe pozycje sklejone w jeden tekst, osoby
+  // w kolorze (`collaborators.color`) — po jednym zagnieżdżonym `Text` na znaczek z kolorem.
   const lead = meta[0]?.bad ? meta[0] : null;
-  const rest = (lead ? meta.slice(1) : meta).map((m) => m.text).join(' · ');
+  const restItems = lead ? meta.slice(1) : meta;
+  const colored = restItems.some((m) => m.people?.some((c) => c.color));
+  const rest: ReactNode = colored
+    ? restItems.map((m, i) => (
+        <Fragment key={i}>
+          {i ? ' · ' : ''}
+          {m.people ? (
+            <>
+              {m.strong ? '👤' : '👥'}
+              {m.people.map((c) => {
+                const own = collaboratorBadgeColors(c, p.bg, p.fg);
+                return (
+                  <Fragment key={c.id}>
+                    {' '}
+                    {own ? <Text style={{ color: own.line, fontWeight: m.strong ? '700' : '600' }}>{collaboratorBadge(c)}</Text> : collaboratorBadge(c)}
+                  </Fragment>
+                );
+              })}
+            </>
+          ) : (
+            m.text
+          )}
+        </Fragment>
+      ))
+    : restItems.map((m) => m.text).join(' · ');
 
   const body = (
     <Pressable
@@ -244,7 +270,8 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
         {meta.length ? (
           <Text style={[styles.meta, { color: p.muted }]} numberOfLines={1}>
             {lead ? <Text style={[styles.bad, { color: p.bad }]}>{lead.text}</Text> : null}
-            {lead && rest ? ` · ${rest}` : rest}
+            {lead && restItems.length ? ' · ' : null}
+            {rest}
           </Text>
         ) : null}
       </View>

@@ -203,14 +203,14 @@ isOneToOne: false
                   ]
                 },"collaborators": {
                   Row: {
-                    "acronym": string | null,"archived_at": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"email": string | null,"field_clock": NonNullable<Json>,"id": string,"name": string,"row_version": number,"scope_id": string,"updated_at": string,"workspace_ids": Json | null
+                    "acronym": string | null,"archived_at": string | null,"color": string | null,"created_at": string,"created_by": string | null,"deleted_at": string | null,"email": string | null,"field_clock": NonNullable<Json>,"id": string,"name": string,"row_version": number,"scope_id": string,"updated_at": string,"workspace_ids": Json | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "acronym"?: string | null,"archived_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"email"?: string | null,"field_clock"?: NonNullable<Json>,"id": string,"name": string,"row_version"?: number,"scope_id": string,"updated_at"?: string,"workspace_ids"?: Json | null
+                    "acronym"?: string | null,"archived_at"?: string | null,"color"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"email"?: string | null,"field_clock"?: NonNullable<Json>,"id": string,"name": string,"row_version"?: number,"scope_id": string,"updated_at"?: string,"workspace_ids"?: Json | null
                   }
                   Update: {
-                    "acronym"?: string | null,"archived_at"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"email"?: string | null,"field_clock"?: NonNullable<Json>,"id"?: string,"name"?: string,"row_version"?: number,"scope_id"?: string,"updated_at"?: string,"workspace_ids"?: Json | null
+                    "acronym"?: string | null,"archived_at"?: string | null,"color"?: string | null,"created_at"?: string,"created_by"?: string | null,"deleted_at"?: string | null,"email"?: string | null,"field_clock"?: NonNullable<Json>,"id"?: string,"name"?: string,"row_version"?: number,"scope_id"?: string,"updated_at"?: string,"workspace_ids"?: Json | null
                   }
                   Relationships: [
                     {
@@ -639,14 +639,14 @@ isOneToOne: false
                   ]
                 },"scope_collaborators": {
                   Row: {
-                    "acronym": string | null,"archived_at": string | null,"collaborator_id": string,"created_at": string,"deleted_at": string | null,"id": string,"name": string,"row_version": number,"scope_id": string,"updated_at": string,"user_id": string | null
+                    "acronym": string | null,"archived_at": string | null,"collaborator_id": string,"color": string | null,"created_at": string,"deleted_at": string | null,"id": string,"name": string,"row_version": number,"scope_id": string,"updated_at": string,"user_id": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "acronym"?: string | null,"archived_at"?: string | null,"collaborator_id": string,"created_at"?: string,"deleted_at"?: string | null,"id": string,"name": string,"row_version"?: number,"scope_id": string,"updated_at"?: string,"user_id"?: string | null
+                    "acronym"?: string | null,"archived_at"?: string | null,"collaborator_id": string,"color"?: string | null,"created_at"?: string,"deleted_at"?: string | null,"id": string,"name": string,"row_version"?: number,"scope_id": string,"updated_at"?: string,"user_id"?: string | null
                   }
                   Update: {
-                    "acronym"?: string | null,"archived_at"?: string | null,"collaborator_id"?: string,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"name"?: string,"row_version"?: number,"scope_id"?: string,"updated_at"?: string,"user_id"?: string | null
+                    "acronym"?: string | null,"archived_at"?: string | null,"collaborator_id"?: string,"color"?: string | null,"created_at"?: string,"deleted_at"?: string | null,"id"?: string,"name"?: string,"row_version"?: number,"scope_id"?: string,"updated_at"?: string,"user_id"?: string | null
                   }
                   Relationships: [
                     {

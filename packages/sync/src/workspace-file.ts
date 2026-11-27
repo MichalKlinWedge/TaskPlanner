@@ -75,7 +75,7 @@ export async function exportWorkspace(query: BackupQuery, input: WorkspaceExport
   }
   for (const c of await query('select * from scope_collaborators where scope_id = ?', [workspaceId])) {
     if (!known.has(c.collaborator_id)) {
-      tables.collaborators.push({ id: c.collaborator_id, scope_id: workspaceId, name: c.name, email: null, acronym: c.acronym, archived_at: c.archived_at, workspace_ids: null });
+      tables.collaborators.push({ id: c.collaborator_id, scope_id: workspaceId, name: c.name, email: null, acronym: c.acronym, color: c.color ?? null, archived_at: c.archived_at, workspace_ids: null });
     }
   }
   return createWorkspaceFile({
@@ -105,6 +105,7 @@ export async function workspaceImportContext(query: BackupQuery, userId: string)
       name: String(c.name),
       email: text(c.email),
       acronym: text(c.acronym),
+      color: text(c.color),
       archivedAt: text(c.archived_at),
       workspaceIds: spaces(c),
     })),

@@ -75,6 +75,7 @@ import { useAppEnv } from "./app-env";
 import { CanvasArrangeButton } from "./canvas-arrange";
 import { CanvasExportButton } from "./canvas-export";
 import { CanvasHelpButton } from "./canvas-help";
+import { personBadgeStyle } from "./people-badges";
 import { QuickAdd } from "./quick-add";
 import { TagColorPicker } from "./tag-chip";
 import { useTaskActions } from "./task-item";
@@ -1317,6 +1318,7 @@ const Card = memo(function Card({
                 <span
                   key={person.id}
                   title={`Uczestnik: ${person.name}`}
+                  style={personBadgeStyle(person, false)}
                   className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-sky-600 bg-[var(--surface)]/70 px-1 text-[10px] font-semibold text-sky-700 dark:border-sky-400 dark:text-sky-300"
                   data-testid="canvas-participant"
                 >
@@ -1330,6 +1332,7 @@ const Card = memo(function Card({
           {people.assignee ? (
             <span
               title={`Odpowiedzialny: ${people.assignee.name}`}
+              style={personBadgeStyle(people.assignee, true)}
               className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-600 px-1 text-[10px] font-semibold text-white dark:bg-sky-500"
               data-testid="canvas-assignee"
             >

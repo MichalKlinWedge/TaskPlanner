@@ -1,9 +1,24 @@
 "use client";
 
 /** Znaczki osób zadania: odpowiedzialny (pełny), potem uczestnicy (obrys); nieznani pominięci. */
-import { assigneeOf, collaboratorBadge, type ViewTask } from "@taskplanner/core";
+import { assigneeOf, collaboratorBadge, collaboratorBadgeColors, type Collaborator, type ViewTask } from "@taskplanner/core";
+import type { CSSProperties } from "react";
 
 import { useAppEnv } from "./app-env";
+
+/**
+ * Znaczek w kolorze osoby (`collaborators.color`): pełny — tło w kolorze, obrys — obwódka i tekst
+ * czytelne na tle motywu (`--surface`, `--foreground` z `globals.css`). Bez koloru — `undefined`
+ * (domyślne klasy znaczka).
+ */
+export function personBadgeStyle(person: Pick<Collaborator, "color"> | null | undefined, filled: boolean): CSSProperties | undefined {
+  const light = collaboratorBadgeColors(person, "#FFFFFF", "#18181B");
+  const dark = collaboratorBadgeColors(person, "#18181B", "#F4F4F5");
+  if (!light || !dark) return undefined;
+  if (filled) return { background: light.fill, color: light.ink };
+  const line = light.line === dark.line ? light.line : `light-dark(${light.line}, ${dark.line})`;
+  return { borderColor: line, color: line };
+}
 
 const SHOWN = 4;
 
@@ -25,6 +40,7 @@ export function PeopleBadges({ task, className = "" }: { task: ViewTask; classNa
         <span
           key={person.id}
           title={`${role}: ${person.name}`}
+          style={personBadgeStyle(person, role === "Odpowiedzialny")}
           className={`relative inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold ${
             role === "Odpowiedzialny"
               ? "bg-sky-100 text-sky-900 dark:bg-sky-900/60 dark:text-sky-100"

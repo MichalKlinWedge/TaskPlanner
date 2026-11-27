@@ -2,7 +2,7 @@
 -- Uruchomienie: npm run test:db
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(12);
+select plan(14);
 
 insert into auth.users (id, email) values
   ('00000000-0000-4000-8000-0000000000e1', 'wlasciciel-kopia@test.local'),
@@ -84,6 +84,14 @@ select pg_temp.login(:O);
 select pg_temp.push(pg_temp.op('collaborators', :C, '{"name": "Anna Kowalska"}', pg_temp.h(3000)));
 select pg_temp.login(:G);
 select is((pg_temp.pulled() -> 0 ->> 'name'), 'Anna Kowalska', 'zmiana nazwy dociera do gościa');
+select pg_temp.login(:O);
+select pg_temp.push(pg_temp.op('collaborators', :C, '{"color": "#DC2626"}', pg_temp.h(3002)));
+select pg_temp.login(:G);
+select is((pg_temp.pulled() -> 0 ->> 'color'), '#DC2626', 'kolor osoby dociera do gościa');
+select pg_temp.login(:O);
+select pg_temp.push(pg_temp.op('collaborators', :C, '{"color": null}', pg_temp.h(3003)));
+select pg_temp.login(:G);
+select ok((pg_temp.pulled() -> 0 -> 'color') = 'null'::jsonb, 'kolor zdjęty — domyślny znaczek');
 select pg_temp.login(:O);
 select pg_temp.push(pg_temp.op('collaborators', :C, jsonb_build_object('deleted_at', now()), pg_temp.h(3001)));
 select pg_temp.login(:G);

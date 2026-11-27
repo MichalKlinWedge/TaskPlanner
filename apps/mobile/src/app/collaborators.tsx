@@ -1,6 +1,6 @@
 /**
  * Współpracownicy (jak widok „Współpracownicy” na webie): osoby do wskazania jako odpowiedzialne i
- * uczestnicy zadań — tylko informacyjnie, bez dostępu. Dodanie, edycja (nazwa, e-mail, akronim do
+ * uczestnicy zadań — tylko informacyjnie, bez dostępu. Dodanie, edycja (nazwa, e-mail, akronim i kolor
  * znaczka przy zadaniu, status — tylko aktywni podpowiadają się przy zadaniach, przestrzenie, w których
  * osoba się podpowiada — jak przy tagach, żadna = wszystkie), usunięcie z „Cofnij”
  * (osoba znika z uczestników, zadania wracają do twórcy).
@@ -9,11 +9,12 @@
  * wymaga sieci; „+ Dodaj” wypełnia formularz nowej osoby) oraz osoby wpisane przez innych członków
  * (`scope_collaborators`, `shared`).
  */
-import { collaboratorBadge, collaboratorSaveOps, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, nameFromEmail, memberSince, plural, SCOPE_ROLE, spacePeople, type Collaborator, type SpaceSharing } from '@taskplanner/core';
+import { collaboratorBadge, collaboratorBadgeColors, collaboratorSaveOps, collaboratorsByStatus, ownCollaborators, deleteCollaboratorOps, initials, isActiveCollaborator, nameFromEmail, memberSince, plural, SCOPE_ROLE, spacePeople, type Collaborator, type SpaceSharing } from '@taskplanner/core';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { confirm, useTaskActions } from '@/components/actions';
+import { ColorPicker } from '@/components/color-picker';
 import { Button, Field, P, Row, Screen, Section, usePalette } from '@/components/ui';
 import { WorkspaceChips } from '@/components/workspace-chips';
 import { useAppData, type AppData } from '@/lib/app-data';
@@ -30,12 +31,13 @@ interface Draft {
   name: string;
   email: string;
   acronym: string;
+  color: string | null;
   active: boolean;
   workspaceIds: string[];
 }
 
-const EMPTY: Draft = { name: '', email: '', acronym: '', active: true, workspaceIds: [] };
-const draftOf = (person: Collaborator): Draft => ({ name: person.name, email: person.email ?? '', acronym: person.acronym ?? '', active: isActiveCollaborator(person), workspaceIds: [...(person.workspaceIds ?? [])] });
+const EMPTY: Draft = { name: '', email: '', acronym: '', color: null, active: true, workspaceIds: [] };
+const draftOf = (person: Collaborator): Draft => ({ name: person.name, email: person.email ?? '', acronym: person.acronym ?? '', color: person.color ?? null, active: isActiveCollaborator(person), workspaceIds: [...(person.workspaceIds ?? [])] });
 
 export default function Collaborators() {
   const p = usePalette();
@@ -123,9 +125,7 @@ export default function Collaborators() {
                 setEditing({ id: person.id, draft: draftOf(person) });
               }}
             >
-              <View style={[styles.badge, { backgroundColor: p.accent }]}>
-                <Text style={styles.badgeText}>{collaboratorBadge(person)}</Text>
-              </View>
+              <PersonBadge person={person} />
               <View style={{ flex: 1, gap: 2 }}>
                 <Text style={{ color: p.fg, fontSize: 16 }}>
                   {person.name}
@@ -181,9 +181,7 @@ export default function Collaborators() {
           <P muted>Można ich wskazać w zadaniach tych przestrzeni; zmienia ich osoba, która ich wpisała.</P>
           {shared.map((person) => (
             <View key={person.id} style={[styles.person, styles.line, { borderColor: p.border, opacity: isActiveCollaborator(person) ? 1 : 0.55 }]}>
-              <View style={[styles.badge, { backgroundColor: p.accent }]}>
-                <Text style={styles.badgeText}>{collaboratorBadge(person)}</Text>
-              </View>
+              <PersonBadge person={person} />
               <View style={{ flex: 1, gap: 2 }}>
                 <Text style={{ color: p.fg, fontSize: 16 }}>
                   {person.name}
@@ -229,7 +227,19 @@ function useSpaceSharing(workspaces: AppData['workspaces']): { list: SpaceSharin
   return state.key === key ? state : { list: null, error: null };
 }
 
+/** Znaczek osoby w jej kolorze (`collaborators.color`); bez koloru — akcent aplikacji. */
+function PersonBadge({ person }: { person: Pick<Collaborator, 'name' | 'acronym' | 'color'> }) {
+  const p = usePalette();
+  const own = collaboratorBadgeColors(person, p.card, p.fg);
+  return (
+    <View style={[styles.badge, { backgroundColor: own?.fill ?? p.accent }]}>
+      <Text style={[styles.badgeText, own && { color: own.ink }]}>{collaboratorBadge(person)}</Text>
+    </View>
+  );
+}
+
 function PersonFields({ draft, onChange, workspaces }: { draft: Draft; onChange: (draft: Draft) => void; workspaces: AppData['workspaces'] }) {
+  const p = usePalette();
   return (
     <>
       <Field label="Nazwa" value={draft.name} onChangeText={(name) => onChange({ ...draft, name })} maxLength={100} />
@@ -242,6 +252,13 @@ function PersonFields({ draft, onChange, workspaces }: { draft: Draft; onChange:
         autoCapitalize="characters"
         placeholder={draft.name.trim() ? initials(draft.name) : 'np. AN'}
       />
+      <Text style={{ color: p.muted, fontSize: 13 }}>Kolor znaczka (odróżnia osoby przy zadaniach; widzą go też pozostali członkowie przestrzeni)</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <PersonBadge person={{ name: draft.name.trim() || 'A N', acronym: draft.acronym.trim() || null, color: draft.color }} />
+        <View style={{ flex: 1 }}>
+          <ColorPicker value={draft.color} onChange={(color) => onChange({ ...draft, color })} onClear={() => onChange({ ...draft, color: null })} />
+        </View>
+      </View>
       <Row>
         <Button title="Aktywny" kind={draft.active ? 'primary' : 'secondary'} onPress={() => onChange({ ...draft, active: true })} />
         <Button title="Nieaktywny" kind={draft.active ? 'secondary' : 'primary'} onPress={() => onChange({ ...draft, active: false })} />

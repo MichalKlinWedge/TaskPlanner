@@ -386,6 +386,8 @@ export const CollaboratorRow = z.object({
   email: z.email('Niepoprawny adres e-mail.').max(254).nullable(),
   /** Skrót przy zadaniu; `null` = inicjały z nazwy. */
   acronym: z.string().trim().min(1, 'Akronim nie może być pusty.').max(5, 'Akronim: najwyżej 5 znaków.').nullable(),
+  /** Kolor znaczka (`#RRGGBB`); `null` = domyślny. */
+  color: Color.nullable(),
   /** Status: `null` = aktywny; nieaktywny nie podpowiada się przy zadaniach. */
   archived_at: Instant.nullable(),
   /** Przestrzenie, w których osoba się podpowiada; `null` = wszystkie (jak `tags.workspace_ids`). */

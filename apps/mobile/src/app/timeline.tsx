@@ -16,6 +16,7 @@ import {
   addDays,
   assigneeOf,
   collaboratorBadge,
+  collaboratorBadgeColors,
   dayMonth,
   daysBetween,
   plural,
@@ -482,15 +483,19 @@ export default function TimelineScreen() {
                     >
                       {row.title}
                     </Text>
-                    {people.slice(0, PEOPLE_SHOWN).map(({ person, assignee }) => (
-                      <Text
-                        key={person.id}
-                        accessibilityLabel={`${assignee ? 'Odpowiedzialny' : 'Uczestnik'}: ${person.name}`}
-                        style={[styles.person, assignee ? { backgroundColor: `${p.accent}2e`, borderColor: 'transparent', color: p.fg } : { borderColor: p.accent, color: p.accent }]}
-                      >
-                        {collaboratorBadge(person)}
-                      </Text>
-                    ))}
+                    {people.slice(0, PEOPLE_SHOWN).map(({ person, assignee }) => {
+                      const own = collaboratorBadgeColors(person, p.bg, p.fg);
+                      const look = assignee
+                        ? own
+                          ? { backgroundColor: own.fill, borderColor: 'transparent', color: own.ink }
+                          : { backgroundColor: `${p.accent}2e`, borderColor: 'transparent', color: p.fg }
+                        : { borderColor: own?.line ?? p.accent, color: own?.line ?? p.accent };
+                      return (
+                        <Text key={person.id} accessibilityLabel={`${assignee ? 'Odpowiedzialny' : 'Uczestnik'}: ${person.name}`} style={[styles.person, look]}>
+                          {collaboratorBadge(person)}
+                        </Text>
+                      );
+                    })}
                     {people.length > PEOPLE_SHOWN ? <Text style={{ fontSize: 10, color: p.muted }}>+{people.length - PEOPLE_SHOWN}</Text> : null}
                     {showCritical && row.float !== null ? (
                       <Text style={{ fontSize: 11, color: row.critical ? CRITICAL : p.muted, fontWeight: row.critical ? '700' : '400' }}>{row.critical ? '●' : `+${row.float}`}</Text>

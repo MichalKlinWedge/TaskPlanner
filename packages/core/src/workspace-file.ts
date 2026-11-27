@@ -415,7 +415,7 @@ export function workspaceImportPlan(file: WorkspaceFile, target: WorkspaceImport
   // Współpracownicy: własny o tej samej nazwie albo nowy wpis (jak tagi).
   const peopleOps: BackupOp[] = [];
   const people: Collaborator[] = [...target.collaborators];
-  const person = (input: { name: string; email: string | null; acronym: string | null; archivedAt: string | null }): string => {
+  const person = (input: { name: string; email: string | null; acronym: string | null; color?: string | null; archivedAt: string | null }): string => {
     const existing = findCollaborator(people, input.name);
     if (existing) {
       const spaces = withSpace(existing.workspaceIds, workspaceId);
@@ -430,12 +430,12 @@ export function workspaceImportPlan(file: WorkspaceFile, target: WorkspaceImport
     peopleOps.push({
       table: 'collaborators',
       id,
-      patch: { scope_id: userId, name: input.name, email: input.email, acronym: input.acronym, archived_at: input.archivedAt, workspace_ids: [workspaceId], deleted_at: null },
+      patch: { scope_id: userId, name: input.name, email: input.email, acronym: input.acronym, color: input.color ?? null, archived_at: input.archivedAt, workspace_ids: [workspaceId], deleted_at: null },
     });
     return id;
   };
   for (const c of t.collaborators) {
-    ids.set(c.id, person({ name: String(c.name).trim(), email: (c.email as string | null) ?? null, acronym: (c.acronym as string | null) ?? null, archivedAt: (c.archived_at as string | null) ?? null }));
+    ids.set(c.id, person({ name: String(c.name).trim(), email: (c.email as string | null) ?? null, acronym: (c.acronym as string | null) ?? null, color: (c.color as string | null) ?? null, archivedAt: (c.archived_at as string | null) ?? null }));
   }
   /** Współpracownik odpowiadający kontu z pliku (po e-mailu); `null` = konto nieznane. */
   const accountPerson = (account: string): string | null => {

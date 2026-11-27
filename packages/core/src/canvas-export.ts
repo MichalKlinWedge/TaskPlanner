@@ -25,7 +25,7 @@ import {
   type CanvasArrowKind,
   type PlacedCard,
 } from './canvas.ts';
-import { collaboratorBadge } from './collaborators.ts';
+import { collaboratorBadge, collaboratorBadgeColors } from './collaborators.ts';
 import { rgbOf } from './colors.ts';
 import { dayMonth, plural } from './format.ts';
 import { PRIORITY } from './labels.ts';
@@ -151,6 +151,8 @@ export interface CanvasExportTag {
 export interface CanvasExportPerson {
   name: string;
   acronym?: string | null;
+  /** Kolor znaczka (`collaboratorBadgeColors`); brak = kolory motywu. */
+  color?: string | null;
 }
 
 export interface CanvasExportInput {
@@ -404,14 +406,17 @@ function cardOps(ops: CanvasDrawOp[], p: PlacedCard<CanvasExportTask>, x: number
   const badgeWidth = (text: string) => Math.max(20, measure(text, 10, 600) + 8);
   let edge = right;
   const people = input.people?.get(task.id);
-  const badge = (text: string, filled: boolean) => {
+  const badge = (person: CanvasExportPerson, filled: boolean) => {
+    const text = collaboratorBadge(person);
+    const own = collaboratorBadgeColors(person, mixHex(theme.surface, face, 0.7), theme.text);
     const bw = badgeWidth(text);
     edge -= bw;
-    ops.push({ kind: 'rect', x: edge, y: cy - 10, w: bw, h: 20, radius: 10, fill: filled ? theme.assignee : mixHex(theme.surface, face, 0.7), stroke: filled ? undefined : theme.participant, lineWidth: filled ? undefined : 1, alpha });
-    ops.push({ kind: 'text', x: edge + bw / 2, y: cy, text, size: 10, weight: 600, color: filled ? theme.assigneeText : theme.participantText, align: 'center', alpha });
+    const fill = filled ? (own?.fill ?? theme.assignee) : mixHex(theme.surface, face, 0.7);
+    ops.push({ kind: 'rect', x: edge, y: cy - 10, w: bw, h: 20, radius: 10, fill, stroke: filled ? undefined : (own?.line ?? theme.participant), lineWidth: filled ? undefined : 1, alpha });
+    ops.push({ kind: 'text', x: edge + bw / 2, y: cy, text, size: 10, weight: 600, color: filled ? (own?.ink ?? theme.assigneeText) : (own?.line ?? theme.participantText), align: 'center', alpha });
     edge -= 4;
   };
-  if (people?.assignee) badge(collaboratorBadge(people.assignee), true);
+  if (people?.assignee) badge(people.assignee, true);
   const participants = people?.participants ?? [];
   if (participants.length > CANVAS_MAX_PARTICIPANTS) {
     const more = `+${participants.length - CANVAS_MAX_PARTICIPANTS}`;
@@ -419,7 +424,7 @@ function cardOps(ops: CanvasDrawOp[], p: PlacedCard<CanvasExportTask>, x: number
     ops.push({ kind: 'text', x: edge, y: cy, text: more, size: 11, weight: 400, color: theme.muted, alpha });
     edge -= 4;
   }
-  for (const person of participants.slice(0, CANVAS_MAX_PARTICIPANTS).reverse()) badge(collaboratorBadge(person), false);
+  for (const person of participants.slice(0, CANVAS_MAX_PARTICIPANTS).reverse()) badge(person, false);
 
   const progress = input.subtasks?.get(task.id);
   const counter = progress?.total ? `↳ ${progress.done}/${progress.total}` : null;

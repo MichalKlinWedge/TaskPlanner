@@ -218,9 +218,9 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
   // Tagi innych członków z udostępnionych przestrzeni (użyte w zadaniach albo przypisane do przestrzeni).
   const sharedTags = useLocalQuery<Row>(store, "select scope_id, tag_id, name, color from scope_tags", [], ["scope_tags"]);
   const filters = useLocalQuery<Row>(store, "select id, name, icon, query, sort_key from saved_filters where deleted_at is null", [], ["saved_filters"]);
-  const collaborators = useLocalQuery<Row>(store, "select id, name, email, acronym, archived_at, workspace_ids from collaborators where deleted_at is null", [], ["collaborators"]);
+  const collaborators = useLocalQuery<Row>(store, "select id, name, email, acronym, color, archived_at, workspace_ids from collaborators where deleted_at is null", [], ["collaborators"]);
   // Cudze osoby z udostępnionych przestrzeni (odpowiedzialni / uczestnicy wskazani przez innych).
-  const sharedPeople = useLocalQuery<Row>(store, "select scope_id, collaborator_id, name, acronym, archived_at from scope_collaborators", [], ["scope_collaborators"]);
+  const sharedPeople = useLocalQuery<Row>(store, "select scope_id, collaborator_id, name, acronym, color, archived_at from scope_collaborators", [], ["scope_collaborators"]);
   const tasks = useTaskEntries(store);
   const habits = useLocalQuery<Row>(
     store,
@@ -287,7 +287,7 @@ export function useAppData(store: TabStore, today: LocalDate): AppData {
         })
         .sort(byKey),
       collaborators: withSharedCollaborators(
-        collaborators.rows.map((r) => ({ id: String(r.id), name: String(r.name), email: (r.email as string | null) ?? null, acronym: (r.acronym as string | null) ?? null, archivedAt: (r.archived_at as string | null) ?? null, workspaceIds: tagWorkspaceIds(r.workspace_ids) })),
+        collaborators.rows.map((r) => ({ id: String(r.id), name: String(r.name), email: (r.email as string | null) ?? null, acronym: (r.acronym as string | null) ?? null, color: (r.color as string | null) ?? null, archivedAt: (r.archived_at as string | null) ?? null, workspaceIds: tagWorkspaceIds(r.workspace_ids) })),
         sharedPeople.rows.map(scopeCollaborator),
       ),
       tasks: viewTaskList,

@@ -1,4 +1,5 @@
 [
+  {"version":"0.44.0.0","kind":"y","date":"2026-11-27","title":"Współpracownicy: kolor znaczka (akronimu) ustawiany przez właściciela, widoczny w zadaniach"},
   {"version":"0.43.4.0","kind":"w","date":"2026-11-26","title":"Przypomnienia: okno na środku ekranu z „Ukończ” i „Przypomnij za…”"},
   {"version":"0.43.3.0","kind":"w","date":"2026-11-26","title":"Dzwonek: „Przypomnij za 15 min / 30 min / 1 h” przy przypomnieniu"},
   {"version":"0.43.2.0","kind":"w","date":"2026-11-26","title":"Web: przypomnienia w dzwonku i czerwony wiersz po czasie także przy zaznaczeniu"},

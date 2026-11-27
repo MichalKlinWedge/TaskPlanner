@@ -173,9 +173,9 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
     // Tagi innych członków z udostępnionych przestrzeni.
     db.all<SqlRow>('select scope_id, tag_id, name, color from scope_tags'),
     db.all<SqlRow>('select id, name, icon, query, sort_key from saved_filters where deleted_at is null'),
-    db.all<SqlRow>('select id, name, email, acronym, archived_at, workspace_ids from collaborators where deleted_at is null'),
+    db.all<SqlRow>('select id, name, email, acronym, color, archived_at, workspace_ids from collaborators where deleted_at is null'),
     // Cudze osoby z udostępnionych przestrzeni (odpowiedzialni / uczestnicy wskazani przez innych).
-    db.all<SqlRow>('select scope_id, collaborator_id, name, acronym, archived_at from scope_collaborators'),
+    db.all<SqlRow>('select scope_id, collaborator_id, name, acronym, color, archived_at from scope_collaborators'),
     cache.read(),
     db.all<SqlRow>(
       `select c.task_id, c.occurrence_date, c.kind, c.value from task_completions c join tasks t on t.id = c.task_id
@@ -228,7 +228,7 @@ export async function loadAppData(engine: SyncEngine, cache: TaskCache = createT
       })
       .sort(byKey),
     collaborators: withSharedCollaborators(
-      collaborators.map((r) => ({ id: String(r.id), name: String(r.name), email: (r.email as string | null) ?? null, acronym: (r.acronym as string | null) ?? null, archivedAt: (r.archived_at as string | null) ?? null, workspaceIds: tagWorkspaceIds(r.workspace_ids) })),
+      collaborators.map((r) => ({ id: String(r.id), name: String(r.name), email: (r.email as string | null) ?? null, acronym: (r.acronym as string | null) ?? null, color: (r.color as string | null) ?? null, archivedAt: (r.archived_at as string | null) ?? null, workspaceIds: tagWorkspaceIds(r.workspace_ids) })),
       sharedPeople.map(scopeCollaborator),
     ),
     tasks,

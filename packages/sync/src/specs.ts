@@ -116,7 +116,7 @@ export const TABLES: { [T in SyncedTable]: TableSpec<T> } = {
     scope: 'personal',
   },
   collaborators: {
-    columns: columns<'collaborators'>()(['scope_id', 'name', 'email', 'acronym', 'archived_at', 'workspace_ids']),
+    columns: columns<'collaborators'>()(['scope_id', 'name', 'email', 'acronym', 'color', 'archived_at', 'workspace_ids']),
     json: ['workspace_ids'],
     scope: 'personal',
   },
@@ -186,7 +186,7 @@ export const READONLY: { [T in ReadonlyTable]: { columns: readonly string[]; boo
   },
   /** Kopie współpracowników użytych w przestrzeni (v1.x) — osoba widoczna dla wszystkich członków. */
   scope_collaborators: {
-    columns: readonlyColumns<'scope_collaborators'>()(['collaborator_id', 'name', 'acronym', 'user_id', 'archived_at', 'created_at', 'updated_at', 'row_version']),
+    columns: readonlyColumns<'scope_collaborators'>()(['collaborator_id', 'name', 'acronym', 'color', 'user_id', 'archived_at', 'created_at', 'updated_at', 'row_version']),
     bool: [],
   },
   /** Kopie tagów użytych / przypisanych w przestrzeni (v1.x) — tag widoczny dla wszystkich członków. */

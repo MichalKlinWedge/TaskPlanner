@@ -3,7 +3,7 @@
 /**
  * Widok „Współpracownicy” (`#/people`, link w pasku bocznym): książka adresowa osób, które można
  * wskazać jako odpowiedzialne i uczestników zadań (tylko informacyjnie — nikt nie dostaje dostępu).
- * Kliknięcie osoby otwiera edycję: nazwa, e-mail, akronim (znaczek przy zadaniu) i status — tylko
+ * Kliknięcie osoby otwiera edycję: nazwa, e-mail, akronim i kolor (znaczek przy zadaniu) i status — tylko
  * aktywni podpowiadają się przy zadaniach — oraz przestrzenie, w których osoba się podpowiada (jak
  * przy tagach; żadna = wszystkie). Usunięcie zabiera osobę z uczestników, a zadania, za które
  * odpowiadała, wracają do twórcy (z cofnięciem).
@@ -21,6 +21,8 @@ import { workspaceSharing } from "@/lib/sharing";
 
 import { useAppEnv } from "./app-env";
 import { WorkspaceChips } from "./filter-views";
+import { personBadgeStyle } from "./people-badges";
+import { TagColorPicker } from "./tag-chip";
 import { useTaskActions } from "./task-item";
 import { Button, Card, Field, Input, Notice, Select } from "./ui";
 
@@ -30,12 +32,13 @@ interface Draft {
   name: string;
   email: string;
   acronym: string;
+  color: string | null;
   active: boolean;
   workspaceIds: string[];
 }
 
-const EMPTY: Draft = { name: "", email: "", acronym: "", active: true, workspaceIds: [] };
-const draftOf = (person: Collaborator): Draft => ({ name: person.name, email: person.email ?? "", acronym: person.acronym ?? "", active: isActiveCollaborator(person), workspaceIds: [...(person.workspaceIds ?? [])] });
+const EMPTY: Draft = { name: "", email: "", acronym: "", color: null, active: true, workspaceIds: [] };
+const draftOf = (person: Collaborator): Draft => ({ name: person.name, email: person.email ?? "", acronym: person.acronym ?? "", color: person.color ?? null, active: isActiveCollaborator(person), workspaceIds: [...(person.workspaceIds ?? [])] });
 
 export function CollaboratorsView() {
   const { store, data, userId } = useAppEnv();
@@ -174,7 +177,7 @@ export function CollaboratorsView() {
                   </Card>
                 ) : (
                   <button type="button" onClick={() => open(person)} className={`flex w-full items-center gap-3 rounded-md px-1 py-1 text-left hover:bg-[var(--hover)] ${active ? "" : "opacity-60"}`}>
-                    <span aria-hidden className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 px-1.5 text-[11px] font-semibold text-sky-900 dark:bg-sky-900/50 dark:text-sky-100">
+                    <span aria-hidden style={personBadgeStyle(person, true)} className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 px-1.5 text-[11px] font-semibold text-sky-900 dark:bg-sky-900/50 dark:text-sky-100">
                       {collaboratorBadge(person)}
                     </span>
                     <span className="min-w-0 flex-1">
@@ -240,7 +243,7 @@ export function CollaboratorsView() {
           <ul className="divide-y divide-[var(--line)] text-sm" data-testid="shared-collaborators">
             {shared.map((person) => (
               <li key={person.id} className={`flex items-center gap-3 px-1 py-2 ${isActiveCollaborator(person) ? "" : "opacity-60"}`}>
-                <span aria-hidden className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 px-1.5 text-[11px] font-semibold text-sky-900 dark:bg-sky-900/50 dark:text-sky-100">
+                <span aria-hidden style={personBadgeStyle(person, true)} className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 px-1.5 text-[11px] font-semibold text-sky-900 dark:bg-sky-900/50 dark:text-sky-100">
                   {collaboratorBadge(person)}
                 </span>
                 <span className="min-w-0 flex-1">
@@ -293,6 +296,16 @@ function PersonFields({ draft, onChange, workspaces, autoFocus }: { draft: Draft
       <Field label="Akronim" hint="Znaczek przy zadaniu, do 5 znaków. Puste = inicjały z nazwy.">
         <Input value={draft.acronym} maxLength={5} placeholder={draft.name.trim() ? initials(draft.name) : "np. AN"} onChange={(e) => onChange({ ...draft, acronym: e.target.value })} />
       </Field>
+      <div className="flex flex-col gap-1 text-sm">
+        <span>Kolor znaczka</span>
+        <div className="flex items-center gap-2">
+          <span aria-hidden style={personBadgeStyle(draft, true)} className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-sky-100 px-1 text-[10px] font-semibold text-sky-900 dark:bg-sky-900/60 dark:text-sky-100" data-testid="collaborator-color-preview">
+            {draft.acronym.trim() || (draft.name.trim() ? initials(draft.name) : "AN")}
+          </span>
+          <TagColorPicker value={draft.color} onChange={(color) => onChange({ ...draft, color })} label="Kolor znaczka współpracownika" />
+        </div>
+        <span className="text-xs opacity-60">Odróżnia osoby przy zadaniach; widzą go też pozostali członkowie udostępnionych przestrzeni. Brak = domyślny.</span>
+      </div>
       <Field label="Status" hint="Nieaktywni zostają przy swoich zadaniach, ale nie podpowiadają się przy nowych.">
         <Select value={draft.active ? "active" : "inactive"} onChange={(e) => onChange({ ...draft, active: e.target.value === "active" })}>
           <option value="active">Aktywny</option>

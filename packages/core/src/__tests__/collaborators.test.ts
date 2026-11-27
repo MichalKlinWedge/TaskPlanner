@@ -7,6 +7,7 @@ import {
   assigneeOf,
   assignSelfOps,
   collaboratorBadge,
+  collaboratorBadgeColors,
   collaboratorFields,
   collaboratorsByStatus,
   collaboratorMatches,
@@ -20,6 +21,7 @@ import {
   nameFromEmail,
   ownCollaborators,
   removeParticipantOps,
+  scopeCollaborator,
   selfCollaborator,
   selfName,
   sortCollaborators,
@@ -27,6 +29,7 @@ import {
   withSharedCollaborators,
   type Collaborator,
 } from '../collaborators.ts';
+import { contrastRatio } from '../colors.ts';
 import { collaboratorId, participantId } from '../ids.ts';
 import { MODEL } from '../schemas/model.ts';
 
@@ -85,7 +88,7 @@ describe('współpracownicy', () => {
 
   it('operacje przechodzą schematy wierszy', () => {
     const saved = collaboratorSaveOps(USER, [], { name: 'Ola', email: 'ola@example.com' });
-    expect(saved.ok && MODEL.collaborators.safeParse({ id: saved.id, acronym: null, archived_at: null, workspace_ids: null, ...saved.ops[0]!.patch }).success).toBe(true);
+    expect(saved.ok && MODEL.collaborators.safeParse({ id: saved.id, acronym: null, color: null, archived_at: null, workspace_ids: null, ...saved.ops[0]!.patch }).success).toBe(true);
     const [op] = addParticipantOps(TASK, anna.id);
     expect(MODEL.task_participants.safeParse({ id: op!.id, ...op!.patch }).success).toBe(true);
   });
@@ -111,7 +114,35 @@ describe('akronim i status', () => {
     expect(collaboratorSaveOps(USER, all, { name: 'Ewa Kot', acronym: '' }, ewa, at)).toMatchObject({ ops: [{ patch: { acronym: null } }] });
     const created = collaboratorSaveOps(USER, [], { name: 'Ola', acronym: 'OL', active: false }, undefined, at);
     expect(created.ok && created.ops[0]!.patch).toMatchObject({ acronym: 'OL', archived_at: at });
-    expect(created.ok && MODEL.collaborators.safeParse({ id: created.id, email: null, acronym: null, archived_at: null, workspace_ids: null, ...created.ops[0]!.patch }).success).toBe(true);
+    expect(created.ok && MODEL.collaborators.safeParse({ id: created.id, email: null, acronym: null, color: null, archived_at: null, workspace_ids: null, ...created.ops[0]!.patch }).success).toBe(true);
+  });
+
+  it('kolor: #RRGGBB wielkimi literami, null = domyślny, brak = bez zmiany; zły zapis = błąd', () => {
+    expect(collaboratorFields({ name: 'Ola' })).not.toHaveProperty('color');
+    expect(collaboratorFields({ name: 'Ola', color: '4f46e5' })).toMatchObject({ ok: true, color: '#4F46E5' });
+    expect(collaboratorFields({ name: 'Ola', color: null })).toMatchObject({ ok: true, color: null });
+    expect(collaboratorFields({ name: 'Ola', color: '' })).toMatchObject({ ok: true, color: null });
+    expect(collaboratorFields({ name: 'Ola', color: 'zielony' })).toEqual({ ok: false, error: 'Kolor w formacie #RRGGBB.' });
+    const created = collaboratorSaveOps(USER, [], { name: 'Ola', color: '#DC2626' });
+    expect(created.ok && created.ops[0]!.patch).toMatchObject({ color: '#DC2626' });
+    expect(collaboratorSaveOps(USER, all, { name: 'Ewa Kot', acronym: 'EK2' }, ewa)).toMatchObject({ ops: [] });
+    expect(collaboratorSaveOps(USER, all, { name: 'Ewa Kot', acronym: 'EK2', color: '#16A34A' }, ewa)).toMatchObject({ ops: [{ patch: { color: '#16A34A' } }] });
+    expect(collaboratorSaveOps(USER, all, { name: 'Ewa Kot', acronym: 'EK2', color: null }, { ...ewa, color: '#16A34A' })).toMatchObject({ ops: [{ patch: { color: null } }] });
+    expect(collaboratorSaveOps(USER, all, { name: 'Ewa Kot', acronym: 'EK2', color: '#16a34a' }, { ...ewa, color: '#16A34A' })).toMatchObject({ ops: [] });
+  });
+
+  it('kolory znaczka: bez koloru null; pełny z czytelnym tekstem, obrys czytelny na tle', () => {
+    expect(collaboratorBadgeColors(ewa, '#FFFFFF', '#18181B')).toBeNull();
+    expect(collaboratorBadgeColors({ color: 'zły' }, '#FFFFFF', '#18181B')).toBeNull();
+    expect(collaboratorBadgeColors({ color: '#DC2626' }, '#FFFFFF', '#18181B')).toEqual({ fill: '#DC2626', ink: '#FFFFFF', line: '#DC2626' });
+    expect(collaboratorBadgeColors({ color: '#FDE047' }, '#FFFFFF', '#18181B')).toMatchObject({ fill: '#FDE047', ink: '#18181B' });
+    const pale = collaboratorBadgeColors({ color: '#FEF9C3' }, '#FFFFFF', '#18181B')!;
+    expect(contrastRatio(pale.line, '#FFFFFF')).toBeGreaterThanOrEqual(3);
+  });
+
+  it('kopia w przestrzeni niesie kolor', () => {
+    const merged = withSharedCollaborators([], [scopeCollaborator({ scope_id: 'w', collaborator_id: ewa.id, name: 'Ewa Kot', acronym: null, color: '#2563EB', archived_at: null })]);
+    expect(merged[0]).toMatchObject({ shared: true, color: '#2563EB' });
   });
 
   it('podpowiedzi tylko z aktywnych (także po akronimie); odpowiedzialny: aktywni + obecny', () => {
@@ -202,7 +233,7 @@ describe('osoby z udostępnionych przestrzeni', () => {
   it('kopie łączą się z własnymi: jedna osoba, przestrzenie użycia, własny wpis wygrywa', () => {
     const all = withSharedCollaborators(people, copies);
     expect(all.map((c) => c.name)).toEqual(['Anna Nowak', 'Ewa Kot', 'Łukasz']);
-    expect(all[1]).toEqual({ id: ewa, name: 'Ewa Kot', email: null, acronym: 'EK', archivedAt: null, workspaceIds: [W1, W2], shared: true });
+    expect(all[1]).toEqual({ id: ewa, name: 'Ewa Kot', email: null, acronym: 'EK', color: null, archivedAt: null, workspaceIds: [W1, W2], shared: true });
     expect(ownCollaborators(all).map((c) => c.name)).toEqual(['Anna Nowak', 'Łukasz']);
     expect(assigneeOf(ewa, all)?.name).toBe('Ewa Kot');
   });
