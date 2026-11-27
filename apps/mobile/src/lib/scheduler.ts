@@ -9,7 +9,8 @@
  *
  * W trybie alarmu (`lib/alarm.ts`) te same chwile idą do modułu `task-alarm` zamiast do powiadomień.
  */
-import { addDays, alarmEntry, assigneeReminderRules, localDateAt, MAX_SCHEDULED_REMINDERS, reminderBody, reminderFireTimes, reviewFireTimes, toReminderRule, type LocalDate, type ReminderFire, type ReminderTask, type ReviewKind } from '@taskplanner/core';
+import { addDays, alarmEntry, assigneeReminderRules, localDateAt, MAX_SCHEDULED_REMINDERS, reminderBody, reminderFireTimes, reviewFireTimes, toReminderRule, type LocalDate, type ReminderFire, type ReminderRule, type ReminderTask, type ReviewKind } from '@taskplanner/core';
+import type { SyncEngine } from '@taskplanner/sync';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
@@ -112,49 +113,11 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
     if (!perm.granted) return null;
     const data = given ?? (await headlessData());
     const engine = await localEngine();
-    const userId = sessionUser().id;
-    // Automatyczne przypomnienie według ustawień konta (`NotificationPrefs`): odpowiedzialny we wspólnych przestrzeniach
-    // albo wszędzie, śledzący (twórca / uczestnik), wyprzedzenie.
-    const shared = new Set(data.workspaces.filter((w) => w.members > 1).map((w) => w.id));
-    const prefs = data.settings.notifications;
-    const auto = prefs.autoReminder === 'all' || (prefs.autoReminder === 'shared' && shared.size > 0);
-    const [on, rules, zones, creators, mine, joined] = await Promise.all([
-      phoneRemindersOn(engine),
-      engine.db.all<{ id: string; task_id: string; kind: string; offset_min: number | null; at_date: string | null; at_time: string | null }>(
-        // Przypomnienie dostaje jego autor (jak `reminders-push`) — we wspólnej przestrzeni nie dzwonią cudze.
-        'select id, task_id, kind, offset_min, at_date, at_time from reminders where deleted_at is null and (created_by is null or created_by = ?)',
-        [userId],
-      ),
-      engine.db.all<{ id: string; time_zone: string }>('select id, time_zone from tasks where time_zone is not null and deleted_at is null'),
-      auto
-        ? engine.db.all<{ id: string; created_by: string | null }>('select id, created_by from tasks where due_date is not null and due_time is not null and deleted_at is null')
-        : [],
-      auto ? engine.db.all<{ scope_id: string; collaborator_id: string }>('select scope_id, collaborator_id from scope_collaborators where user_id = ?', [userId]) : [],
-      auto && prefs.follow.participating
-        ? engine.db.all<{ task_id: string }>(
-            'select distinct p.task_id from task_participants p join scope_collaborators sc on sc.collaborator_id = p.collaborator_id where p.deleted_at is null and sc.user_id = ?',
-            [userId],
-          )
-        : [],
-    ]);
-    const participating = new Set(joined.map((r) => r.task_id));
-    const createdBy = new Map(creators.map((t) => [t.id, t.created_by]));
-    const myEntries = new Set(mine.map((c) => `${c.scope_id}|${c.collaborator_id}`));
-    const assigned = assigneeReminderRules(data.tasks, {
-      userId,
-      shared,
-      createdBy: (id) => createdBy.get(id),
-      accountOf: (workspaceId, id) => (myEntries.has(`${workspaceId}|${id}`) ? userId : null),
-      participates: (id) => participating.has(id),
-      prefs,
-    });
-    const zoneOf = new Map(zones.map((z) => [z.id, z.time_zone]));
-    const tasks: ReminderTask[] = data.tasks.map((t) => ({ ...t, timeZone: zoneOf.get(t.id) ?? null }));
-    const byId = new Map(tasks.map((t) => [t.id, t]));
+    const [on, { tasks, byId, rules }] = await Promise.all([phoneRemindersOn(engine), reminderSources(data, engine, sessionUser().id)]);
     const { timeZone, defaultReminderTime } = data.settings;
     // Wpisy nawyków: dzień już zaliczony, wolny albo okres z osiągniętym celem nie przypomina.
     // Kanał wyłączony dla tego telefonu (tu albo na webie) — pusta lista, więc zaplanowane znikają.
-    const fires = reminderFireTimes(tasks, on ? [...rules.map(toReminderRule), ...assigned] : [], {
+    const fires = reminderFireTimes(tasks, on ? rules : [], {
       from: new Date(now),
       timeZone,
       defaultTime: defaultReminderTime,
@@ -217,6 +180,52 @@ async function scheduleOnce(given?: AppData): Promise<ScheduleResult | null> {
     writeJson(LAST_KEY, result);
     return result;
   }
+}
+
+/**
+ * Zadania i reguły przypomnień tego konta: własne wiersze `reminders` (tylko autora, jak `reminders-push`) oraz
+ * automatyczne przypomnienie według ustawień (`NotificationPrefs`: odpowiedzialny we wspólnych przestrzeniach albo
+ * wszędzie, śledzący — twórca / uczestnik, wyprzedzenie). Wspólne dla planowania i dzwonka (`reminder-bell.ts`).
+ */
+export async function reminderSources(
+  data: AppData,
+  engine: SyncEngine,
+  userId: string,
+): Promise<{ tasks: ReminderTask[]; byId: Map<string, ReminderTask>; rules: ReminderRule[] }> {
+  const shared = new Set(data.workspaces.filter((w) => w.members > 1).map((w) => w.id));
+  const prefs = data.settings.notifications;
+  const auto = prefs.autoReminder === 'all' || (prefs.autoReminder === 'shared' && shared.size > 0);
+  const [rules, zones, creators, mine, joined] = await Promise.all([
+    engine.db.all<{ id: string; task_id: string; kind: string; offset_min: number | null; at_date: string | null; at_time: string | null }>(
+      'select id, task_id, kind, offset_min, at_date, at_time from reminders where deleted_at is null and (created_by is null or created_by = ?)',
+      [userId],
+    ),
+    engine.db.all<{ id: string; time_zone: string }>('select id, time_zone from tasks where time_zone is not null and deleted_at is null'),
+    auto
+      ? engine.db.all<{ id: string; created_by: string | null }>('select id, created_by from tasks where due_date is not null and due_time is not null and deleted_at is null')
+      : [],
+    auto ? engine.db.all<{ scope_id: string; collaborator_id: string }>('select scope_id, collaborator_id from scope_collaborators where user_id = ?', [userId]) : [],
+    auto && prefs.follow.participating
+      ? engine.db.all<{ task_id: string }>(
+          'select distinct p.task_id from task_participants p join scope_collaborators sc on sc.collaborator_id = p.collaborator_id where p.deleted_at is null and sc.user_id = ?',
+          [userId],
+        )
+      : [],
+  ]);
+  const participating = new Set(joined.map((r) => r.task_id));
+  const createdBy = new Map(creators.map((t) => [t.id, t.created_by]));
+  const myEntries = new Set(mine.map((c) => `${c.scope_id}|${c.collaborator_id}`));
+  const assigned = assigneeReminderRules(data.tasks, {
+    userId,
+    shared,
+    createdBy: (id) => createdBy.get(id),
+    accountOf: (workspaceId, id) => (myEntries.has(`${workspaceId}|${id}`) ? userId : null),
+    participates: (id) => participating.has(id),
+    prefs,
+  });
+  const zoneOf = new Map(zones.map((z) => [z.id, z.time_zone]));
+  const tasks: ReminderTask[] = data.tasks.map((t) => ({ ...t, timeZone: zoneOf.get(t.id) ?? null }));
+  return { tasks, byId: new Map(tasks.map((t) => [t.id, t])), rules: [...rules.map(toReminderRule), ...assigned] };
 }
 
 /** Wpisy alarmów z opisami zadań (opisów nie ma w danych widoków). */

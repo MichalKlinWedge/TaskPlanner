@@ -30,6 +30,7 @@ import { AppState, Pressable, StyleSheet, Switch, Text, View } from 'react-nativ
 
 import { useView } from '@/lib/app-data';
 import { dismissSettledPushes, markNotificationsShown, useNotificationsData } from '@/lib/notifications';
+import { useBellNotifications } from '@/lib/reminder-bell';
 import { mutate } from '@/lib/sync';
 
 import { useTaskActions } from './actions';
@@ -69,7 +70,7 @@ export function openNotificationRoute(route: string) {
 /** Dzwonek w nagłówku zakładek: licznik nieprzeczytanych, dotknięcie — ekran „Powiadomienia”. */
 export function NotificationBell() {
   const p = usePalette();
-  const { list, prefs } = useNotificationsData();
+  const { list, prefs } = useBellNotifications();
   const count = unreadCount(list, prefs, new Date());
   return (
     <Pressable
