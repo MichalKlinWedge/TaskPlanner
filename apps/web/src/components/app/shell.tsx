@@ -4,7 +4,7 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, assignSelfOps, BOARD_BY, bulkTaskOps, dayLabel, sharedText, habitsForDay, isEmptyFilter, isOpen, keepShownSelection, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, tagsForWorkspace, VIEW_SECTION, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type QuickAddSlot, type ViewContext, type WebClip } from "@taskplanner/core";
+import { applyFilter, assignSelfOps, BOARD_BY, bulkTaskOps, dayLabel, sharedText, habitsForDay, isEmptyFilter, isOpen, keepShownSelection, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, selectUndated, tagsForWorkspace, VIEW_SECTION, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type QuickAddSlot, type ViewContext, type WebClip } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -40,7 +40,7 @@ import { ReminderPopup } from "./reminder-popup";
 import { TaskPanel } from "./task-panel";
 import { TaskActionsProvider, useTaskActions } from "./task-item";
 import { Select, Splash } from "./ui";
-import { InboxView, ListView, OverdueView, TodayView, TrashView, UpcomingView } from "./views";
+import { InboxView, ListView, OverdueView, TodayView, TrashView, UndatedView, UpcomingView } from "./views";
 
 // Oś czasu (SVAR Gantt) — osobny kawałek kodu, dociągany w wolnej chwili po starcie i przy pierwszym otwarciu.
 const loadTimeline = () => import("./timeline");
@@ -263,7 +263,7 @@ export function Shell({
     }
     const perFilter = new Map(data.savedFilters.map((f) => [f.id, filterCount(data.tasks, f.query, ctx)]));
     const habits = habitsForDay(data.tasks, data.habitCompletions, ctx.today, ctx.today, ctx.workspaceId).filter((h) => !h.settled).length;
-    return { inbox: selectInbox(data.tasks, inboxIds, ctx).length, today: view.overdue.length + view.today.length, overdue: view.overdue.length, todayTasks: view.today, habits, perList, perTag, perFilter };
+    return { inbox: selectInbox(data.tasks, inboxIds, ctx).length, today: view.overdue.length + view.today.length, overdue: view.overdue.length, undated: selectUndated(data.tasks, ctx).length, todayTasks: view.today, habits, perList, perTag, perFilter };
   }, [data.tasks, data.lists, data.savedFilters, data.habitCompletions, ctx]);
 
   const overdueCount = counts.overdue + useLateCount(counts.todayTasks, settings.timeZone);
@@ -332,8 +332,8 @@ export function Shell({
   const list = route.view === "list" ? data.lists.find((l) => l.id === route.id) : undefined;
   const tag = route.view === "tag" ? data.tags.find((t) => t.id === route.id) : undefined;
   const savedFilter = route.view === "filter" ? data.savedFilters.find((f) => f.id === route.id) : undefined;
-  const filterable = ["inbox", "today", "overdue", "upcoming", "list", "board"].includes(route.view);
-  const smartPrefs = route.view === "inbox" || route.view === "today" || route.view === "overdue" || route.view === "upcoming" || route.view === "tag" || route.view === "filter" ? settings.views[route.view] : undefined;
+  const filterable = ["inbox", "today", "overdue", "upcoming", "undated", "list", "board"].includes(route.view);
+  const smartPrefs = route.view === "inbox" || route.view === "today" || route.view === "overdue" || route.view === "upcoming" || route.view === "undated" || route.view === "tag" || route.view === "filter" ? settings.views[route.view] : undefined;
   const hasColumns = !!(list?.prefs ?? smartPrefs)?.columns?.length;
   const wide = smartPrefs?.view === "kanban" || route.view === "board" || route.view === "calendar" || route.view === "timeline" || list?.prefs.view === "kanban" || list?.prefs.view === "canvas";
   // Widoki dostają zadania po filtrze doraźnym; liczniki paska bocznego liczą się z pełnych danych.
@@ -359,6 +359,8 @@ export function Shell({
       <OverdueView {...props} />
     ) : route.view === "upcoming" ? (
       <UpcomingView {...props} />
+    ) : route.view === "undated" ? (
+      <UndatedView {...props} />
     ) : route.view === "board" ? (
       <>
         <header className="tp-view-header mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
@@ -454,6 +456,7 @@ export function Shell({
     { route: { view: "today" }, icon: "☀️", label: "Dziś", count: counts.today, alert: counts.overdue > 0 },
     { route: { view: "overdue" }, icon: "⏰", label: VIEW_SECTION.overdue, count: overdueCount || undefined, alert: overdueCount > 0 },
     { route: { view: "upcoming" }, icon: "📅", label: "Nadchodzące" },
+    { route: { view: "undated" }, icon: "🗂", label: VIEW_SECTION.noDate, count: counts.undated || undefined },
     { route: { view: "board" }, icon: "▦", label: "Tablica" },
     { route: { view: "calendar" }, icon: "🗓", label: "Kalendarz" },
     { route: { view: "timeline" }, icon: "📊", label: "Oś czasu" },
@@ -857,7 +860,7 @@ function readShare(params: URLSearchParams): Shared | null {
   return result.text ? result : null;
 }
 
-const GO: Record<string, Route> = { s: { view: "home" }, i: { view: "inbox" }, t: { view: "today" }, z: { view: "overdue" }, u: { view: "upcoming" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" }, h: { view: "habits" } };
+const GO: Record<string, Route> = { s: { view: "home" }, i: { view: "inbox" }, t: { view: "today" }, z: { view: "overdue" }, u: { view: "upcoming" }, b: { view: "undated" }, k: { view: "board" }, c: { view: "calendar" }, o: { view: "timeline" }, h: { view: "habits" } };
 
 /** Akcja na zaznaczonych z dymkiem „Cofnij”. */
 function useBulk(selected: readonly string[]) {
@@ -1124,6 +1127,7 @@ function PaletteHost({
       "view.today": () => then(() => navigate({ view: "today" })),
       "view.overdue": () => then(() => navigate({ view: "overdue" })),
       "view.upcoming": () => then(() => navigate({ view: "upcoming" })),
+      "view.undated": () => then(() => navigate({ view: "undated" })),
       "view.kanban": () => then(() => navigate({ view: "board" })),
       "view.calendar": () => then(() => navigate({ view: "calendar" })),
       "view.timeline": () => then(() => navigate({ view: "timeline" })),

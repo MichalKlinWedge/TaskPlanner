@@ -22,8 +22,10 @@ import {
   selectOverdue,
   selectSeries,
   selectToday,
+  selectUndated,
   selectUpcoming,
   sortTasks,
+  undatedSections,
   headerSortPatch,
   sortSection,
   withCompleted,
@@ -142,6 +144,77 @@ describe('Zaległe', () => {
     expect(ids(selectOverdue(tasks, one, '2026-11-18T09:00').today)).toEqual([]);
     expect(ids(selectOverdue(tasks, one, '2026-11-18T09:01').today)).toEqual(['other-ws']);
     expect(selectOverdue(tasks, one, '2026-11-18T09:01').earlier).toEqual([]);
+  });
+});
+
+describe('Bez terminu', () => {
+  const INBOX_2 = '0190a000-0000-7000-8000-0000000000a3';
+  const PROJECT = '0190a000-0000-7000-8000-0000000000a4';
+  const tasks = [
+    task({ id: 'plain', sortKey: '0020' }),
+    task({ id: 'first', sortKey: '0010' }),
+    task({ id: 'urgent', priority: 1, sortKey: '0090' }),
+    task({ id: 'waiting', status: 'waiting' }),
+    task({ id: 'dated', dueDate: '2026-11-20' }),
+    task({ id: 'start-only', startDate: '2026-11-20' }),
+    task({ id: 'done', status: 'done' }),
+    task({ id: 'cancelled', status: 'cancelled' }),
+    task({ id: 'habit', kind: 'habit' }),
+    task({ id: 'series', recurrence: { mode: 'schedule', rrule: 'FREQ=DAILY', anchor: '2026-11-01' } as ViewTask['recurrence'] }),
+    task({ id: 'inbox', listId: INBOX }),
+    task({ id: 'other-ws', workspaceId: W2, listId: INBOX_2 }),
+    task({ id: 'archived-list', listId: 'gone' }),
+    // Pod otwartym bez terminu — reprezentuje je rodzic; pod zadaniem z terminem — planowane z nim.
+    task({ id: 'parent', listId: PROJECT }),
+    task({ id: 'parent-sub', parentId: 'parent', listId: PROJECT }),
+    task({ id: 'parent-sub-sub', parentId: 'parent-sub', listId: PROJECT }),
+    task({ id: 'dated-sub', parentId: 'dated' }),
+    // Pod zamkniętym rodzicem — zostaje; nad nim zadanie z terminem — odpada.
+    task({ id: 'closed', status: 'done', listId: PROJECT }),
+    task({ id: 'closed-sub', parentId: 'closed', listId: PROJECT }),
+    task({ id: 'closed-dated', status: 'done', dueDate: '2026-11-01', listId: PROJECT }),
+    task({ id: 'closed-dated-sub', parentId: 'closed-dated', listId: PROJECT }),
+  ];
+
+  it('otwarte bez terminu, priorytet i kolejność ręczna; bez nawyków, serii i podzadań planowanych z przodkiem', () => {
+    // Ten sam priorytet i `sortKey` — po id.
+    expect(ids(selectUndated(tasks, ctx))).toEqual([
+      'urgent',
+      'archived-list',
+      'closed-sub',
+      'first',
+      'inbox',
+      'other-ws',
+      'parent',
+      'start-only',
+      'waiting',
+      'plain',
+    ]);
+    expect(ids(selectUndated(tasks, { ...ctx, workspaceId: W2 }))).toEqual(['other-ws']);
+  });
+
+  it('sekcje: przestrzenie po kolei, Inbox pierwszy, nieznana lista na końcu; nazwa przestrzeni przy kilku', () => {
+    const lookup = {
+      workspaces: [
+        { id: W2, name: 'Dom', sortKey: '0020' },
+        { id: W1, name: 'Praca', sortKey: '0010' },
+      ],
+      lists: [
+        { id: PROJECT, workspaceId: W1, kind: 'project' as const, name: 'Projekt', sortKey: '0010' },
+        { id: LIST, workspaceId: W1, kind: 'list' as const, name: 'Lista', sortKey: '0020' },
+        { id: INBOX, workspaceId: W1, kind: 'inbox' as const, name: 'Inbox', sortKey: '0030' },
+        { id: INBOX_2, workspaceId: W2, kind: 'inbox' as const, name: 'Inbox', sortKey: '0010' },
+      ],
+    };
+    const sections = undatedSections(selectUndated(tasks, ctx), lookup);
+    expect(sections.map((s) => [s.title, ids(s.tasks)])).toEqual([
+      ['Inbox · Praca', ['inbox']],
+      ['Projekt · Praca', ['closed-sub', 'parent']],
+      ['Lista · Praca', ['urgent', 'first', 'start-only', 'waiting', 'plain']],
+      ['Inbox · Dom', ['other-ws']],
+      ['Bez listy', ['archived-list']],
+    ]);
+    expect(undatedSections(selectUndated(tasks, { ...ctx, workspaceId: W1 }), lookup).map((s) => s.title)).toEqual(['Inbox', 'Projekt', 'Lista', 'Bez listy']);
   });
 });
 

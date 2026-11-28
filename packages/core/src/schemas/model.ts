@@ -182,7 +182,7 @@ export const ProfileSettings = z.object({
   /** Oś czasu (web): zwinięte projekty (id list; tylko pierwszy poziom — zadania zwijają się do odświeżenia). */
   timeline: z.object({ collapsed: z.array(z.string().max(64)).max(500).default([]) }).prefault({}),
   /** Widoki zbiorcze: ustawienia widoku (uszkodzone pomijane); `tag` / `filter` — kolumny wszystkich widoków tagu / zapisanego filtra. */
-  views: z.object({ inbox: smartViewPrefs, today: smartViewPrefs, overdue: smartViewPrefs, upcoming: smartViewPrefs, tag: smartViewPrefs, filter: smartViewPrefs }).prefault({}),
+  views: z.object({ inbox: smartViewPrefs, today: smartViewPrefs, overdue: smartViewPrefs, upcoming: smartViewPrefs, undated: smartViewPrefs, tag: smartViewPrefs, filter: smartViewPrefs }).prefault({}),
   /** Centrum powiadomień (v1.x): kanał dla grupy zdarzeń i dymek przy nowym. */
   notifications: NotificationPrefs.prefault({}),
   /** Onboarding zakończony (M1) — bez niego aplikacja po zalogowaniu pokazuje kreator. */

@@ -1,6 +1,6 @@
 /**
  * Opcje widoku w nagłówku ekranu: chipy „Kolumny” / „Tagi w kolumnie” (ekran listy i widoki zbiorcze)
- * oraz `useSmartView` — ustawienia Inboxu, „Dziś”, „Zaległych” i „Nadchodzących” z `settings.views`
+ * oraz `useSmartView` — ustawienia Inboxu, „Dziś”, „Zaległych”, „Nadchodzących” i „Bez terminu” z `settings.views`
  * profilu (wspólne z webem) z chipem „▦ Tablica” (`/board?view=`).
  */
 import {

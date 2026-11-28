@@ -5,7 +5,7 @@
  * „Cykliczne” z licznikiem nieodhaczonych na dziś (`habitsForDay`, jak pasek boczny webu); pasek zaproszeń
  * do przestrzeni jak w `ScreenHeader`.
  */
-import { habitsForDay, isOpen, LIST_KIND, listShareBadge, selectFiltered, selectOverdue, tagsForWorkspace, VIEW_SECTION, type ListShareBadge } from '@taskplanner/core';
+import { habitsForDay, isOpen, LIST_KIND, listShareBadge, selectFiltered, selectOverdue, selectUndated, tagsForWorkspace, VIEW_SECTION, type ListShareBadge } from '@taskplanner/core';
 import { router, type Href } from 'expo-router';
 import { useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -77,6 +77,7 @@ export default function BrowseScreen() {
     const view = selectOverdue(data.tasks, ctx, now);
     return view.today.length + view.earlier.length;
   }, [data.tasks, ctx, now]);
+  const undated = useMemo(() => selectUndated(data.tasks, ctx).length, [data.tasks, ctx]);
   const habits = useMemo(() => habitsForDay(data.tasks, data.habitCompletions, today, today, workspaceId).filter((h) => !h.settled).length, [data.tasks, data.habitCompletions, today, workspaceId]);
   const workspaces = data.workspaces.filter((w) => !workspaceId || w.id === workspaceId);
   // Jak na webie: przy „Wszystkich przestrzeniach” zakładka Inbox to suma, więc Inbox każdej przestrzeni
@@ -99,6 +100,7 @@ export default function BrowseScreen() {
 
       <Group title="Planowanie">
         <Item title={VIEW_SECTION.overdue} hint="Po terminie, także dzisiejsze po godzinie" count={overdue} alert href="/overdue" />
+        <Item title={VIEW_SECTION.noDate} hint="Otwarte zadania do zaplanowania, według list" count={undated} href="/undated" />
         <Item title="Kalendarz" hint="Dzień z przeciąganiem bloków, tydzień, miesiąc" href="/calendar" />
         <Item title="Cykliczne" hint="Nawyki i zadania z powtarzaniem" count={habits} href="/habits" />
         {data.settings.focus.enabled ? <Item title="Skupienie" hint="Pomodoro i stoper, czas pracy" href="/focus" /> : null}

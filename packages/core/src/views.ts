@@ -12,7 +12,7 @@ import type { HabitSettings } from './habits.ts';
 import { PRIORITY, TASK_STATUS, VIEW_SECTION } from './labels.ts';
 import { compareText, dayLabel, shortDate } from './format.ts';
 import { occurrences, type Recurrence } from './recurrence.ts';
-import { LocalDate, Priority, TaskStatus, type LocalTime } from './schemas/primitives.ts';
+import { LocalDate, Priority, TaskStatus, type ListKind, type LocalTime } from './schemas/primitives.ts';
 
 /** Zadanie w postaci, na której liczą widoki (kolumny `tasks` + identyfikatory tagów). */
 export interface ViewTask {
@@ -263,6 +263,66 @@ export function selectOverdue(tasks: readonly ViewTask[], ctx: ViewContext, now:
   view.today.sort(byDayOrder);
   view.earlier.sort(byOverdue);
   return view;
+}
+
+// ── Bez terminu ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * „Bez terminu”: otwarte zadania bez `due_date` do przejrzenia i zaplanowania — od najwyższego priorytetu,
+ * potem kolejność ręczna. Podzadanie odpada, gdy przodek ma termin (jest planowane razem z nim) albo sam
+ * jest otwarty bez terminu (wiersz przodka reprezentuje całe poddrzewo); zostaje pod zamkniętym przodkiem.
+ * Bez nawyków i serii (seria bez terminu się nie powtarza).
+ */
+export function selectUndated(tasks: readonly ViewTask[], ctx: ViewContext): ViewTask[] {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const covered = (t: ViewTask): boolean => {
+    const seen = new Set<string>();
+    for (let p = t.parentId ? byId.get(t.parentId) : undefined; p && !seen.has(p.id); p = p.parentId ? byId.get(p.parentId) : undefined) {
+      if (p.dueDate || isOpen(p)) return true;
+      seen.add(p.id);
+    }
+    return false;
+  };
+  return tasks
+    .filter((t) => !t.dueDate && t.kind === 'task' && !t.recurrence && isOpen(t) && inWorkspace(ctx)(t) && !covered(t))
+    .sort((a, b) => a.priority - b.priority || byManual(a, b));
+}
+
+export interface UndatedSection {
+  /** Id listy; `none` = lista spoza `lists` (np. zarchiwizowana). */
+  key: string;
+  title: string;
+  tasks: ViewTask[];
+}
+
+/**
+ * Zadania „Bez terminu” w sekcjach list: przestrzenie po kolei, w każdej najpierw Inbox, potem listy po
+ * `sortKey`; kolejność zadań = kolejność wejścia. Przy kilku przestrzeniach w widoku tytuł ma też nazwę przestrzeni.
+ */
+export function undatedSections(
+  tasks: readonly ViewTask[],
+  lookup: { lists: readonly { id: string; workspaceId: string; kind: ListKind; name: string; sortKey: string }[]; workspaces: readonly { id: string; name: string; sortKey: string }[] },
+): UndatedSection[] {
+  const lists = new Map(lookup.lists.map((l) => [l.id, l]));
+  const workspaces = new Map(lookup.workspaces.map((w) => [w.id, w]));
+  const groups = new Map<string, ViewTask[]>();
+  for (const t of tasks) {
+    const key = lists.has(t.listId) ? t.listId : 'none';
+    groups.set(key, [...(groups.get(key) ?? []), t]);
+  }
+  const shownSpaces = new Set([...groups.keys()].map((k) => lists.get(k)?.workspaceId).filter(Boolean));
+  const rank = (key: string) => {
+    const l = lists.get(key);
+    return l ? `${workspaces.get(l.workspaceId)?.sortKey ?? '￾'}\u0000${l.kind === 'inbox' ? '0' : '1'}${l.sortKey}` : '￿';
+  };
+  return [...groups.keys()]
+    .sort((a, b) => byText(rank(a), rank(b)) || byText(a, b))
+    .map((key) => {
+      const l = lists.get(key);
+      const name = !l ? VIEW_SECTION.noList : l.kind === 'inbox' ? 'Inbox' : l.name;
+      const space = l && shownSpaces.size > 1 ? workspaces.get(l.workspaceId)?.name : undefined;
+      return { key, title: space ? `${name} · ${space}` : name, tasks: groups.get(key)! };
+    });
 }
 
 // ── Nadchodzące ──────────────────────────────────────────────────────────────────────────────

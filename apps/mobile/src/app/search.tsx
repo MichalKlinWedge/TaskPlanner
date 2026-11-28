@@ -31,6 +31,7 @@ const VIEW_ROUTE: Record<string, { tab: boolean; href: Href }> = {
   'view.inbox': { tab: true, href: '/inbox' },
   'view.upcoming': { tab: true, href: '/upcoming' },
   'view.overdue': { tab: false, href: '/overdue' },
+  'view.undated': { tab: false, href: '/undated' },
   'view.kanban': { tab: false, href: '/board' },
   'view.calendar': { tab: false, href: '/calendar' },
   'view.timeline': { tab: false, href: '/timeline' },

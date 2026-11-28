@@ -1,6 +1,6 @@
 /**
  * Filtr doraźny (chipy, niezapisany) pamiętany osobno dla każdego widoku (R-06, jak na webie): klucz =
- * widok (`inbox`, `today`, `upcoming`, `overdue`, `board`, `tag:<id>`), pamięć = proces aplikacji (do jej
+ * widok (`inbox`, `today`, `upcoming`, `overdue`, `undated`, `board`, `tag:<id>`), pamięć = proces aplikacji (do jej
  * zamknięcia), osobno dla każdego konta. Tablica widoku (`/board?view=inbox`) dzieli filtr z jego zakładką.
  * Reguły mapy w core `view-memory.ts`; listy trzymają swój filtr w `view_prefs.filter`.
  */

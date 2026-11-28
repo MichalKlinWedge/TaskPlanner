@@ -46,6 +46,7 @@ export const AVAILABLE_COMMANDS = new Set([
   "view.today",
   "view.overdue",
   "view.upcoming",
+  "view.undated",
   "view.kanban",
   "view.calendar",
   "view.timeline",

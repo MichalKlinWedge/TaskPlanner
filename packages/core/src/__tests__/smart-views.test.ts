@@ -90,6 +90,12 @@ describe('tablica widoku', () => {
     ]);
   });
 
+  it('Bez terminu: otwarte bez daty, wszystkie w kolumnie „Bez terminu”; nowa karta bez terminu', () => {
+    expect(filled(board('undated', 'status'))).toEqual([['todo', ['plain'], false]]);
+    expect(filled(board('undated', 'weekday'))).toEqual([['none', ['plain'], false]]);
+    expect(smartBoard('undated', tasks, ctx, opts).addDue).toBeNull();
+  });
+
   it('kolumna tylko do pokazania nie przyjmuje kart; przeniesienie podzadania na listę wraca do rodzica', () => {
     const drop = { today: ctx.today, now: '2026-11-19T11:00:00Z', timeZone: 'Europe/Warsaw' };
     const now = tasks.find((x) => x.id === 'now')!;

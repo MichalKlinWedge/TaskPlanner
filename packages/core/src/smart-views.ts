@@ -1,16 +1,16 @@
 /**
- * Widoki zbiorcze (Inbox, Dziś, Zaległe, Nadchodzące) z opcjami widoku listy: „Lista | Tablica” i kolumny.
+ * Widoki zbiorcze (Inbox, Dziś, Zaległe, Nadchodzące, Bez terminu) z opcjami widoku listy: „Lista | Tablica” i kolumny.
  * Ustawienia są w profilu (`settings.views`, synchronizowane); tablica pokazuje te same zadania co lista widoku.
  */
 import type { BoardOptions } from './kanban.ts';
 import { VIEW_SECTION } from './labels.ts';
 import type { ProfileSettings, SmartViewPrefs } from './schemas/model.ts';
 import type { LocalDate } from './schemas/primitives.ts';
-import { isOpen, selectInbox, selectOverdue, selectToday, selectUpcoming, type ViewContext, type ViewTask } from './views.ts';
+import { isOpen, selectInbox, selectOverdue, selectToday, selectUndated, selectUpcoming, type ViewContext, type ViewTask } from './views.ts';
 
-export type SmartView = 'inbox' | 'today' | 'overdue' | 'upcoming';
+export type SmartView = 'inbox' | 'today' | 'overdue' | 'upcoming' | 'undated';
 
-export const SMART_VIEW: Record<SmartView, string> = { inbox: 'Inbox', today: VIEW_SECTION.today, overdue: VIEW_SECTION.overdue, upcoming: 'Nadchodzące' };
+export const SMART_VIEW: Record<SmartView, string> = { inbox: 'Inbox', today: VIEW_SECTION.today, overdue: VIEW_SECTION.overdue, upcoming: 'Nadchodzące', undated: VIEW_SECTION.noDate };
 
 /** Ile dni „Nadchodzące” pokazuje osobno (lista i tablica). */
 export const UPCOMING_DAYS = 14;
@@ -36,6 +36,8 @@ export interface SmartBoard {
 /** Opcje kolumn są stałe — aplikacje mają je w zależnościach `useMemo`. */
 const INBOX: BoardOptions = {};
 const DATED: BoardOptions = { subtasks: true, outside: true };
+/** „Bez terminu”: podzadania spod zamkniętych zadań też mają karty (`selectUndated`). */
+const UNDATED: BoardOptions = { subtasks: true };
 
 /**
  * Zadania i opcje tablicy widoku. Inbox — jak tablica listy: główne zadania, „Gotowe” z 7 dni; pozostałe
@@ -55,6 +57,7 @@ export function smartBoard(view: SmartView, tasks: readonly ViewTask[], ctx: Vie
     const { today, earlier } = selectOverdue(tasks, ctx, now);
     return { tasks: [...today, ...earlier], options: DATED, doneNote: null, addDue: undefined };
   }
+  if (view === 'undated') return { tasks: selectUndated(tasks, ctx), options: UNDATED, doneNote: null, addDue: null };
   const { days, later } = selectUpcoming(tasks, ctx, { days: UPCOMING_DAYS });
   const items = [...days, ...later].flatMap((d) => d.items).filter((i) => !i.virtual);
   return { tasks: items.map((i) => i.task), options: { ...DATED, days: { from: ctx.today, count: UPCOMING_DAYS } }, doneNote: null, addDue: ctx.today };

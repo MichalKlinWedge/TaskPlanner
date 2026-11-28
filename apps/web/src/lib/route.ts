@@ -12,6 +12,7 @@ export type Route =
   | { view: "today" }
   | { view: "overdue" }
   | { view: "upcoming" }
+  | { view: "undated" }
   | { view: "board" }
   | { view: "calendar" }
   | { view: "timeline" }
@@ -41,6 +42,7 @@ export function parseRoute(hash: string): Route {
     case "today":
     case "overdue":
     case "upcoming":
+    case "undated":
     case "board":
     case "calendar":
     case "timeline":

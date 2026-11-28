@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Widoki list (M9): Inbox, Dziś, Nadchodzące, lista/projekt. Wybór i kolejność zadań liczy
+ * Widoki list (M9): Inbox, Dziś, Zaległe, Nadchodzące, Bez terminu, lista/projekt. Wybór i kolejność zadań liczy
  * `@taskplanner/core` (`selectInbox`, `selectToday`, `selectUpcoming`, `buildTree`, `groupTasks`…);
  * tu jest tylko układ. Widoki zbiorcze mają opcje widoku listy (`useSmartView`): „Lista | Tablica” i kolumny
  * z `settings.views` profilu; tablica z `smartBoard`.
@@ -35,6 +35,7 @@ import {
   selectInbox,
   selectToday,
   selectOverdue,
+  selectUndated,
   selectUpcoming,
   smartBoard,
   smartViewsPatch,
@@ -50,6 +51,7 @@ import {
   trashListLabel,
   trashPreview,
   trashRoots,
+  undatedSections,
   VIEW_SECTION,
   withCompleted,
   type BoardBy,
@@ -568,6 +570,51 @@ export function UpcomingView({ data, ctx, targetInbox, toolbar }: ViewProps) {
         </>
       ) : null}
       </ColumnsScroll>
+      )}
+    </>
+  );
+}
+
+// ── Bez terminu ──────────────────────────────────────────────────────────────────────────────
+
+/** Otwarte zadania bez terminu (`selectUndated`) w sekcjach list — do przejrzenia i zaplanowania („→ Dziś” / „→ Jutro”). */
+export function UndatedView({ data, ctx, targetInbox, toolbar }: ViewProps) {
+  const smart = useSmartView("undated", ctx, targetInbox);
+  const { by, dir } = smart.sort;
+  // Wybrane sortowanie działa w obrębie sekcji listy.
+  const sections = useMemo(
+    () => undatedSections(sortSection(selectUndated(data.tasks, ctx), by, dir, (t) => t), { lists: data.lists, workspaces: data.workspaces }),
+    [data.tasks, data.lists, data.workspaces, ctx, by, dir],
+  );
+  const { run } = useTaskActions();
+  const move = (task: ViewTask, kind: "today" | "tomorrow") => {
+    const { ops, undo } = bulkTaskOps([task], data.tasks, { kind }, { today: ctx.today, now: new Date(), timeZone: ctx.timeZone });
+    void run(ops, { text: `„${task.title}” → ${relativeDay(kind === "today" ? ctx.today : addDays(ctx.today, 1), ctx.today)}`, undo });
+  };
+  const count = sections.reduce((n, s) => n + s.tasks.length, 0);
+  return (
+    <>
+      <Header title={VIEW_SECTION.noDate} subtitle={`${plural(count, ["zadanie", "zadania", "zadań"])} do zaplanowania`}>
+        <TaskExportButton title={VIEW_SECTION.noDate} data={data} ctx={ctx} count={count} rows={() => sections.flatMap((s) => s.tasks.map((task) => ({ task, section: s.title })))} />
+        {smart.switcher}
+      </Header>
+      {smart.columnsBar}
+      {toolbar}
+      {smart.kanban ? (
+        smart.board(data.tasks, { addLabel: "Dodaj zadanie bez terminu" })
+      ) : (
+        <>
+          <QuickAdd listId={targetInbox?.id} placeholder="Dodaj zadanie bez terminu" />
+          <ColumnsScroll columns={smart.cols.columns}>
+            {count ? smart.columnsHeader : null}
+            {sections.map((s) => (
+              <Section key={s.key} title={s.title} count={s.tasks.length}>
+                <Paged items={s.tasks}>{(t) => <TaskItem key={t.id} task={t} today={ctx.today} onToday={() => move(t, "today")} onTomorrow={() => move(t, "tomorrow")} {...smart.cols} />}</Paged>
+              </Section>
+            ))}
+            {count ? null : <Empty>Wszystko ma termin.</Empty>}
+          </ColumnsScroll>
+        </>
       )}
     </>
   );
