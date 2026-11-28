@@ -41,7 +41,7 @@ import { ReminderPopup } from "./reminder-popup";
 import { TaskPanel } from "./task-panel";
 import { TaskActionsProvider, useTaskActions } from "./task-item";
 import { Select, Splash } from "./ui";
-import { InboxView, ListView, OverdueView, TodayView, TrashView, UndatedView, UpcomingView } from "./views";
+import { FilterEmptyContext, InboxView, ListView, OverdueView, TodayView, TrashView, UndatedView, UpcomingView } from "./views";
 
 // Oś czasu (SVAR Gantt) — osobny kawałek kodu, dociągany w wolnej chwili po starcie i przy pierwszym otwarciu.
 const loadTimeline = () => import("./timeline");
@@ -374,6 +374,14 @@ export function Shell({
     </FilterBar>
   );
   const props = { data: viewData, ctx, targetInbox, toolbar };
+  const filterActive = filterable && !isEmptyFilter(query);
+  const clearFilter = () => {
+    if (!list) return setAdhoc({});
+    const prefs = { ...list.prefs };
+    delete prefs.filter;
+    if (!listEditable(data, list.id)) setLocalListPrefs(list.id, list.prefs, () => ({ filter: undefined }));
+    else void store.mutate("lists", list.id, { view_prefs: prefs });
+  };
   const boardTasks = route.view === "board" ? viewData.tasks.filter((t) => !workspaceId || t.workspaceId === workspaceId) : [];
   const body =
     route.view === "home" ? (
@@ -459,7 +467,7 @@ export function Shell({
 
   const content = (
     <>
-      {body}
+      <FilterEmptyContext.Provider value={{ active: filterActive, clear: clearFilter }}>{body}</FilterEmptyContext.Provider>
       {timelineOpened ? (
         <div hidden={route.view !== "timeline"}>
           <TimelineScreen data={data} ctx={ctx} active={route.view === "timeline"} />
@@ -704,7 +712,7 @@ function ListFilterBar({ list, store, onSaved }: { list: List; store: TabStore; 
   };
   return (
     <FilterBar query={query} onChange={onChange} hide={["lists"]}>
-      <SaveFilter query={query} onSaved={onSaved} />
+      <SaveFilter query={query} scope={{ lists: [list.id] }} onSaved={onSaved} />
     </FilterBar>
   );
 }
@@ -1136,15 +1144,12 @@ function PaletteHost({
     const { item } = pick;
     if (item.kind === "task") {
       const task = data.tasks.find((t) => t.id === item.id);
+      // Zadanie otwiera się w panelu w bieżącym widoku (zajrzenie w opis nie zmienia miejsca); „Pokaż na liście ›” w panelu przenosi.
       return then(() => {
         if (!task) return;
-        navigate({ view: "list", id: task.listId });
-        // Po zmianie widoku (który czyści zaznaczenie) — zaznacz i otwórz zadanie.
-        setTimeout(() => {
-          select(task.id);
-          openTask(task.id);
-          document.querySelector(`main [data-task-id="${task.id}"]`)?.scrollIntoView({ block: "center" });
-        }, 50);
+        select(task.id);
+        openTask(task.id);
+        document.querySelector(`main [data-task-id="${task.id}"]`)?.scrollIntoView({ block: "center" });
       });
     }
     if (item.kind === "list") return then(() => navigate({ view: "list", id: item.id.slice("list:".length) }));

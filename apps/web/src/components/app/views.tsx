@@ -74,7 +74,7 @@ import {
   type ListShareBadge,
 } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { listEditable, useLocalMinute, type AppData, type List } from "@/lib/app-data";
 import { updateListPrefs, updateSettings } from "@/lib/json-update";
@@ -162,7 +162,20 @@ function Paged<T>({ items, children }: { items: readonly T[]; children: (item: T
   );
 }
 
+/** Aktywny filtr widoku (chipy) — pusty stan mówi wtedy „nic nie pasuje”, a nie „pusto” (shell podaje stan i czyszczenie). */
+export const FilterEmptyContext = createContext<{ active: boolean; clear: () => void }>({ active: false, clear: () => undefined });
+
 function Empty({ children }: { children: ReactNode }) {
+  const filter = useContext(FilterEmptyContext);
+  if (filter.active)
+    return (
+      <p className="py-6 text-center text-sm text-[var(--muted)]">
+        Nic nie pasuje do filtra.{" "}
+        <button type="button" className="font-medium text-[var(--accent)] hover:underline" onClick={filter.clear}>
+          Wyczyść filtr
+        </button>
+      </p>
+    );
   return <p className="py-6 text-center text-sm text-[var(--muted)]">{children}</p>;
 }
 
@@ -690,12 +703,32 @@ function ColumnsPicker({
   );
 }
 
+const collapsedKey = (listId: string) => `tp-collapsed:${listId}`;
+function readCollapsed(listId: string): ReadonlySet<string> {
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(collapsedKey(listId)) ?? "[]");
+    return new Set(Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+function writeCollapsed(listId: string, ids: ReadonlySet<string>) {
+  try {
+    if (ids.size) localStorage.setItem(collapsedKey(listId), JSON.stringify([...ids].slice(-500)));
+    else localStorage.removeItem(collapsedKey(listId));
+  } catch {
+    // Bez pamięci przeglądarki — zwinięcie do przeładowania.
+  }
+}
+
 /** Tryby widoku listy (`view_prefs.view`) w przełączniku nagłówka. */
 const VIEW_LABEL = { list: "Lista", kanban: "Tablica", canvas: "Karteczki" } as const;
 
 export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; ctx: ViewContext; list: List; store: TabStore; toolbar?: ReactNode }) {
   const { notify, run } = useTaskActions();
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  // Zwinięte podzadania pamiętane per lista w tej przeglądarce — powrót do listy nie rozwija drzewa.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => readCollapsed(list.id));
+  useEffect(() => writeCollapsed(list.id, collapsed), [list.id, collapsed]);
   // „+” przy zadaniu: górne pole dodaje podzadania tego zadania, po dodaniu wraca do zwykłego trybu.
   const [subParent, setSubParent] = useState<{ id: string; title: string } | null>(null);
   const sortBy: SortBy = list.prefs.sortBy ?? "manual";

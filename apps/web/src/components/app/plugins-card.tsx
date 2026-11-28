@@ -83,9 +83,23 @@ export function PluginsCard({ store, userId }: { store: TabStore; userId: string
     <SettingsSection title="Integracje">
       <p className="mb-3 text-xs text-[var(--muted)]">
         Wysyłaj zadania do innych usług: połączenie mówi dokąd, reguła — kiedy i co wysłać. Regułę ręczną wybierasz przy zadaniu („Wyślij do…” w panelu albo paletą), zdarzeniowa
-        wysyła sama, gdy np. zadanie dostanie tag. Bez sieci zmiany czekają i wychodzą z serwera po synchronizacji. Nieudane wysyłki serwer ponawia przez kilkanaście godzin.
+        wysyła sama, gdy np. zadanie dostanie tag. Bez sieci zmiany czekają i wychodzą z serwera po synchronizacji. Nieudane wysyłki serwer ponawia przez kilkanaście godzin.{" "}
+        Dostęp dla innych aplikacji (np. Expedition Plan):{" "}
+        <button type="button" className="text-[var(--accent)] hover:underline" onClick={() => document.querySelector('[data-testid="api-tokens"]')?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+          Token API ↓
+        </button>
       </p>
-      {message ? <Notice tone={message.tone}>{message.text}</Notice> : null}
+      {/* Przyklejony u góry przewijanego widoku: wynik akcji jest widoczny także przy formularzach niżej w karcie. */}
+      {message ? (
+        <div className="sticky top-0 z-10 flex items-start gap-2 bg-[var(--surface)] py-1">
+          <div className="flex-1">
+            <Notice tone={message.tone}>{message.text}</Notice>
+          </div>
+          <button type="button" aria-label="Zamknij komunikat" title="Zamknij" className="px-1 py-2 text-sm opacity-60 hover:opacity-100" onClick={() => setMessage(null)}>
+            ✕
+          </button>
+        </div>
+      ) : null}
 
       <h3 className="mb-2 mt-3 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Połączenia</h3>
       {connections.length ? (

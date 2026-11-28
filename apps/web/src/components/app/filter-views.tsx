@@ -45,7 +45,8 @@ function Results({ data, ctx, query, view }: { data: AppData; ctx: ViewContext; 
 }
 
 /** „Zapisz jako filtr”: nazwa w polu obok chipów. */
-export function SaveFilter({ query, onSaved }: { query: FilterQuery; onSaved?: (id: string) => void }) {
+/** `scope` — warunki widoku dopisane do zapisanego filtra (np. lista, na której się go zapisuje — jej chip jest ukryty). */
+export function SaveFilter({ query, scope, onSaved }: { query: FilterQuery; scope?: Partial<FilterQuery>; onSaved?: (id: string) => void }) {
   const { data } = useAppEnv();
   const { run } = useTaskActions();
   const [name, setName] = useState<string | null>(null);
@@ -62,7 +63,7 @@ export function SaveFilter({ query, onSaved }: { query: FilterQuery; onSaved?: (
     const value = name.trim();
     if (!value) return;
     const id = uuidv7();
-    await run([{ table: "saved_filters", id, patch: { name: value.slice(0, 60), icon: null, query, sort_key: keyBetween(data.savedFilters.at(-1)?.sortKey) } }], { text: `Zapisano filtr „${value}”` });
+    await run([{ table: "saved_filters", id, patch: { name: value.slice(0, 60), icon: null, query: { ...query, ...scope }, sort_key: keyBetween(data.savedFilters.at(-1)?.sortKey) } }], { text: `Zapisano filtr „${value}”` });
     setName(null);
     onSaved?.(id);
   };

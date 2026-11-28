@@ -273,6 +273,7 @@ function TrashBar({ preview, readOnly }: { preview: TrashPreview<TrashedTask>; r
 }
 
 function TaskDetails({ task, trash }: { task: ViewTask; trash?: TrashPreview<TrashedTask> }) {
+  const [route, navigate] = useRoute();
   const { data, userId, settings, today, timeZone, openTask } = useAppEnv();
   const { run, toggle } = useTaskActions();
 
@@ -369,6 +370,11 @@ function TaskDetails({ task, trash }: { task: ViewTask; trash?: TrashPreview<Tra
                 </optgroup>
               ))}
             </Select>
+            {!trash && (route.view !== "list" || route.id !== task.listId) && data.lists.some((l) => l.id === task.listId) ? (
+              <button type="button" className="self-start text-xs text-[var(--accent)] hover:underline" onClick={() => navigate({ view: "list", id: task.listId })}>
+                Pokaż na liście ›
+              </button>
+            ) : null}
           </Field>
           <Field label="Czas (min)">
             <Input
@@ -386,16 +392,16 @@ function TaskDetails({ task, trash }: { task: ViewTask; trash?: TrashPreview<Tra
             />
           </Field>
           <Field label="Początek">
-            <CommitInput type="date" value={task.startDate ?? ""} max={task.dueDate ?? undefined} disabled={!task.dueDate} onCommit={(value) => void update(datesPatch(task, { start_date: (value || null) as LocalDate | null }))} />
+            <CommitInput type="date" value={task.startDate ?? ""} max={task.dueDate ?? undefined} disabled={!task.dueDate} title={task.dueDate ? undefined : "Najpierw ustaw termin"} onCommit={(value) => void update(datesPatch(task, { start_date: (value || null) as LocalDate | null }))} />
           </Field>
           <div className="flex items-end text-xs text-[var(--muted)]">
-            {task.dueDate ? `${relativeDay(task.dueDate, today, "distance")}${task.durationMin ? ` · ${formatMinutes(task.durationMin)}` : ""}` : "Bez terminu"}
+            {task.dueDate ? `${relativeDay(task.dueDate, today, "distance")}${task.durationMin ? ` · ${formatMinutes(task.durationMin)}` : ""}` : "Bez terminu — ustaw go, by dodać początek i godzinę"}
           </div>
           <Field label="Termin">
             <CommitInput type="date" value={task.dueDate ?? ""} onCommit={(value) => void update(datesPatch(task, { due_date: (value || null) as LocalDate | null }))} />
           </Field>
           <Field label="Godzina">
-            <CommitInput type="time" value={task.dueTime ?? ""} disabled={!task.dueDate} onCommit={(value) => void update(datesPatch(task, { due_time: (value || null) as LocalTime | null }))} />
+            <CommitInput type="time" value={task.dueTime ?? ""} disabled={!task.dueDate} title={task.dueDate ? undefined : "Najpierw ustaw termin"} onCommit={(value) => void update(datesPatch(task, { due_time: (value || null) as LocalTime | null }))} />
           </Field>
           {boardColumnDefs.length && task.kind === "task" && !task.parentId ? (
             <Field label="Kolumna tablicy">

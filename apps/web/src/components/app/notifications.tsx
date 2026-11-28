@@ -78,7 +78,12 @@ function openTarget(n: AppNotification) {
   else if (target.kind === "workspace") window.location.assign(routeHash({ view: "manage" }));
   else if (target.kind === "deliveries") window.location.assign(routeHash({ view: "deliveries" }));
   else if (target.kind === "settings") window.location.assign(routeHash({ view: "settings", id: target.section }));
-  else if (target.kind === "invites") window.scrollTo({ top: 0 });
+  else if (target.kind === "invites") {
+    // Pasek zaproszeń stoi nad treścią (nie przewija się z nią) — fokus na jego pierwszy przycisk.
+    const bar = document.querySelector<HTMLElement>('[data-testid="scope-invites"]');
+    bar?.scrollIntoView({ block: "nearest" });
+    bar?.querySelector<HTMLElement>("button")?.focus();
+  }
 }
 
 

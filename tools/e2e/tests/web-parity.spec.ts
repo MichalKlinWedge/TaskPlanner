@@ -249,6 +249,8 @@ test('R-01: wylogowanie kończy tylko sesję tej przeglądarki', async ({ page }
     scope = new URL(route.request().url()).searchParams.get('scope');
     await route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' } });
   });
-  await page.getByRole('button', { name: 'Wyloguj' }).click();
+  // Wylogowanie pyta o potwierdzenie (chybiony klik obok ⚙️).
+  page.once('dialog', (d) => void d.accept());
+  await page.getByRole('button', { name: 'Wyloguj', exact: true }).click();
   await expect.poll(() => scope).toBe('local');
 });

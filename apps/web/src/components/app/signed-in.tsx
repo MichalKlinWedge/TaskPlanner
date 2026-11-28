@@ -92,6 +92,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
             userId={userId}
             email={email}
             timeZone={parseSettings(settings).timeZone}
+            onSignOut={() => void signOutOf(store)}
             general={
               <ProfileForm
                 draftKey={userId}
@@ -161,6 +162,21 @@ function Onboarding({ store, userId, initial }: { store: TabStore; userId: strin
 }
 
 /** Pasek: stan synchronizacji (sieć, zmiany w kolejce, błąd), powiadomienia i ustawienia (po onboardingu), wylogowanie. */
+/** Wylogowanie z tej przeglądarki (nagłówek i Ustawienia → „Konto”): najpierw próba wysłania zmian, potem potwierdzenie. */
+async function signOutOf(store: TabStore) {
+  let left = await store.pendingCount();
+  if (left > 0) {
+    await store.sync().catch(() => undefined);
+    left = await store.pendingCount();
+  }
+  if (left > 0 && !window.confirm(`${plural(left, ["zmiana nie została", "zmiany nie zostały", "zmian nie zostało"])} jeszcze ${pluralForm(left, ["wysłana", "wysłane", "wysłanych"])} na serwer. Wylogować mimo to? Zostaną w tej przeglądarce do następnego logowania.`)) return;
+  // Chybiony klik obok ⚙️ nie wylogowuje — ponowne logowanie wymaga maila albo Google.
+  if (left === 0 && !window.confirm("Wylogować z tej przeglądarki? Zalogujesz się ponownie linkiem z e-maila albo przez Google.")) return;
+  closeStore();
+  // Tylko ta przeglądarka: domyślny zakres (`global`) kończyłby też sesję na telefonie.
+  await supabaseBrowser().auth.signOut({ scope: "local" });
+}
+
 function AppHeader({ store, userId, email, settingsLink }: { store: TabStore; userId: string; email: string | null; settingsLink: boolean }) {
   const status = useStoreStatus();
   const [route] = useRoute();
@@ -212,17 +228,7 @@ function AppHeader({ store, userId, email, settingsLink }: { store: TabStore; us
       .finally(() => setBusy(false));
   };
 
-  const signOut = async () => {
-    let left = await store.pendingCount();
-    if (left > 0) {
-      await store.sync().catch(() => undefined);
-      left = await store.pendingCount();
-    }
-    if (left > 0 && !window.confirm(`${plural(left, ["zmiana nie została", "zmiany nie zostały", "zmian nie zostało"])} jeszcze ${pluralForm(left, ["wysłana", "wysłane", "wysłanych"])} na serwer. Wylogować mimo to? Zostaną w tej przeglądarce do następnego logowania.`)) return;
-    closeStore();
-    // Tylko ta przeglądarka: domyślny zakres (`global`) kończyłby też sesję na telefonie.
-    await supabaseBrowser().auth.signOut({ scope: "local" });
-  };
+  const signOut = () => signOutOf(store);
 
   const label = !online
     ? pending

@@ -240,7 +240,8 @@ export function CollaboratorsView() {
                       setError(null);
                       setEditing(null);
                       setAdding({ ...EMPTY, name: nameFromEmail(person.email), email: person.email, workspaceIds: person.spaces.map((s) => s.workspaceId) });
-                      window.scrollTo({ top: 0 });
+                      // Formularz jest na górze widoku; przewija się `main`, nie okno.
+                      setTimeout(() => document.querySelector('form[aria-label="Nowy współpracownik"]')?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
                     }}
                   >
                     + Dodaj

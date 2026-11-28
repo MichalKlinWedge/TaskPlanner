@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * Ustawienia → „Usuń konto” (v1.x): konto i wszystkie dane na serwerze znikają (`lib/account.ts`
+ * Ustawienia → „Konto”: adres zalogowanego konta i „Wyloguj” (na wąskim ekranie nagłówek ma tylko ikony),
+ * niżej „Usuń konto” (v1.x): konto i wszystkie dane na serwerze znikają (`lib/account.ts`
  * → Edge Function `account-delete`), potem wylogowanie. Kopia w tej przeglądarce zostaje do
  * wyczyszczenia danych witryny (jak po zwykłym wylogowaniu).
  */
@@ -15,7 +16,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import { SettingsSection } from "./settings-section";
 import { Button, Input, Notice } from "./ui";
 
-export function AccountCard({ email }: { email: string | null }) {
+export function AccountCard({ email, onSignOut }: { email: string | null; onSignOut: () => void }) {
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +38,13 @@ export function AccountCard({ email }: { email: string | null }) {
   };
 
   return (
+    <>
+    <SettingsSection title="Konto">
+      <p className="mb-3 text-sm">
+        Zalogowano jako <strong className="break-all">{email ?? "—"}</strong>
+      </p>
+      <Button onClick={onSignOut}>Wyloguj z tej przeglądarki</Button>
+    </SettingsSection>
     <SettingsSection title="Usuń konto">
       <p className="mb-3 text-sm opacity-70">{ACCOUNT_DELETE_NOTE}</p>
       <form onSubmit={(e) => void submit(e)} className="flex flex-wrap items-center gap-2">
@@ -59,5 +67,6 @@ export function AccountCard({ email }: { email: string | null }) {
         </div>
       ) : null}
     </SettingsSection>
+    </>
   );
 }

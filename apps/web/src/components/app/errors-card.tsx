@@ -80,9 +80,12 @@ function ErrorsLog() {
         <Button disabled={busy} onClick={() => sendNow(false)}>
           Odśwież
         </Button>
-        <Button kind="ghost" disabled={busy} onClick={() => sendNow(true)}>
-          Zapisz błąd testowy
-        </Button>
+        {/* Narzędzie do sprawdzania dziennika — tylko w wersji deweloperskiej. */}
+        {process.env.NODE_ENV !== "production" ? (
+          <Button kind="ghost" disabled={busy} onClick={() => sendNow(true)}>
+            Zapisz błąd testowy
+          </Button>
+        ) : null}
       </div>
       {problem ? <Notice tone="error">{problem}</Notice> : null}
       {rows && !rows.length ? <p className="text-sm text-[var(--muted)]">Brak błędów.</p> : null}

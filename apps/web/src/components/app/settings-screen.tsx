@@ -47,7 +47,7 @@ const readSection = (userId: string): string | null => {
   }
 };
 
-export function SettingsScreen({ store, userId, email, timeZone, general }: { store: TabStore; userId: string; email: string | null; timeZone?: string; general: ReactNode }) {
+export function SettingsScreen({ store, userId, email, timeZone, general, onSignOut }: { store: TabStore; userId: string; email: string | null; timeZone?: string; general: ReactNode; onSignOut: () => void }) {
   const [route, navigate] = useRoute();
   const admin = useAppAdmin();
   const ai = useAiAccount(store);
@@ -69,7 +69,7 @@ export function SettingsScreen({ store, userId, email, timeZone, general }: { st
     { id: "version", icon: "ℹ️", label: "Wersja aplikacji", body: <VersionCard /> },
     // Tylko dla administratora.
     ...(admin ? [{ id: "invites", icon: "✉️", label: "Zaproszenia", body: <InvitesCard /> }] : []),
-    { id: "account", icon: "👤", label: "Usuń konto", body: <AccountCard email={email} /> },
+    { id: "account", icon: "👤", label: "Konto", body: <AccountCard email={email} onSignOut={onSignOut} /> },
   ];
 
   const [last, setLast] = useState(() => readSection(userId));
