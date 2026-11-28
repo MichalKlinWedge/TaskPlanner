@@ -159,7 +159,7 @@ export function NotificationsSection() {
                 <Text style={{ color: p.fg, fontWeight: '600' }}>{NOTIFICATION_GROUP_LABEL[group].title}</Text>
                 <Text style={{ color: p.muted, fontSize: 12 }}>{NOTIFICATION_GROUP_LABEL[group].hint}</Text>
               </View>
-              <Text style={{ color: p.accent }}>{label(prefs[group])}</Text>
+              <Text style={[styles.value, { color: p.accent }]}>{label(prefs[group])}</Text>
             </Pressable>
             {prefs[group] === 'off' ? null : (
               <Pressable
@@ -194,7 +194,7 @@ export function NotificationsSection() {
           <Text style={{ color: p.fg, fontWeight: '600' }}>{NOTIFICATION_GROUP_LABEL.reminders.title}</Text>
           <Text style={{ color: p.muted, fontSize: 12 }}>{NOTIFICATION_GROUP_LABEL.reminders.hint}</Text>
         </View>
-        <Text style={{ color: p.accent, flexShrink: 1, textAlign: 'right' }}>{REMINDER_DISPLAY[prefs.reminders]}</Text>
+        <Text style={[styles.value, { color: p.accent }]}>{REMINDER_DISPLAY[prefs.reminders]}</Text>
       </Pressable>
       <Text style={{ color: p.fg, fontWeight: '600', marginTop: 10 }}>Zadania, które śledzę</Text>
       <Text style={{ color: p.muted, fontSize: 12 }}>
@@ -227,7 +227,7 @@ export function NotificationsSection() {
           <Text style={{ color: p.fg, fontWeight: '600' }}>Automatyczne przypomnienie</Text>
           <Text style={{ color: p.muted, fontSize: 12 }}>O zadaniu z datą i godziną, za które odpowiadasz i które śledzisz — bez ustawiania ręcznie</Text>
         </View>
-        <Text style={{ color: p.accent }}>{AUTO_REMINDER[prefs.autoReminder]}</Text>
+        <Text style={[styles.value, { color: p.accent }]}>{AUTO_REMINDER[prefs.autoReminder]}</Text>
       </Pressable>
       {prefs.autoReminder === 'off' ? null : (
         <Pressable
@@ -242,7 +242,7 @@ export function NotificationsSection() {
           style={[styles.row, { borderColor: p.border }]}
         >
           <Text style={{ color: p.fg, flex: 1 }}>Kiedy</Text>
-          <Text style={{ color: p.accent }}>{autoReminderOffsetLabel(prefs.autoReminderOffset)}</Text>
+          <Text style={[styles.value, { color: p.accent }]}>{autoReminderOffsetLabel(prefs.autoReminderOffset)}</Text>
         </Pressable>
       )}
       <View style={styles.switchRow}>
@@ -288,6 +288,8 @@ const styles = StyleSheet.create({
   count: { position: 'absolute', top: 2, right: -4, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, alignItems: 'center', justifyContent: 'center' },
   countText: { color: '#ffffff', fontSize: 10, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  // Wartość po prawej: najwyżej ~40 % wiersza i zawijanie, żeby opis po lewej miał miejsce.
+  value: { flexShrink: 1, maxWidth: '40%', textAlign: 'right' },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
   kinds: { paddingVertical: 6, paddingLeft: 8 },
   time: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 },
