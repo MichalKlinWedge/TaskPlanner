@@ -2,14 +2,14 @@
   "expo": {
     "name": "Task Planner",
     "slug": "taskplanner",
-    "version": "0.1.52",
+    "version": "0.1.53",
     "orientation": "portrait",
     "scheme": "taskplanner",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/images/icon.png",
     "android": {
       "package": "pl.taskplanner.app",
-      "versionCode": 53,
+      "versionCode": 54,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.SCHEDULE_EXACT_ALARM",
@@ -74,7 +74,7 @@
             {
               "name": "QuickAdd",
               "label": "Task Planner — Szybkie dodawanie",
-              "description": "Dodaj zadanie albo podyktuj je mikrofonem klawiatury",
+              "description": "Wpisz albo podyktuj zadanie do Inbox bez otwierania aplikacji",
               "minWidth": "250dp",
               "minHeight": "50dp",
               "targetCellWidth": 4,

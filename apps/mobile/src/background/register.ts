@@ -10,6 +10,7 @@ import { registerWidgetTaskHandler } from 'react-native-android-widget';
 import { ALARM_TASK } from '../lib/alarm';
 import { handleAlarmActions } from '../lib/alarm-actions';
 import { defineBackgroundSync } from '../lib/background-sync';
+import { handleQuickCaptures, QUICK_CAPTURE_TASK } from '../lib/quick-capture';
 import { handleResponse, NOTIFICATION_TASK } from '../lib/reminders';
 import { widgetTaskHandler } from '../widget/task-handler';
 
@@ -20,5 +21,8 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(NOTIFICATION_TASK,
 });
 
 AppRegistry.registerHeadlessTask(ALARM_TASK, () => handleAlarmActions);
+AppRegistry.registerHeadlessTask(QUICK_CAPTURE_TASK, () => async () => {
+  await handleQuickCaptures();
+});
 registerWidgetTaskHandler(widgetTaskHandler);
 defineBackgroundSync();

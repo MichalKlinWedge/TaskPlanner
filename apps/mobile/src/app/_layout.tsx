@@ -25,6 +25,7 @@ import { startFocusWork, syncFocusNotifications } from '@/lib/focus';
 import { useNavBarHidden } from '@/lib/nav-bar';
 import { markNotificationReadById, showNotificationPushes } from '@/lib/notifications';
 import { loadProfile, onboardingGateHeld, onOnboardingGateRelease } from '@/lib/profile';
+import { handleQuickCaptures } from '@/lib/quick-capture';
 import { handleResponse, setupNotifications } from '@/lib/reminders';
 import { scheduleReminders } from '@/lib/scheduler';
 import { acceptLinkInvite } from '@/lib/sharing';
@@ -165,8 +166,11 @@ function BackgroundWork() {
     });
     const sub = AppState.addEventListener('change', (next) => {
       // Uprawnienia mogły się zmienić w ustawieniach systemu.
-      if (next === 'active') void handleAlarmActions().then(() => scheduleReminders());
-      else if (pending) run(pending.data);
+      if (next === 'active') {
+        void handleAlarmActions().then(() => scheduleReminders());
+        // Wpisy z okna szybkiego dodawania, których JS w tle nie zdążył zapisać.
+        void handleQuickCaptures();
+      } else if (pending) run(pending.data);
     });
     return () => {
       offData();
@@ -183,6 +187,7 @@ function useAppStart() {
     let stopFocus: (() => void) | undefined;
     const ready = setupNotifications().catch((error) => console.warn('powiadomienia', error));
     void ready.then(handleAlarmActions).then(() => scheduleReminders());
+    void handleQuickCaptures();
     // Timer skupienia (po kanałach powiadomień): powiadomienia, koniec etapu w chwili końca, porzucone wpisy.
     void ready.then(() => {
       if (alive) stopFocus = startFocusWork(() => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined));

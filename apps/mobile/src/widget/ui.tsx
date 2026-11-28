@@ -26,6 +26,9 @@ export const APP_URI = {
   habits: 'taskplanner://habits',
   quickAdd: 'taskplanner://quick-add',
   voice: 'taskplanner://quick-add?voice=1',
+  /** Okno nad ekranem głównym bez otwierania aplikacji (moduł `quick-capture`). */
+  capture: 'taskplanner-capture://add',
+  captureVoice: 'taskplanner-capture://voice',
 } as const;
 
 /** Nagłówek: tytuł z licznikiem (otwiera aplikację) i godzina ostatniego odświeżenia. */

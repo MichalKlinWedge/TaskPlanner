@@ -1,0 +1,22 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'pl.taskplanner'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.quickcapture"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+  // Te same wersje co w module task-alarm (i react-native-android-widget).
+  implementation 'androidx.work:work-runtime:2.12.0'
+  implementation 'androidx.concurrent:concurrent-futures:1.2.0'
+}

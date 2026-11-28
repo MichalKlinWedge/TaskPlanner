@@ -27,8 +27,12 @@ Widżety M20 w `apps/mobile/src/widget/`: „Dziś” (`today-widget.tsx`), „S
 
 ## W3. „Szybkie dodawanie”
 
-1. „Dodaj zadanie” przy zamkniętej aplikacji → okno szybkiego dodawania z klawiaturą, pod spodem zakładki; dodanie zadania „Kupić mleko jutro #dom” — chipy jak z „+”.
-2. 🎤 → to samo okno z podpowiedzią dyktowania; mikrofon na klawiaturze (Gboard / Samsung) → „zadzwonić do Ani jutro o 10” → chipy daty i godziny.
+Od 28.11.2026 widżet nie otwiera aplikacji: pole i 🎤 otwierają natywne okno nad ekranem głównym (moduł `apps/mobile/modules/quick-capture`, `QuickCaptureActivity`, schemat `taskplanner-capture://add` / `://voice`). Tekst trafia do kolejki w SharedPreferences `quick_capture`, a zadanie do Inbox (bieżącej przestrzeni) zapisuje JS w tle (`QuickCaptureWorker` → Headless JS `TaskQuickCapture` → `lib/quick-capture.ts`, ta sama gramatyka co „+”; id z klucza wpisu, więc powtórka nie dubluje); niezapisane wpisy aplikacja zapisuje przy starcie / powrocie. Zmiana w Kotlinie = nowy APK.
+
+1. „Dodaj zadanie” przy zamkniętej aplikacji → dolny panel nad ekranem głównym z klawiaturą (aplikacja się nie otwiera); „Kupić mleko jutro @dom” → Enter / „Dodaj” → toast „Dodano do Inbox: …”, panel znika. Po otwarciu aplikacji zadanie jest w Inbox z jutrzejszą datą i tagiem; na webie po chwili (z siecią).
+2. 🎤 w widżecie → od razu systemowe okno rozpoznawania mowy (bez panelu) → „zadzwonić do Ani jutro o 10” → toast, zadanie w Inbox z datą i godziną. Anulowanie / cisza → nic nie powstaje.
+3. 🎤 w panelu → rozpoznany tekst dopisuje się do pola (można poprawić przed „Dodaj”). Stuknięcie poza panelem / wstecz → zamknięcie bez zapisu.
+4. Tryb samolotowy: dodanie z panelu → zadanie w Inbox lokalnie, na serwer po powrocie sieci.
 3. Licznik Inbox: dodanie zadania bez listy / ukończenie zadania z Inbox (w aplikacji albo w widżecie „Dziś”) zmienia liczbę; stuknięcie licznika otwiera Inbox.
 
 ## W4. Odświeżanie

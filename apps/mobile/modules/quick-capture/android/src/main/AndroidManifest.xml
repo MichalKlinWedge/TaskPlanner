@@ -1,0 +1,24 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!--
+      Okno szybkiego dodawania nad ekranem głównym (widżet „Szybkie dodawanie”). Własny schemat, żeby nie
+      konkurować z `taskplanner://` MainActivity; eksportowane, bo widżet otwiera je niejawną intencją.
+      Niczego nie zapisuje bez użytkownika: tekst trzeba wpisać albo podyktować.
+    -->
+    <activity
+      android:name=".QuickCaptureActivity"
+      android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
+      android:excludeFromRecents="true"
+      android:exported="true"
+      android:launchMode="singleTask"
+      android:taskAffinity=""
+      android:theme="@android:style/Theme.Translucent.NoTitleBar"
+      android:windowSoftInputMode="adjustResize|stateAlwaysVisible">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <data android:scheme="taskplanner-capture" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>

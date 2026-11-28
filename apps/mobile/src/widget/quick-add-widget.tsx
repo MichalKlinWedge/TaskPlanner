@@ -8,8 +8,9 @@ import { APP_URI, themed, type Palette } from './ui';
 export const QUICK_ADD_WIDGET = 'QuickAdd';
 
 /**
- * „Szybkie dodawanie” (M20): pole otwiera okno szybkiego dodawania z klawiaturą, mikrofon — to samo
- * okno z podpowiedzią dyktowania (mikrofon klawiatury), licznik Inbox otwiera Inbox.
+ * „Szybkie dodawanie” (M20): pole otwiera okno nad ekranem głównym z klawiaturą (bez otwierania aplikacji),
+ * mikrofon — od razu systemowe rozpoznawanie mowy; tekst trafia do Inbox (moduł `quick-capture`, `lib/quick-capture.ts`).
+ * Licznik Inbox otwiera Inbox.
  */
 function QuickAddWidgetView({ inbox, palette }: { inbox: number | null; palette: Palette }) {
   return (
@@ -18,7 +19,7 @@ function QuickAddWidgetView({ inbox, palette }: { inbox: number | null; palette:
     >
       <FlexWidget
         clickAction="OPEN_URI"
-        clickActionData={{ uri: APP_URI.quickAdd }}
+        clickActionData={{ uri: APP_URI.capture }}
         accessibilityLabel="Dodaj zadanie"
         style={{ flex: 1, height: 'match_parent', backgroundColor: palette.field, borderRadius: 22, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center' }}
       >
@@ -27,7 +28,7 @@ function QuickAddWidgetView({ inbox, palette }: { inbox: number | null; palette:
       </FlexWidget>
       <FlexWidget
         clickAction="OPEN_URI"
-        clickActionData={{ uri: APP_URI.voice }}
+        clickActionData={{ uri: APP_URI.captureVoice }}
         accessibilityLabel="Podyktuj zadanie"
         style={{ height: 'match_parent', backgroundColor: palette.field, borderRadius: 22, paddingHorizontal: 12, marginLeft: 6, justifyContent: 'center' }}
       >
