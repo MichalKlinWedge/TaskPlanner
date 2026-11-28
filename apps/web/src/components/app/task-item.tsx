@@ -356,11 +356,18 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
         <DoneCircle task={task} closed={closed} readOnly={readOnly} onToggle={() => void toggle(task, { habitDone })} className="mt-0.5" />
       )}
       <div
-        className="flex min-w-0 flex-1 cursor-pointer items-start gap-1"
+        className="flex min-w-0 flex-1 cursor-pointer flex-wrap items-start gap-1"
         // Szerokość „Zadanie” liczona od krawędzi wiersza — wcięcie podzadań jej nie przesuwa.
         style={columns.length ? titleStyle(widths, TITLE_INSET + depth * 20) : undefined}
         onClick={(e) => {
           // Puste miejsce obok tytułu działa jak tytuł.
+          if (e.target === e.currentTarget) onOpen(e);
+        }}
+      >
+      {/* Tytuł z ikonami ma co najmniej 10rem; przyciski „+15 min … → Jutro” przechodzą wtedy pod niego zamiast ściskać go do kilku liter. */}
+      <span
+        className="flex min-w-0 flex-[1_1_10rem] items-start gap-1"
+        onClick={(e) => {
           if (e.target === e.currentTarget) onOpen(e);
         }}
       >
@@ -421,6 +428,7 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           +
         </button>
       ) : null}
+      </span>
       {(onToday || onTomorrow || onLater) && !readOnly ? (
         <span className="ml-auto flex shrink-0 gap-2">
           {onLater
