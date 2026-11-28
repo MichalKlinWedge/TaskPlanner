@@ -19,6 +19,7 @@ import {
   progress,
   READONLY_LIST_NOTE,
   SORT_BY,
+  sortDirLabel,
   sortTasks,
   tagsForWorkspace,
   withCompleted,
@@ -26,6 +27,7 @@ import {
   type FilterQuery,
   type GroupBy,
   type SortBy,
+  type SortDir,
   type ViewPrefs,
 } from '@taskplanner/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
@@ -81,6 +83,7 @@ export default function ListScreen() {
   const share = useListShareBadge(id);
   const editable = useListEditable(id);
   const sortBy: SortBy = list?.prefs.sortBy ?? 'manual';
+  const sortDir: SortDir = list?.prefs.sortDir ?? 'asc';
   const groupBy: GroupBy = list?.prefs.groupBy ?? 'none';
   const completed: CompletedMode = list?.prefs.completed ?? 'today';
   const filter = list?.prefs.filter;
@@ -124,7 +127,7 @@ export default function ListScreen() {
         },
       ];
     }
-    return groupTasks(sortTasks(tasks, sortBy), groupBy, { lists: data.lists, tags: data.tags }).map((g) => ({
+    return groupTasks(sortTasks(tasks, sortBy, sortDir), groupBy, { lists: data.lists, tags: data.tags }).map((g) => ({
       key: g.key,
       title: g.label || undefined,
       count: g.label ? g.tasks.length : undefined,
@@ -132,7 +135,7 @@ export default function ListScreen() {
     }));
     // `row` zależy od danych — przeliczane razem z nimi.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tree, tasks, collapsed, sortBy, groupBy, data.lists, data.tags, today, columns, columnTags]);
+  }, [tree, tasks, collapsed, sortBy, sortDir, groupBy, data.lists, data.tags, today, columns, columnTags]);
 
   if (!list) {
     return (
@@ -167,7 +170,7 @@ export default function ListScreen() {
   const exportRows = () =>
     tree
       ? flattenTree(buildTree(tasks)).map((n) => ({ task: n.task, depth: n.depth }))
-      : groupTasks(sortTasks(tasks, sortBy), groupBy, { lists: data.lists, tags: data.tags }).flatMap((g) => g.tasks.map((task) => ({ task, section: g.label || undefined })));
+      : groupTasks(sortTasks(tasks, sortBy, sortDir), groupBy, { lists: data.lists, tags: data.tags }).flatMap((g) => g.tasks.map((task) => ({ task, section: g.label || undefined })));
   const workspace = data.workspaces.find((w) => w.id === list.workspaceId)?.name;
   const title = `${list.kind === 'inbox' ? `Inbox · ${workspace ?? ''}` : list.name}${share ? ` ${share.icon}` : ''}`;
 
@@ -180,7 +183,14 @@ export default function ListScreen() {
           <ScreenHeader subtitle={`${LIST_KIND[list.kind]}${workspace ? ` · ${workspace}` : ''} · ${plural(tasks.filter(isOpen).length, OPEN)}`}>
             {editable ? null : <Text style={{ color: p.muted, fontSize: 13, paddingHorizontal: 12, paddingTop: 6 }}>{READONLY_LIST_NOTE}</Text>}
             <OptionRow>
-              <Pref label="Sortowanie" value={sortBy} labels={SORT_BY} onChange={(v) => setPrefs({ sortBy: v })} />
+              <Pref label="Sortowanie" value={sortBy} labels={SORT_BY} onChange={(v) => setPrefs({ sortBy: v, sortDir: undefined })} />
+              {sortBy === 'manual' ? null : (
+                <OptionChip
+                  label={`${sortDir === 'desc' ? '▼' : '▲'} ${sortDirLabel(sortBy, sortDir)}`}
+                  accessibilityLabel={`Kierunek sortowania: ${sortDirLabel(sortBy, sortDir)} — odwróć`}
+                  onPress={() => setPrefs({ sortDir: sortDir === 'desc' ? undefined : 'desc' })}
+                />
+              )}
               <Pref label="Grupy" value={groupBy} labels={GROUP_BY} onChange={(v) => setPrefs({ groupBy: v })} />
               <Pref label="Ukończone" value={completed} labels={COMPLETED_MODE} onChange={(v) => setPrefs({ completed: v })} />
               <ColumnChips columns={columns} columnTags={columnTags} tags={tagsForWorkspace(data.tags, list.workspaceId, list.prefs.columnTags)} onChange={setColumnPrefs} />

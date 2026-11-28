@@ -1,4 +1,5 @@
 [
+  {"version":"0.48.2.0","kind":"w","date":"2026-11-28","title":"Listy: sortowanie po początku i nazwie (A–Z), odwrócenie kierunku, klik w nagłówek kolumny"},
   {"version":"0.48.1.0","kind":"w","date":"2026-11-28","title":"Token API: formularz nowego tokenu pokazuje się dopiero po „+ Nowy token”"},
   {"version":"0.48.0.1","kind":"z","date":"2026-11-28","title":"Lista: przyciski „+15 min … → Jutro” schodzą pod tytuł zamiast ściskać „Zadanie”"},
   {"version":"0.48.0.0","kind":"y","date":"2026-11-27","title":"Przychodzące API (M22, D22): token osobisty i Edge Function inbound-api dla Expedition Plan"},

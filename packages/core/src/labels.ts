@@ -97,11 +97,26 @@ export const LIST_COLUMN: Record<'start' | 'due' | 'duration' | 'description' | 
 export const orderedColumns = <C extends keyof typeof LIST_COLUMN>(columns: readonly C[] | undefined): C[] =>
   (Object.keys(LIST_COLUMN) as C[]).filter((c) => columns?.includes(c));
 
-export const SORT_BY: Record<'manual' | 'priority' | 'due' | 'created', string> = {
+export const SORT_BY: Record<'manual' | 'priority' | 'due' | 'start' | 'title' | 'created', string> = {
   manual: 'Ręcznie',
   priority: 'Priorytet',
   due: 'Termin',
+  start: 'Początek',
+  title: 'Nazwa (A–Z)',
   created: 'Data dodania',
+};
+
+/** Kierunek sortowania (`SortDir`) dla danego kryterium: `asc` = domyślny. */
+export const sortDirLabel = (by: 'manual' | 'priority' | 'due' | 'start' | 'title' | 'created', dir: 'asc' | 'desc'): string => {
+  const words: Record<typeof by, [string, string]> = {
+    manual: ['', ''],
+    priority: ['od najważniejszych', 'od najmniej ważnych'],
+    due: ['od najbliższego', 'od najdalszego'],
+    start: ['od najwcześniejszego', 'od najpóźniejszego'],
+    title: ['A → Z', 'Z → A'],
+    created: ['od najnowszych', 'od najstarszych'],
+  };
+  return words[by][dir === 'asc' ? 0 : 1];
 };
 
 export const GROUP_BY: Record<'none' | 'priority' | 'list' | 'date' | 'tag' | 'status', string> = {

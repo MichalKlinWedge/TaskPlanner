@@ -16,7 +16,7 @@ import { PluginRuleOptions, PluginTrigger } from '../plugins/rules.ts';
 import { Recurrence } from '../recurrence.ts';
 import { ProjectTemplateContent } from '../templates.ts';
 import { ReviewStats } from '../review.ts';
-import { CompletedMode, FilterQuery, GroupBy, SortBy } from '../views.ts';
+import { CompletedMode, FilterQuery, GroupBy, SortBy, SortDir } from '../views.ts';
 import { GuestAccess, IsoWeekday, ListKind, LocalDate, LocalTime, Priority, ProjectStatus, ReminderKind, SortKey, TaskStatus } from './primitives.ts';
 
 // ── Typy pomocnicze ──────────────────────────────────────────────────────────────────────────
@@ -96,8 +96,11 @@ export const ViewPrefs = z.object({
   view: z.enum(['list', 'kanban', 'calendar', 'timeline', 'canvas']).optional().catch(undefined),
   /** Kryterium kolumn tablicy (M10). */
   boardBy: z.enum(['status', 'priority', 'weekday', 'tag', 'list', 'custom']).optional().catch(undefined),
-  groupBy: GroupBy.optional(),
-  sortBy: SortBy.optional(),
+  /** Nieznana wartość (z nowszej wersji) nie psuje reszty ustawień. */
+  groupBy: GroupBy.optional().catch(undefined),
+  sortBy: SortBy.optional().catch(undefined),
+  /** Kierunek sortowania; brak = `asc` (domyślny dla kryterium). */
+  sortDir: SortDir.optional().catch(undefined),
   completed: CompletedMode.optional(),
   /** Filtr z chipów „+ Filtr” zapamiętany dla listy; uszkodzony nie psuje reszty ustawień. */
   filter: FilterQuery.optional().catch(undefined),

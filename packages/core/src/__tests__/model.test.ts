@@ -83,7 +83,10 @@ describe('lista', () => {
   });
   it('ustawienia widoku', () => {
     expect(ViewPrefs.parse({ view: 'kanban', groupBy: 'priority', sortBy: 'due', completed: 'today' })).toBeTruthy();
-    expect(ViewPrefs.safeParse({ groupBy: 'kolor' }).success).toBe(false);
+    // Nieznane grupowanie / sortowanie (z nowszej wersji) odpada, reszta ustawień zostaje.
+    expect(ViewPrefs.parse({ groupBy: 'kolor', completed: 'hidden' })).toEqual({ completed: 'hidden' });
+    expect(ViewPrefs.parse({ sortBy: 'kolor', sortDir: 'w bok', view: 'kanban' })).toEqual({ view: 'kanban' });
+    expect(ViewPrefs.parse({ sortBy: 'title', sortDir: 'desc' })).toEqual({ sortBy: 'title', sortDir: 'desc' });
   });
   it('zapamiętany filtr listy; uszkodzony nie kasuje reszty ustawień', () => {
     const filter = { priorities: [1 as const], due: { kind: 'any' as const } };

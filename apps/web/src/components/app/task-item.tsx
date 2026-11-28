@@ -4,7 +4,7 @@
  * Wiersz zadania i akcje zadań (ukończenie z „Cofnij”, zapis operacji z dymkiem). Zapisy idą
  * przez `store.mutate`; reguły ukończenia serii są w `completeTaskOps` (core).
  */
-import { columnDate, completeTaskOps, descendants, describeRecurrence, formatMinutes, isOpen, localDateAt, needsDecision, openDescendants, OVERDUE_LATER_OPTIONS, overdueLaterLabel, plural, PRIORITY, relativeDay, reopenTaskPatch, LIST_COLUMN, type ListColumn, type LocalDate, type TaskOp, type ViewTask } from "@taskplanner/core";
+import { columnDate, completeTaskOps, descendants, describeRecurrence, formatMinutes, isOpen, localDateAt, needsDecision, openDescendants, OVERDUE_LATER_OPTIONS, overdueLaterLabel, plural, PRIORITY, relativeDay, reopenTaskPatch, LIST_COLUMN, HEADER_SORT, SORT_BY, sortDirLabel, type ListColumn, type LocalDate, type SortBy, type SortDir, type TaskOp, type ViewTask } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
@@ -231,18 +231,55 @@ function ResizeHandle({ column, label, onResize }: { column: WidthColumn; label:
   );
 }
 
-/** Nagłówek kolumn nad wierszami listy; z `onResize` kolumny (także „Zadanie”) da się poszerzać przeciąganiem. */
-export function TaskColumnsHeader({ columns, widths = {}, onResize }: { columns: readonly ListColumn[]; widths?: ColumnWidths; onResize?: (column: WidthColumn, px: number | null) => void }) {
+/** Etykieta nagłówka kolumny; z `onSort` i kolumną z `HEADER_SORT` — przycisk sortowania ze strzałką kierunku. */
+function HeaderLabel({ column, label, sort, onSort }: { column: WidthColumn; label: string; sort?: { by: SortBy; dir: SortDir }; onSort?: (by: SortBy) => void }) {
+  const by = HEADER_SORT[column];
+  if (!by || !onSort) return <span className="block truncate">{label}</span>;
+  const active = sort?.by === by;
+  const dir: SortDir = (active && sort?.dir) || "asc";
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(by)}
+      className={`flex max-w-full items-center gap-0.5 truncate rounded px-0.5 hover:bg-[var(--hover)] ${active ? "text-[var(--foreground)]" : ""}`}
+      title={active ? `Sortowanie: ${SORT_BY[by]}, ${sortDirLabel(by, dir)} — kliknij, żeby ${dir === "desc" ? "wrócić do kolejności ręcznej" : "odwrócić"}` : `Sortuj: ${SORT_BY[by]}`}
+      aria-label={`Sortuj: ${SORT_BY[by]}`}
+      aria-pressed={active}
+      data-sort-header={by}
+    >
+      <span className="truncate">{label}</span>
+      {active ? <span aria-hidden>{dir === "desc" ? "▼" : "▲"}</span> : null}
+    </button>
+  );
+}
+
+/**
+ * Nagłówek kolumn nad wierszami listy; z `onResize` kolumny (także „Zadanie”) da się poszerzać przeciąganiem,
+ * z `onSort` klik w „Zadanie” / „Początek” / „Termin” sortuje (`headerSortPatch`).
+ */
+export function TaskColumnsHeader({
+  columns,
+  widths = {},
+  onResize,
+  sort,
+  onSort,
+}: {
+  columns: readonly ListColumn[];
+  widths?: ColumnWidths;
+  onResize?: (column: WidthColumn, px: number | null) => void;
+  sort?: { by: SortBy; dir: SortDir };
+  onSort?: (by: SortBy) => void;
+}) {
   if (!columns.length) return null;
   return (
     <div className="flex gap-2 border-b border-[var(--line)] pb-1 text-xs font-medium text-[var(--muted)]" data-testid="list-columns-header">
       <span className="relative" style={{ ...titleStyle(widths), paddingLeft: TITLE_INSET }} data-header="title">
-        <span className="block truncate">Zadanie</span>
+        <HeaderLabel column="title" label="Zadanie" sort={sort} onSort={onSort} />
         {onResize ? <ResizeHandle column="title" label="Zadanie" onResize={onResize} /> : null}
       </span>
       {columns.map((c) => (
         <span key={c} className="relative" style={columnStyle(c, widths)} data-header={c}>
-          <span className="block truncate">{LIST_COLUMN[c]}</span>
+          <HeaderLabel column={c} label={LIST_COLUMN[c]} sort={sort} onSort={onSort} />
           {onResize ? <ResizeHandle column={c} label={LIST_COLUMN[c]} onResize={onResize} /> : null}
         </span>
       ))}

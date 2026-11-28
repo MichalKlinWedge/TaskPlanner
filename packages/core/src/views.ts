@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { addDays, localDateAt, parseLocalDateTime, weekStart } from './dates.ts';
 import type { HabitSettings } from './habits.ts';
 import { PRIORITY, TASK_STATUS, VIEW_SECTION } from './labels.ts';
-import { dayLabel, shortDate } from './format.ts';
+import { compareText, dayLabel, shortDate } from './format.ts';
 import { occurrences, type Recurrence } from './recurrence.ts';
 import { LocalDate, Priority, TaskStatus, type LocalTime } from './schemas/primitives.ts';
 
@@ -108,19 +108,47 @@ export const byDayOrder = (a: ViewTask, b: ViewTask): number => nullsLast(a.dueT
 /** Zaległe z wcześniejszych dni: od najstarszego, w obrębie dnia według priorytetu. */
 const byOverdue = (a: ViewTask, b: ViewTask): number => byText(a.dueDate!, b.dueDate!) || a.priority - b.priority || byDayOrder(a, b);
 
-export const SortBy = z.enum(['manual', 'priority', 'due', 'created']);
+export const SortBy = z.enum(['manual', 'priority', 'due', 'start', 'title', 'created']);
 export type SortBy = z.infer<typeof SortBy>;
 
-const COMPARE: Record<SortBy, (a: ViewTask, b: ViewTask) => number> = {
+/** Kierunek sortowania: `asc` = domyślny dla kryterium, `desc` = odwrócony (bez wpływu na „Ręcznie”). */
+export const SortDir = z.enum(['asc', 'desc']);
+export type SortDir = z.infer<typeof SortDir>;
+
+/** Jak `nullsLast`, ale z kierunkiem: puste zawsze na końcu, także po odwróceniu. */
+const nullsLastDir = <T extends string>(a: T | null, b: T | null, d: number) => (a === b ? 0 : a === null ? 1 : b === null ? -1 : d * byText(a, b));
+
+/** `d` = 1 (domyślnie) albo −1 (odwrócone); odwraca się tylko główne kryterium, remisy zostają stałe. */
+const COMPARE: Record<SortBy, (a: ViewTask, b: ViewTask, d: number) => number> = {
   manual: byManual,
-  priority: (a, b) => a.priority - b.priority || nullsLast(a.dueDate, b.dueDate) || byDayOrder(a, b),
-  due: (a, b) => nullsLast(a.dueDate, b.dueDate) || nullsLast(a.dueTime, b.dueTime) || a.priority - b.priority || byManual(a, b),
+  priority: (a, b, d) => d * (a.priority - b.priority) || nullsLast(a.dueDate, b.dueDate) || byDayOrder(a, b),
+  due: (a, b, d) => nullsLastDir(a.dueDate, b.dueDate, d) || nullsLastDir(a.dueTime, b.dueTime, d) || a.priority - b.priority || byManual(a, b),
+  start: (a, b, d) => nullsLastDir(a.startDate, b.startDate, d) || nullsLast(a.dueDate, b.dueDate) || byDayOrder(a, b),
+  title: (a, b, d) => d * compareText(a.title, b.title) || byManual(a, b),
   // Najnowsze na górze.
-  created: (a, b) => byText(b.createdAt, a.createdAt) || byManual(a, b),
+  created: (a, b, d) => d * byText(b.createdAt, a.createdAt) || byManual(a, b),
 };
 
-/** Sortowanie widoku listy (M9): ręczne / priorytet / termin / data dodania. Nie zmienia wejścia. */
-export const sortTasks = (tasks: readonly ViewTask[], by: SortBy): ViewTask[] => [...tasks].sort(COMPARE[by]);
+/**
+ * Sortowanie widoku listy (M9): ręczne / priorytet / termin / początek / nazwa (A–Z, polski porządek) /
+ * data dodania; `desc` odwraca kierunek (zadania bez daty zostają na końcu). Nie zmienia wejścia.
+ */
+export const sortTasks = (tasks: readonly ViewTask[], by: SortBy, dir: SortDir = 'asc'): ViewTask[] => {
+  const d = dir === 'desc' ? -1 : 1;
+  return [...tasks].sort((a, b) => COMPARE[by](a, b, d));
+};
+
+/** Kolumny nagłówka listy, po których da się sortować kliknięciem (`title` = „Zadanie”). */
+export const HEADER_SORT: Readonly<Record<string, SortBy>> = { title: 'title', start: 'start', due: 'due' };
+
+/**
+ * Klik w nagłówek kolumny: inne kryterium → to kryterium rosnąco, rosnąco → malejąco, malejąco → „Ręcznie”.
+ * Wynik = łatka `view_prefs` (`undefined` usuwa pole).
+ */
+export function headerSortPatch(current: { sortBy?: SortBy; sortDir?: SortDir }, by: SortBy): { sortBy: SortBy | undefined; sortDir: SortDir | undefined } {
+  if ((current.sortBy ?? 'manual') !== by) return { sortBy: by, sortDir: undefined };
+  return current.sortDir === 'desc' ? { sortBy: undefined, sortDir: undefined } : { sortBy: by, sortDir: 'desc' };
+}
 
 // ── Godzina minęła ───────────────────────────────────────────────────────────────────────────
 
@@ -150,7 +178,7 @@ export function selectInbox(tasks: readonly ViewTask[], inboxListIds: ReadonlySe
  * według najbliższego wystąpienia (`due_date` serii), bez terminu na końcu.
  */
 export function selectSeries(tasks: readonly ViewTask[], ctx: ViewContext): ViewTask[] {
-  return tasks.filter((t) => t.kind === 'task' && t.recurrence !== null && isOpen(t) && inWorkspace(ctx)(t)).sort(COMPARE.due);
+  return tasks.filter((t) => t.kind === 'task' && t.recurrence !== null && isOpen(t) && inWorkspace(ctx)(t)).sort((a, b) => COMPARE.due(a, b, 1));
 }
 
 /** Czy nawyk ma dziś okres do odhaczenia: wystąpienie reguły albo trwająca seria z celem „N razy”. */

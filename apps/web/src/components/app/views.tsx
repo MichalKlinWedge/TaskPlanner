@@ -39,7 +39,9 @@ import {
   smartBoard,
   smartViewsPatch,
   SORT_BY,
+  sortDirLabel,
   sortTasks,
+  headerSortPatch,
   tagsForWorkspace,
   TRASH_DAYS,
   trashedWith,
@@ -57,6 +59,7 @@ import {
   type SmartView,
   type SmartViewPrefs,
   type SortBy,
+  type SortDir,
   type ViewContext,
   type ViewPrefs,
   type ViewSettingsKey,
@@ -603,6 +606,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
   // „+” przy zadaniu: górne pole dodaje podzadania tego zadania, po dodaniu wraca do zwykłego trybu.
   const [subParent, setSubParent] = useState<{ id: string; title: string } | null>(null);
   const sortBy: SortBy = list.prefs.sortBy ?? "manual";
+  const sortDir: SortDir = list.prefs.sortDir ?? "asc";
   const groupBy: GroupBy = list.prefs.groupBy ?? "none";
   const completed: CompletedMode = list.prefs.completed ?? "today";
   const { columns, columnTags } = useColumns(list.prefs, data.tags);
@@ -616,7 +620,10 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
     if (!tree) return null;
     return flattenTree(buildTree(tasks), collapsed);
   }, [tree, tasks, collapsed]);
-  const groups = useMemo(() => (tree ? null : groupTasks(sortTasks(tasks, sortBy), groupBy, { lists: data.lists, tags: data.tags })), [tree, tasks, sortBy, groupBy, data.lists, data.tags]);
+  const groups = useMemo(
+    () => (tree ? null : groupTasks(sortTasks(tasks, sortBy, sortDir), groupBy, { lists: data.lists, tags: data.tags })),
+    [tree, tasks, sortBy, sortDir, groupBy, data.lists, data.tags],
+  );
   const openCount = tasks.filter(isOpen).length;
 
   // Z najnowszych `view_prefs` w bazie, nie z renderu — szybkie kolejne zmiany się nie nadpisują.
@@ -672,7 +679,11 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
         <p className="text-xs text-[var(--muted)]" data-testid="list-read-only">{READONLY_LIST_NOTE}</p>
       )}
       <ColumnsScroll columns={columns}>
-      {!tasks.length ? <Empty>Brak zadań.</Empty> : <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} />}
+      {!tasks.length ? (
+        <Empty>Brak zadań.</Empty>
+      ) : (
+        <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} sort={{ by: sortBy, dir: sortDir }} onSort={(by) => setPrefs((p) => headerSortPatch(p, by))} />
+      )}
       {rows ? (
         <SortableTaskList ids={rows.map((n) => n.task.id)}>
           {rows.map((node) => (
@@ -764,13 +775,25 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
         </div>
       ) : (
         <div className="mb-2 flex flex-wrap gap-2">
-          <Select aria-label="Sortowanie" value={sortBy} onChange={(e) => setPrefs({ sortBy: e.target.value as SortBy })} className="py-1 text-xs">
+          <Select aria-label="Sortowanie" value={sortBy} onChange={(e) => setPrefs({ sortBy: e.target.value as SortBy, sortDir: undefined })} className="py-1 text-xs">
             {(Object.keys(SORT_BY) as SortBy[]).map((k) => (
               <option key={k} value={k}>
                 {SORT_BY[k]}
               </option>
             ))}
           </Select>
+          {sortBy === "manual" ? null : (
+            <button
+              type="button"
+              onClick={() => setPrefs((p) => ({ sortDir: p.sortDir === "desc" ? undefined : "desc" }))}
+              className="rounded-md border border-[var(--line)] px-2 py-1 text-xs hover:bg-[var(--hover)]"
+              title="Odwróć kierunek sortowania"
+              aria-label={`Kierunek sortowania: ${sortDirLabel(sortBy, sortDir)}`}
+              data-testid="sort-dir"
+            >
+              {sortDir === "desc" ? "▼" : "▲"} {sortDirLabel(sortBy, sortDir)}
+            </button>
+          )}
           <Select aria-label="Grupowanie" value={groupBy} onChange={(e) => setPrefs({ groupBy: e.target.value as GroupBy })} className="py-1 text-xs">
             {(Object.keys(GROUP_BY) as GroupBy[]).map((k) => (
               <option key={k} value={k}>

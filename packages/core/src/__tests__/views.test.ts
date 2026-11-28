@@ -24,6 +24,7 @@ import {
   selectToday,
   selectUpcoming,
   sortTasks,
+  headerSortPatch,
   withCompleted,
   type ViewContext,
   type ViewTask,
@@ -348,6 +349,30 @@ describe('sortowanie i grupowanie', () => {
     expect(ids(sortTasks(tasks, 'due'))).toEqual(['s3', 's4', 's1', 's2']);
     expect(ids(sortTasks(tasks, 'created'))).toEqual(['s2', 's3', 's1', 's4']);
     expect(ids(tasks)).toEqual(['s1', 's2', 's3', 's4']);
+  });
+
+  it('początek, nazwa A–Z i odwrócony kierunek (puste daty zawsze na końcu)', () => {
+    const named = [
+      task({ id: 'n1', title: 'żaba', startDate: '2026-11-10', dueDate: '2026-11-20', sortKey: '0010' }),
+      task({ id: 'n2', title: 'Ala', startDate: null, dueDate: '2026-11-19', sortKey: '0020' }),
+      task({ id: 'n3', title: 'ćma', startDate: '2026-11-05', dueDate: null, sortKey: '0030' }),
+      task({ id: 'n4', title: 'bąk', startDate: '2026-11-05', dueDate: '2026-11-18', sortKey: '0040' }),
+    ];
+    expect(ids(sortTasks(named, 'title'))).toEqual(['n2', 'n4', 'n3', 'n1']);
+    expect(ids(sortTasks(named, 'title', 'desc'))).toEqual(['n1', 'n3', 'n4', 'n2']);
+    // Ten sam początek: wcześniejszy termin pierwszy, bez terminu dalej.
+    expect(ids(sortTasks(named, 'start'))).toEqual(['n4', 'n3', 'n1', 'n2']);
+    expect(ids(sortTasks(named, 'start', 'desc'))).toEqual(['n1', 'n4', 'n3', 'n2']);
+    expect(ids(sortTasks(tasks, 'due', 'desc'))).toEqual(['s1', 's3', 's4', 's2']);
+    expect(ids(sortTasks(tasks, 'created', 'desc'))).toEqual(['s4', 's1', 's3', 's2']);
+    expect(ids(sortTasks(tasks, 'manual', 'desc'))).toEqual(ids(sortTasks(tasks, 'manual')));
+  });
+
+  it('klik w nagłówek kolumny: rosnąco → malejąco → ręcznie', () => {
+    expect(headerSortPatch({}, 'due')).toEqual({ sortBy: 'due', sortDir: undefined });
+    expect(headerSortPatch({ sortBy: 'due' }, 'due')).toEqual({ sortBy: 'due', sortDir: 'desc' });
+    expect(headerSortPatch({ sortBy: 'due', sortDir: 'desc' }, 'due')).toEqual({ sortBy: undefined, sortDir: undefined });
+    expect(headerSortPatch({ sortBy: 'due', sortDir: 'desc' }, 'title')).toEqual({ sortBy: 'title', sortDir: undefined });
   });
 
   const groups = (g: ReturnType<typeof groupTasks>) => g.map((x) => `${x.label}:${ids(x.tasks).join(',')}`);
