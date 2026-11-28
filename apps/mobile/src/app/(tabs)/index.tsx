@@ -3,7 +3,7 @@
  * dodawania do Inboxu i pulpit statystyk — liczby z core `homeStats` (lokalne dane, działa offline); tu tylko
  * układ i słupki z `View`. Dotknięcie słupka pokazuje jego dzień pod wykresem.
  */
-import { addDays, dayChip, dayLabel, formatMinutes, HOME_HISTORY_DAYS, homeStats, homeStatsFrom, isoWeekday, PRIORITY, plural, pluralForm, WEEKDAY, type IsoWeekday, type Priority } from '@taskplanner/core';
+import { addDays, dayChip, dayLabel, formatMinutes, HOME_HISTORY_DAYS, homeStats, homeStatsFrom, homeTileTones, homeTodayProgress, isoWeekday, PRIORITY, plural, pluralForm, WEEKDAY, type HomeTone, type IsoWeekday, type Priority } from '@taskplanner/core';
 import type { SqlRow } from '@taskplanner/sync';
 import { router, type Href } from 'expo-router';
 import { useMemo, useState, type ReactNode } from 'react';
@@ -62,6 +62,8 @@ export default function HomeScreen() {
   const target = targetInbox(data, workspaceId);
   const placeholder = target && !workspaceId && data.workspaces.length > 1 ? `Dodaj do Inboxu („${wsName.get(target.workspaceId)}”)` : 'Dodaj do Inboxu';
   const trend = stats.doneWeek - stats.donePrevWeek;
+  const tone = homeTileTones(stats);
+  const dayProgress = homeTodayProgress(stats);
   const go = (href: Href) => () => router.navigate(href);
 
   return (
@@ -77,17 +79,17 @@ export default function HomeScreen() {
       {data.loaded ? <QuickAddField listId={target?.id} placeholder={placeholder} /> : null}
 
       <View style={[styles.pad, styles.tiles]}>
-        <Tile p={p} label="Na dziś" value={stats.today} hint={stats.today ? 'z terminem dziś' : 'nic na dziś'} onPress={go('/today')} />
-        <Tile p={p} label="Zaległe" value={stats.overdue} danger={stats.overdue > 0} hint={stats.overdue ? 'po terminie' : 'wszystko na czas'} onPress={go('/overdue')} />
-        <Tile p={p} label="Inbox" value={stats.inbox} hint={stats.inbox ? 'do rozplanowania' : 'pusty'} onPress={go('/inbox')} />
-        <Tile p={p} label="Otwarte" value={stats.open} hint="niezamknięte" />
-        <Tile p={p} label="Ukończone dziś" value={stats.doneToday} hint={stats.streak ? `seria: ${plural(stats.streak, ['dzień', 'dni', 'dni'])}` : 'jeszcze bez serii'} />
-        <Tile p={p} label="Ukończone w 7 dni" value={stats.doneWeek} hint={trend === 0 ? 'jak tydzień wcześniej' : `${trend > 0 ? '▲' : '▼'} ${Math.abs(trend)} wobec 7 dni wcześniej`} />
-        <Tile p={p} label="Dodane w 7 dni" value={stats.createdWeek} hint={stats.createdWeek > stats.doneWeek ? 'przybywa szybciej' : 'ubywa co najmniej tyle'} />
+        <Tile p={p} label="Na dziś" tone={tone.today} value={stats.today} hint={stats.today ? 'z terminem dziś' : 'nic na dziś'} progress={dayProgress.total ? dayProgress : undefined} onPress={go('/today')} />
+        <Tile p={p} label="Zaległe" tone={tone.overdue} value={stats.overdue} danger={stats.overdue > 0} hint={stats.overdue ? 'po terminie' : 'wszystko na czas'} onPress={go('/overdue')} />
+        <Tile p={p} label="Inbox" tone={tone.inbox} value={stats.inbox} hint={stats.inbox ? 'do rozplanowania' : 'pusty'} onPress={go('/inbox')} />
+        <Tile p={p} label="Otwarte" tone={tone.open} value={stats.open} hint="niezamknięte" />
+        <Tile p={p} label="Ukończone dziś" tone={tone.doneToday} value={stats.doneToday} hint={stats.streak ? `seria: ${plural(stats.streak, ['dzień', 'dni', 'dni'])}` : 'jeszcze bez serii'} />
+        <Tile p={p} label="Ukończone w 7 dni" tone={tone.doneWeek} value={stats.doneWeek} hint={trend === 0 ? 'jak tydzień wcześniej' : `${trend > 0 ? '▲' : '▼'} ${Math.abs(trend)} wobec 7 dni wcześniej`} />
+        <Tile p={p} label="Dodane w 7 dni" tone={tone.createdWeek} value={stats.createdWeek} hint={stats.createdWeek > stats.doneWeek ? 'przybywa szybciej' : 'ubywa co najmniej tyle'} />
         {stats.habitsTotal ? (
-          <Tile p={p} label="Nawyki dziś" value={`${stats.habitsDone}/${stats.habitsTotal}`} hint={stats.habitsDone === stats.habitsTotal ? 'wszystkie zaliczone' : 'do odhaczenia'} onPress={go('/habits')} />
+          <Tile p={p} label="Nawyki dziś" tone={tone.habits} value={`${stats.habitsDone}/${stats.habitsTotal}`} hint={stats.habitsDone === stats.habitsTotal ? 'wszystkie zaliczone' : 'do odhaczenia'} onPress={go('/habits')} />
         ) : data.settings.focus.enabled ? (
-          <Tile p={p} label="Skupienie dziś" value={formatMinutes(stats.focusTodayMin)} hint="w trybie skupienia" onPress={go('/focus')} />
+          <Tile p={p} label="Skupienie dziś" tone={tone.focus} value={formatMinutes(stats.focusTodayMin)} hint="w trybie skupienia" onPress={go('/focus')} />
         ) : null}
       </View>
 
@@ -99,15 +101,38 @@ export default function HomeScreen() {
   );
 }
 
-function Tile({ p, label, value, hint, danger, onPress }: { p: Palette; label: string; value: number | string; hint?: string; danger?: boolean; onPress?: () => void }) {
+/** Kolor tonu z core `homeTileTones`: zielony = dobrze, czerwony = coś nie tak, żółty = informacja. */
+const toneColor = (p: Palette, tone: HomeTone) => (tone === 'ok' ? p.ok : tone === 'bad' ? p.bad : p.bg === '#fafafa' ? '#ca8a04' : '#facc15');
+
+function Tile({
+  p,
+  label,
+  value,
+  hint,
+  danger,
+  tone,
+  progress,
+  onPress,
+}: {
+  p: Palette;
+  label: string;
+  value: number | string;
+  hint?: string;
+  danger?: boolean;
+  tone: HomeTone;
+  progress?: { done: number; total: number; pct: number };
+  onPress?: () => void;
+}) {
+  const c = toneColor(p, tone);
   return (
     <Pressable
       accessibilityRole={onPress ? 'button' : undefined}
-      accessibilityLabel={`${label}: ${value}${hint ? `, ${hint}` : ''}`}
+      accessibilityLabel={`${label}: ${value}${hint ? `, ${hint}` : ''}${progress ? `, ukończone ${progress.done} z ${progress.total} (${progress.pct}%)` : ''}`}
       onPress={onPress}
       disabled={!onPress}
-      style={({ pressed }) => [styles.tile, { backgroundColor: pressed ? p.border : p.card, borderColor: p.border }]}
+      style={({ pressed }) => [styles.tile, { backgroundColor: pressed ? p.border : p.card, borderColor: `${c}59` }]}
     >
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: c, opacity: 0.09, borderRadius: 10 }]} />
       <Text style={{ color: p.muted, fontSize: 12 }} numberOfLines={1}>
         {label}
       </Text>
@@ -116,6 +141,14 @@ function Tile({ p, label, value, hint, danger, onPress }: { p: Palette; label: s
         <Text style={{ color: p.muted, fontSize: 11 }} numberOfLines={1}>
           {hint}
         </Text>
+      ) : null}
+      {progress ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+          <View style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: p.border, overflow: 'hidden' }}>
+            <View style={{ height: 5, width: `${progress.pct}%`, backgroundColor: p.ok, borderRadius: 3 }} />
+          </View>
+          <Text style={{ color: p.muted, fontSize: 11, fontVariant: ['tabular-nums'] }}>{progress.pct}%</Text>
+        </View>
       ) : null}
     </Pressable>
   );

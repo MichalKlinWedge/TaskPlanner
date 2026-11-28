@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { HOME_HISTORY_DAYS, HOME_UPCOMING_DAYS, homeStats, type HomeStatsInput } from '../home.ts';
+import { HOME_HISTORY_DAYS, HOME_UPCOMING_DAYS, homeStats, homeTileTones, homeTodayProgress, type HomeStats, type HomeStatsInput } from '../home.ts';
 import type { Recurrence } from '../recurrence.ts';
 import type { ViewContext, ViewTask } from '../views.ts';
 
@@ -133,5 +133,26 @@ describe('homeStats', () => {
       { listId: 'dom', open: 1, done: 2 },
     ]);
     expect(stats.focusTodayMin).toBe(50);
+  });
+
+  it('tony kafelków: dobrze / źle / informacja', () => {
+    const base = { today: 0, overdue: 0, inbox: 0, open: 3, doneToday: 2, doneWeek: 5, donePrevWeek: 5, createdWeek: 5, habitsDone: 1, habitsTotal: 1, focusTodayMin: 25 } as HomeStats;
+    expect(homeTileTones(base)).toEqual({ today: 'ok', overdue: 'ok', inbox: 'ok', open: 'info', doneToday: 'ok', doneWeek: 'ok', createdWeek: 'ok', habits: 'ok', focus: 'ok' });
+    expect(homeTileTones({ ...base, today: 4, overdue: 1, inbox: 2, doneToday: 0, doneWeek: 4, createdWeek: 9, habitsDone: 0, focusTodayMin: 0 })).toEqual({
+      today: 'info',
+      overdue: 'bad',
+      inbox: 'info',
+      open: 'info',
+      doneToday: 'info',
+      doneWeek: 'bad',
+      createdWeek: 'bad',
+      habits: 'info',
+      focus: 'info',
+    });
+  });
+
+  it('postęp „Na dziś”: ukończone wobec ukończonych + otwartych', () => {
+    expect(homeTodayProgress({ today: 12, doneToday: 4 } as HomeStats)).toEqual({ done: 4, total: 16, pct: 25 });
+    expect(homeTodayProgress({ today: 0, doneToday: 0 } as HomeStats)).toEqual({ done: 0, total: 0, pct: 0 });
   });
 });

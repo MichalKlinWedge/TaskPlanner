@@ -177,3 +177,39 @@ export function homeStats(input: HomeStatsInput, ctx: ViewContext): HomeStats {
     lists,
   };
 }
+
+/** Ton kafelka pulpitu: `ok` = zielone tło (dobrze), `bad` = czerwonawe (coś nie tak), `info` = żółte (do wiadomości). */
+export type HomeTone = 'ok' | 'bad' | 'info';
+
+export interface HomeTileTones {
+  today: HomeTone;
+  overdue: HomeTone;
+  inbox: HomeTone;
+  open: HomeTone;
+  doneToday: HomeTone;
+  doneWeek: HomeTone;
+  createdWeek: HomeTone;
+  habits: HomeTone;
+  focus: HomeTone;
+}
+
+/** Tony kafelków — jedna reguła dla webu i telefonu. */
+export function homeTileTones(s: HomeStats): HomeTileTones {
+  return {
+    today: s.today ? 'info' : 'ok',
+    overdue: s.overdue ? 'bad' : 'ok',
+    inbox: s.inbox ? 'info' : 'ok',
+    open: 'info',
+    doneToday: s.doneToday ? 'ok' : 'info',
+    doneWeek: s.doneWeek < s.donePrevWeek ? 'bad' : 'ok',
+    createdWeek: s.createdWeek > s.doneWeek ? 'bad' : 'ok',
+    habits: s.habitsDone === s.habitsTotal ? 'ok' : 'info',
+    focus: s.focusTodayMin ? 'ok' : 'info',
+  };
+}
+
+/** Postęp dnia na kafelku „Na dziś”: ukończone dziś wobec ukończonych + wciąż otwartych na dziś. */
+export function homeTodayProgress(s: HomeStats): { done: number; total: number; pct: number } {
+  const total = s.doneToday + s.today;
+  return { done: s.doneToday, total, pct: total ? Math.round((s.doneToday / total) * 100) : 0 };
+}

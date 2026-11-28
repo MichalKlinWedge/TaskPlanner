@@ -24,6 +24,8 @@
   --accent: #4f46e5;
   --muted: #71717a;
   --danger: #dc2626;
+  --ok: #16a34a;
+  --warn: #ca8a04;
   color-scheme: light;
 }
 
@@ -36,6 +38,8 @@
   --accent: #6366f1;
   --muted: #a1a1aa;
   --danger: #f87171;
+  --ok: #4ade80;
+  --warn: #facc15;
   color-scheme: dark;
 }
 

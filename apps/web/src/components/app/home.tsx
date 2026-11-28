@@ -5,7 +5,7 @@
  * pole szybkiego dodawania do Inboxu i pulpit statystyk. Liczby liczy core `homeStats` z lokalnych danych
  * (działa offline); tu jest tylko układ i wykresy w HTML (bez biblioteki).
  */
-import { addDays, dayChip, dayLabel, formatMinutes, HOME_HISTORY_DAYS, homeStats, homeStatsFrom, PRIORITY, plural, pluralForm, WEEKDAY, isoWeekday, type IsoWeekday, type Priority, type ViewContext } from "@taskplanner/core";
+import { addDays, dayChip, dayLabel, formatMinutes, HOME_HISTORY_DAYS, homeStats, homeStatsFrom, homeTileTones, homeTodayProgress, PRIORITY, plural, pluralForm, WEEKDAY, isoWeekday, type HomeTone, type IsoWeekday, type Priority, type ViewContext } from "@taskplanner/core";
 import { useMemo, useState, type ReactNode } from "react";
 
 import type { AppData, List } from "@/lib/app-data";
@@ -48,6 +48,8 @@ export function HomeView({ data, ctx, targetInbox, navigate }: { data: AppData; 
   const workspaceName = new Map(data.workspaces.map((w) => [w.id, w.name]));
   const inboxLabel = targetInbox && !ctx.workspaceId && data.workspaces.length > 1 ? `Dodaj do Inboxu („${workspaceName.get(targetInbox.workspaceId)}”)` : "Dodaj do Inboxu";
   const trend = stats.doneWeek - stats.donePrevWeek;
+  const tone = homeTileTones(stats);
+  const dayProgress = homeTodayProgress(stats);
   const hour = new Date(minute * 60_000).getHours();
 
   return (
@@ -63,21 +65,29 @@ export function HomeView({ data, ctx, targetInbox, navigate }: { data: AppData; 
       <QuickAdd listId={targetInbox?.id} placeholder={inboxLabel} />
 
       <section aria-label="Podsumowanie" className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-        <Tile label="Na dziś" value={stats.today} hint={stats.today ? "otwarte z terminem dziś" : "nic na dziś"} onClick={() => navigate({ view: "today" })} />
-        <Tile label="Zaległe" value={stats.overdue} danger={stats.overdue > 0} hint={stats.overdue ? "po terminie" : "wszystko na czas"} onClick={() => navigate({ view: "overdue" })} />
-        <Tile label="Inbox" value={stats.inbox} hint={stats.inbox ? "do rozplanowania" : "pusty"} onClick={() => navigate({ view: "inbox" })} />
-        <Tile label="Otwarte" value={stats.open} hint="wszystkie niezamknięte" />
-        <Tile label="Ukończone dziś" value={stats.doneToday} hint={stats.streak > 1 ? `seria: ${plural(stats.streak, ["dzień", "dni", "dni"])} z rzędu` : stats.streak === 1 ? "seria: 1 dzień" : "jeszcze bez serii"} />
+        <Tile
+          label="Na dziś"
+          tone={tone.today}
+          value={stats.today}
+          hint={stats.today ? "otwarte z terminem dziś" : "nic na dziś"}
+          progress={dayProgress.total ? dayProgress : undefined}
+          onClick={() => navigate({ view: "today" })}
+        />
+        <Tile label="Zaległe" tone={tone.overdue} value={stats.overdue} danger={stats.overdue > 0} hint={stats.overdue ? "po terminie" : "wszystko na czas"} onClick={() => navigate({ view: "overdue" })} />
+        <Tile label="Inbox" tone={tone.inbox} value={stats.inbox} hint={stats.inbox ? "do rozplanowania" : "pusty"} onClick={() => navigate({ view: "inbox" })} />
+        <Tile label="Otwarte" tone={tone.open} value={stats.open} hint="wszystkie niezamknięte" />
+        <Tile label="Ukończone dziś" tone={tone.doneToday} value={stats.doneToday} hint={stats.streak > 1 ? `seria: ${plural(stats.streak, ["dzień", "dni", "dni"])} z rzędu` : stats.streak === 1 ? "seria: 1 dzień" : "jeszcze bez serii"} />
         <Tile
           label="Ukończone w 7 dni"
+          tone={tone.doneWeek}
           value={stats.doneWeek}
           hint={trend === 0 ? "tyle samo co tydzień wcześniej" : `${trend > 0 ? "▲" : "▼"} ${Math.abs(trend)} wobec poprzednich 7 dni`}
         />
-        <Tile label="Dodane w 7 dni" value={stats.createdWeek} hint={stats.createdWeek > stats.doneWeek ? "przybywa szybciej, niż ubywa" : "ubywa co najmniej tyle, ile przybywa"} />
+        <Tile label="Dodane w 7 dni" tone={tone.createdWeek} value={stats.createdWeek} hint={stats.createdWeek > stats.doneWeek ? "przybywa szybciej, niż ubywa" : "ubywa co najmniej tyle, ile przybywa"} />
         {stats.habitsTotal ? (
-          <Tile label="Nawyki dziś" value={`${stats.habitsDone}/${stats.habitsTotal}`} hint={stats.habitsDone === stats.habitsTotal ? "wszystkie zaliczone" : "do odhaczenia"} onClick={() => navigate({ view: "habits" })} />
+          <Tile label="Nawyki dziś" tone={tone.habits} value={`${stats.habitsDone}/${stats.habitsTotal}`} hint={stats.habitsDone === stats.habitsTotal ? "wszystkie zaliczone" : "do odhaczenia"} onClick={() => navigate({ view: "habits" })} />
         ) : settings.focus.enabled ? (
-          <Tile label="Skupienie dziś" value={formatMinutes(stats.focusTodayMin)} hint="minuty pracy w trybie skupienia" onClick={() => navigate({ view: "focus" })} />
+          <Tile label="Skupienie dziś" tone={tone.focus} value={formatMinutes(stats.focusTodayMin)} hint="minuty pracy w trybie skupienia" onClick={() => navigate({ view: "focus" })} />
         ) : null}
       </section>
 
@@ -91,21 +101,52 @@ export function HomeView({ data, ctx, targetInbox, navigate }: { data: AppData; 
   );
 }
 
-function Tile({ label, value, hint, danger, onClick }: { label: string; value: number | string; hint?: string; danger?: boolean; onClick?: () => void }) {
+/** Tło i ramka kafelka według tonu z core `homeTileTones` — delikatne, tekst zostaje czytelny w obu motywach. */
+const TONE_COLOR: Record<HomeTone, string> = { ok: "var(--ok)", bad: "var(--danger)", info: "var(--warn)" };
+const toneStyle = (tone: HomeTone) => ({
+  background: `color-mix(in srgb, ${TONE_COLOR[tone]} 9%, var(--surface))`,
+  borderColor: `color-mix(in srgb, ${TONE_COLOR[tone]} 35%, var(--line))`,
+});
+
+function Tile({
+  label,
+  value,
+  hint,
+  danger,
+  tone,
+  progress,
+  onClick,
+}: {
+  label: string;
+  value: number | string;
+  hint?: string;
+  danger?: boolean;
+  tone: HomeTone;
+  progress?: { done: number; total: number; pct: number };
+  onClick?: () => void;
+}) {
   const body = (
     <>
       <span className="text-xs text-[var(--muted)]">{label}</span>
       <span className={`text-2xl font-semibold tabular-nums ${danger ? "text-[var(--danger)]" : ""}`}>{value}</span>
       {hint ? <span className="truncate text-xs text-[var(--muted)]">{hint}</span> : null}
+      {progress ? (
+        <span className="mt-1 flex items-center gap-2" title={`Ukończone dziś ${progress.done} z ${progress.total}`} data-testid="home-today-progress">
+          <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--hover)]">
+            <span className="block h-full rounded-full" style={{ width: `${progress.pct}%`, background: "var(--ok)" }} />
+          </span>
+          <span className="shrink-0 text-xs tabular-nums text-[var(--muted)]">{progress.pct}%</span>
+        </span>
+      ) : null}
     </>
   );
-  const box = "flex min-w-0 flex-col gap-0.5 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-left";
+  const box = "flex min-w-0 flex-col gap-0.5 rounded-lg border px-3 py-2 text-left";
   return onClick ? (
-    <button type="button" onClick={onClick} className={`${box} hover:bg-[var(--hover)] focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:outline-none`} data-testid={`home-tile-${label}`}>
+    <button type="button" onClick={onClick} style={toneStyle(tone)} className={`${box} hover:brightness-95 dark:hover:brightness-125 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:outline-none`} data-tone={tone} data-testid={`home-tile-${label}`}>
       {body}
     </button>
   ) : (
-    <div className={box} data-testid={`home-tile-${label}`}>
+    <div className={box} style={toneStyle(tone)} data-tone={tone} data-testid={`home-tile-${label}`}>
       {body}
     </div>
   );
