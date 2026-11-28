@@ -4,7 +4,7 @@
  * „Pokaż” w kalendarzu: które listy (zadania, nawyki) i które kalendarze zewnętrzne są w widoku. Wybór
  * jest per przeglądarka (`localStorage` `tp-calendar-hidden` — ukryte id), nowa lista i nowy kalendarz
  * są widoczne. Ukryte nie liczą się też do konfliktów, wolnych okien ani panelu zadań bez godziny.
- * Widoczność kalendarza na koncie (Ustawienia → „Połączone kalendarze”) jest osobna: ukryty tam nie
+ * Widoczność kalendarza na koncie (Ustawienia → „Kalendarze”) jest osobna: ukryty tam nie
  * synchronizuje wydarzeń i tu się nie pojawia. Kropka przy liście ma kolor jej bloków w kalendarzu
  * (`listColor`), przy kalendarzu — kolor ramki jego wydarzeń.
  */

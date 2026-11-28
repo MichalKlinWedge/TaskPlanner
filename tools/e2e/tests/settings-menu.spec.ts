@@ -5,7 +5,7 @@ import { expect, openApp, test } from '../src/fixtures.ts';
 const SECTIONS = {
   Ogólne: 'Ogólne',
   Przypomnienia: 'Przypomnienia',
-  'Połączone kalendarze': 'Połączone kalendarze',
+  Kalendarze: 'Kalendarze',
   Integracje: 'Integracje',
   'Asystent AI': 'Asystent AI',
   'Kopia zapasowa': 'Kopia zapasowa',
@@ -69,7 +69,7 @@ test('menu sekcji ustawień', async ({ page }) => {
 
   // Powrót ze zgody Google otwiera kalendarze.
   await page.goto('/?calendars=1#/today');
-  await expect(panel).toHaveText(['Połączone kalendarze']);
+  await expect(panel).toHaveText(['Kalendarze']);
 });
 
 test('menu ustawień na wąskim ekranie jest paskiem nad sekcją', async ({ page }) => {

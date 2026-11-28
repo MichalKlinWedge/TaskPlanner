@@ -57,7 +57,7 @@ export function SettingsScreen({ store, userId, email, timeZone, general }: { st
     { id: "general", icon: "⚙️", label: "Ogólne", body: <SettingsSection title="Ogólne">{general}</SettingsSection> },
     { id: "reminders", icon: "⏰", label: "Przypomnienia", body: <RemindersCard store={store} userId={userId} /> },
     { id: "notifications", icon: "🔔", label: "Powiadomienia", body: <NotificationsCard store={store} userId={userId} /> },
-    { id: "calendars", icon: "📆", label: "Połączone kalendarze", alert: calendarProblems > 0, body: <CalendarsCard store={store} timeZone={timeZone} /> },
+    { id: "calendars", icon: "📆", label: "Kalendarze", alert: calendarProblems > 0, body: <CalendarsCard store={store} timeZone={timeZone} /> },
     { id: "plugins", icon: "🔌", label: "Integracje", alert: connections.some((c) => c.status === "error"), body: <PluginsCard store={store} userId={userId} /> },
     { id: "ai", icon: "✨", label: "Asystent AI", alert: ai?.status === "error", body: <AiCard store={store} /> },
     { id: "backup", icon: "💾", label: "Kopia zapasowa", body: <BackupCard store={store} userId={userId} timeZone={timeZone} /> },

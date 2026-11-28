@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Ustawienia → „Połączone kalendarze” (M18, Etap 5, Etap 12): konta Google i adresy ICS, wybór kalendarzy
+ * Ustawienia → „Kalendarze” (M18, Etap 5, Etap 12): konta Google i adresy ICS, wybór kalendarzy
  * widocznych obok zadań, odświeżenie i odłączenie. Lista z lokalnej bazy (tylko do odczytu — przychodzi
  * synchronizacją), działania przez `calendar-sync` (online). Wydarzenia są tylko do odczytu.
  *
@@ -109,7 +109,7 @@ export function CalendarsCard({ store, timeZone }: { store: TabStore; timeZone?:
   };
 
   return (
-    <SettingsSection title="Połączone kalendarze">
+    <SettingsSection title="Kalendarze">
       <p className="mb-3 text-xs text-[var(--muted)]">
         Spotkania z kalendarzy widać w kalendarzu obok zadań (tylko do odczytu). Odświeżają się same co kilka minut. Zadania z godziną z wybranych przestrzeni mogą też trafiać do
         osobnego kalendarza „Task Planner” w Google — przesunięcie tam zmienia zadanie.

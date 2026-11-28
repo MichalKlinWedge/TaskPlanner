@@ -1,5 +1,5 @@
 /**
- * Ustawienia → „Połączone kalendarze” (M18) na telefonie: konta Google / ICS ze stanem, czasem ostatniej
+ * Ustawienia → „Kalendarze” (M18) na telefonie: konta Google / ICS ze stanem, czasem ostatniej
  * synchronizacji i błędem, kalendarze z przełącznikiem widoczności (`calendar-sync` `calendars/update`, jak web)
  * i „Odśwież” (`accounts/sync`). Podłączanie (OAuth Google, adres ICS), odłączanie i wybór przestrzeni dla
  * „Zadania z godziną → Google” zostają na webie — tu tylko ich stan. Kalendarze z telefonu wybiera się
@@ -42,10 +42,10 @@ export function CalendarsSection() {
   const workspaceName = (id: string) => data.workspaces.find((w) => w.id === id)?.name;
 
   return (
-    <Section title="Połączone kalendarze">
+    <Section title="Kalendarze">
       <P muted>
         Spotkania z kalendarzy z serwera widać w Kalendarzu i „Planie dnia” (tylko do odczytu); odświeżają się same co kilka minut. Konto Google albo adres ICS podłączysz
-        i odłączysz na webie (Ustawienia → „Połączone kalendarze”).
+        i odłączysz na webie (Ustawienia → „Kalendarze”).
       </P>
       {message ? <P tone={message.tone}>{message.text}</P> : null}
       {!state.accounts.length ? <P muted>Brak połączonych kalendarzy.</P> : null}
