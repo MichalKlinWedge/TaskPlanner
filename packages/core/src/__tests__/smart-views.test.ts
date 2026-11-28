@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { boardColumns, boardDropOps } from '../kanban.ts';
 import { ProfileSettings } from '../schemas/model.ts';
-import { smartBoard, smartViewsPatch } from '../smart-views.ts';
+import { smartBoard, smartSortChoice, smartSortOptions, smartViewsPatch } from '../smart-views.ts';
 import { toViewTask, type LocalTaskRow } from '../tasks.ts';
 import type { ViewContext, ViewTask } from '../views.ts';
 
@@ -119,5 +119,16 @@ describe('ustawienia', () => {
     expect(views).toEqual({ today: { view: 'kanban' }, inbox: { columns: ['due'] } });
     expect(smartViewsPatch(views, 'inbox', { columns: [] })).toEqual({ today: { view: 'kanban' }, inbox: {} });
     expect(ProfileSettings.parse({ views: { inbox: 5, today: { view: 'kanban', boardBy: 'nie ma' } } }).views.today?.view).toBe('kanban');
+  });
+});
+
+describe('sortowanie widoków zbiorczych', () => {
+  it('„Bez terminu” bez sortowania po datach; zapisane spoza opcji = domyślnie', () => {
+    expect(Object.keys(smartSortOptions('today'))).toEqual(['manual', 'priority', 'due', 'start', 'title', 'created']);
+    expect(Object.keys(smartSortOptions('undated'))).toEqual(['manual', 'priority', 'title', 'created']);
+    expect(smartSortChoice('undated', { sortBy: 'due', sortDir: 'desc' })).toEqual({ by: 'manual', dir: 'asc' });
+    expect(smartSortChoice('undated', { sortBy: 'title', sortDir: 'desc' })).toEqual({ by: 'title', dir: 'desc' });
+    expect(smartSortChoice('today', { sortBy: 'due' })).toEqual({ by: 'due', dir: 'asc' });
+    expect(smartSortChoice('inbox', undefined)).toEqual({ by: 'manual', dir: 'asc' });
   });
 });

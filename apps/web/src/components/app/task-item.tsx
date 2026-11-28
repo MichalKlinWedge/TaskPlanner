@@ -232,9 +232,9 @@ function ResizeHandle({ column, label, onResize }: { column: WidthColumn; label:
 }
 
 /** Etykieta nagłówka kolumny; z `onSort` i kolumną z `HEADER_SORT` — przycisk sortowania ze strzałką kierunku. */
-function HeaderLabel({ column, label, sort, onSort }: { column: WidthColumn; label: string; sort?: { by: SortBy; dir: SortDir }; onSort?: (by: SortBy) => void }) {
+function HeaderLabel({ column, label, sort, onSort, sortOptions }: { column: WidthColumn; label: string; sort?: { by: SortBy; dir: SortDir }; onSort?: (by: SortBy) => void; sortOptions?: Partial<Record<SortBy, string>> }) {
   const by = HEADER_SORT[column];
-  if (!by || !onSort) return <span className="block truncate">{label}</span>;
+  if (!by || !onSort || (sortOptions && !(by in sortOptions))) return <span className="block truncate">{label}</span>;
   const active = sort?.by === by;
   const dir: SortDir = (active && sort?.dir) || "asc";
   return (
@@ -263,23 +263,26 @@ export function TaskColumnsHeader({
   onResize,
   sort,
   onSort,
+  sortOptions,
 }: {
   columns: readonly ListColumn[];
   widths?: ColumnWidths;
   onResize?: (column: WidthColumn, px: number | null) => void;
   sort?: { by: SortBy; dir: SortDir };
   onSort?: (by: SortBy) => void;
+  /** Kryteria dostępne w widoku; brak = wszystkie z `HEADER_SORT`. */
+  sortOptions?: Partial<Record<SortBy, string>>;
 }) {
   if (!columns.length) return null;
   return (
     <div className="flex gap-2 border-b border-[var(--line)] pb-1 text-xs font-medium text-[var(--muted)]" data-testid="list-columns-header">
       <span className="relative" style={{ ...titleStyle(widths), paddingLeft: TITLE_INSET }} data-header="title">
-        <HeaderLabel column="title" label="Zadanie" sort={sort} onSort={onSort} />
+        <HeaderLabel column="title" label="Zadanie" sort={sort} onSort={onSort} sortOptions={sortOptions} />
         {onResize ? <ResizeHandle column="title" label="Zadanie" onResize={onResize} /> : null}
       </span>
       {columns.map((c) => (
         <span key={c} className="relative" style={columnStyle(c, widths)} data-header={c}>
-          <HeaderLabel column={c} label={LIST_COLUMN[c]} sort={sort} onSort={onSort} />
+          <HeaderLabel column={c} label={LIST_COLUMN[c]} sort={sort} onSort={onSort} sortOptions={sortOptions} />
           {onResize ? <ResizeHandle column={c} label={LIST_COLUMN[c]} onResize={onResize} /> : null}
         </span>
       ))}

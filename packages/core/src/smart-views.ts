@@ -3,10 +3,10 @@
  * Ustawienia są w profilu (`settings.views`, synchronizowane); tablica pokazuje te same zadania co lista widoku.
  */
 import type { BoardOptions } from './kanban.ts';
-import { VIEW_SECTION } from './labels.ts';
+import { SMART_SORT_BY, VIEW_SECTION } from './labels.ts';
 import type { ProfileSettings, SmartViewPrefs } from './schemas/model.ts';
 import type { LocalDate } from './schemas/primitives.ts';
-import { isOpen, selectInbox, selectOverdue, selectToday, selectUndated, selectUpcoming, type ViewContext, type ViewTask } from './views.ts';
+import { isOpen, selectInbox, selectOverdue, selectToday, selectUndated, selectUpcoming, type SortBy, type SortDir, type ViewContext, type ViewTask } from './views.ts';
 
 export type SmartView = 'inbox' | 'today' | 'overdue' | 'upcoming' | 'undated';
 
@@ -17,6 +17,21 @@ export const UPCOMING_DAYS = 14;
 
 /** Klucz ustawień w `settings.views`: widok zbiorczy albo wszystkie widoki tagu / zapisanego filtra (tylko kolumny). */
 export type ViewSettingsKey = keyof ProfileSettings['views'];
+
+/**
+ * Opcje sortowania widoku zbiorczego (etykiety w kolejności wyboru). „Bez terminu” nie ma „Termin” ani
+ * „Początek” — żadne zadanie tam nie ma terminu, a początek wymaga terminu.
+ */
+export function smartSortOptions(view: ViewSettingsKey): Partial<Record<SortBy, string>> {
+  if (view !== 'undated') return SMART_SORT_BY;
+  return Object.fromEntries(Object.entries(SMART_SORT_BY).filter(([k]) => k !== 'due' && k !== 'start'));
+}
+
+/** Wybrane sortowanie widoku zbiorczego; kryterium spoza `smartSortOptions` widoku = domyślna kolejność. */
+export function smartSortChoice(view: ViewSettingsKey, prefs: SmartViewPrefs | undefined): { by: SortBy; dir: SortDir } {
+  const by = prefs?.sortBy && prefs.sortBy in smartSortOptions(view) ? prefs.sortBy : 'manual';
+  return { by, dir: by === 'manual' ? 'asc' : (prefs?.sortDir ?? 'asc') };
+}
 
 /** `settings.views` po zmianie jednego widoku; puste listy i `undefined` znikają z zapisu. */
 export function smartViewsPatch(views: ProfileSettings['views'], view: ViewSettingsKey, patch: Partial<SmartViewPrefs>): ProfileSettings['views'] {

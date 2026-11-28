@@ -6,7 +6,8 @@
 import {
   LIST_COLUMN,
   orderedColumns,
-  SMART_SORT_BY,
+  smartSortChoice,
+  smartSortOptions,
   smartViewsPatch,
   sortDirLabel,
   tagsForWorkspace,
@@ -122,13 +123,13 @@ export function useViewColumns(view: ViewSettingsKey, data: AppData, today: stri
  * Chipy sortowania: kryterium (`pickOption`) i — poza „Ręcznie” / „Domyślnie” — kierunek (▲ / ▼).
  * Zmiana kryterium wraca do kierunku domyślnego.
  */
-export function SortChips({ by, dir, labels, onChange }: { by: SortBy; dir: SortDir; labels: Record<SortBy, string>; onChange: (patch: { sortBy?: SortBy; sortDir?: SortDir }) => void }) {
+export function SortChips({ by, dir, labels, onChange }: { by: SortBy; dir: SortDir; labels: Partial<Record<SortBy, string>>; onChange: (patch: { sortBy?: SortBy; sortDir?: SortDir }) => void }) {
   return (
     <>
       <OptionChip
-        label={`Sortowanie: ${labels[by]}`}
+        label={`Sortowanie: ${labels[by] ?? by}`}
         onPress={() =>
-          void pickOption<SortBy>('Sortowanie', (Object.keys(labels) as SortBy[]).map((k) => ({ label: labels[k], value: k, selected: k === by }))).then(
+          void pickOption<SortBy>('Sortowanie', (Object.keys(labels) as SortBy[]).map((k) => ({ label: labels[k] ?? k, value: k, selected: k === by }))).then(
             (v) => v && onChange({ sortBy: v, sortDir: undefined }),
           )
         }
@@ -146,8 +147,7 @@ export function SortChips({ by, dir, labels, onChange }: { by: SortBy; dir: Sort
 
 /** Sortowanie widoku zbiorczego z `settings.views` (wspólne z webem); ekrany sortują nim sekcje (`sortSection`). */
 export function smartSort(data: AppData, view: SmartView): { by: SortBy; dir: SortDir } {
-  const prefs = data.settings.views[view];
-  return { by: prefs?.sortBy ?? 'manual', dir: prefs?.sortDir ?? 'asc' };
+  return smartSortChoice(view, data.settings.views[view]);
 }
 
 /**
@@ -165,7 +165,7 @@ export function useSmartView(view: SmartView, data: AppData, today: string, work
     row,
     options: (
       <OptionRow>
-        <SortChips by={sort.by} dir={sort.dir} labels={SMART_SORT_BY} onChange={setSort} />
+        <SortChips by={sort.by} dir={sort.dir} labels={smartSortOptions(view)} onChange={setSort} />
         {chips}
         <OptionChip label="▦ Tablica" accent onPress={() => router.push({ pathname: '/board', params: { view } })} />
         {extra}

@@ -40,7 +40,8 @@ import {
   smartBoard,
   smartViewsPatch,
   SORT_BY,
-  SMART_SORT_BY,
+  smartSortChoice,
+  smartSortOptions,
   sortDirLabel,
   sortSection,
   sortTasks,
@@ -214,7 +215,8 @@ export function useViewColumns(id: ViewSettingsKey, ctx: ViewContext, { sortable
   // Z najnowszych ustawień w bazie, nie z renderu — szybkie kolejne kliknięcia się nie nadpisują.
   const setPrefs = (patch: Partial<SmartViewPrefs> | ((current: SmartViewPrefs) => Partial<SmartViewPrefs>)) =>
     void updateSettings(store, userId, (s) => ({ views: smartViewsPatch(s.views, id, typeof patch === "function" ? patch(s.views[id] ?? {}) : patch) })).catch((e: unknown) => notify(String(e)));
-  const sort: { by: SortBy; dir: SortDir } = { by: prefs.sortBy ?? "manual", dir: prefs.sortDir ?? "asc" };
+  const sort = smartSortChoice(id, prefs);
+  const sortOptions = smartSortOptions(id);
   return {
     prefs,
     setPrefs,
@@ -230,13 +232,13 @@ export function useViewColumns(id: ViewSettingsKey, ctx: ViewContext, { sortable
       />
     ),
     columnsHeader: (
-      <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} sort={sortable ? sort : undefined} onSort={sortable ? (by) => setPrefs((p) => headerSortPatch(p, by)) : undefined} />
+      <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} sort={sortable ? sort : undefined} onSort={sortable ? (by) => setPrefs((p) => headerSortPatch(p, by)) : undefined} sortOptions={sortOptions} />
     ),
     sortControls: sortable ? (
       <SortControls
         by={sort.by}
         dir={sort.dir}
-        labels={SMART_SORT_BY}
+        labels={sortOptions}
         title="Sortowanie w obrębie sekcji i dni"
         onBy={(by) => setPrefs({ sortBy: by === "manual" ? undefined : by, sortDir: undefined })}
         onDir={() => setPrefs((p) => ({ sortDir: p.sortDir === "desc" ? undefined : "desc" }))}
@@ -246,7 +248,7 @@ export function useViewColumns(id: ViewSettingsKey, ctx: ViewContext, { sortable
 }
 
 /** Wybór sortowania i — poza kolejnością ręczną / domyślną — przycisk odwrócenia kierunku. */
-function SortControls({ by, dir, labels, title, onBy, onDir }: { by: SortBy; dir: SortDir; labels: Record<SortBy, string>; title?: string; onBy: (by: SortBy) => void; onDir: () => void }) {
+function SortControls({ by, dir, labels, title, onBy, onDir }: { by: SortBy; dir: SortDir; labels: Partial<Record<SortBy, string>>; title?: string; onBy: (by: SortBy) => void; onDir: () => void }) {
   return (
     <>
       <Select aria-label="Sortowanie" title={title} value={by} onChange={(e) => onBy(e.target.value as SortBy)} className="py-1 text-xs">
