@@ -1,5 +1,5 @@
 /**
- * „Zaproszenia” w „Konto i synchronizacja” (v1.x): lista adresów i domen, z których można założyć
+ * „Zaproszenia” w „Ustawieniach” (v1.x): lista adresów i domen, z których można założyć
  * konto (`allowed_emails`). Widoczna tylko dla administratora (`is_app_admin()`); czyta i zmienia
  * listę przez RPC na serwerze (`list_invites` / `add_invite` / `remove_invite`) — wymaga sieci.
  * Odpowiednik webowego `invites-card.tsx`.

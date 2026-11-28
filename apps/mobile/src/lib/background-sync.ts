@@ -2,7 +2,7 @@
  * Synchronizacja w tle (`expo-background-task`, na Androidzie WorkManager): co ≥ 15 min, gdy jest
  * sieć, system budzi bundel bez ekranu — wysyłka outboxu, pobranie zmian, przeplanowanie
  * przypomnień (zmiany z webu) i odświeżenie widżetu. Wynik ostatniego przebiegu w kv-store
- * (wskaźnik w „Konto i synchronizacja”).
+ * (wskaźnik w „Ustawieniach”).
  */
 import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';

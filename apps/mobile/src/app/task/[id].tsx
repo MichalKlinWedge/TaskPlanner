@@ -495,7 +495,14 @@ function RecurrenceField({ task, data, today, timeZone, onSave }: { task: ViewTa
           <View style={styles.pills}>
             <Text style={{ color: task.recurrence ? p.fg : p.muted, fontSize: 15, flexShrink: 1 }}>{task.recurrence ? `↻ ${describeRecurrence(task.recurrence)}` : 'Nie powtarza się'}</Text>
             <Pill label={task.recurrence ? 'Zmień' : 'Ustaw'} onPress={() => setEditing(true)} />
-            {task.recurrence ? <Pill label="Usuń" onPress={() => onSave({ recurrence: null })} /> : null}
+            {task.recurrence ? (
+              <Pill
+                label="Usuń"
+                onPress={() =>
+                  void run([{ table: 'tasks', id: task.id, patch: { recurrence: null } }], { text: 'Usunięto powtarzanie', undo: [{ table: 'tasks', id: task.id, patch: { recurrence: task.recurrence } }] })
+                }
+              />
+            ) : null}
           </View>
           {series ? (
             <>
@@ -573,7 +580,11 @@ function TagsField({ task, data }: { task: ViewTask; data: AppData }) {
       (choice) => {
         if (choice === 'color') setColoring(tagId);
         else if (choice === 'left' || choice === 'right') void run(reorderTaskTagOps(task.id, task.tagIds, index, index + (choice === 'left' ? -1 : 1)));
-        else if (choice === 'remove') void run([{ table: 'task_tags', id: taskTagId(task.id, tagId), patch: { deleted_at: new Date().toISOString() } }]);
+        else if (choice === 'remove')
+          void run([{ table: 'task_tags', id: taskTagId(task.id, tagId), patch: { deleted_at: new Date().toISOString() } }], {
+            text: `Usunięto @${tag?.name ?? 'tag'} z zadania`,
+            undo: [{ table: 'task_tags', id: taskTagId(task.id, tagId), patch: { deleted_at: null } }],
+          });
       },
     );
   };
@@ -909,7 +920,7 @@ function RemindersField({ task, data, today, trashed }: { task: ViewTask; data: 
             <Text style={{ color: p.fg, fontSize: 15, flex: 1 }}>
               🔔 {r.kind === 'relative' ? reminderOffset(Number(r.offset_min)) : `${relativeDay(r.at_date as LocalDate, today)} ${String(r.at_time).slice(0, 5)}`}
             </Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Usuń przypomnienie" hitSlop={10} onPress={() => void run([{ table: 'reminders', id: r.id, patch: { deleted_at: new Date().toISOString() } }])}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Usuń przypomnienie" hitSlop={10} onPress={() => void run([{ table: 'reminders', id: r.id, patch: { deleted_at: new Date().toISOString() } }], { text: 'Usunięto przypomnienie', undo: [{ table: 'reminders', id: r.id, patch: { deleted_at: null } }] })}>
               <Text style={{ color: p.muted, fontSize: 16 }}>✕</Text>
             </Pressable>
           </View>

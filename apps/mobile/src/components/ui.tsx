@@ -37,12 +37,14 @@ export function Screen({ children, scroll = true }: { children: ReactNode; scrol
 
 /**
  * Ekran z sekcjami zwijanymi nagłówkiem (Ustawienia). Stan zwinięcia jest urządzenia (kv-store, klucz = `id`
- * albo tytuł sekcji); zwinięta sekcja nie renderuje treści.
+ * albo tytuł sekcji, `true` = zwinięta, `false` = rozwinięta); bez zapisu sekcja startuje zwinięta, żeby długi
+ * ekran był spisem treści. Zwinięta sekcja nie renderuje treści.
  */
 const CollapsibleContext = createContext(false);
 export const CollapsibleSections = CollapsibleContext.Provider;
 
-const COLLAPSED_KEY = 'ui.collapsedSections';
+// Nowy klucz: w starym brak wpisu znaczył „rozwinięta”, teraz znaczy „zwinięta”.
+const COLLAPSED_KEY = 'ui.collapsedSections.v2';
 
 function readCollapsed(): Record<string, boolean> {
   try {
@@ -56,12 +58,11 @@ export function Section({ id, title, alwaysOpen, children }: { id?: string; titl
   const p = usePalette();
   const collapsible = useContext(CollapsibleContext) && !!title && !alwaysOpen;
   const key = id ?? title ?? '';
-  const [collapsed, setCollapsed] = useState(() => !!readCollapsed()[key]);
+  const [collapsed, setCollapsed] = useState(() => readCollapsed()[key] ?? true);
   const shut = collapsible && collapsed;
   const toggle = () => {
     const all = readCollapsed();
-    if (collapsed) delete all[key];
-    else all[key] = true;
+    all[key] = !collapsed;
     Storage.setItemSync(COLLAPSED_KEY, JSON.stringify(all));
     setCollapsed(!collapsed);
   };

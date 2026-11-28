@@ -153,7 +153,7 @@ export function notificationRoute(n: Pick<AppNotification, 'kind' | 'taskId' | '
 export async function setupNotificationCenter() {
   await Notifications.setNotificationChannelAsync(NOTIFICATION_CENTER_CHANNEL, {
     name: 'Powiadomienia z przestrzeni i integracji',
-    description: 'Przypisania, komentarze, zmiany terminów, udostępnianie i problemy z integracjami (ustawienia: Konto → Powiadomienia).',
+    description: 'Przypisania, komentarze, zmiany terminów, udostępnianie i problemy z integracjami (Ustawienia → Powiadomienia).',
     importance: AndroidImportance.DEFAULT,
     lockscreenVisibility: AndroidNotificationVisibility.PRIVATE,
   });

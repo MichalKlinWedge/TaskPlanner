@@ -181,6 +181,10 @@ export default function Workspace() {
       ) : null}
       {active.map((l, i) => row(l, i, active))}
 
+      {/* „Osoby” (udostępnianie) zaraz pod listami, nie na końcu długiego ekranu. */}
+      <SharingSection workspaceId={id} name={workspace?.name ?? ''} />
+      {owner ? <P muted>{GUEST_ACCESS_NOTE} Ustawisz go przy każdej liście („Edytuj”).</P> : null}
+
       {editable ? (
         <Section title="Nowa lista">
           <Field label="Nazwa" value={name} onChangeText={setName} placeholder="np. Zakupy, Remont" maxLength={200} />
@@ -218,8 +222,6 @@ export default function Workspace() {
         </>
       ) : null}
 
-      {owner ? <P muted>{GUEST_ACCESS_NOTE} Ustawisz go przy każdej liście („Edytuj”).</P> : null}
-      <SharingSection workspaceId={id} name={workspace?.name ?? ''} />
     </Screen>
   );
 }

@@ -178,7 +178,7 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
     showDate && date && !dueColumn ? { text: relativeDay(date, today), bad: overdue } : null,
     task.dueTime && !dueColumn ? lateMin > 0 ? { text: `${task.dueTime} · ${formatMinutes(lateMin)} po czasie`, bad: true } : { text: task.dueTime } : null,
     task.recurrence ? { text: `↻ ${describeRecurrence(task.recurrence)}` } : null,
-    needsDecision(task) && !closed ? { text: `⇥ ${task.postponeCount}×` } : null,
+    needsDecision(task) && !closed ? { text: `odłożone ${task.postponeCount}×` } : null,
     progress && progress.total > 0 ? { text: `☑ ${progress.done}/${progress.total}` } : null,
     task.status === 'in_progress' ? { text: 'w trakcie' } : task.status === 'waiting' ? { text: 'oczekuje' } : null,
     attachments && !attachmentsColumn ? { text: `📎 ${attachments}` } : null,

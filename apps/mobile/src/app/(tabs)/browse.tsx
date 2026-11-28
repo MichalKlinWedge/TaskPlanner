@@ -3,18 +3,20 @@
  * otwartych zadań liczonymi jak na webie (`isOpen`, `selectFiltered` z core: wszystkie poziomy drzewa,
  * bez nawyków, tagi w bieżącej przestrzeni), kosz, ustawienia, narzędzia PoC (tylko po włączeniu, `devToolsEnabled`).
  * „Cykliczne” z licznikiem nieodhaczonych na dziś (`habitsForDay`, jak pasek boczny webu); pasek zaproszeń
- * do przestrzeni jak w `ScreenHeader`.
+ * do przestrzeni jak w `ScreenHeader`. Pod wyszukiwarką skróty (przestrzenie, kosz, współpracownicy, ustawienia),
+ * grupy zwijane nagłówkiem (stan w kv-store `browse.collapsed`), nagłówek przestrzeni otwiera jej ekran
+ * (listy, „Osoby” / udostępnianie).
  */
 import { habitsForDay, isOpen, LIST_KIND, listShareBadge, selectFiltered, selectOverdue, selectUndated, tagsForWorkspace, VIEW_SECTION, type ListShareBadge } from '@taskplanner/core';
 import { router, type Href } from 'expo-router';
-import { useMemo, useSyncExternalStore, type ReactNode } from 'react';
+import { useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ScopeInvitesBanner } from '@/components/sharing';
 import { SyncBanner } from '@/components/sync-banner';
 import { ColorDot, usePalette } from '@/components/ui';
 import { useLocalMinute, useView } from '@/lib/app-data';
-import { devToolsEnabled, onDevToolsChange } from '@/lib/config';
+import { devToolsEnabled, onDevToolsChange, readJson, writeJson } from '@/lib/config';
 import { perfStart, usePerfReady } from '@/lib/perf';
 
 function Item({ title, hint, count, alert, color, href, indent, badge }: { title: string; hint?: string; count?: number; alert?: boolean; color?: string | null; href: Href; indent?: boolean; badge?: ListShareBadge | null }) {
@@ -46,13 +48,47 @@ function Item({ title, hint, count, alert, color, href, indent, badge }: { title
   );
 }
 
-function Group({ title, children }: { title: string; children: ReactNode }) {
+const COLLAPSED_KEY = 'browse.collapsed';
+
+/** Grupa z nagłówkiem: dotknięcie tytułu zwija ją (pamiętane na urządzeniu); `href` — „›” obok otwiera ekran grupy. */
+function Group({ id, title, href, children }: { id?: string; title: string; href?: Href; children: ReactNode }) {
   const p = usePalette();
+  const key = id ?? title;
+  const [collapsed, setCollapsed] = useState(() => !!readJson<Record<string, boolean>>(COLLAPSED_KEY, {})[key]);
+  const toggle = () => {
+    const all = readJson<Record<string, boolean>>(COLLAPSED_KEY, {});
+    if (collapsed) delete all[key];
+    else all[key] = true;
+    writeJson(COLLAPSED_KEY, all);
+    setCollapsed(!collapsed);
+  };
   return (
     <View style={[styles.group, { backgroundColor: p.card, borderColor: p.border }]}>
-      <Text style={[styles.groupTitle, { color: p.muted }]}>{title}</Text>
-      {children}
+      <View style={styles.groupHead}>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: !collapsed }} accessibilityLabel={`${title}. ${collapsed ? 'Rozwiń' : 'Zwiń'}`} onPress={toggle} style={styles.groupToggle}>
+          <Text style={[styles.groupTitle, { color: p.muted }]} numberOfLines={1}>
+            {collapsed ? '▸' : '▾'} {title}
+          </Text>
+        </Pressable>
+        {href ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`Otwórz: ${title}`} hitSlop={4} onPress={() => router.push(href)} style={styles.groupLink}>
+            <Text style={{ color: p.accent, fontSize: 13 }}>Przestrzeń ›</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      {collapsed ? null : children}
     </View>
+  );
+}
+
+function Shortcut({ label, href }: { label: string; href: Href }) {
+  const p = usePalette();
+  return (
+    <Pressable accessibilityRole="button" onPress={() => router.push(href)} style={({ pressed }) => [styles.shortcut, { borderColor: p.border, backgroundColor: pressed ? p.border : p.card }]}>
+      <Text style={{ color: p.fg, fontSize: 13 }} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -97,6 +133,12 @@ export default function BrowseScreen() {
       <Pressable accessibilityRole="search" onPress={() => router.push('/search')} style={[styles.search, { borderColor: p.border, backgroundColor: p.card }]}>
         <Text style={{ color: p.muted, fontSize: 16 }}>⌕ Szukaj zadań, list, tagów…</Text>
       </Pressable>
+      <View style={styles.shortcuts}>
+        <Shortcut label="Przestrzenie" href="/workspaces" />
+        <Shortcut label="Kosz" href="/trash" />
+        <Shortcut label="Współpracownicy" href="/collaborators" />
+        <Shortcut label="Ustawienia" href="/settings" />
+      </View>
 
       <Group title="Planowanie">
         <Item title={VIEW_SECTION.overdue} hint="Po terminie, także dzisiejsze po godzinie" count={overdue} alert href="/overdue" />
@@ -111,7 +153,7 @@ export default function BrowseScreen() {
       </Group>
 
       {workspaces.map((w) => (
-        <Group key={w.id} title={w.name}>
+        <Group key={w.id} id={w.id} title={w.name} href={{ pathname: '/workspace/[id]', params: { id: w.id } }}>
           {sectionLists(w.id).map((l) => (
               <Item
                 key={l.id}
@@ -146,7 +188,7 @@ export default function BrowseScreen() {
         <Item title="Przestrzenie i listy" hint="Tworzenie, nazwy, kolory, kolejność, archiwum" href="/workspaces" />
         <Item title="Współpracownicy" hint="Osoby do wskazania w zadaniach (tylko informacyjnie)" href="/collaborators" />
         <Item title="Kosz" hint="Usunięte w ostatnich 30 dniach" href="/trash" />
-        <Item title="Konto i synchronizacja" hint="Logowanie, stan synchronizacji, przypomnienia" href="/settings" />
+        <Item title="Ustawienia" hint="Konto i synchronizacja, profil, powiadomienia, przypomnienia" href="/settings" />
         {devTools ? <Item title="Narzędzia PoC" hint="Widżet, przypomnienia testowe, samosprawdzenie" href="/dev" /> : null}
       </Group>
     </ScrollView>
@@ -157,6 +199,11 @@ const styles = StyleSheet.create({
   body: { padding: 12, gap: 12, paddingBottom: 40 },
   search: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12 },
   group: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, overflow: 'hidden' },
-  groupTitle: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4 },
+  groupTitle: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  groupHead: { flexDirection: 'row', alignItems: 'center' },
+  groupToggle: { flex: 1, paddingHorizontal: 14, minHeight: 40, justifyContent: 'center' },
+  groupLink: { paddingHorizontal: 14, minHeight: 40, justifyContent: 'center' },
+  shortcuts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  shortcut: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, paddingHorizontal: 12, minHeight: 40, justifyContent: 'center' },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
 });

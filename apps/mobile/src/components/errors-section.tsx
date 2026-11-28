@@ -1,5 +1,5 @@
 /**
- * „Błędy aplikacji” w „Konto i synchronizacja” (Etap 13, D20): niewysłane wpisy z telefonu, ostatnie
+ * „Błędy aplikacji” w „Ustawieniach” (Etap 13, D20): niewysłane wpisy z telefonu, ostatnie
  * 20 wpisów konta z serwera (`client_errors` — web i telefon, wymaga sieci; dotknięcie rozwija adres / ekran
  * i stos, jak `<details>` na webie), błąd testowy i wysyłka.
  */

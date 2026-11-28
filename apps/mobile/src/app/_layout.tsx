@@ -306,7 +306,7 @@ export default function RootLayout() {
             <Stack.Screen name="collaborators" options={{ title: 'Współpracownicy' }} />
             <Stack.Screen name="onboarding" options={{ title: 'Witaj w Task Planner', headerBackVisible: false, gestureEnabled: false }} />
             <Stack.Screen name="auth-callback" options={{ title: 'Logowanie' }} />
-            <Stack.Screen name="settings" options={{ title: 'Konto i synchronizacja' }} />
+            <Stack.Screen name="settings" options={{ title: 'Ustawienia' }} />
             <Stack.Screen name="dev" options={{ title: 'Narzędzia PoC' }} />
             <Stack.Screen name="widget" options={{ title: 'Dziś i widżet (PoC-4)' }} />
             <Stack.Screen name="reminders" options={{ title: 'Przypomnienia (PoC-4)' }} />

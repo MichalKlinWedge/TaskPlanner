@@ -257,27 +257,27 @@ export default function Settings() {
         </Text>
       </Section>
 
-      <UpdateSection />
-
       <ProfileSection />
+
+      <NotificationsSection />
+
+      <BackgroundStatus />
 
       <FocusSection />
 
-      <NotificationsSection />
+      {user.online && !relogin ? <CalendarsSection /> : null}
 
       <AiSection />
 
       {user.online && !relogin ? <PluginsSection /> : null}
 
-      {user.online && !relogin ? <CalendarsSection /> : null}
-
       <BackupSection />
 
-      <BackgroundStatus />
+      {user.online && !relogin ? <InvitesSection /> : null}
+
+      <UpdateSection />
 
       <ErrorsSection />
-
-      {user.online && !relogin ? <InvitesSection /> : null}
 
       {user.online && !relogin ? <DeleteAccountSection email={user.email} /> : null}
 

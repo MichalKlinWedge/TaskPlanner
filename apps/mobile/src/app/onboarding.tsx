@@ -1,7 +1,9 @@
 /**
  * Onboarding po pierwszym zalogowaniu (M1): imię, ustawienia profilu i przestrzenie „Osobiste”
  * i „Praca” z Inboxem. Zapis przez `onboardingOps` z core — ten sam co na webie; deterministyczne
- * id przestrzeni sprawiają, że onboarding na dwóch urządzeniach nie dubluje danych.
+ * id przestrzeni sprawiają, że onboarding na dwóch urządzeniach nie dubluje danych. Strefa i godziny
+ * z tych samych wybieraków co w „Profilu”; „Pomiń” zapisuje ustawienia domyślne. Po zapisie — ekran Start
+ * z polem szybkiego dodawania (pierwsze zadanie).
  */
 import {
   DEFAULT_WORKSPACES,
@@ -10,17 +12,28 @@ import {
   WEEKDAY,
   type DefaultWorkspace,
   type IsoWeekday,
+  type LocalTime,
 } from '@taskplanner/core';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { BackHandler } from 'react-native';
 
+import { pickTime } from '@/components/pickers';
+import { Line, TimeZoneField } from '@/components/profile-section';
 import { Button, Chip, ColorDot, Field, P, Row, Screen, Section } from '@/components/ui';
 import { useLocalQuery } from '@/lib/local-query';
-import { completeOnboarding, deviceTimeZone, loadProfile, type Profile } from '@/lib/profile';
+import { completeOnboarding, loadProfile, type Profile } from '@/lib/profile';
 
 const DAYS = [1, 2, 3, 4, 5, 6, 7] as const satisfies readonly IsoWeekday[];
 const DURATIONS = [15, 30, 45, 60, 90, 120];
+
+/** Pole ustawień → nazwa w komunikacie błędu (inaczej „Godzina w formacie GG:MM” nie mówi, o które pole chodzi). */
+const FIELD_NAME: Record<string, string> = {
+  timeZone: 'Strefa czasowa',
+  workHours: 'Godziny pracy',
+  defaultReminderTime: 'Przypomnienie zadania bez godziny',
+  defaultDurationMin: 'Czas trwania bloku',
+};
 
 export default function Onboarding() {
   // Systemowe „wstecz” nie zamyka kreatora: bramka w `_layout` pokazuje go ponownie dopiero po
@@ -40,7 +53,7 @@ export default function Onboarding() {
 function Form({ profile }: { profile: Profile | null }) {
   const initial = profile?.settings ?? ProfileSettings.parse({});
   const [name, setName] = useState(profile?.display_name ?? '');
-  const [timeZone, setTimeZone] = useState(initial.timeZone ?? deviceTimeZone() ?? '');
+  const [timeZone, setTimeZone] = useState<string | undefined>(initial.timeZone);
   const [firstDay, setFirstDay] = useState<IsoWeekday>(initial.firstDayOfWeek as IsoWeekday);
   const [workDays, setWorkDays] = useState<IsoWeekday[]>(initial.workHours.days as IsoWeekday[]);
   const [workStart, setWorkStart] = useState(initial.workHours.start);
@@ -55,23 +68,13 @@ function Form({ profile }: { profile: Profile | null }) {
   const ordered = [...DAYS.slice(firstDay - 1), ...DAYS.slice(0, firstDay - 1)];
   const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
 
-  const save = async () => {
-    setError(null);
-    const settings = {
-      ...initial,
-      timeZone: timeZone.trim() || undefined,
-      firstDayOfWeek: firstDay,
-      workHours: { days: [...workDays].sort((a, b) => a - b), start: workStart.trim(), end: workEnd.trim() },
-      defaultReminderTime: reminder.trim(),
-      defaultDurationMin: Number(duration),
-    };
-    const parsed = ProfileSettings.safeParse(settings);
-    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? 'Niepoprawne ustawienia.');
-    if (!workspaces.length) return setError('Wybierz co najmniej jedną przestrzeń.');
+  const time = (title: string, value: string, set: (t: LocalTime) => void) => void pickTime({ title, value: value as LocalTime }).then((t) => t && set(t));
+
+  const finish = async (settings: ProfileSettings, chosen: DefaultWorkspace[], displayName: string) => {
     setBusy(true);
     try {
-      await completeOnboarding({ displayName: name, settings: parsed.data, workspaces });
-      router.replace('/workspaces');
+      await completeOnboarding({ displayName, settings, workspaces: chosen });
+      router.replace('/');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -79,12 +82,33 @@ function Form({ profile }: { profile: Profile | null }) {
     }
   };
 
+  const save = async () => {
+    setError(null);
+    const settings = {
+      ...initial,
+      timeZone: timeZone?.trim() || undefined,
+      firstDayOfWeek: firstDay,
+      workHours: { days: [...workDays].sort((a, b) => a - b), start: workStart.trim(), end: workEnd.trim() },
+      defaultReminderTime: reminder.trim(),
+      defaultDurationMin: Number(duration),
+    };
+    const parsed = ProfileSettings.safeParse(settings);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const field = FIELD_NAME[String(issue?.path[0] ?? '')];
+      return setError(`${field ? `${field}: ` : ''}${issue?.message ?? 'Niepoprawne ustawienia.'}`);
+    }
+    if (!workspaces.length) return setError('Wybierz co najmniej jedną przestrzeń.');
+    await finish(parsed.data, workspaces, name);
+  };
+
   return (
     <Screen>
-      <P muted>Kilka ustawień na start — wszystkie zmienisz później.</P>
+      <P muted>Kilka ustawień na start — wszystkie zmienisz później w „Ustawieniach”.</P>
+      <Button kind="secondary" title="Pomiń — użyj domyślnych" disabled={busy} onPress={() => void finish(initial, ['personal', 'work'], name)} />
       <Section title="Ty">
         <Field label="Imię" value={name} onChangeText={setName} autoComplete="given-name" maxLength={100} />
-        <Field label="Strefa czasowa" value={timeZone} onChangeText={setTimeZone} autoCapitalize="none" autoCorrect={false} placeholder="Europe/Warsaw" />
+        <TimeZoneField value={timeZone} onChange={setTimeZone} />
       </Section>
 
       <Section title="Tydzień">
@@ -100,21 +124,12 @@ function Form({ profile }: { profile: Profile | null }) {
             <Chip key={d} label={WEEKDAY[d].short} selected={workDays.includes(d)} onPress={() => setWorkDays(toggle(workDays, d))} />
           ))}
         </Row>
-        <Row>
-          <Field label="Praca od" value={workStart} onChangeText={setWorkStart} keyboardType="numbers-and-punctuation" maxLength={5} style={{ minWidth: 90 }} />
-          <Field label="do" value={workEnd} onChangeText={setWorkEnd} keyboardType="numbers-and-punctuation" maxLength={5} style={{ minWidth: 90 }} />
-        </Row>
+        <Line label="Praca od" value={workStart} onPress={() => time('Praca od', workStart, setWorkStart)} />
+        <Line label="Praca do" value={workEnd} onPress={() => time('Praca do', workEnd, setWorkEnd)} />
       </Section>
 
       <Section title="Domyślne">
-        <Field
-          label="Przypomnienie zadania bez godziny"
-          value={reminder}
-          onChangeText={setReminder}
-          keyboardType="numbers-and-punctuation"
-          maxLength={5}
-          style={{ maxWidth: 110 }}
-        />
+        <Line label="Przypomnienie zadania bez godziny" value={reminder} onPress={() => time('Przypomnienie zadania bez godziny', reminder, setReminder)} />
         <P muted>Czas trwania bloku w kalendarzu</P>
         <Row>
           {DURATIONS.map((m) => (

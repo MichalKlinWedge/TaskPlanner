@@ -1,5 +1,5 @@
 /**
- * Przypomnienia i praca w tle w „Konto i synchronizacja”: uprawnienia (powiadomienia, dokładne
+ * Przypomnienia i praca w tle w „Ustawieniach”: uprawnienia (powiadomienia, dokładne
  * alarmy — bez nich Android przesuwa przypomnienia o ~75 % czasu do terminu), ostatnie
  * przeplanowanie M8, rejestracja i ostatnie przebiegi synchronizacji w tle. Tryb przypomnień tego telefonu:
  * belka albo alarm na cały ekran.

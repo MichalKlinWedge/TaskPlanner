@@ -28,8 +28,8 @@ function knownZones(): string[] {
   }
 }
 
-/** Wiersz „etykieta — wartość” z arkuszem wyboru; `children` po prawej zamiast wartości (przełącznik). */
-function Line({ label, value, onPress, children }: { label: string; value?: string; onPress?: () => void; children?: ReactNode }) {
+/** Wiersz „etykieta — wartość” z arkuszem wyboru; `children` po prawej zamiast wartości (przełącznik). Też w onboardingu. */
+export function Line({ label, value, onPress, children }: { label: string; value?: string; onPress?: () => void; children?: ReactNode }) {
   const p = usePalette();
   return (
     <View style={styles.line}>
@@ -173,8 +173,8 @@ function NameField({ id, name, onError }: { id: string; name: string; onError: (
   );
 }
 
-/** Strefa: „strefa urządzenia” albo szukanie po nazwie (bez listy w silniku JS — dokładna nazwa IANA). */
-function TimeZoneField({ value, onChange }: { value: string | undefined; onChange: (zone: string | undefined) => void }) {
+/** Strefa: „strefa urządzenia” albo szukanie po nazwie (bez listy w silniku JS — dokładna nazwa IANA). Też w onboardingu. */
+export function TimeZoneField({ value, onChange }: { value: string | undefined; onChange: (zone: string | undefined) => void }) {
   const device = deviceTimeZone();
   const [query, setQuery] = useState<string | null>(null);
   const deviceLabel = `strefa urządzenia${device ? ` (${device})` : ''}`;

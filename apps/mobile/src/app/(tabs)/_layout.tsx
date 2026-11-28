@@ -15,6 +15,7 @@ import { perfStart } from '@/lib/perf';
 
 const badge = (n: number) => (n ? (n > 99 ? '99+' : n) : undefined);
 
+// Glify jednobarwne (z U+FE0E — wariant tekstowy), żeby aktywna zakładka zmieniała kolor; kolorowe emoji go nie przyjmują.
 const icon = (glyph: string) =>
   function TabIcon({ color }: { color: ColorValue }) {
     return <Text style={{ color, fontSize: 20 }}>{glyph}</Text>;
@@ -43,22 +44,22 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: p.bg },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Start', tabBarIcon: icon('🏠') }} />
+      <Tabs.Screen name="index" options={{ title: 'Start', tabBarIcon: icon('⌂︎') }} />
       <Tabs.Screen
         name="today"
         options={{
           title: 'Dziś',
-          tabBarIcon: icon('☀'),
+          tabBarIcon: icon('☀︎'),
           tabBarBadge: badge(counts.today),
           tabBarBadgeStyle: counts.overdue ? { backgroundColor: p.bad, color: p.bg, fontSize: 11 } : neutral,
         }}
       />
       <Tabs.Screen
         name="inbox"
-        options={{ title: 'Inbox', tabBarIcon: icon('📥'), tabBarBadge: badge(counts.inbox), tabBarBadgeStyle: neutral }}
+        options={{ title: 'Inbox', tabBarIcon: icon('⇩'), tabBarBadge: badge(counts.inbox), tabBarBadgeStyle: neutral }}
       />
-      <Tabs.Screen name="upcoming" options={{ title: 'Nadchodzące', tabBarIcon: icon('📅') }} />
-      <Tabs.Screen name="browse" options={{ title: 'Przeglądaj', tabBarIcon: icon('☰') }} />
+      <Tabs.Screen name="upcoming" options={{ title: 'Nadchodzące', tabBarIcon: icon('⇢') }} />
+      <Tabs.Screen name="browse" options={{ title: 'Przeglądaj', tabBarIcon: icon('☰︎') }} />
     </Tabs>
   );
 }

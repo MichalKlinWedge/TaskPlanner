@@ -16,6 +16,7 @@ import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native
 import { useAppData } from '@/lib/app-data';
 
 import { useTaskActions } from './actions';
+import { pickOption } from './pickers';
 import { bulkAssignee, bulkDate, bulkTag, pickList, pickPriority } from './task-menus';
 import { columnsRowWidth, RowsInteractive, RowsSelectable, Sticky, TaskRow, WideList, type TaskRowProps } from './task-row';
 import { usePalette } from './ui';
@@ -208,20 +209,30 @@ function BulkBar({ reorder }: { reorder?: readonly string[] }) {
     if (!ops) return notify('Tu nie można przesunąć: brak miejsca w tym kierunku albo ponad 4 poziomy zadań.');
     if (ops.length) void run(ops);
   };
-  const items: { label: string; onPress: () => void; tone?: 'bad' }[] = [
-    { label: '✓', onPress: () => void bulk({ kind: 'complete' }) },
-    { label: 'Dziś', onPress: () => void bulk({ kind: 'today' }) },
-    { label: 'Jutro', onPress: () => void bulk({ kind: 'tomorrow' }) },
-    { label: '📅', onPress: () => void bulkDate(actions, data) },
-    {
-      label: '!',
-      onPress: () =>
-        then(pickPriority(`Priorytet: ${selected.size} zaznaczonych`), (priority) => priority && bulk({ kind: 'priority', priority })),
-    },
-    { label: '→', onPress: () => then(pickList(data, `Przenieś ${selected.size} zaznaczonych do`), (listId) => listId && bulk({ kind: 'move', listId })) },
-    { label: '#', onPress: () => void bulkTag(actions, data) },
-    { label: '👤', onPress: () => void bulkAssignee(actions, data) },
-    { label: '🗑', tone: 'bad', onPress: () => void bulk({ kind: 'delete' }) },
+  // Pięć szerokich przycisków z podpisem; rzadsze akcje (i kosz — z dala od palca) w „Więcej”.
+  const more = () =>
+    then(
+      pickOption<'tomorrow' | 'priority' | 'tag' | 'assignee' | 'delete'>(`${selected.size} zaznaczonych`, [
+        { label: 'Na jutro', value: 'tomorrow' },
+        { label: 'Priorytet…', value: 'priority' },
+        { label: 'Tag…', value: 'tag' },
+        { label: 'Odpowiedzialny…', value: 'assignee' },
+        { label: '🗑 Do kosza', value: 'delete', tone: 'bad' },
+      ]),
+      (choice) => {
+        if (choice === 'tomorrow') void bulk({ kind: 'tomorrow' });
+        else if (choice === 'priority') then(pickPriority(`Priorytet: ${selected.size} zaznaczonych`), (priority) => priority && bulk({ kind: 'priority', priority }));
+        else if (choice === 'tag') void bulkTag(actions, data);
+        else if (choice === 'assignee') void bulkAssignee(actions, data);
+        else if (choice === 'delete') void bulk({ kind: 'delete' });
+      },
+    );
+  const items: { icon: string; label: string; a11y: string; onPress: () => void }[] = [
+    { icon: '✓', label: 'Ukończ', a11y: 'Ukończ zaznaczone', onPress: () => void bulk({ kind: 'complete' }) },
+    { icon: '☀', label: 'Dziś', a11y: 'Na dziś', onPress: () => void bulk({ kind: 'today' }) },
+    { icon: '📅', label: 'Termin', a11y: 'Wybierz termin', onPress: () => void bulkDate(actions, data) },
+    { icon: '→', label: 'Przenieś', a11y: 'Przenieś do listy', onPress: () => then(pickList(data, `Przenieś ${selected.size} zaznaczonych do`), (listId) => listId && bulk({ kind: 'move', listId })) },
+    { icon: '⋯', label: 'Więcej', a11y: 'Więcej: jutro, priorytet, tag, odpowiedzialny, kosz', onPress: more },
   ];
   const bar = (
     <View style={[styles.bulk, { backgroundColor: p.card, borderColor: p.border }]}>
@@ -233,11 +244,12 @@ function BulkBar({ reorder }: { reorder?: readonly string[] }) {
         <Pressable
           key={item.label}
           accessibilityRole="button"
-          accessibilityLabel={BULK_LABEL[item.label]}
+          accessibilityLabel={item.a11y}
           onPress={item.onPress}
-          style={({ pressed }) => [styles.bulkButton, { backgroundColor: pressed ? p.border : 'transparent' }]}
+          style={({ pressed }) => [styles.bulkButton, styles.bulkItem, { backgroundColor: pressed ? p.border : 'transparent' }]}
         >
-          <Text style={{ color: item.tone === 'bad' ? p.bad : p.accent, fontWeight: '700', fontSize: 15 }} numberOfLines={1} adjustsFontSizeToFit>
+          <Text style={{ color: p.accent, fontWeight: '700', fontSize: 17 }}>{item.icon}</Text>
+          <Text style={{ color: p.fg, fontSize: 11 }} numberOfLines={1} adjustsFontSizeToFit>
             {item.label}
           </Text>
         </Pressable>
@@ -284,18 +296,6 @@ const NUDGES: [TaskNudge, string][] = [
   ['out', '⇤ w górę'],
 ];
 
-const BULK_LABEL: Record<string, string> = {
-  '✓': 'Ukończ zaznaczone',
-  Dziś: 'Na dziś',
-  Jutro: 'Na jutro',
-  '📅': 'Wybierz termin',
-  '!': 'Zmień priorytet',
-  '→': 'Przenieś do listy',
-  '#': 'Dodaj albo zdejmij tag',
-  '👤': 'Zmień odpowiedzialnego',
-  '🗑': 'Przenieś do kosza',
-};
-
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'baseline', gap: 8, paddingHorizontal: 12, paddingTop: 14, paddingBottom: 6, borderBottomWidth: StyleSheet.hairlineWidth },
   headerText: { fontSize: 14, fontWeight: '700' },
@@ -306,4 +306,5 @@ const styles = StyleSheet.create({
   bulk: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, paddingHorizontal: 6, elevation: 6 },
   bulkCount: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 12 },
   bulkButton: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 10 },
+  bulkItem: { paddingVertical: 6, gap: 1 },
 });

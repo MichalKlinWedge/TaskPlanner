@@ -10,7 +10,7 @@ import { AppState, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 
 import { useLocalQuery } from '@/lib/local-query';
 
-import { useTaskActions } from './actions';
+import { confirm, useTaskActions } from './actions';
 import { MarkdownView } from './markdown-view';
 import { usePalette } from './ui';
 
@@ -155,10 +155,14 @@ export function DescriptionField({ taskId, readOnly = false }: { taskId: string;
         />
         <Pill
           label="Anuluj"
-          onPress={() => {
-            if (stored.current !== entry.current) save(entry.current);
-            setEditing(false);
-          }}
+          onPress={() =>
+            void (async () => {
+              // Dłuższy szkic nie znika jednym (może przypadkowym) dotknięciem.
+              if (draft !== entry.current && draft.trim().length > 20 && !(await confirm('Odrzucić zmiany w opisie?', 'Opis wróci do stanu sprzed edycji.', 'Odrzuć', 'Zostań'))) return;
+              if (stored.current !== entry.current) save(entry.current);
+              setEditing(false);
+            })()
+          }
         />
       </View>
       {draft.trim() ? (

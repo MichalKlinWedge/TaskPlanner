@@ -571,7 +571,8 @@ function useEntries(data: AppData, from: LocalDate, to: LocalDate, today: LocalD
 function EntryList({ entries, tasks, info, limit }: { entries: readonly CalendarEntry[]; tasks: Map<string, ViewTask>; info: Map<string, EventInfo>; limit: number }) {
   const p = usePalette();
   const [shown, setShown] = useState(limit);
-  if (!entries.length) return <Text style={{ color: p.muted, fontSize: 12 }}>Nic nie zaplanowano.</Text>;
+  const { loaded } = useView().data;
+  if (!entries.length) return <Text style={{ color: p.muted, fontSize: 12 }}>{loaded ? 'Nic nie zaplanowano.' : 'Wczytywanie…'}</Text>;
   return (
     <>
       {entries.slice(0, shown).map((e) => (

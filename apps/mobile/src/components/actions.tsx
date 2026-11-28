@@ -16,17 +16,21 @@ import { mutate, onRejectedOps } from '@/lib/sync';
 
 import { usePalette } from './ui';
 
+/** „Cofnij”: operacje na zadaniach albo własna funkcja (np. przywrócenie wpisu w dzwonku). */
+type Undo = TaskOp[] | (() => Promise<void> | void);
+
 interface Toast {
   id: number;
   text: string;
-  undo?: TaskOp[];
+  undo?: Undo;
 }
 
 export interface TaskActions {
   toggle: (task: ViewTask, opts?: { habitDone?: boolean }) => Promise<void>;
   /** Zapis operacji po kolei; z `toast` — dymek, z `undo` — także „Cofnij”. */
   run: (ops: readonly TaskOp[], toast?: { text: string; undo?: TaskOp[] }) => Promise<void>;
-  notify: (message: string) => void;
+  /** Dymek; z `undo` — także „Cofnij”. */
+  notify: (message: string, undo?: () => Promise<void> | void) => void;
   /** Zaznaczone zadania (tryb zaznaczania, gdy niepuste). */
   selected: ReadonlySet<string>;
   toggleSelected: (id: string) => void;
@@ -112,7 +116,7 @@ export function TaskActionsProvider({ children }: { children: ReactNode }) {
     const sub = AccessibilityInfo.addEventListener('screenReaderChanged', (on: boolean) => (screenReader.current = on));
     return () => sub.remove();
   }, []);
-  const show = useCallback((text: string, undo?: TaskOp[]) => {
+  const show = useCallback((text: string, undo?: Undo) => {
     setToast({ id: ++next.current, text, undo });
     AccessibilityInfo.announceForAccessibility(undo ? `${text}. Można cofnąć.` : text);
   }, []);
@@ -195,10 +199,10 @@ export function TaskActionsProvider({ children }: { children: ReactNode }) {
 
   const undo = async () => {
     if (!toast?.undo) return;
-    const ops = toast.undo;
+    const undoing = toast.undo;
     perfStart('cofnij');
     setToast(null);
-    await applyOps(ops).catch(fail);
+    await (typeof undoing === 'function' ? Promise.resolve(undoing()) : applyOps(undoing)).catch(fail);
   };
 
   return (

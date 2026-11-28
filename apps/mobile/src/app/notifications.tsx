@@ -25,7 +25,7 @@ import { pickOption } from '@/components/pickers';
 import { Button, Chip, P, Screen, usePalette } from '@/components/ui';
 import { useAppData } from '@/lib/app-data';
 import { markNotificationsShown, notificationRoute } from '@/lib/notifications';
-import { bellReminderDone, dismissBell, markBellRead, snoozeBellReminder, useBellNotifications } from '@/lib/reminder-bell';
+import { bellReminderDone, dismissBell, markBellRead, snoozeBellReminder, undismissBell, useBellNotifications } from '@/lib/reminder-bell';
 
 export default function NotificationsScreen() {
   const p = usePalette();
@@ -152,7 +152,11 @@ export default function NotificationsScreen() {
                       accessibilityRole="button"
                       accessibilityLabel="Usuń z listy"
                       hitSlop={6}
-                      onPress={() => void dismissBell([n]).catch(() => undefined)}
+                      onPress={() =>
+                        void dismissBell([n])
+                          .then(() => notify('Usunięto z listy powiadomień', () => undismissBell([n])))
+                          .catch(() => undefined)
+                      }
                       style={styles.dismiss}
                     >
                       <Text style={{ color: p.muted, fontSize: 16 }}>✕</Text>
@@ -166,7 +170,7 @@ export default function NotificationsScreen() {
       ) : (
         <P muted>{filter.only === 'unread' ? 'Wszystko przeczytane.' : 'Brak powiadomień.'}</P>
       )}
-      <P muted>Powiadomienia starsze niż 90 dni znikają same. Które zdarzenia trafiają tutaj i do zasobnika — Konto → Powiadomienia.</P>
+      <P muted>Powiadomienia starsze niż 90 dni znikają same. Które zdarzenia trafiają tutaj i do zasobnika — Ustawienia → Powiadomienia.</P>
     </Screen>
   );
 }

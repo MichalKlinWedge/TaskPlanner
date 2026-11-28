@@ -35,8 +35,8 @@ export default function AuthCallback() {
         {error ? (
           <>
             <P tone="bad">{error}</P>
-            <P muted>Link z maila działa raz i przez godzinę; nowy wyślesz z ekranu „Konto i serwer”.</P>
-            <Button title="Konto i serwer" onPress={() => router.replace('/settings')} />
+            <P muted>Link z maila działa raz i przez godzinę; nowy wyślesz z „Ustawień”.</P>
+            <Button title="Ustawienia" onPress={() => router.replace('/settings')} />
           </>
         ) : (
           <ActivityIndicator />

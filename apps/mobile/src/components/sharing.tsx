@@ -148,7 +148,12 @@ export function SharingSection({ workspaceId, name }: { workspaceId: string; nam
     if (online) void Promise.resolve().then(load);
   }, [load, online]);
 
-  if (!online) return null;
+  if (!online)
+    return (
+      <Section title="Osoby">
+        <P muted>Udostępnianie przestrzeni wymaga konta — zaloguj się w „Ustawieniach”.</P>
+      </Section>
+    );
 
   const act = async (work: () => Promise<unknown>) => {
     setBusy(true);
@@ -246,7 +251,15 @@ export function SharingSection({ workspaceId, name }: { workspaceId: string; nam
   return (
     <Section title="Osoby">
       {sharing?.members.map((m) => (
-        <Pressable key={m.userId} disabled={!canManageMember(me, m) || busy} onPress={() => void memberMenu(m)} style={[styles.row, { borderTopColor: p.border }]}>
+        <Pressable
+          key={m.userId}
+          accessibilityRole="button"
+          accessibilityLabel={`${m.email}, ${memberRoleLabel(m, sharing.members)}`}
+          accessibilityHint={canManageMember(me, m) ? 'Zmień rolę albo usuń z przestrzeni' : undefined}
+          disabled={!canManageMember(me, m) || busy}
+          onPress={() => void memberMenu(m)}
+          style={[styles.row, { borderTopColor: p.border }]}
+        >
           <View style={{ flex: 1 }}>
             <Text style={{ color: p.fg }} numberOfLines={1}>
               {m.email}
@@ -255,10 +268,18 @@ export function SharingSection({ workspaceId, name }: { workspaceId: string; nam
             {memberSince(m.joinedAt) ? <Text style={{ color: p.muted, fontSize: 12 }}>{memberSince(m.joinedAt)}</Text> : null}
           </View>
           <Text style={{ color: p.muted, fontSize: 12 }}>{memberRoleLabel(m, sharing.members)}</Text>
+          {canManageMember(me, m) ? <Text style={{ color: p.muted, fontSize: 18 }}>⋯</Text> : null}
         </Pressable>
       ))}
       {offers.map((o) => (
-        <Pressable key={o.id} disabled={!owner || !(o.mine || me?.primary) || busy} onPress={() => offerMenu(o)} style={[styles.row, { borderTopColor: p.border }]}>
+        <Pressable
+          key={o.id}
+          accessibilityRole="button"
+          accessibilityHint={owner && (o.mine || me?.primary) ? 'Anuluj propozycję' : undefined}
+          disabled={!owner || !(o.mine || me?.primary) || busy}
+          onPress={() => offerMenu(o)}
+          style={[styles.row, { borderTopColor: p.border }]}
+        >
           <View style={{ flex: 1 }}>
             <Text style={{ color: p.fg }} numberOfLines={1}>
               {o.email}
@@ -266,10 +287,11 @@ export function SharingSection({ workspaceId, name }: { workspaceId: string; nam
             <Text style={{ color: p.muted, fontSize: 12 }}>{o.expired ? 'propozycja wygasła' : `czeka na zgodę do ${date(o.expiresAt)}`}</Text>
           </View>
           <Text style={{ color: p.muted, fontSize: 12 }}>{o.after ? 'Przekazanie' : 'Właściciel'}</Text>
+          {owner && (o.mine || me?.primary) ? <Text style={{ color: p.muted, fontSize: 18 }}>⋯</Text> : null}
         </Pressable>
       ))}
       {sharing?.invites.map((i) => (
-        <Pressable key={i.id} disabled={busy} onPress={() => inviteMenu(i)} style={[styles.row, { borderTopColor: p.border }]}>
+        <Pressable key={i.id} accessibilityRole="button" accessibilityHint="Wyślij link albo cofnij zaproszenie" disabled={busy} onPress={() => inviteMenu(i)} style={[styles.row, { borderTopColor: p.border }]}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: p.fg }} numberOfLines={1}>
               {i.email}
@@ -277,6 +299,7 @@ export function SharingSection({ workspaceId, name }: { workspaceId: string; nam
             <Text style={{ color: p.muted, fontSize: 12 }}>{i.expired ? 'zaproszenie wygasło' : `czeka od ${date(i.createdAt)}`}</Text>
           </View>
           <Text style={{ color: p.muted, fontSize: 12 }}>{SCOPE_ROLE[i.role]}</Text>
+          <Text style={{ color: p.muted, fontSize: 18 }}>⋯</Text>
         </Pressable>
       ))}
       {owner ? (

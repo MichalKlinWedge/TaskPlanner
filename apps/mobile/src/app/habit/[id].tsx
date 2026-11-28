@@ -98,9 +98,11 @@ export default function HabitScreen() {
     router.back();
   };
   // Cykliczne z passą → zwykła seria (ekran zadania); przy odmowie — powód.
-  const toSeries = () => {
+  const toSeries = async () => {
     const problem = habitToSeriesProblem(task);
     if (problem) return Alert.alert(HABIT_CONVERT.toSeries, problem);
+    // Zmiana rodzaju i przejście na inny ekran — najpierw pytanie (historia wykonań zostaje).
+    if (!(await confirm(`${HABIT_CONVERT.toSeries}?`, `„${task.title}” stanie się zwykłym zadaniem z powtarzaniem: bez passy i statystyk nawyku. Historia wykonań zostaje, a „Zamień na nawyk” w zadaniu przywraca nawyk.`, 'Zamień', 'Anuluj'))) return;
     const result = habitToSeriesOps(task, completions, today);
     void run(result.ops, { text: result.message, undo: result.undo });
     router.replace({ pathname: '/task/[id]', params: { id: task.id } });
@@ -124,7 +126,7 @@ export default function HabitScreen() {
         <Button kind="danger" title="Usuń" onPress={() => void remove()} />
       </Row>
       <Row>
-        <Button kind="secondary" title={HABIT_CONVERT.toSeries} onPress={toSeries} />
+        <Button kind="secondary" title={HABIT_CONVERT.toSeries} onPress={() => void toSeries()} />
       </Row>
 
       <View style={styles.stats}>

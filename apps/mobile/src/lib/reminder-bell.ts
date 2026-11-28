@@ -183,6 +183,15 @@ export function dismissBell(list: readonly AppNotification[]) {
   return ops.length ? mutateMany(ops) : Promise.resolve();
 }
 
+/** „Cofnij” po `dismissBell`: wpisy wracają do dzwonka (przypomnienia — z listy odrzuconych, wiersze — `deleted_at`). */
+export function undismissBell(list: readonly AppNotification[]) {
+  const ids = new Set(list.map((n) => n.id));
+  const state = bellState();
+  setBell({ ...state, dismissed: state.dismissed.filter((id) => !ids.has(id)) });
+  const ops = dismissOps(list, new Date()).map((op) => ({ ...op, patch: { deleted_at: null } }));
+  return ops.length ? mutateMany(ops) : Promise.resolve();
+}
+
 // ── Akcje przy przypomnieniu ─────────────────────────────────────────────────────────────────
 
 const fireKey = (n: AppNotification) => n.id.slice(2);

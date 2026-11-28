@@ -57,7 +57,7 @@ export default function TrashScreen() {
             </Pressable>
             <View style={styles.buttons}>
               <Button kind="secondary" title="Przywróć" disabled={!listEditable(data, t.listId)} onPress={() => void run(trashPreview(trashed, t.id, alive)?.restore ?? [], { text: `Przywrócono „${t.title}”` })} />
-              <PurgeButton kind="secondary" task={t} inside={inside} />
+              <PurgeButton kind="danger" task={t} inside={inside} />
             </View>
           </View>
         );

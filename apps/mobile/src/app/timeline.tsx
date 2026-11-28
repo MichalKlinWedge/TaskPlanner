@@ -420,7 +420,7 @@ export default function TimelineScreen() {
             <Chip label="Pokaż wszystkie" onPress={() => setHidden(new Set(hiddenElsewhere()))} />
           </View>
         ) : (
-          <Text style={[styles.empty, { color: p.muted }]}>Brak projektów w tej przestrzeni — oś pokazuje listy typu „projekt”.</Text>
+          <Text style={[styles.empty, { color: p.muted }]}>{data.loaded ? 'Brak projektów w tej przestrzeni — oś pokazuje listy typu „projekt”.' : 'Wczytywanie…'}</Text>
         )
       ) : (
         <ScrollView stickyHeaderIndices={[0]} contentContainerStyle={{ paddingBottom: 24 + insets.bottom }}>

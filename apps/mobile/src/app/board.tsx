@@ -560,13 +560,13 @@ export default function BoardScreen() {
                 </BoardCard>
               )}
               ListFooterComponent={insertBefore === null ? <View style={[styles.dropLine, { backgroundColor: p.accent }]} /> : undefined}
-              ListEmptyComponent={<Text style={[styles.empty, { color: p.muted }]}>Pusta kolumna.</Text>}
+              ListEmptyComponent={<Text style={[styles.empty, { color: p.muted }]}>{data.loaded ? 'Pusta kolumna.' : 'Wczytywanie…'}</Text>}
               contentContainerStyle={{ paddingBottom: 48 + insets.bottom }}
             />
           </CellLayouts.Provider>
         </View>
       ) : (
-        <Text style={[styles.empty, { color: p.muted }]}>{by === 'tag' ? 'Brak tagów.' : 'Brak kolumn.'}</Text>
+        <Text style={[styles.empty, { color: p.muted }]}>{!data.loaded ? 'Wczytywanie…' : by === 'tag' ? 'Brak tagów.' : 'Brak kolumn.'}</Text>
       )}
       {drag ? (
         <Animated.View pointerEvents="none" style={[styles.ghost, { backgroundColor: p.bg, borderColor: p.accent }, ghost]}>
