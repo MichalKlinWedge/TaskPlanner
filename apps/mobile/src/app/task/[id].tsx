@@ -4,6 +4,8 @@
  * tylko informacyjnie), komentarze, zadanie nadrzędne, podzadania do 4 poziomów, zależności (M12), tagi, załączniki,
  * przypomnienia, powtarzanie (edytor M7, pomiń / zakończ serię), czas pracy (tylko przy włączonym trybie skupienia),
  * kosz. Kolejność sekcji jak w panelu zadania na webie.
+ * `mode=preview` (ikona oka w wierszu listy) — podgląd bez formularza (`TaskPreview`); przełącznik „Podgląd” / „Edytuj”
+ * w nagłówku zmienia tryb w miejscu.
  * Każda zmiana to `mutate` jednego pola — synchronizacja scala zmiany z innych urządzeń (§6).
  */
 import {
@@ -99,7 +101,8 @@ import { pickAmount, pickDate, pickOption, pickTime } from '@/components/pickers
 import { QuickAddField } from '@/components/quick-add-field';
 import { RecurrenceEditor } from '@/components/recurrence-editor';
 import { pickList, pickPriority } from '@/components/task-menus';
-import { TaskRow } from '@/components/task-row';
+import { TaskPreview } from '@/components/task-preview';
+import { EyeButton, EyeIcon, TaskRow } from '@/components/task-row';
 import { Button, usePalette } from '@/components/ui';
 import { listEditable, listLabel, useView, type AppData } from '@/lib/app-data';
 import { spentMinutes, useFocusData } from '@/lib/focus';
@@ -166,7 +169,8 @@ function Pill({ label, onPress, color }: { label: string; onPress: () => void; c
 }
 
 export default function TaskScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, mode } = useLocalSearchParams<{ id: string; mode?: string }>();
+  const preview = mode === 'preview';
   const p = usePalette();
   const { data: live, today } = useView();
   const actions = useTaskActions();
@@ -208,9 +212,37 @@ export default function TaskScreen() {
     router.back();
   };
 
+  const title = trash ? 'Zadanie w koszu' : listLabel(data, task.listId) || 'Zadanie';
+  const modeLabel = preview ? 'Edytuj' : 'Podgląd';
+  const modeSwitch = () => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={preview ? 'Przejdź do edycji zadania' : 'Pokaż podgląd zadania'}
+      hitSlop={8}
+      onPress={() => router.setParams({ mode: preview ? 'edit' : 'preview' })}
+      style={({ pressed }) => [styles.modeSwitch, { borderColor: p.border, backgroundColor: pressed ? p.border : 'transparent' }]}
+      testID="task-mode-switch"
+    >
+      {preview ? <Text style={{ color: p.accent, fontSize: 14, fontWeight: '600' }}>✎</Text> : <EyeIcon color={p.accent} size={16} />}
+      <Text style={{ color: p.accent, fontSize: 14, fontWeight: '600' }}>{modeLabel}</Text>
+    </Pressable>
+  );
+
+  if (preview) {
+    return (
+      <View style={{ flex: 1, backgroundColor: p.bg }}>
+        <Stack.Screen options={{ title, headerRight: modeSwitch }} />
+        <ScrollView contentContainerStyle={styles.body}>
+          {trash ? <TrashBar preview={trash} readOnly={listReadOnly} today={today} timeZone={data.settings.timeZone} /> : null}
+          <TaskPreview task={task} data={data} today={today} trash={trash} />
+        </ScrollView>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: p.bg }} behavior="height">
-      <Stack.Screen options={{ title: trash ? 'Zadanie w koszu' : listLabel(data, task.listId) || 'Zadanie' }} />
+      <Stack.Screen options={{ title, headerRight: modeSwitch }} />
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {parent ? (
           <Pressable accessibilityRole="link" onPress={() => router.replace({ pathname: '/task/[id]', params: { id: parent.id } })}>
@@ -406,10 +438,13 @@ function TrashedRow({ task, today }: { task: ViewTask; today: LocalDate }) {
       onPress={() => router.push({ pathname: '/task/[id]', params: { id: task.id } })}
       style={({ pressed }) => [styles.trashedRow, { borderColor: p.border, backgroundColor: pressed ? p.border : undefined }]}
     >
-      <Text style={{ color: closed ? p.muted : p.fg, fontSize: 15, textDecorationLine: closed ? 'line-through' : 'none' }}>
-        {closed ? '✓ ' : ''}
-        {task.title}
-      </Text>
+      <View style={styles.trashedTitle}>
+        <Text style={{ flex: 1, color: closed ? p.muted : p.fg, fontSize: 15, textDecorationLine: closed ? 'line-through' : 'none' }}>
+          {closed ? '✓ ' : ''}
+          {task.title}
+        </Text>
+        <EyeButton taskId={task.id} title={task.title} />
+      </View>
       {task.dueDate ? <Text style={{ color: p.muted, fontSize: 12 }}>{relativeDay(task.dueDate, today)}</Text> : null}
     </Pressable>
   );
@@ -1207,6 +1242,8 @@ const styles = StyleSheet.create({
   readOnly: { fontSize: 13, borderRadius: 8, padding: 8 },
   trash: { borderRadius: 8, padding: 10, gap: 8 },
   trashedRow: { paddingHorizontal: 12, paddingVertical: 9, gap: 2, borderBottomWidth: StyleSheet.hairlineWidth },
+  trashedTitle: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  modeSwitch: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   check: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   tick: { color: '#fff', fontSize: 14, fontWeight: '700' },
   title: { flex: 1, fontSize: 20, fontWeight: '600', paddingVertical: 4 },

@@ -81,8 +81,12 @@ function photoName(mime?: string) {
 type Shown = { id: string; storagePath: string | null; name: string; mime: string | null };
 const pendingItem = (f: PendingFile): Shown => ({ id: f.id, storagePath: null, name: f.name, mime: f.mime });
 
-/** `readOnly` — przestrzeń udostępniona do podglądu: tylko otwieranie, bez dodawania i usuwania. */
-export function AttachmentsField({ taskId, readOnly = false }: { taskId: string; readOnly?: boolean }) {
+/**
+ * `readOnly` — przestrzeń udostępniona do podglądu: tylko otwieranie, bez dodawania i usuwania.
+ * `summary` — podgląd zadania: same załączniki (bez przycisków dodawania i usuwania) bez własnej karty sekcji.
+ */
+export function AttachmentsField({ taskId, readOnly: locked = false, summary = false }: { taskId: string; readOnly?: boolean; summary?: boolean }) {
+  const readOnly = locked || summary;
   const p = usePalette();
   const { run, notify } = useTaskActions();
   const items = useAttachments(taskId);
@@ -179,14 +183,16 @@ export function AttachmentsField({ taskId, readOnly = false }: { taskId: string;
   const files = items.filter((a) => a.kind === 'file');
   const count = items.length + waiting.length;
 
-  return (
-    <PanelSection id="attachments" title="Załączniki" count={count || undefined}>
+  const content = (
+    <>
+      {summary ? null : (
       <View style={styles.actions}>
         <Action label="📷 Aparat" disabled={readOnly} onPress={() => void camera()} />
         <Action label="🖼 Galeria" disabled={readOnly} onPress={() => void gallery()} />
         <Action label="📎 Plik" disabled={readOnly} onPress={() => void document()} />
         <Action label="🔗 Link" disabled={readOnly} onPress={() => setLinking((v) => !v)} />
       </View>
+      )}
       {linking ? (
         <View style={styles.linkRow}>
           <TextInput
@@ -221,7 +227,7 @@ export function AttachmentsField({ taskId, readOnly = false }: { taskId: string;
         </View>
       ) : null}
 
-      {!count && !linking ? <Text style={{ color: p.muted, fontSize: 12 }}>{readOnly ? 'Brak załączników.' : 'Zdjęcie, plik do 25 MB albo link.'}</Text> : null}
+      {!count && !linking && !summary ? <Text style={{ color: p.muted, fontSize: 12 }}>{readOnly ? 'Brak załączników.' : 'Zdjęcie, plik do 25 MB albo link.'}</Text> : null}
 
       <Modal visible={!!image} transparent animationType="fade" onRequestClose={() => setImage(null)}>
         <Pressable accessibilityLabel="Zamknij podgląd" style={styles.viewer} onPress={() => setImage(null)}>
@@ -235,6 +241,12 @@ export function AttachmentsField({ taskId, readOnly = false }: { taskId: string;
           </View>
         ) : null}
       </Modal>
+    </>
+  );
+  if (summary) return <View style={styles.summary}>{content}</View>;
+  return (
+    <PanelSection id="attachments" title="Załączniki" count={count || undefined}>
+      {content}
     </PanelSection>
   );
 }
@@ -373,6 +385,7 @@ function PendingTile({ file, offline, onOpen, onMenu }: { file: PendingFile; off
 
 const styles = StyleSheet.create({
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  summary: { gap: 8 },
   action: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6 },
   linkRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   input: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 15 },

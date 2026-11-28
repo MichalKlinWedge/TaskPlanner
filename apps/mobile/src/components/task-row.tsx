@@ -2,7 +2,8 @@
  * Wiersz zadania (MVP-3): kółko ukończenia w kolorze priorytetu, tytuł, termin / godzina /
  * powtarzanie / postęp podzadań / lista. Gesty: przesunięcie w prawo = ukończ, w lewo = menu
  * terminu; długie przytrzymanie = zaznaczanie (potem dotknięcie dokłada kolejne), dotknięcie =
- * szczegóły zadania. Wirtualne wystąpienie serii (Nadchodzące) — tylko do odczytu.
+ * szczegóły zadania, ikona oka obok tytułu = podgląd (`EyeButton`, jak na webie). Wirtualne wystąpienie serii
+ * (Nadchodzące) — tylko do odczytu.
  *
  * Szybkie otwarcie listy (`docs/WYDAJNOSC.md` § Telefon): gest przesunięcia (`Swipeable` — gest,
  * wartości współdzielone i trzy widoki animowane na wiersz) dochodzi dopiero po pierwszym
@@ -93,13 +94,49 @@ export function Highlighted({ text, ranges }: { text: string; ranges: readonly (
   );
 }
 
+/** Otwiera zadanie w trybie podglądu (ekran zadania z `mode=preview`: podsumowanie bez formularza). */
+export const openTaskPreview = (id: string) => router.push({ pathname: '/task/[id]', params: { id, mode: 'preview' } });
+
+/** Ikona oka (obrys oka + źrenica) w kolorze tekstu. */
+export function EyeIcon({ color, size = 18 }: { color: string; size?: number }) {
+  const h = Math.round(size * 0.62);
+  const pupil = Math.round(size * 0.3);
+  return (
+    <View style={{ width: size, height: h, borderRadius: h, borderWidth: 1.6, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: pupil, height: pupil, borderRadius: pupil, backgroundColor: color }} />
+    </View>
+  );
+}
+
+/** Przycisk podglądu obok nazwy zadania na liście (jak ikona oka w wierszu na webie). */
+export function EyeButton({ taskId, title, onPress }: { taskId: string; title: string; onPress?: () => void }) {
+  const p = usePalette();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Podgląd zadania „${title}”`}
+      hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+      onPress={() => {
+        onPress?.();
+        openTaskPreview(taskId);
+      }}
+      style={({ pressed }) => [styles.eye, { backgroundColor: pressed ? p.border : 'transparent' }]}
+      testID="task-preview-open"
+    >
+      <EyeIcon color={p.muted} />
+    </Pressable>
+  );
+}
+
 /** Szerokości kolumn — wspólne dla wiersza i nagłówka `TaskColumnsHeader`. */
 const COLUMN_WIDTH: Record<ListColumn, number> = { start: 50, due: 56, duration: 48, description: 36, attachments: 64, tags: 80 };
+/** Szerokość przycisku podglądu (`styles.eye`). */
+const EYE_WIDTH = 28;
 /** Najmniejsza szerokość tytułu obok kolumn — węższy ekran przewija listę w poziomie. */
 const TITLE_MIN = 180;
 
 /** Szerokość wiersza z kolumnami, przy której tytuł ma jeszcze `TITLE_MIN` (odstępy i kółko jak w `styles.row`). */
-export const columnsRowWidth = (columns: readonly ListColumn[]) => 12 + 22 + 10 + TITLE_MIN + columns.reduce((sum, c) => sum + 10 + COLUMN_WIDTH[c], 0) + 12;
+export const columnsRowWidth = (columns: readonly ListColumn[]) => 12 + 22 + 10 + TITLE_MIN + 10 + EYE_WIDTH + columns.reduce((sum, c) => sum + 10 + COLUMN_WIDTH[c], 0) + 12;
 
 /**
  * Lista szersza niż ekran (`TaskSections`): przesunięcie poziome, widoczna szerokość i szerokość wierszy.
@@ -124,6 +161,7 @@ export function TaskColumnsHeader({ columns }: { columns: readonly ListColumn[] 
   return (
     <Animated.View style={[styles.columnsHeader, { borderColor: p.border }, wide ? { width: wide.width } : null, shift]}>
       <View style={{ flex: 1 }} />
+      <View style={{ width: EYE_WIDTH }} />
       {columns.map((c) => (
         <Text key={c} style={[styles.column, { width: COLUMN_WIDTH[c], color: p.muted, fontWeight: '600' }]} numberOfLines={1}>
           {LIST_COLUMN[c]}
@@ -277,6 +315,8 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
           </Text>
         ) : null}
       </View>
+      {/* Przy zaznaczaniu puste miejsce zamiast oka — kolumny zostają pod nagłówkiem. */}
+      {selecting ? <View style={{ width: EYE_WIDTH }} /> : <EyeButton taskId={task.id} title={task.title} onPress={onOpen} />}
       {onLater && !readOnly && !selecting ? (
         <Pressable
           accessibilityRole="button"
@@ -388,6 +428,7 @@ const styles = StyleSheet.create({
   columnsHeader: { flexDirection: 'row', gap: 10, paddingRight: 12, paddingTop: 6, paddingBottom: 4, borderBottomWidth: StyleSheet.hairlineWidth },
   today: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
   bad: { fontWeight: '600' },
+  eye: { width: EYE_WIDTH, height: 24, borderRadius: 6, alignItems: 'center', justifyContent: 'center', marginTop: -1 },
   action: { flex: 1, justifyContent: 'center' },
   left: { alignItems: 'flex-start', paddingLeft: 20 },
   right: { alignItems: 'flex-end', paddingRight: 20 },

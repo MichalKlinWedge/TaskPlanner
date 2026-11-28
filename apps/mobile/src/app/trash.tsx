@@ -11,6 +11,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTaskActions } from '@/components/actions';
 import { FilterBar } from '@/components/filter-bar';
 import { PurgeButton } from '@/components/purge-button';
+import { EyeButton } from '@/components/task-row';
 import { Button, P, usePalette } from '@/components/ui';
 import { listEditable, listLabel, useView } from '@/lib/app-data';
 import { useTrash } from '@/lib/trash';
@@ -49,7 +50,10 @@ export default function TrashScreen() {
               style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.6 : 1 })}
               onPress={() => router.push({ pathname: '/task/[id]', params: { id: t.id } })}
             >
-              <Text style={{ color: p.fg, fontSize: 15 }}>{t.title}</Text>
+              <View style={styles.title}>
+                <Text style={{ color: p.fg, fontSize: 15, flex: 1 }}>{t.title}</Text>
+                <EyeButton taskId={t.id} title={t.title} />
+              </View>
               <Text style={{ color: p.muted, fontSize: 12 }}>
                 {trashListLabel(t, listLabel(data, t.listId))} · {new Date(t.deletedAt).toLocaleString('pl-PL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 {inside ? ` · z ${plural(inside, ['podzadaniem', 'podzadaniami', 'podzadaniami'])}` : ''}
@@ -68,5 +72,6 @@ export default function TrashScreen() {
 
 const styles = StyleSheet.create({
   buttons: { gap: 6 },
+  title: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
 });

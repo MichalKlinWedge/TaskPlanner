@@ -39,6 +39,7 @@ import { STATE_LABEL, useStateColors } from '@/components/habits';
 import { pickDate } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
 import { DecisionButtons, useDecide, useReviewSession, type LogEntry, type ReviewKindKey } from '@/components/review';
+import { EyeButton } from '@/components/task-row';
 import { Button, Chip, ColorDot, usePalette } from '@/components/ui';
 import { WeekSummaryStep } from '@/components/week-summary';
 import { useAiAccount } from '@/lib/ai';
@@ -147,6 +148,7 @@ export default function WeeklyReviewScreen() {
             {needsDecision(task) ? <Text style={[styles.warn, { color: p.warnFg, backgroundColor: p.warnBg }]}>{task.postponeCount}× przesuwane</Text> : null}
           </View>
         </View>
+        <EyeButton taskId={task.id} title={task.title} />
       </Pressable>
       <DecisionButtons compact onPick={(k) => void pickFor(task)(k)} disabled={task.recurrence ? ['someday'] : []} trailing={trailing} />
       {below}
@@ -201,10 +203,11 @@ export default function WeeklyReviewScreen() {
               <Text style={{ color: p.muted, fontSize: 12 }}>{plural(open.length, ['otwarte zadanie', 'otwarte zadania', 'otwartych zadań'])} bez terminu</Text>
               {open.slice(0, 5).map((t) => (
                 <View key={t.id} style={[styles.nextTask, { borderColor: p.border }]}>
-                  <Pressable onPress={() => router.push({ pathname: '/task/[id]', params: { id: t.id } })} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-                    <Text style={{ color: p.fg, fontSize: 15, fontWeight: '500' }} numberOfLines={2}>
+                  <Pressable onPress={() => router.push({ pathname: '/task/[id]', params: { id: t.id } })} style={({ pressed }) => [styles.rowHead, { opacity: pressed ? 0.6 : 1 }]}>
+                    <Text style={{ color: p.fg, fontSize: 15, fontWeight: '500', flex: 1 }} numberOfLines={2}>
                       {t.title}
                     </Text>
+                    <EyeButton taskId={t.id} title={t.title} />
                   </Pressable>
                   <View style={styles.next}>
                     <Text style={{ color: p.muted, fontSize: 12 }}>następny krok:</Text>
@@ -256,6 +259,7 @@ export default function WeeklyReviewScreen() {
                     {it.task.title}
                   </Text>
                   {it.task.dueTime ? <Text style={{ color: p.muted, fontSize: 12 }}>{it.task.dueTime}</Text> : null}
+                  <EyeButton taskId={it.task.id} title={it.task.title} />
                 </Pressable>
               ))
             ) : (
