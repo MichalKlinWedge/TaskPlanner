@@ -334,7 +334,15 @@ function TaskDetails({ task, trash }: { task: ViewTask; trash?: TrashPreview<Tra
         <Block id="details" title="Szczegóły">
         <div className="grid grid-cols-2 gap-3 @xl:grid-cols-3">
           <Field label="Status">
-            <Select value={task.status} onChange={(e) => void update(e.target.value === "done" || e.target.value === "cancelled" ? { status: e.target.value, completed_at: new Date().toISOString() } : { status: e.target.value, completed_at: null })}>
+            <Select
+              value={task.status}
+              onChange={(e) =>
+                // „Gotowe” w otwartej serii = ukończenie wystąpienia (jak kółko), nie zamknięcie całej serii.
+                e.target.value === "done" && task.kind === "task" && task.recurrence && isOpen(task)
+                  ? void toggle(task)
+                  : void update(e.target.value === "done" || e.target.value === "cancelled" ? { status: e.target.value, completed_at: new Date().toISOString() } : { status: e.target.value, completed_at: null })
+              }
+            >
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {TASK_STATUS[s]}

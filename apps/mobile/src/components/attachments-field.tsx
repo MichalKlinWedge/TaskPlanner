@@ -6,7 +6,7 @@
  * (systemowy arkusz — też zapis do plików) i „Otwórz w innej aplikacji”. Link ma ikonę strony z podglądu i ✕;
  * plik, którego nie udało się wysłać, pokazuje przyczynę z kolejki.
  */
-import { attachmentView, fileProblem, formatBytes, linkAttachmentOp, parseHttpUrl, plural, AttachmentPreview, type NewFile } from '@taskplanner/core';
+import { attachmentView, fileProblem, formatBytes, linkAttachmentOp, parseHttpUrl, plural, AttachmentPreview, type AttachmentView, type NewFile } from '@taskplanner/core';
 import type { PendingFile, SqlRow } from '@taskplanner/sync';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -85,6 +85,9 @@ const pendingItem = (f: PendingFile): Shown => ({ id: f.id, storagePath: null, n
  * `readOnly` — przestrzeń udostępniona do podglądu: tylko otwieranie, bez dodawania i usuwania.
  * `summary` — podgląd zadania: same załączniki (bez przycisków dodawania i usuwania) bez własnej karty sekcji.
  */
+/** RN `Image` nie rysuje SVG — na telefonie SVG otwiera się jak plik (systemowy podgląd), z ikoną 📦. */
+const phoneView = (mime: string | null | undefined): AttachmentView => (mime && /^image\/svg\+xml$/i.test(mime) ? 'other' : attachmentView(mime));
+
 export function AttachmentsField({ taskId, readOnly: locked = false, summary = false }: { taskId: string; readOnly?: boolean; summary?: boolean }) {
   const readOnly = locked || summary;
   const p = usePalette();
@@ -145,7 +148,7 @@ export function AttachmentsField({ taskId, readOnly: locked = false, summary = f
   const open = async (item: Shown) => {
     try {
       const file = await localFile(item);
-      if (attachmentView(item.mime) === 'image') setImage({ uri: file.uri, item });
+      if (phoneView(item.mime) === 'image') setImage({ uri: file.uri, item });
       else await file.preview({ mimeType: item.mime ?? undefined, title: item.name });
     } catch (error) {
       notify(error instanceof Error ? error.message : String(error));
@@ -276,7 +279,7 @@ function ViewerButton({ label, onPress }: { label: string; onPress: () => void }
 
 /** Miniatura obrazu (z pliku na telefonie; z serwera pobierana przy pierwszym pokazaniu) albo ikona typu. */
 function Thumb({ item }: { item: { id: string; storagePath: string | null; mime: string | null } }) {
-  const kind = attachmentView(item.mime);
+  const kind = phoneView(item.mime);
   const [uri, setUri] = useState(() => (kind === 'image' ? localUri(item) : null));
   useEffect(() => {
     if (kind !== 'image' || uri) return;

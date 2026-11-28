@@ -109,8 +109,9 @@ export default function FocusScreen() {
     await toggle(task);
   };
 
+  // Wartość spoza listy (ustawiona na webie) też jest na liście i zaznaczona.
   const setLength = (key: LengthKey, values: number[], label: string) =>
-    void pickOption<number>(label, values.map((v) => ({ label: key === 'longBreakEvery' ? `co ${v} etapy` : formatMinutes(v), value: v, selected: settings[key] === v }))).then((v) => {
+    void pickOption<number>(label, (values.includes(settings[key]) ? values : [...values, settings[key]].sort((x, y) => x - y)).map((v) => ({ label: key === 'longBreakEvery' ? `co ${v} etapy` : formatMinutes(v), value: v, selected: settings[key] === v }))).then((v) => {
       if (v === undefined || v === settings[key]) return;
       void mutate('profiles', data.userId, { settings: { ...data.settings, focus: { ...settings, [key]: v } } }).catch((e: unknown) => notify(String(e)));
     });

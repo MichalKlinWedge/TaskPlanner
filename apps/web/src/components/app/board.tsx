@@ -146,7 +146,8 @@ function Column({
   sortRef?: (node: HTMLElement | null) => void;
   sortStyle?: CSSProperties;
 }) {
-  const { workspaceId } = useAppEnv();
+  // Postęp podzadań i tytuł rodzica z pełnych danych, nie z przefiltrowanych (jak na telefonie): filtr nie zmienia „☑ 2/5”.
+  const { workspaceId, data: all } = useAppEnv();
   const { setNodeRef, isOver } = useDroppable({ id: `column:${column.key}`, data: { column: column.key } });
   const [shown, setShown] = useState(PAGE);
   const [collapsed, setCollapsed] = useState(false);
@@ -159,10 +160,10 @@ function Column({
   const ids = useMemo(() => visible.map((t) => cardId(column.key, t.id)), [visible, column.key]);
   const tagById = useMemo(() => new Map(data.tags.map((t) => [t.id, t])), [data.tags]);
   const listName = useMemo(() => boardListNames(data, workspaceId), [data, workspaceId]);
-  const parents = useMemo(() => (smart?.options.subtasks ? new Map(data.tasks.map((t) => [t.id, t.title])) : null), [smart, data.tasks]);
+  const parents = useMemo(() => (smart?.options.subtasks ? new Map(all.tasks.map((t) => [t.id, t.title])) : null), [smart, all.tasks]);
   const children = useMemo(() => {
     const map = new Map<string, { done: number; total: number }>();
-    for (const t of data.tasks) {
+    for (const t of all.tasks) {
       if (!t.parentId || t.status === "cancelled") continue;
       const p = map.get(t.parentId) ?? { done: 0, total: 0 };
       p.total++;
@@ -170,7 +171,7 @@ function Column({
       map.set(t.parentId, p);
     }
     return map;
-  }, [data.tasks]);
+  }, [all.tasks]);
 
   // Dodanie w kolumnie dostaje jej atrybut (status / priorytet / dzień / tag / lista).
   const add = {

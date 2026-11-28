@@ -78,9 +78,11 @@ export function DayPlan({ data, ctx, settings, date: fixed }: { data: AppData; c
 
   const taskById = useMemo(() => new Map(data.tasks.map((t) => [t.id, t])), [data.tasks]);
   // Szkic osobno dla każdego dnia — przełączenie go nie gubi, a spóźniona odpowiedź AI trafia do swojego dnia.
-  const [previews, setPreviews] = useState<Record<LocalDate, PlanPreview | null>>({});
-  const preview = previews[date] ?? null;
-  const setPreview = (next: PlanPreview | null) => setPreviews((all) => ({ ...all, [date]: next }));
+  // Szkic na dzień i przestrzeń (jak na telefonie): szkic ułożony w jednej przestrzeni nie pokazuje się w innej, wraca po powrocie.
+  const [previews, setPreviews] = useState<Record<string, PlanPreview | null>>({});
+  const previewKey = `${ctx.workspaceId ?? ""}:${date}`;
+  const preview = previews[previewKey] ?? null;
+  const setPreview = (next: PlanPreview | null) => setPreviews((all) => ({ ...all, [previewKey]: next }));
   // Zadania zamknięte od ułożenia znikają ze szkicu.
   const draft = useMemo(() => preview && { ...preview, blocks: preview.blocks.filter((b) => isOpen(taskById.get(b.taskId) ?? { status: "cancelled" })) }, [preview, taskById]);
 

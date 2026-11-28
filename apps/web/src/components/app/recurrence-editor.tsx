@@ -54,6 +54,7 @@ export function RecurrenceEditor({
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState<RecurrenceDraft>(() => draftFromRecurrence(value, anchor));
+  const [monthDaysText, setMonthDaysText] = useState<string | null>(null);
   const [advanced, setAdvanced] = useState(value !== null);
   const [text, setText] = useState("");
   const [textError, setTextError] = useState<string | null>(null);
@@ -142,15 +143,18 @@ export function RecurrenceEditor({
               {draft.monthlyBy === "day" ? (
                 <Input
                   aria-label="Dni miesiąca"
-                  value={draft.monthDays.map((d) => (d === -1 ? "ostatni" : d)).join(", ")}
-                  onChange={(e) =>
+                  // Wpisywany tekst w buforze (jak na telefonie): przeliczanie przy każdym znaku zjadało przecinek.
+                  value={monthDaysText ?? draft.monthDays.map((d) => (d === -1 ? "ostatni" : d)).join(", ")}
+                  onChange={(e) => {
+                    setMonthDaysText(e.target.value);
                     set({
                       monthDays: e.target.value
                         .split(/[,\s]+/)
                         .filter(Boolean)
                         .map((p) => (/^ost/i.test(p) ? -1 : num(p))),
-                    })
-                  }
+                    });
+                  }}
+                  onBlur={() => setMonthDaysText(null)}
                   placeholder="np. 15, ostatni"
                   className="w-36"
                 />

@@ -286,7 +286,12 @@ export default function TaskScreen() {
                 then(pickOption<TaskStatus>(
                   'Status',
                   STATUSES.map((s) => ({ label: TASK_STATUS[s], value: s, selected: s === task.status })),
-                ), (s) => s && s !== task.status && update(s === 'done' || s === 'cancelled' ? { status: s, completed_at: new Date().toISOString() } : { status: s, completed_at: null }))
+                ), (s) =>
+                  s && s !== task.status &&
+                  // „Gotowe” w otwartej serii = ukończenie wystąpienia (jak kółko), nie zamknięcie całej serii.
+                  (s === 'done' && task.kind === 'task' && task.recurrence && isOpen(task)
+                    ? toggle(task)
+                    : update(s === 'done' || s === 'cancelled' ? { status: s, completed_at: new Date().toISOString() } : { status: s, completed_at: null })))
               }
             />
             <Cell label="Priorytet" value={PRIORITY[task.priority].label} tone={color} onPress={() => then(pickPriority('Priorytet', task.priority), (v) => v && v !== task.priority && update({ priority: v }))} />
@@ -350,6 +355,13 @@ export default function TaskScreen() {
             ) : null}
           </View>
           </Block>
+
+          {/* Nawyk otwarty jak zwykłe zadanie (np. z Szukaj) — przejście do jego ekranu, jak sekcja „Nawyk” na webie. */}
+          {task.kind === 'habit' && !trash ? (
+            <Block id="Nawyk" title="Nawyk" readable>
+              <Button kind="secondary" title="Statystyki, harmonogram i cel →" onPress={() => router.push({ pathname: '/habit/[id]', params: { id: task.id } })} />
+            </Block>
+          ) : null}
 
           <Block title="Opis" readable>
             <DescriptionField key={task.id} taskId={task.id} readOnly={readOnly} />
