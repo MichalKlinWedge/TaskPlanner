@@ -131,4 +131,12 @@ describe('sortowanie widoków zbiorczych', () => {
     expect(smartSortChoice('today', { sortBy: 'due' })).toEqual({ by: 'due', dir: 'asc' });
     expect(smartSortChoice('inbox', undefined)).toEqual({ by: 'manual', dir: 'asc' });
   });
+
+  it('tag / filtr: bez „Domyślnie”, domyślnie po terminie, kierunek działa też bez zapisanego kryterium', () => {
+    expect(Object.keys(smartSortOptions('tag'))).toEqual(['priority', 'due', 'start', 'title', 'created']);
+    expect(smartSortChoice('filter', undefined)).toEqual({ by: 'due', dir: 'asc' });
+    expect(smartSortChoice('tag', { sortBy: 'manual' })).toEqual({ by: 'due', dir: 'asc' });
+    expect(smartSortChoice('tag', { sortDir: 'desc' })).toEqual({ by: 'due', dir: 'desc' });
+    expect(smartSortChoice('tag', { sortBy: 'title' })).toEqual({ by: 'title', dir: 'asc' });
+  });
 });

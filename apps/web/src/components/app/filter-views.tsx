@@ -29,7 +29,7 @@ export function filterCount(tasks: readonly ViewTask[], query: FilterQuery, ctx:
 
 /** Wyniki z kolumnami widoku (`view` z `useViewColumns`). */
 function Results({ data, ctx, query, view }: { data: AppData; ctx: ViewContext; query: FilterQuery; view: ReturnType<typeof useViewColumns> }) {
-  const tasks = sortTasks(filtered(data.tasks, query, ctx), "due");
+  const tasks = sortTasks(filtered(data.tasks, query, ctx), view.sort.by, view.sort.dir);
   const names = new Map(data.lists.map((l) => [l.id, l.kind === "inbox" ? `Inbox (${data.workspaces.find((w) => w.id === l.workspaceId)?.name})` : l.name]));
   if (!tasks.length) return <p className="py-6 text-center text-sm text-[var(--muted)]">Żadne zadanie nie pasuje.</p>;
   return (
@@ -87,7 +87,7 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
   const [renaming, setRenaming] = useState(false);
   const count = filtered(data.tasks, query, ctx).length;
   const update = (patch: Record<string, unknown>) => run([{ table: "tags", id: tag.id, patch }]);
-  const view = useViewColumns("tag", ctx);
+  const view = useViewColumns("tag", ctx, { sortable: true });
 
   return (
     <>
@@ -134,12 +134,15 @@ export function TagView({ data, ctx, tag, navigate }: { data: AppData; ctx: View
             </Button>
           </>
         )}
-        <TaskExportButton title={`@${tag.name}`} data={data} ctx={ctx} count={count} rows={() => sortTasks(filtered(data.tasks, query, ctx), "due").map((task) => ({ task }))} />
+        <TaskExportButton title={`@${tag.name}`} data={data} ctx={ctx} count={count} rows={() => sortTasks(filtered(data.tasks, query, ctx), view.sort.by, view.sort.dir).map((task) => ({ task }))} />
       </header>
       <div className="mb-3" hidden={tag.shared}>
         <WorkspaceChips ids={tag.workspaceIds} workspaces={data.workspaces} label="Przestrzenie tagu" onChange={(ids) => void update(tagWorkspacesPatch(ids))} />
       </div>
-      <div className="mb-2 flex flex-wrap gap-2">{view.picker}</div>
+      <div className="mb-2 flex flex-wrap gap-2">
+        {view.sortControls}
+        {view.picker}
+      </div>
       <FilterBar query={query} onChange={(q) => setQuery(q.tags ? q : { ...q, tags: base.tags })}>
         <SaveFilter query={query} onSaved={(id) => navigate({ view: "filter", id })} />
       </FilterBar>
@@ -182,7 +185,7 @@ export function SavedFilterView({ data, ctx, filter, navigate }: { data: AppData
   const changed = JSON.stringify(query) !== saved;
   const count = filtered(data.tasks, query, ctx).length;
   const update = (patch: Record<string, unknown>) => run([{ table: "saved_filters", id: filter.id, patch }]);
-  const view = useViewColumns("filter", ctx);
+  const view = useViewColumns("filter", ctx, { sortable: true });
   const names = {
     tags: new Map(data.tags.map((t) => [t.id, t.name])),
     lists: new Map(data.lists.map((l) => [l.id, l.name])),
@@ -232,10 +235,13 @@ export function SavedFilterView({ data, ctx, filter, navigate }: { data: AppData
         >
           Usuń filtr
         </Button>
-        <TaskExportButton title={filter.name} data={data} ctx={ctx} count={count} rows={() => sortTasks(filtered(data.tasks, query, ctx), "due").map((task) => ({ task }))} />
+        <TaskExportButton title={filter.name} data={data} ctx={ctx} count={count} rows={() => sortTasks(filtered(data.tasks, query, ctx), view.sort.by, view.sort.dir).map((task) => ({ task }))} />
       </header>
       {!changed ? <p className="mb-2 text-xs text-[var(--muted)]">{filterChips(filter.query, names).map((c) => c.label).join(" · ")}</p> : null}
-      <div className="mb-2 flex flex-wrap gap-2">{view.picker}</div>
+      <div className="mb-2 flex flex-wrap gap-2">
+        {view.sortControls}
+        {view.picker}
+      </div>
       <FilterBar query={query} onChange={setQuery} />
       <Results data={data} ctx={ctx} query={query} view={view} />
     </>

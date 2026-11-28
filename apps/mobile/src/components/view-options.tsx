@@ -7,6 +7,7 @@ import {
   LIST_COLUMN,
   orderedColumns,
   smartSortChoice,
+  smartSortDefault,
   smartSortOptions,
   smartViewsPatch,
   sortDirLabel,
@@ -112,9 +113,15 @@ export function useViewColumns(view: ViewSettingsKey, data: AppData, today: stri
   const prefs = data.settings.views[view];
   const cols = useColumns(prefs, data.tags);
   const setPrefs = (patch: Partial<SmartViewPrefs>) => void updateSettings((s) => ({ views: smartViewsPatch(s.views, view, patch) })).catch((e: unknown) => notify(e instanceof Error ? e.message : String(e)));
+  const sort = smartSort(data, view);
+  // Domyślne kryterium widoku (`smartSortDefault`) nie jest zapisywane — jak „Domyślnie” w widokach zbiorczych.
+  const setSort = (patch: { sortBy?: SortBy; sortDir?: SortDir }) => setPrefs({ ...patch, ...(patch.sortBy === smartSortDefault(view) && { sortBy: undefined }) });
   return {
     row: columnRowMaker(data, today, cols),
     chips: <ColumnChips {...cols} tags={tagsForWorkspace(data.tags, workspaceId, prefs?.columnTags)} onChange={setPrefs} />,
+    /** Chipy sortowania (`smartSort`); ekran sortuje nimi zadania sam. */
+    sort,
+    sortChips: <SortChips by={sort.by} dir={sort.dir} labels={smartSortOptions(view)} onChange={setSort} />,
     columnsHeader: <TaskColumnsHeader columns={cols.columns} />,
   };
 }
@@ -145,8 +152,8 @@ export function SortChips({ by, dir, labels, onChange }: { by: SortBy; dir: Sort
   );
 }
 
-/** Sortowanie widoku zbiorczego z `settings.views` (wspólne z webem); ekrany sortują nim sekcje (`sortSection`). */
-export function smartSort(data: AppData, view: SmartView): { by: SortBy; dir: SortDir } {
+/** Sortowanie widoku z `settings.views` (wspólne z webem); ekrany sortują nim sekcje (`sortSection`) albo zadania (`sortTasks`). */
+export function smartSort(data: AppData, view: ViewSettingsKey): { by: SortBy; dir: SortDir } {
   return smartSortChoice(view, data.settings.views[view]);
 }
 
@@ -154,18 +161,12 @@ export function smartSort(data: AppData, view: SmartView): { by: SortBy; dir: So
  * Widok zbiorczy: `row` z kolumnami, pasek opcji (z chipami sortowania — `smartSort`) i nagłówek kolumn. `extra` — dodatkowy chip w wierszu opcji (np. „Eksport XLSX”).
  */
 export function useSmartView(view: SmartView, data: AppData, today: string, workspaceId: string | null, extra?: ReactNode) {
-  const { row, chips, columnsHeader } = useViewColumns(view, data, today, workspaceId);
-  const { notify } = useTaskActions();
-  const sort = smartSort(data, view);
-  const setSort = (patch: { sortBy?: SortBy; sortDir?: SortDir }) =>
-    void updateSettings((s) => ({ views: smartViewsPatch(s.views, view, { ...patch, ...(patch.sortBy === 'manual' && { sortBy: undefined }) }) })).catch((e: unknown) =>
-      notify(e instanceof Error ? e.message : String(e)),
-    );
+  const { row, chips, sortChips, columnsHeader } = useViewColumns(view, data, today, workspaceId);
   return {
     row,
     options: (
       <OptionRow>
-        <SortChips by={sort.by} dir={sort.dir} labels={smartSortOptions(view)} onChange={setSort} />
+        {sortChips}
         {chips}
         <OptionChip label="▦ Tablica" accent onPress={() => router.push({ pathname: '/board', params: { view } })} />
         {extra}

@@ -41,6 +41,7 @@ import {
   smartViewsPatch,
   SORT_BY,
   smartSortChoice,
+  smartSortDefault,
   smartSortOptions,
   sortDirLabel,
   sortSection,
@@ -232,15 +233,15 @@ export function useViewColumns(id: ViewSettingsKey, ctx: ViewContext, { sortable
       />
     ),
     columnsHeader: (
-      <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} sort={sortable ? sort : undefined} onSort={sortable ? (by) => setPrefs((p) => headerSortPatch(p, by)) : undefined} sortOptions={sortOptions} />
+      <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} sort={sortable ? sort : undefined} onSort={sortable ? (by) => setPrefs((p) => { const s = smartSortChoice(id, p); return headerSortPatch({ sortBy: s.by, sortDir: s.dir }, by); }) : undefined} sortOptions={sortOptions} />
     ),
     sortControls: sortable ? (
       <SortControls
         by={sort.by}
         dir={sort.dir}
         labels={sortOptions}
-        title="Sortowanie w obrębie sekcji i dni"
-        onBy={(by) => setPrefs({ sortBy: by === "manual" ? undefined : by, sortDir: undefined })}
+        title={id === "tag" || id === "filter" ? undefined : "Sortowanie w obrębie sekcji i dni"}
+        onBy={(by) => setPrefs({ sortBy: by === smartSortDefault(id) ? undefined : by, sortDir: undefined })}
         onDir={() => setPrefs((p) => ({ sortDir: p.sortDir === "desc" ? undefined : "desc" }))}
       />
     ) : null,

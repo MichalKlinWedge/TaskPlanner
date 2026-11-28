@@ -1,5 +1,5 @@
 /**
- * Widok tagu i zapisanego filtra (M4): zadania z `selectFiltered` (core) po terminie, nagłówek
+ * Widok tagu i zapisanego filtra (M4): zadania z `selectFiltered` (core) w wybranym sortowaniu (domyślnie po terminie), nagłówek
  * z opisem warunków (`filterChips`) i akcjami (zmiana nazwy, kolor, usunięcie). Z `onChange` —
  * warunki jako chipy do zmiany (`FilterBar`) zamiast opisu w podtytule. Z `exportTitle` — chip
  * „Eksport XLSX” wyników (kolejność jak na ekranie).
@@ -37,8 +37,8 @@ export function FilterResults({
   exportTitle?: string;
 }) {
   const { data, today, ctx, workspaceId } = useView();
-  const tasks = useMemo(() => sortTasks(selectFiltered(data.tasks, query, ctx), 'due'), [data.tasks, query, ctx]);
-  const { row, chips: columnChips, columnsHeader } = useViewColumns(columnsKey, data, today, workspaceId);
+  const { row, chips: columnChips, sort, sortChips, columnsHeader } = useViewColumns(columnsKey, data, today, workspaceId);
+  const tasks = useMemo(() => sortTasks(selectFiltered(data.tasks, query, ctx), sort.by, sort.dir), [data.tasks, query, ctx, sort.by, sort.dir]);
   const chips = filterChips(query, {
     lists: new Map(data.lists.map((l) => [l.id, l.name])),
     workspaces: new Map(data.workspaces.map((w) => [w.id, w.name])),
@@ -52,6 +52,7 @@ export function FilterResults({
         <ScreenHeader subtitle={`${plural(tasks.length, TASKS)}${chips.length && !onChange ? ` · ${chips.map((c) => c.label).join(' · ')}` : ''}`}>
           {header}
           <OptionRow>
+            {sortChips}
             {columnChips}
             {exportTitle ? <ExportChip title={exportTitle} rows={() => tasks.map((task) => ({ task }))} /> : null}
           </OptionRow>

@@ -3,7 +3,7 @@
  * Ustawienia są w profilu (`settings.views`, synchronizowane); tablica pokazuje te same zadania co lista widoku.
  */
 import type { BoardOptions } from './kanban.ts';
-import { SMART_SORT_BY, VIEW_SECTION } from './labels.ts';
+import { SMART_SORT_BY, SORT_BY, VIEW_SECTION } from './labels.ts';
 import type { ProfileSettings, SmartViewPrefs } from './schemas/model.ts';
 import type { LocalDate } from './schemas/primitives.ts';
 import { isOpen, selectInbox, selectOverdue, selectToday, selectUndated, selectUpcoming, type SortBy, type SortDir, type ViewContext, type ViewTask } from './views.ts';
@@ -18,18 +18,26 @@ export const UPCOMING_DAYS = 14;
 /** Klucz ustawień w `settings.views`: widok zbiorczy albo wszystkie widoki tagu / zapisanego filtra (tylko kolumny). */
 export type ViewSettingsKey = keyof ProfileSettings['views'];
 
+const without = (labels: Partial<Record<SortBy, string>>, drop: readonly SortBy[]) => Object.fromEntries(Object.entries(labels).filter(([k]) => !drop.includes(k as SortBy)));
+
 /**
- * Opcje sortowania widoku zbiorczego (etykiety w kolejności wyboru). „Bez terminu” nie ma „Termin” ani
- * „Początek” — żadne zadanie tam nie ma terminu, a początek wymaga terminu.
+ * Opcje sortowania widoku (etykiety w kolejności wyboru). „Bez terminu” nie ma „Termin” ani „Początek” —
+ * żadne zadanie tam nie ma terminu, a początek wymaga terminu. Tag / zapisany filtr (wspólne ustawienie
+ * dla wszystkich) nie mają kolejności widoku — domyślnie „Termin” (`smartSortDefault`).
  */
 export function smartSortOptions(view: ViewSettingsKey): Partial<Record<SortBy, string>> {
-  if (view !== 'undated') return SMART_SORT_BY;
-  return Object.fromEntries(Object.entries(SMART_SORT_BY).filter(([k]) => k !== 'due' && k !== 'start'));
+  if (view === 'undated') return without(SMART_SORT_BY, ['due', 'start']);
+  if (view === 'tag' || view === 'filter') return without(SORT_BY, ['manual']);
+  return SMART_SORT_BY;
 }
 
-/** Wybrane sortowanie widoku zbiorczego; kryterium spoza `smartSortOptions` widoku = domyślna kolejność. */
+/** Sortowanie bez zapisanego wyboru: kolejność widoku (`manual`), w tagu / filtrze — po terminie. */
+export const smartSortDefault = (view: ViewSettingsKey): SortBy => (view === 'tag' || view === 'filter' ? 'due' : 'manual');
+
+/** Wybrane sortowanie widoku; kryterium spoza `smartSortOptions` widoku = domyślne (`smartSortDefault`). */
 export function smartSortChoice(view: ViewSettingsKey, prefs: SmartViewPrefs | undefined): { by: SortBy; dir: SortDir } {
-  const by = prefs?.sortBy && prefs.sortBy in smartSortOptions(view) ? prefs.sortBy : 'manual';
+  const saved = prefs?.sortBy;
+  const by = saved && saved in smartSortOptions(view) ? saved : smartSortDefault(view);
   return { by, dir: by === 'manual' ? 'asc' : (prefs?.sortDir ?? 'asc') };
 }
 
