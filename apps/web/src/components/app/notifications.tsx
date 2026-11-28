@@ -42,7 +42,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { parseSettings } from "@/lib/app-data";
 import { useLocalQuery } from "@/lib/local-store";
-import { dismissNotifications, markNotificationsRead, requestOpenTask, requestReminderDone, snoozeReminderNotification, useNotifications } from "@/lib/notifications";
+import { dismissNotifications, undismissNotifications, markNotificationsRead, requestOpenTask, requestReminderDone, snoozeReminderNotification, useNotifications } from "@/lib/notifications";
 import { browserDeviceId } from "@/lib/push";
 import { routeHash } from "@/lib/route";
 
@@ -101,14 +101,36 @@ function NotificationDays({
   onOpen?: () => void;
 }) {
   const [note, setNote] = useState<string | null>(null);
+  // Ostatnio usunięte z listy — „Cofnij” w wierszu stanu (lista działa też w dzwonku, poza dymkiem akcji).
+  const [removed, setRemoved] = useState<AppNotification[] | null>(null);
+  const dismiss = (n: AppNotification) => {
+    dismissNotifications(store, [n]);
+    setNote(null);
+    setRemoved([n]);
+  };
   const snooze = (n: AppNotification, minutes: number) => {
+    setRemoved(null);
     const title = typeof n.data.title === "string" ? n.data.title : "zadanie";
     snoozeReminderNotification(store, n, userId, minutes, timeZone).then(
       (time) => setNote(time ? `„${title}” — przypomnę o ${time}.` : `„${title}” jest już zamknięte albo usunięte.`),
       (e: unknown) => setNote(e instanceof Error ? e.message : String(e)),
     );
   };
-  const status = note ? (
+  const status = removed ? (
+    <p role="status" className="flex items-center gap-2 px-3 pt-2 text-xs text-[var(--muted)]">
+      Usunięto z listy powiadomień.
+      <button
+        type="button"
+        className="font-semibold text-[var(--accent)] hover:underline"
+        onClick={() => {
+          undismissNotifications(store, removed);
+          setRemoved(null);
+        }}
+      >
+        Cofnij
+      </button>
+    </p>
+  ) : note ? (
     <p role="status" className="px-3 pt-2 text-xs text-[var(--muted)]" data-testid="notification-snoozed">
       {note}
     </p>
@@ -135,7 +157,7 @@ function NotificationDays({
               onOpen?.();
               openTarget(n);
             }}
-            onDismiss={() => dismissNotifications(store, [n])}
+            onDismiss={() => dismiss(n)}
             onSnooze={n.kind === "reminder" ? (minutes) => snooze(n, minutes) : undefined}
             onDone={n.kind === "reminder" && n.taskId ? () => requestReminderDone(store, n) : undefined}
           />

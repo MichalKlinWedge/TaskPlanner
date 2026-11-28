@@ -368,7 +368,7 @@ const isTyping = (target: EventTarget | null) =>
 
 export function FocusScreen({ taskId, ctx, onExit, navigate }: { taskId: string | null; ctx: ViewContext; onExit: () => void; navigate: (route: Route) => void }) {
   const api = useFocus();
-  const { data, today } = useAppEnv();
+  const { data, today, openTaskId } = useAppEnv();
   const { toggle } = useTaskActions();
   const { state, settings } = api;
   const shownId = taskId ?? state.taskId;
@@ -377,15 +377,18 @@ export function FocusScreen({ taskId, ctx, onExit, navigate }: { taskId: string 
   const active = state.phase !== "idle";
   const other = active && taskId !== null && taskId !== state.taskId;
 
-  // Spacja — pauza / wznowienie / start, Esc — wyjście (poza polami i przyciskami).
-  const latest = useRef({ api, task, onExit });
+  // Spacja — pauza / wznowienie / start, Esc — wyjście (poza polami, przyciskami, otwartym panelem zadania i oknami;
+  // Esc przy otwartym panelu zamyka tylko panel).
+  const latest = useRef({ api, task, onExit, openTaskId });
   useEffect(() => {
-    latest.current = { api, task, onExit };
+    latest.current = { api, task, onExit, openTaskId };
   });
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.ctrlKey || event.metaKey || event.altKey || isTyping(event.target)) return;
-      const { api: a, task: t, onExit: exit } = latest.current;
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || isTyping(event.target)) return;
+      if (event.target instanceof Element && event.target.closest("[data-task-panel], [role=dialog], [role=alertdialog]")) return;
+      const { api: a, task: t, onExit: exit, openTaskId: panel } = latest.current;
+      if (panel) return;
       if (event.key === "Escape") {
         event.preventDefault();
         exit();

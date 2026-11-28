@@ -13,6 +13,7 @@ import { clampWidth, type ColumnWidths, type WidthColumn } from "@/lib/list-widt
 import { onRejectedOps } from "@/lib/local-store";
 
 import { useAppEnv } from "./app-env";
+import { chooseOption } from "./choice-dialog";
 import { PeopleBadges } from "./people-badges";
 import { TAG_CHIP, tagChipStyle } from "./tag-chip";
 import { EyeIcon } from "./ui";
@@ -28,7 +29,7 @@ interface Toast {
 interface TaskActions {
   toggle: (task: ViewTask, opts?: { habitDone?: boolean }) => Promise<void>;
   /** Zapis operacji po kolei; z `toast` — dymek, z `undo` — także „Cofnij”. */
-  run: (ops: readonly TaskOp[], toast?: { text: string; undo?: TaskOp[] }) => Promise<void>;
+  run: (ops: readonly TaskOp[], toast?: { text: string; undo?: TaskOp[] }) => Promise<boolean>;
   /** Dymek z komunikatem (np. błąd). */
   notify: (message: string) => void;
 }
@@ -78,9 +79,20 @@ export function TaskActionsProvider({ store, userId, timeZone, tasks, children }
         }
         const now = new Date();
         const result = completeTaskOps(task, { now, timeZone, subtasks: task.recurrence ? descendants(tasks, task.id) : [] });
-        // M3: rodzic z otwartymi podzadaniami — „Ukończyć też podzadania?” (domyślnie tak).
+        // M3: rodzic z otwartymi podzadaniami — „Z podzadaniami” (domyślnie) / „Tylko to” / „Anuluj” (nic nie zmienia).
         const open = task.recurrence ? [] : openDescendants(tasks, task.id);
-        if (open.length && window.confirm(`„${task.title}” ma ${plural(open.length, ["otwarte podzadanie", "otwarte podzadania", "otwartych podzadań"])}. Ukończyć też je?`)) {
+        const choice = open.length
+          ? await chooseOption({
+              title: `Ukończyć „${task.title}”?`,
+              message: `Zadanie ma ${plural(open.length, ["otwarte podzadanie", "otwarte podzadania", "otwartych podzadań"])}.`,
+              options: [
+                { label: "Ukończ z podzadaniami", value: "all", tone: "primary" },
+                { label: "Ukończ tylko to zadanie", value: "one" },
+              ],
+            })
+          : "one";
+        if (!choice) return;
+        if (choice === "all") {
           for (const child of open) {
             const done = completeTaskOps({ ...child, recurrence: null }, { now, timeZone });
             result.ops.push(...done.ops);
@@ -102,8 +114,10 @@ export function TaskActionsProvider({ store, userId, timeZone, tasks, children }
       try {
         await apply(store, ops);
         if (toast) show(toast.text, toast.undo);
+        return true;
       } catch (e) {
         show(e instanceof Error ? e.message : String(e));
+        return false;
       }
     },
     [store, show],

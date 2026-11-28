@@ -78,6 +78,7 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 
 import { listEditable, useLocalMinute, type AppData, type List } from "@/lib/app-data";
 import { updateListPrefs, updateSettings } from "@/lib/json-update";
+import { setLocalListPrefs } from "@/lib/local-list-prefs";
 import { useListWidths } from "@/lib/list-widths";
 import { useTrash } from "@/lib/trash";
 import { useClickOutside } from "@/lib/use-click-outside";
@@ -719,8 +720,12 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
   const openCount = tasks.filter(isOpen).length;
 
   // Z najnowszych `view_prefs` w bazie, nie z renderu — szybkie kolejne zmiany się nie nadpisują.
-  const setPrefs = (patch: Partial<ViewPrefs> | ((current: ViewPrefs) => Partial<ViewPrefs>)) =>
-    void updateListPrefs(store, list.id, typeof patch === "function" ? patch : () => patch).catch((e: unknown) => notify(String(e)));
+  // Lista tylko do podglądu — ustawienia lokalnie w tej karcie (`local-list-prefs.ts`; shell podaje je w `list.prefs`).
+  const setPrefs = (patch: Partial<ViewPrefs> | ((current: ViewPrefs) => Partial<ViewPrefs>)) => {
+    const fn = typeof patch === "function" ? patch : () => patch;
+    if (!listEditable(data, list.id)) return setLocalListPrefs(list.id, list.prefs, fn);
+    void updateListPrefs(store, list.id, fn).catch((e: unknown) => notify(e instanceof Error ? e.message : String(e)));
+  };
   const toggle = (id: string) =>
     setCollapsed((current) => {
       const next = new Set(current);

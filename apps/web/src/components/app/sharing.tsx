@@ -412,8 +412,8 @@ function InviteRow({ invite, busy, onRevoke, onCopied }: { invite: PendingInvite
           Kopiuj link
         </Button>
       ) : null}
-      <Button kind="ghost" disabled={busy} onClick={onRevoke}>
-        Cofnij
+      <Button kind="ghost" disabled={busy} onClick={() => window.confirm(`Unieważnić zaproszenie dla ${invite.email}? Wysłany link przestanie działać.`) && onRevoke()}>
+        Unieważnij
       </Button>
     </li>
   );
@@ -513,7 +513,7 @@ export function ScopeInvites({ store }: { store: TabStore }) {
             <Button kind="primary" disabled={busy} onClick={() => void respond(i, true)}>
               Przyjmij
             </Button>
-            <Button kind="ghost" disabled={busy} onClick={() => void respond(i, false)}>
+            <Button kind="ghost" disabled={busy} onClick={() => window.confirm(`Odrzucić zaproszenie do „${i.workspace}”? Żeby dołączyć później, potrzebne będzie nowe zaproszenie.`) && void respond(i, false)}>
               Odrzuć
             </Button>
           </li>

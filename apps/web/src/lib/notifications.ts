@@ -94,6 +94,15 @@ export function dismissNotifications(store: TabStore, list: readonly AppNotifica
   setBell(reminderBellUpdate(bellState(), list, "dismissed"));
 }
 
+/** „Cofnij” po usunięciu z listy: wiersze z bazy wracają (`deleted_at` = null), przypomnienia znikają z „usuniętych” tej przeglądarki. */
+export function undismissNotifications(store: TabStore, list: readonly AppNotification[]) {
+  const ops = dismissOps(list, new Date()).map((op) => ({ ...op, patch: { deleted_at: null } }));
+  if (ops.length) void store.mutateMany(ops).catch(() => undefined);
+  const ids = new Set(list.map((n) => n.id));
+  const state = bellState();
+  setBell({ ...state, dismissed: state.dismissed.filter((id) => !ids.has(id)) });
+}
+
 /**
  * „Przypomnij za N min” przy przypomnieniu w dzwonku: jednorazowe przypomnienie (`reminders`, jak „Odłóż”
  * z powiadomienia push — wyśle je `reminders-push`, a po wybiciu wróci tu), poprzednie odłożenie znika, a ten

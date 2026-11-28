@@ -94,7 +94,7 @@ export function SignedIn({ userId, email }: { userId: string; email: string | nu
             timeZone={parseSettings(settings).timeZone}
             general={
               <ProfileForm
-                key={profile?.settings ?? ""}
+                draftKey={userId}
                 initial={{ displayName: profile?.display_name ?? null, settings }}
                 submitLabel="Zapisz ustawienia"
                 onSubmit={async ({ displayName, settings: next }: ProfileValues) => {

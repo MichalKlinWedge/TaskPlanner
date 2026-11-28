@@ -572,9 +572,14 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
 
   // Klawisze 1–6 działają tylko na zadaniu otwartym w panelu (kroki Inbox, zaległe); Enter bez panelu otwiera pierwsze nierozstrzygnięte.
   const keyed = step === "inbox" ? review.inbox : step === "overdue" ? review.overdue : [];
-  const latest = useRef({ keyed, pickFor, onExit, picking, openTask, openTaskId });
+  // Wyjście w trakcie (Esc, „Wyjdź”) pyta, gdy są decyzje albo opis tygodnia — opis zapisuje się dopiero przy „Zakończ przegląd”.
+  const leave = () => {
+    if ((log.length || summary) && !window.confirm(summary ? "Przerwać przegląd? Opis tygodnia nie zostanie zapisany (decyzje o zadaniach zostają)." : "Przerwać przegląd tygodnia? Podjęte decyzje o zadaniach zostają.")) return;
+    onExit();
+  };
+  const latest = useRef({ keyed, pickFor, onExit: leave, picking, openTask, openTaskId });
   useEffect(() => {
-    latest.current = { keyed, pickFor, onExit, picking, openTask, openTaskId };
+    latest.current = { keyed, pickFor, onExit: leave, picking, openTask, openTaskId };
   });
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -660,7 +665,7 @@ export function WeeklyReview({ ctx, onExit, navigate }: { ctx: ViewContext; onEx
   const empty = (text: string) => <p className="rounded-md border border-dashed border-[var(--line)] px-3 py-4 text-center text-sm text-[var(--muted)]">{filtered && FILTERED.includes(step) ? "Nic w tym kroku nie pasuje do filtra." : `✓ ${text}`}</p>;
 
   return (
-    <Frame title="Przegląd tygodnia" kind="weekly" onExit={onExit} navigate={navigate}>
+    <Frame title="Przegląd tygodnia" kind="weekly" onExit={leave} navigate={navigate}>
       <nav className="flex flex-wrap gap-1" aria-label="Kroki przeglądu">
         {STEPS.map((s, i) => (
           <button

@@ -6,8 +6,10 @@
  * Ten sam komponent w widokach (pole na górze) i w oknie wywoływanym klawiszem `Q` / `Ctrl+Spacja`;
  * okno pokazuje od razu pola opisu, terminu i godziny (`details`, pierwszeństwo: core `quickAddWhenContext`).
  */
-import { CLIP_DESCRIPTION_MAX, clipQuote, findUrl, linkName, localDateTimeAt, parseQuickAdd, withLinkOps, plural, QUICK_ADD_FIELD, QUICK_ADD_HELP, QUICK_ADD_HELP_NOTES, quickAddChip, quickAddTaskOps, quickAddWhenContext, quickAddWhenInitial, suppressToken, taskTagOps, type LocalDate, type TaskOp, type QuickAddContext, type QuickAddSlot, type QuickAddTokenKind, type QuickAddWhen, type WebClip } from "@taskplanner/core";
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { CLIP_DESCRIPTION_MAX, clipQuote, findUrl, linkName, localDateTimeAt, parseQuickAdd, withLinkOps, plural, QUICK_ADD_FIELD, READONLY_LIST_NOTE, QUICK_ADD_HELP, QUICK_ADD_HELP_NOTES, quickAddChip, quickAddTaskOps, quickAddWhenContext, quickAddWhenInitial, suppressToken, taskTagOps, type LocalDate, type TaskOp, type QuickAddContext, type QuickAddSlot, type QuickAddTokenKind, type QuickAddWhen, type WebClip } from "@taskplanner/core";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from "react";
+
+import { listEditable } from "@/lib/app-data";
 
 import { lastSortKey, useAppEnv } from "./app-env";
 import { useTaskActions } from "./task-item";
@@ -126,10 +128,12 @@ export function QuickAdd({ listId, dueDate, slot, parent, defaults, placeholder 
     }
     if (!added.length) return notify("Zadanie musi mieć tytuł.");
     const at = new Date().toISOString();
-    await run(ops, {
+    const saved = await run(ops, {
       text: added.length === 1 ? `Dodano do ${listName(added[0]!.listId)}` : `Dodano ${plural(added.length, ["zadanie", "zadania", "zadań"])}`,
       undo: added.map((a) => ({ table: "tasks" as const, id: a.taskId, patch: { deleted_at: at } })),
     });
+    // Odrzucony zapis (np. lista tylko do podglądu, karta za starszym liderem) — wpis zostaje do poprawki.
+    if (!saved) return;
     setText("");
     setClip(undefined);
     setDescription("");
@@ -161,6 +165,9 @@ export function QuickAdd({ listId, dueDate, slot, parent, defaults, placeholder 
   // Podgląd listy docelowej: te same reguły co zapis (wskazana lista / przestrzeń albo domyślna).
   let target: string | null = null;
   if (text.trim() && defaultListId && result.title.trim()) target = quickAddTaskOps(result, text, { ...scope(defaultListId), newId: () => "podglad" }).listId;
+
+  // Domyślna lista tylko do podglądu (np. wybrana udostępniona przestrzeń z rolą „podgląd”) — zamiast pola, które i tak odrzuci zapis.
+  if (defaultListId && !listEditable(data, defaultListId)) return <p className="my-2 px-1 text-sm text-[var(--muted)]">{READONLY_LIST_NOTE}</p>;
 
   return (
     <div className="my-2">
@@ -323,8 +330,18 @@ function DetailsFields({ when, setWhen, description, setDescription, focusTitle,
 /** Okno szybkiego dodawania nad bieżącym widokiem. */
 export function QuickAddDialog({ open, onClose, heading, ...props }: QuickAddProps & { open: boolean; onClose: () => void; heading?: string }) {
   if (!open) return null;
+  // Klik obok okna zamyka je tylko bez wpisu — inaczej przypadkowy klik gubiłby tytuł, opis i wycinek strony (Esc nadal zamyka).
+  const backdrop = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    const fields = [...e.currentTarget.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input[type=text], input:not([type]), textarea")];
+    const filled = fields.find((f) => f.value.trim());
+    if (filled) {
+      e.preventDefault();
+      filled.focus();
+    } else onClose();
+  };
   return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-[15vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-[15vh]" onMouseDown={backdrop}>
       <div role="dialog" aria-modal="true" aria-label="Szybkie dodawanie" className="max-h-[80vh] w-full max-w-xl overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3 shadow-2xl">
         {heading ? <h2 className="px-1 text-sm font-medium">{heading}</h2> : null}
         <QuickAdd {...props} details autoFocus onAdded={(more) => !more && onClose()} onCancel={onClose} />

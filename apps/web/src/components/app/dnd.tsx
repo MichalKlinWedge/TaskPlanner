@@ -20,7 +20,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { bulkTaskOps, dropTaskOps, relativeDay, type LocalDate } from "@taskplanner/core";
+import { bulkTaskOps, dropTaskOps, relativeDay, type LocalDate, type TaskOp } from "@taskplanner/core";
 import type { ReactNode } from "react";
 
 import { useAppEnv } from "./app-env";
@@ -50,7 +50,21 @@ export function SortableTaskList({ ids, children }: { ids: readonly string[]; ch
     const to = ids.indexOf(String(over.id));
     const ops = dropTaskOps(data.tasks, String(active.id), String(over.id), from < to ? "after" : "before");
     if (ops === null) return notify("Tu nie można upuścić: we własne podzadanie albo ponad 4 poziomy zadań.");
-    if (ops.length) void run(ops);
+    if (!ops.length) return;
+    // „Cofnij” = poprzednie wartości tych samych pól (kolejność, rodzic, lista) — chybione upuszczenie robi z zadania podzadanie.
+    const byId = new Map(data.tasks.map((t) => [t.id, t]));
+    const undo = ops.flatMap((op): TaskOp[] => {
+      const t = byId.get(op.id);
+      if (!t) return [];
+      const before: Record<string, unknown> = {};
+      if ("sort_key" in op.patch) before.sort_key = t.sortKey;
+      if ("parent_id" in op.patch) before.parent_id = t.parentId ?? null;
+      if ("list_id" in op.patch) before.list_id = t.listId;
+      return [{ table: "tasks", id: op.id, patch: before }];
+    });
+    const dragged = byId.get(String(active.id));
+    const nested = ops.some((op) => op.id === String(active.id) && "parent_id" in op.patch);
+    void run(ops, { text: nested ? `Przeniesiono „${dragged?.title ?? ""}” w drzewie zadań` : `Zmieniono kolejność „${dragged?.title ?? ""}”`, undo });
   };
 
   return (

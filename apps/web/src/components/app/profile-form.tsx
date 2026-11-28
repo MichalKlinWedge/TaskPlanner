@@ -1,7 +1,7 @@
 "use client";
 
 import { ProfileSettings, THEME, WEEKDAY, type IsoWeekday } from "@taskplanner/core";
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 
 import { Button, Field, Input, Notice, Select } from "./ui";
 
@@ -21,6 +21,34 @@ const FOCUS_FIELDS = [
 
 const deviceZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+/** Wartości pól formularza (jak w stanie) — do porównania „zapisane / zmienione” i szkicu. */
+function snapshot(s: ProfileSettings, displayName: string | null) {
+  return {
+    displayName: (displayName ?? "").trim(),
+    timeZone: s.timeZone ?? deviceZone(),
+    firstDayOfWeek: s.firstDayOfWeek as IsoWeekday,
+    days: [...(s.workHours.days as IsoWeekday[])].sort(),
+    workStart: s.workHours.start,
+    workEnd: s.workHours.end,
+    reminderTime: s.defaultReminderTime,
+    duration: String(s.defaultDurationMin),
+    theme: s.theme,
+    dailyReview: s.dailyReview,
+    weeklyReview: s.weeklyReview,
+    focus: {
+      focusMin: String(s.focus.focusMin),
+      shortBreakMin: String(s.focus.shortBreakMin),
+      longBreakMin: String(s.focus.longBreakMin),
+      longBreakEvery: String(s.focus.longBreakEvery),
+    },
+    focusEnabled: s.focus.enabled,
+  };
+}
+type Snapshot = ReturnType<typeof snapshot>;
+
+/** Niezapisane szkice per `draftKey` w tej karcie (moduł żyje dłużej niż odmontowany ekran „Ustawień”). */
+const drafts = new Map<string, { base: string; values: Snapshot }>();
+
 /** Strefy IANA znane przeglądarce; bieżąca zawsze na liście. */
 function timeZones(current: string): string[] {
   const all = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
@@ -34,6 +62,7 @@ export function ProfileForm({
   busy,
   onSubmit,
   extra,
+  draftKey,
 }: {
   initial: { displayName: string | null; settings: unknown };
   submitLabel: string;
@@ -41,31 +70,73 @@ export function ProfileForm({
   onSubmit: (values: ProfileValues) => void | Promise<void>;
   /** Dodatkowe pola przed przyciskiem (np. wybór przestrzeni w onboardingu). */
   extra?: ReactNode;
+  /** Klucz szkicu (np. id użytkownika): niezapisane pola przetrwają wyjście z ekranu w tej karcie, a zamknięcie karty pyta. */
+  draftKey?: string;
 }) {
   const start = useMemo(() => {
     const parsed = ProfileSettings.safeParse(initial.settings ?? {});
     return parsed.success ? parsed.data : ProfileSettings.parse({});
   }, [initial.settings]);
-  const [displayName, setDisplayName] = useState(initial.displayName ?? "");
-  const [timeZone, setTimeZone] = useState(start.timeZone ?? deviceZone());
-  const [firstDayOfWeek, setFirstDayOfWeek] = useState<IsoWeekday>(start.firstDayOfWeek as IsoWeekday);
-  const [days, setDays] = useState<IsoWeekday[]>(start.workHours.days as IsoWeekday[]);
-  const [workStart, setWorkStart] = useState(start.workHours.start);
-  const [workEnd, setWorkEnd] = useState(start.workHours.end);
-  const [reminderTime, setReminderTime] = useState(start.defaultReminderTime);
-  const [duration, setDuration] = useState(String(start.defaultDurationMin));
-  const [theme, setTheme] = useState(start.theme);
-  const [dailyReview, setDailyReview] = useState(start.dailyReview);
-  const [weeklyReview, setWeeklyReview] = useState(start.weeklyReview);
-  const [focus, setFocus] = useState(() => ({
-    focusMin: String(start.focus.focusMin),
-    shortBreakMin: String(start.focus.shortBreakMin),
-    longBreakMin: String(start.focus.longBreakMin),
-    longBreakEvery: String(start.focus.longBreakEvery),
-  }));
-  const [focusEnabled, setFocusEnabled] = useState(start.focus.enabled);
+  const saved = snapshot(start, initial.displayName);
+  const savedKey = JSON.stringify(saved);
+  // Szkic sprzed wyjścia z „Ustawień” (ekran się odmontowuje) — tylko gdy zapisane wartości się od tego czasu nie zmieniły.
+  const [init] = useState(() => (draftKey && drafts.get(draftKey)?.base === savedKey ? drafts.get(draftKey)!.values : saved));
+  const [displayName, setDisplayName] = useState(init.displayName);
+  const [timeZone, setTimeZone] = useState(init.timeZone);
+  const [firstDayOfWeek, setFirstDayOfWeek] = useState<IsoWeekday>(init.firstDayOfWeek);
+  const [days, setDays] = useState<IsoWeekday[]>(init.days);
+  const [workStart, setWorkStart] = useState(init.workStart);
+  const [workEnd, setWorkEnd] = useState(init.workEnd);
+  const [reminderTime, setReminderTime] = useState(init.reminderTime);
+  const [duration, setDuration] = useState(init.duration);
+  const [theme, setTheme] = useState(init.theme);
+  const [dailyReview, setDailyReview] = useState(init.dailyReview);
+  const [weeklyReview, setWeeklyReview] = useState(init.weeklyReview);
+  const [focus, setFocus] = useState(init.focus);
+  const [focusEnabled, setFocusEnabled] = useState(init.focusEnabled);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
   const zones = useMemo(() => timeZones(timeZone), [timeZone]);
+
+  const current: Snapshot = { displayName: displayName.trim(), timeZone, firstDayOfWeek, days: [...days].sort(), workStart, workEnd, reminderTime, duration, theme, dailyReview, weeklyReview, focus, focusEnabled };
+  const currentKey = JSON.stringify(current);
+  const dirty = currentKey !== savedKey;
+
+  // Ustawienia zmienione gdzie indziej (inna sekcja, telefon): czysty formularz przyjmuje nowe wartości,
+  // a rozpoczęte zmiany zostają (zapis i tak scala je z najnowszymi ustawieniami — `...start`).
+  const [base, setBase] = useState(savedKey);
+  if (base !== savedKey) {
+    setBase(savedKey);
+    if (currentKey === base) {
+      setDisplayName(saved.displayName);
+      setTimeZone(saved.timeZone);
+      setFirstDayOfWeek(saved.firstDayOfWeek);
+      setDays(saved.days);
+      setWorkStart(saved.workStart);
+      setWorkEnd(saved.workEnd);
+      setReminderTime(saved.reminderTime);
+      setDuration(saved.duration);
+      setTheme(saved.theme);
+      setDailyReview(saved.dailyReview);
+      setWeeklyReview(saved.weeklyReview);
+      setFocus(saved.focus);
+      setFocusEnabled(saved.focusEnabled);
+    }
+  }
+
+  useEffect(() => {
+    if (!draftKey) return;
+    if (dirty) drafts.set(draftKey, { base: savedKey, values: current });
+    else drafts.delete(draftKey);
+  });
+
+  useEffect(() => {
+    if (!dirty || !draftKey) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, draftKey]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -92,7 +163,15 @@ export function ProfileForm({
       return;
     }
     setError(null);
-    await onSubmit({ displayName: displayName.trim(), settings: parsed.data });
+    setSaving(true);
+    try {
+      await onSubmit({ displayName: displayName.trim(), settings: parsed.data });
+      setDone(true);
+    } catch (e) {
+      setError(`Nie udało się zapisać: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const toggleDay = (day: IsoWeekday) => setDays((current) => (current.includes(day) ? current.filter((d) => d !== day) : [...current, day]));
@@ -199,10 +278,11 @@ export function ProfileForm({
       </Field>
       {extra}
       {error ? <Notice tone="error">{error}</Notice> : null}
-      <div>
-        <Button kind="primary" type="submit" disabled={busy}>
+      <div className="flex items-center gap-3">
+        <Button kind="primary" type="submit" disabled={busy || saving}>
           {submitLabel}
         </Button>
+        {dirty ? <span className="text-sm text-[var(--muted)]">Niezapisane zmiany</span> : done ? <span role="status" className="text-sm text-[var(--ok)]">✓ Zapisano</span> : null}
       </div>
     </form>
   );

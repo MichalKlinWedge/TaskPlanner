@@ -7,7 +7,7 @@
  */
 import { INBOUND_RATE_PER_MINUTE, MAX_API_TOKENS, type ApiToken } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { listEditable } from "@/lib/app-data";
 import { createApiToken, inboundApiUrl, revokeApiToken, useApiTokens } from "@/lib/api-tokens";
@@ -28,12 +28,38 @@ async function copy(text: string): Promise<boolean> {
   }
 }
 
+/**
+ * Świeżo utworzony token (pokazywany raz) w pamięci modułu: przetrwa wyjście z „Ustawień” w tej karcie,
+ * aż do „Gotowe”; zamknięcie karty z niezatwierdzonym tokenem pyta (`beforeunload`).
+ */
+let pendingToken: { label: string; token: string } | null = null;
+
 export function ApiTokensSection({ store }: { store: TabStore }) {
   const { data } = useAppEnv();
   const tokens = useApiTokens(store);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message>(null);
-  const [created, setCreated] = useState<{ label: string; token: string } | null>(null);
+  const [created, setCreatedState] = useState<{ label: string; token: string } | null>(() => pendingToken);
+  const setCreated = (value: { label: string; token: string } | null) => {
+    pendingToken = value;
+    setCreatedState(value);
+  };
+  const codeRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!created) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [created]);
+  const copyToken = (token: string) =>
+    void copy(token).then((ok) => {
+      setCopied(ok);
+      if (ok) return;
+      // Schowek niedostępny (uprawnienia, http) — zaznaczony tekst do skopiowania ręcznie.
+      setMessage({ tone: "error", text: "Nie udało się skopiować — token jest zaznaczony, skopiuj go ręcznie (Ctrl+C)." });
+      const node = codeRef.current;
+      if (node) window.getSelection()?.selectAllChildren(node);
+    });
   const [copied, setCopied] = useState(false);
   /** Formularz nowego tokenu pokazuje się dopiero po „+ Nowy token”. */
   const [adding, setAdding] = useState(false);
@@ -76,10 +102,10 @@ export function ApiTokensSection({ store }: { store: TabStore }) {
         <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950" data-testid="api-token-created">
           <p className="mb-2 font-medium">Token „{created.label}” — skopiuj go teraz. Później zobaczysz tylko jego końcówkę.</p>
           <div className="flex flex-wrap items-center gap-2">
-            <code className="break-all rounded bg-[var(--surface)] px-2 py-1 text-xs" data-testid="api-token-value">
+            <code ref={codeRef} className="break-all rounded bg-[var(--surface)] px-2 py-1 text-xs" data-testid="api-token-value">
               {created.token}
             </code>
-            <Button onClick={() => void copy(created.token).then(setCopied)}>{copied ? "Skopiowano" : "Kopiuj"}</Button>
+            <Button onClick={() => copyToken(created.token)}>{copied ? "Skopiowano" : "Kopiuj"}</Button>
             <Button
               kind="ghost"
               onClick={() => {

@@ -3,7 +3,8 @@
 /**
  * Ustawienia (`#/settings`, `#/settings/<sekcja>`): podpanel z menu sekcji obok paska bocznego, zawsze jedna
  * sekcja aktywna. Adres bez sekcji otwiera ostatnio oglądaną przez użytkownika (per przeglądarka). Sekcja montuje
- * się przy pierwszym otwarciu (nieotwarta nic nie pobiera) i potem tylko się chowa — niezapisane pola zostają.
+ * się przy pierwszym otwarciu (nieotwarta nic nie pobiera) i potem tylko się chowa — niezapisane pola zostają
+ * (po wyjściu z „Ustawień” formularz „Ogólne” odtwarza szkic: `ProfileForm` `draftKey`).
  */
 import type { TabStore } from "@taskplanner/sync";
 import { useEffect, useRef, useState, type ReactNode } from "react";

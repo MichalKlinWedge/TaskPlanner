@@ -28,6 +28,7 @@ import {
   dayMonth,
   plural,
   projectFilterLabel,
+  READONLY_LIST_NOTE,
   removeDependencyOps,
   shiftProjectOps,
   timelineChangeOps,
@@ -47,7 +48,7 @@ import {
 } from "@taskplanner/core";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import type { AppData } from "@/lib/app-data";
+import { listEditable, type AppData } from "@/lib/app-data";
 import { useDependencies } from "@/lib/dependencies";
 import { GANTT_PL } from "@/lib/gantt-locale";
 import { useRoute } from "@/lib/route";
@@ -66,6 +67,12 @@ const UNDATED_KEY = "tp-timeline-undated";
 const CRITICAL_KEY = "tp-timeline-critical";
 const WIDTHS_KEY = "tp-timeline-widths";
 const PROJECT = "p:";
+
+/** Wiersz osi (zadanie albo `PROJECT` + id listy) na liście, którą użytkownik może edytować. */
+const rowEditable = (d: AppData, rowId: string): boolean => {
+  const listId = rowId.startsWith(PROJECT) ? rowId.slice(PROJECT.length) : d.tasks.find((t) => t.id === rowId)?.listId;
+  return !listId || listEditable(d, listId);
+};
 
 const pad = (n: number) => String(n).padStart(2, "0");
 /** Daty osi w lokalnej północy przeglądarki (dni bez stref — jak `due_date`). */
@@ -531,6 +538,11 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
         if (!ev.task.start && !ev.task.end) return false; // np. uchwyt postępu — postęp wynika z ukończonych
         const id = String(ev.id);
         const { data: d, deps: all, model: m, cascade: on } = latest.current;
+        // Lista tylko do podglądu (udostępniona) — `false` cofa pasek na miejsce zamiast zostawić go po odrzuconym zapisie.
+        if (!rowEditable(d, id)) {
+          notify(READONLY_LIST_NOTE);
+          return false;
+        }
         // Wiersz bez własnego terminu (zakres z potomków) — nie do przeciągania.
         const span = m.rows.find((r) => (r.kind === "project" ? `${PROJECT}${r.id}` : r.id) === id)?.span;
         if (!span) return false;
@@ -578,6 +590,10 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
           return false;
         }
         const { data: d, deps: all } = latest.current;
+        if (!rowEditable(d, source) || !rowEditable(d, target)) {
+          notify(READONLY_LIST_NOTE);
+          return false;
+        }
         const result = addDependencyOps(d.tasks, all, { predecessorId: source, successorId: target });
         if ("error" in result) notify(dependencyErrorText(result.error, (id) => `„${titleOf(id)}”`));
         else void run(result.ops, { text: `Zależność: „${titleOf(source)}” → „${titleOf(target)}”`, undo: result.undo });
@@ -585,7 +601,8 @@ export function TimelineScreen({ data, ctx, active }: { data: AppData; ctx: View
       });
       gantt.intercept("delete-link", (ev: { id: string | number }) => {
         const dep = latest.current.deps.find((x) => x.id === String(ev.id));
-        if (dep) {
+        if (dep && !rowEditable(latest.current.data, dep.successorId)) notify(READONLY_LIST_NOTE);
+        else if (dep) {
           const result = removeDependencyOps(dep.id);
           void run(result.ops, { text: `Usunięto zależność „${titleOf(dep.predecessorId)}” → „${titleOf(dep.successorId)}”`, undo: result.undo });
         }

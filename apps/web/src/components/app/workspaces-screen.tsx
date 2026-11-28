@@ -164,6 +164,15 @@ function WorkspaceCard({
   const activeOthers = lists.filter((l) => l.kind !== "inbox" && !l.archived_at).sort(byKey);
 
   const update = (patch: Record<string, unknown>) => run(() => store.mutate("workspaces", workspace.id, patch));
+  const actions = useTaskActions();
+  // Archiwizacja chowa przestrzeń (także u członków) — dymek z „Cofnij”, żeby było wiadomo, gdzie się podziała.
+  const toggleArchived = () => {
+    const at = archived ? null : new Date().toISOString();
+    void actions.run([{ table: "workspaces", id: workspace.id, patch: { archived_at: at } }], {
+      text: at ? `Zarchiwizowano przestrzeń „${workspace.name}” (widać ją po zaznaczeniu „Pokaż zarchiwizowane”)` : `Przywrócono przestrzeń „${workspace.name}”`,
+      undo: [{ table: "workspaces", id: workspace.id, patch: { archived_at: workspace.archived_at ?? null } }],
+    });
+  };
 
   const moveList = (list: ListRow, delta: number) =>
     run(async () => {
@@ -225,7 +234,7 @@ function WorkspaceCard({
         </Button>
         <WorkspaceExportButton workspaceId={workspace.id} name={workspace.name} email={email} onMessage={setTransfer} />
         {owner ? (
-          <Button kind="ghost" onClick={() => void update({ archived_at: archived ? null : new Date().toISOString() })}>
+          <Button kind="ghost" onClick={toggleArchived}>
             {archived ? "Przywróć" : "Archiwizuj"}
           </Button>
         ) : null}
@@ -284,6 +293,7 @@ function ListItem({
   onMove?: (delta: number) => void;
 }) {
   const update = (patch: Record<string, unknown>) => run(() => store.mutate("lists", list.id, patch));
+  const actions = useTaskActions();
   const archived = Boolean(list.archived_at);
   const inbox = list.kind === "inbox";
   const owner = role === null || role === "owner";
@@ -350,7 +360,16 @@ function ListItem({
             <IconButton label="W dół" disabled={!canDown} onClick={() => onMove?.(1)}>
               ↓
             </IconButton>
-            <IconButton label={archived ? "Przywróć" : "Archiwizuj"} onClick={() => void update({ archived_at: archived ? null : new Date().toISOString() })}>
+            <IconButton
+              label={archived ? "Przywróć" : "Archiwizuj"}
+              onClick={() => {
+                const at = archived ? null : new Date().toISOString();
+                void actions.run([{ table: "lists", id: list.id, patch: { archived_at: at } }], {
+                  text: at ? `Zarchiwizowano listę „${list.name}” (widać ją po zaznaczeniu „Pokaż zarchiwizowane”)` : `Przywrócono listę „${list.name}”`,
+                  undo: [{ table: "lists", id: list.id, patch: { archived_at: list.archived_at ?? null } }],
+                });
+              }}
+            >
               {archived ? <UnarchiveIcon /> : <ArchiveIcon />}
             </IconButton>
             {Number(list.total) === 0 ? (

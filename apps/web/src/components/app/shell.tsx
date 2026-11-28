@@ -10,7 +10,8 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { useAdhocFilter } from "@/lib/adhoc-filters";
-import { useAppData, useLateCount, useToday, type List, type Workspace } from "@/lib/app-data";
+import { listEditable, useAppData, useLateCount, useToday, type List, type Workspace } from "@/lib/app-data";
+import { setLocalListPrefs, useLocalListPrefs } from "@/lib/local-list-prefs";
 import { GOOGLE_RETURN_PARAM } from "@/lib/calendars";
 import { DEFAULT_ROUTE, routeHash, useRoute, type Route } from "@/lib/route";
 import { useLocalQuery } from "@/lib/local-store";
@@ -348,9 +349,14 @@ export function Shell({
     idle(() => void loadTimeline());
   }, []);
 
+  // Lista tylko do podglądu: ustawienia widoku (filtr, sortowanie, kolumny…) gościa w tej karcie, bo zapis do bazy jest odrzucany.
+  const routeListId = route.view === "list" ? route.id : null;
+  const localPrefs = useLocalListPrefs(routeListId && data.loaded && !listEditable(data, routeListId) ? routeListId : null);
+
   if (!data.loaded) return <Splash text="Wczytywanie zadań…" />;
 
-  const list = route.view === "list" ? data.lists.find((l) => l.id === route.id) : undefined;
+  const foundList = route.view === "list" ? data.lists.find((l) => l.id === route.id) : undefined;
+  const list = foundList && localPrefs ? { ...foundList, prefs: localPrefs } : foundList;
   const tag = route.view === "tag" ? data.tags.find((t) => t.id === route.id) : undefined;
   const savedFilter = route.view === "filter" ? data.savedFilters.find((f) => f.id === route.id) : undefined;
   const filterable = ["inbox", "today", "overdue", "upcoming", "undated", "list", "board"].includes(route.view);
@@ -687,11 +693,13 @@ type NavEntry = { route: Route; icon: string; label: string; count?: number; ale
 function ListFilterBar({ list, store, onSaved }: { list: List; store: TabStore; onSaved: (id: string) => void }) {
   const { notify } = useTaskActions();
   const query = list.prefs.filter ?? {};
+  const { data } = useAppEnv();
   const onChange = (next: FilterQuery) => {
     const prefs = { ...list.prefs };
     delete prefs.filter;
     if (!isEmptyFilter(next)) prefs.filter = next;
-    void store.mutate("lists", list.id, { view_prefs: prefs }).catch((e: unknown) => notify(String(e)));
+    if (!listEditable(data, list.id)) return setLocalListPrefs(list.id, list.prefs, () => ({ filter: prefs.filter }));
+    void store.mutate("lists", list.id, { view_prefs: prefs }).catch((e: unknown) => notify(e instanceof Error ? e.message : String(e)));
   };
   return (
     <FilterBar query={query} onChange={onChange} hide={["lists"]}>

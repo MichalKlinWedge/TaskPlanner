@@ -869,18 +869,39 @@ function PeopleField({ task }: { task: ViewTask }) {
 }
 
 /** Komentarze zadania: wątek od najstarszego, dodanie (Ctrl+Enter), edycja i usunięcie z cofnięciem. */
+const sessionGet = (key: string) => {
+  try {
+    return sessionStorage.getItem(key) ?? "";
+  } catch {
+    return "";
+  }
+};
+const sessionSet = (key: string, text: string) => {
+  try {
+    if (text.trim()) sessionStorage.setItem(key, text);
+    else sessionStorage.removeItem(key);
+  } catch {
+    // Prywatny tryb / pełny magazyn — szkic zostaje tylko w stanie.
+  }
+};
+
 function CommentsField({ task }: { task: ViewTask }) {
   const { store, userId, today, timeZone } = useAppEnv();
   const { run, notify } = useTaskActions();
   const comments = useTaskComments(store, task.id);
-  const [draft, setDraft] = useState("");
+  // Niewysłany komentarz per zadanie w `sessionStorage` — przełączenie zadania albo zamknięcie panelu go nie gubi.
+  const draftKey = `tp-comment-draft:${task.id}`;
+  const [draft, setDraftState] = useState(() => sessionGet(draftKey));
+  const setDraft = (text: string) => {
+    setDraftState(text);
+    sessionSet(draftKey, text);
+  };
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
 
   const submit = () => {
     const result = addCommentOps(task.id, draft, new Date());
     if (!result.ok) return notify(result.error);
-    setDraft("");
-    void run(result.ops);
+    void run(result.ops).then((saved) => saved && setDraft(""));
   };
   const saveEdit = () => {
     if (!editing) return;
@@ -1092,7 +1113,14 @@ function PanelFrame({ onClose, actions, children }: { onClose: () => void; actio
 
 function TitleField({ value, onSave }: { value: string; onSave: (title: string) => void }) {
   const [draft, setDraft] = useState(value);
+  // Esc → blur → onBlur z poprzedniego renderu widziałby jeszcze wpisany tekst; flaga mówi „porzuć”.
+  const cancelled = useRef(false);
   const commit = () => {
+    if (cancelled.current) {
+      cancelled.current = false;
+      setDraft(value);
+      return;
+    }
     const title = draft.trim();
     if (title && title !== value) onSave(title.slice(0, 500));
     else setDraft(value);
@@ -1111,6 +1139,7 @@ function TitleField({ value, onSave }: { value: string; onSave: (title: string) 
           e.currentTarget.blur();
         }
         if (e.key === "Escape") {
+          cancelled.current = true;
           setDraft(value);
           e.currentTarget.blur();
         }
@@ -1164,7 +1193,11 @@ function RecurrenceField({ task, onSave, timeZone, today }: { task: ViewTask; on
               {task.recurrence ? "Zmień" : "Ustaw"}
             </Button>
             {task.recurrence ? (
-              <Button kind="ghost" onClick={() => onSave({ recurrence: null })} title="Zadanie zostaje, przestaje się powtarzać">
+              <Button
+                kind="ghost"
+                onClick={() => void run([{ table: "tasks", id: task.id, patch: { recurrence: null } }], { text: "Usunięto powtarzanie", undo: [{ table: "tasks", id: task.id, patch: { recurrence: task.recurrence } }] })}
+                title="Zadanie zostaje, przestaje się powtarzać"
+              >
                 Usuń
               </Button>
             ) : null}
@@ -1251,7 +1284,12 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
               type="button"
               aria-label={`Usuń tag ${byId.get(id)?.name ?? ""}`}
               className="opacity-60 hover:opacity-100"
-              onClick={() => void run([{ table: "task_tags", id: taskTagId(task.id, id), patch: { deleted_at: new Date().toISOString() } }])}
+              onClick={() =>
+                void run([{ table: "task_tags", id: taskTagId(task.id, id), patch: { deleted_at: new Date().toISOString() } }], {
+                  text: `Usunięto @${byId.get(id)?.name ?? "tag"} z zadania`,
+                  undo: [{ table: "task_tags", id: taskTagId(task.id, id), patch: { deleted_at: null } }],
+                })
+              }
             >
               ×
             </button>
@@ -1304,7 +1342,7 @@ function RemindersField({ task, trashed }: { task: ViewTask; trashed: boolean })
           {rows.map((r) => (
             <li key={r.id} className="flex items-center gap-2">
               <span>🔔 {r.label}</span>
-              <IconButton label="Usuń przypomnienie" onClick={() => void run([{ table: "reminders", id: r.id, patch: { deleted_at: new Date().toISOString() } }])}>
+              <IconButton label="Usuń przypomnienie" onClick={() => void run([{ table: "reminders", id: r.id, patch: { deleted_at: new Date().toISOString() } }], { text: "Usunięto przypomnienie", undo: [{ table: "reminders", id: r.id, patch: { deleted_at: null } }] })}>
                 ×
               </IconButton>
             </li>

@@ -450,7 +450,7 @@ function PendingTile({ file, onOpen }: { file: PendingFile; onOpen: () => void }
           <button type="button" className="underline" onClick={() => api.retry(file.id)}>
             ponów
           </button>
-          <button type="button" className="underline" onClick={() => api.discard(file.id)}>
+          <button type="button" className="underline" onClick={() => window.confirm(`Usunąć „${file.name}”? Plik nie dotarł na serwer — to jedyna kopia.`) && api.discard(file.id)}>
             usuń
           </button>
         </span>
