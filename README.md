@@ -16,6 +16,7 @@ Oba klienty są **local-first**: czytają i piszą lokalną bazę SQLite, dział
 | [docs/ANDROID_BUILD.md](docs/ANDROID_BUILD.md) | build APK lokalnie i w GitHub Actions (bez EAS), podpisywanie |
 | [docs/POC6_KONFIGURACJA.md](docs/POC6_KONFIGURACJA.md) | konfiguracja integracji: Google Calendar, ICS, Web Push, e-mail |
 | [docs/KOPIE_ZAPASOWE.md](docs/KOPIE_ZAPASOWE.md) | nocny zrzut bazy, eksport/import JSON, odtworzenie |
+| [docs/instrukcja/INSTRUKCJA.md](docs/instrukcja/INSTRUKCJA.md) | instrukcja użytkownika aplikacji web ze zrzutami; PDF: `npm run docs:pdf`, nowe zrzuty: `npm run docs:screens` |
 | `docs/*_TELEFON.md` | scenariusze ręcznych prób na telefonie (PoC-4, MVP-1, MVP-3) |
 
 ## Stos

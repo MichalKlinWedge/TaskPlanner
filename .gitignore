@@ -24,6 +24,9 @@ supabase/.temp
 test-results/
 playwright-report/
 
+# Instrukcja w PDF — powstaje z Markdown (npm run docs:pdf)
+docs/instrukcja/*.pdf
+
 # System
 .DS_Store
 Thumbs.db
