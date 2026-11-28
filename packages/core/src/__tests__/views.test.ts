@@ -25,6 +25,7 @@ import {
   selectUpcoming,
   sortTasks,
   headerSortPatch,
+  sortSection,
   withCompleted,
   type ViewContext,
   type ViewTask,
@@ -366,6 +367,12 @@ describe('sortowanie i grupowanie', () => {
     expect(ids(sortTasks(tasks, 'due', 'desc'))).toEqual(['s1', 's3', 's4', 's2']);
     expect(ids(sortTasks(tasks, 'created', 'desc'))).toEqual(['s4', 's1', 's3', 's2']);
     expect(ids(sortTasks(tasks, 'manual', 'desc'))).toEqual(ids(sortTasks(tasks, 'manual')));
+  });
+
+  it('sekcja widoku zbiorczego: domyślnie bez zmian, inne kryterium sortuje elementy', () => {
+    const items = tasks.map((task) => ({ task, date: '2026-11-19' }));
+    expect(sortSection(items, 'manual', 'asc', (i) => i.task)).toBe(items);
+    expect(sortSection(items, 'due', 'desc', (i) => i.task).map((i) => i.task.id)).toEqual(['s1', 's3', 's4', 's2']);
   });
 
   it('klik w nagłówek kolumny: rosnąco → malejąco → ręcznie', () => {

@@ -39,7 +39,9 @@ import {
   smartBoard,
   smartViewsPatch,
   SORT_BY,
+  SMART_SORT_BY,
   sortDirLabel,
+  sortSection,
   sortTasks,
   headerSortPatch,
   tagsForWorkspace,
@@ -201,7 +203,7 @@ export function ColumnsScroll({ columns, children }: { columns: readonly ListCol
  * Kolumny widoku z `settings.views[id]` (synchronizowane): „Kolumny” (`picker`), nagłówek i właściwości wierszy (`cols`).
  * Widoki zbiorcze i — wspólnie dla wszystkich tagów / zapisanych filtrów — klucze `tag` / `filter`.
  */
-export function useViewColumns(id: ViewSettingsKey, ctx: ViewContext) {
+export function useViewColumns(id: ViewSettingsKey, ctx: ViewContext, { sortable = false }: { sortable?: boolean } = {}) {
   const { store, settings, userId, data } = useAppEnv();
   const { notify } = useTaskActions();
   const prefs = settings.views[id] ?? {};
@@ -210,9 +212,11 @@ export function useViewColumns(id: ViewSettingsKey, ctx: ViewContext) {
   // Z najnowszych ustawień w bazie, nie z renderu — szybkie kolejne kliknięcia się nie nadpisują.
   const setPrefs = (patch: Partial<SmartViewPrefs> | ((current: SmartViewPrefs) => Partial<SmartViewPrefs>)) =>
     void updateSettings(store, userId, (s) => ({ views: smartViewsPatch(s.views, id, typeof patch === "function" ? patch(s.views[id] ?? {}) : patch) })).catch((e: unknown) => notify(String(e)));
+  const sort: { by: SortBy; dir: SortDir } = { by: prefs.sortBy ?? "manual", dir: prefs.sortDir ?? "asc" };
   return {
     prefs,
     setPrefs,
+    sort,
     cols: { columns, columnTags, widths },
     picker: (
       <ColumnsPicker
@@ -223,19 +227,65 @@ export function useViewColumns(id: ViewSettingsKey, ctx: ViewContext) {
         onTagToggle={(tagId, on) => setPrefs((p) => ({ columnTags: toggleId(p.columnTags, tagId, on) }))}
       />
     ),
-    columnsHeader: <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} />,
+    columnsHeader: (
+      <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} sort={sortable ? sort : undefined} onSort={sortable ? (by) => setPrefs((p) => headerSortPatch(p, by)) : undefined} />
+    ),
+    sortControls: sortable ? (
+      <SortControls
+        by={sort.by}
+        dir={sort.dir}
+        labels={SMART_SORT_BY}
+        title="Sortowanie w obrębie sekcji i dni"
+        onBy={(by) => setPrefs({ sortBy: by === "manual" ? undefined : by, sortDir: undefined })}
+        onDir={() => setPrefs((p) => ({ sortDir: p.sortDir === "desc" ? undefined : "desc" }))}
+      />
+    ) : null,
   };
+}
+
+/** Wybór sortowania i — poza kolejnością ręczną / domyślną — przycisk odwrócenia kierunku. */
+function SortControls({ by, dir, labels, title, onBy, onDir }: { by: SortBy; dir: SortDir; labels: Record<SortBy, string>; title?: string; onBy: (by: SortBy) => void; onDir: () => void }) {
+  return (
+    <>
+      <Select aria-label="Sortowanie" title={title} value={by} onChange={(e) => onBy(e.target.value as SortBy)} className="py-1 text-xs">
+        {(Object.keys(labels) as SortBy[]).map((k) => (
+          <option key={k} value={k}>
+            {labels[k]}
+          </option>
+        ))}
+      </Select>
+      {by === "manual" ? null : (
+        <button
+          type="button"
+          onClick={onDir}
+          className="rounded-md border border-[var(--line)] px-2 py-1 text-xs hover:bg-[var(--hover)]"
+          title="Odwróć kierunek sortowania"
+          aria-label={`Kierunek sortowania: ${sortDirLabel(by, dir)}`}
+          data-testid="sort-dir"
+        >
+          {dir === "desc" ? "▼" : "▲"} {sortDirLabel(by, dir)}
+        </button>
+      )}
+    </>
+  );
 }
 
 /** Ustawienia widoku zbiorczego (`settings.views`, synchronizowane) i części układu: przełącznik, „Kolumny”, tablica. */
 function useSmartView(id: SmartView, ctx: ViewContext, targetInbox: List | undefined) {
-  const { prefs, setPrefs, cols, picker, columnsHeader } = useViewColumns(id, ctx);
+  // Sortowanie: Inbox, Dziś, Nadchodzące (Zaległe mają stałą kolejność od najstarszego).
+  const { prefs, setPrefs, sort, cols, picker, columnsHeader, sortControls } = useViewColumns(id, ctx, { sortable: id !== "overdue" });
   const kanban = prefs.view === "kanban";
   return {
     kanban,
     cols,
+    sort,
     switcher: <ViewSwitch views={["list", "kanban"]} value={kanban ? "kanban" : "list"} onChange={(view) => setPrefs({ view })} />,
-    columnsBar: kanban ? null : <div className="mb-2 flex flex-wrap gap-2">{picker}</div>,
+    columnsBar: kanban ? null : (
+      <div className="mb-2 flex flex-wrap gap-2">
+        {sortControls}
+        {picker}
+      </div>
+    ),
     columnsHeader,
     board: (tasks: readonly ViewTask[], opts: { inboxIds?: ReadonlySet<string>; now?: string; addLabel?: string }) => (
       <SmartBoardView id={id} tasks={tasks} ctx={ctx} targetInbox={targetInbox} by={prefs.boardBy ?? (id === "upcoming" ? "weekday" : "status")} onBy={(boardBy) => setPrefs({ boardBy })} {...opts} />
@@ -256,10 +306,11 @@ function SmartBoardView({ id, tasks, ctx, targetInbox, by, onBy, inboxIds = NO_I
 
 export function InboxView({ data, ctx, targetInbox, toolbar }: ViewProps) {
   const inboxIds = useMemo(() => new Set(data.lists.filter((l) => l.kind === "inbox").map((l) => l.id)), [data.lists]);
-  const tasks = useMemo(() => selectInbox(data.tasks, inboxIds, ctx), [data.tasks, inboxIds, ctx]);
+  const view = useSmartView("inbox", ctx, targetInbox);
+  const { by, dir } = view.sort;
+  const tasks = useMemo(() => sortSection(selectInbox(data.tasks, inboxIds, ctx), by, dir, (t) => t), [data.tasks, inboxIds, ctx, by, dir]);
   const workspaceName = new Map(data.workspaces.map((w) => [w.id, w.name]));
   const all = !ctx.workspaceId;
-  const view = useSmartView("inbox", ctx, targetInbox);
   const addLabel = targetInbox && all ? `Dodaj do Inboxu („${workspaceName.get(targetInbox.workspaceId)}”)` : "Dodaj do Inboxu";
   return (
     <>
@@ -324,8 +375,14 @@ function useLater(ctx: ViewContext, now: string) {
 
 /** `aside` — „Plan dnia” obok listy (na szerokim ekranie po prawej, na wąskim pod listą); tablica zajmuje całą szerokość, bez planu i „Cyklicznych”. */
 export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps & { aside?: ReactNode }) {
-  const view = useMemo(() => selectToday(data.tasks, ctx), [data.tasks, ctx]);
   const smart = useSmartView("today", ctx, targetInbox);
+  const { by, dir } = smart.sort;
+  // Wybrane sortowanie działa w obrębie sekcji (zaległe / dziś / w toku / ukończone); nawyki bez zmian.
+  const view = useMemo(() => {
+    const day = selectToday(data.tasks, ctx);
+    const sort = (items: ViewTask[]) => [...sortSection(items, by, dir, (t) => t)];
+    return { ...day, overdue: sort(day.overdue), today: sort(day.today), ongoing: sort(day.ongoing), done: sort(day.done) };
+  }, [data.tasks, ctx, by, dir]);
   // Etap 8: nawyki dnia ze stanem odhaczenia, postępem i passą (kolejność jak w `selectToday`).
   const habits = useMemo(() => habitsForDay(view.habits, data.habitCompletions, ctx.today, ctx.today), [view.habits, data.habitCompletions, ctx.today]);
   const names = listNames(data);
@@ -449,8 +506,14 @@ export function OverdueView({ data, ctx, targetInbox, toolbar }: ViewProps) {
 // ── Nadchodzące ──────────────────────────────────────────────────────────────────────────────
 
 export function UpcomingView({ data, ctx, targetInbox, toolbar }: ViewProps) {
-  const view = useMemo(() => selectUpcoming(data.tasks, ctx), [data.tasks, ctx]);
   const smart = useSmartView("upcoming", ctx, targetInbox);
+  const { by, dir } = smart.sort;
+  // Wybrane sortowanie działa w obrębie dnia / tygodnia; dni zostają po kolei.
+  const view = useMemo(() => {
+    const upcoming = selectUpcoming(data.tasks, ctx);
+    const sort = <T extends { task: ViewTask }>(items: T[]) => [...sortSection(items, by, dir, (i) => i.task)];
+    return { days: upcoming.days.map((d) => ({ ...d, items: sort(d.items) })), later: upcoming.later.map((w) => ({ ...w, items: sort(w.items) })) };
+  }, [data.tasks, ctx, by, dir]);
   const names = listNames(data);
   return (
     <>
@@ -775,25 +838,13 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
         </div>
       ) : (
         <div className="mb-2 flex flex-wrap gap-2">
-          <Select aria-label="Sortowanie" value={sortBy} onChange={(e) => setPrefs({ sortBy: e.target.value as SortBy, sortDir: undefined })} className="py-1 text-xs">
-            {(Object.keys(SORT_BY) as SortBy[]).map((k) => (
-              <option key={k} value={k}>
-                {SORT_BY[k]}
-              </option>
-            ))}
-          </Select>
-          {sortBy === "manual" ? null : (
-            <button
-              type="button"
-              onClick={() => setPrefs((p) => ({ sortDir: p.sortDir === "desc" ? undefined : "desc" }))}
-              className="rounded-md border border-[var(--line)] px-2 py-1 text-xs hover:bg-[var(--hover)]"
-              title="Odwróć kierunek sortowania"
-              aria-label={`Kierunek sortowania: ${sortDirLabel(sortBy, sortDir)}`}
-              data-testid="sort-dir"
-            >
-              {sortDir === "desc" ? "▼" : "▲"} {sortDirLabel(sortBy, sortDir)}
-            </button>
-          )}
+          <SortControls
+            by={sortBy}
+            dir={sortDir}
+            labels={SORT_BY}
+            onBy={(by) => setPrefs({ sortBy: by, sortDir: undefined })}
+            onDir={() => setPrefs((p) => ({ sortDir: p.sortDir === "desc" ? undefined : "desc" }))}
+          />
           <Select aria-label="Grupowanie" value={groupBy} onChange={(e) => setPrefs({ groupBy: e.target.value as GroupBy })} className="py-1 text-xs">
             {(Object.keys(GROUP_BY) as GroupBy[]).map((k) => (
               <option key={k} value={k}>

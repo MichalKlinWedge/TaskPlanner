@@ -106,6 +106,9 @@ export const SORT_BY: Record<'manual' | 'priority' | 'due' | 'start' | 'title' |
   created: 'Data dodania',
 };
 
+/** Sortowanie w widokach zbiorczych (Inbox, Dziś, Nadchodzące): `manual` = kolejność widoku. */
+export const SMART_SORT_BY: typeof SORT_BY = { ...SORT_BY, manual: 'Domyślnie' };
+
 /** Kierunek sortowania (`SortDir`) dla danego kryterium: `asc` = domyślny. */
 export const sortDirLabel = (by: 'manual' | 'priority' | 'due' | 'start' | 'title' | 'created', dir: 'asc' | 'desc'): string => {
   const words: Record<typeof by, [string, string]> = {

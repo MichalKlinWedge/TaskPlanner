@@ -4,7 +4,7 @@
  * webie) zawężają zadania; filtr pamiętany per widok do zamknięcia aplikacji (R-06), nie jest zapisywany. „+” dodaje
  * zadanie bez terminu (jak Q na webie, R-08); termin wpisany w treści działa jak zawsze. „Eksport XLSX” jak na webie.
  */
-import { addDays, applyFilter, capitalized, dayLabel, dayMonth, isEmptyFilter, relativeDay, selectUpcoming, VIEW_SECTION } from '@taskplanner/core';
+import { addDays, applyFilter, capitalized, dayLabel, dayMonth, isEmptyFilter, relativeDay, selectUpcoming, sortSection, VIEW_SECTION, type ViewTask } from '@taskplanner/core';
 import { useMemo } from 'react';
 import { Pressable, Text } from 'react-native';
 
@@ -13,7 +13,7 @@ import { FilterBar } from '@/components/filter-bar';
 import { ScreenHeader } from '@/components/sync-banner';
 import { openQuickAdd, TaskSections, type TaskSection } from '@/components/task-list';
 import { usePalette } from '@/components/ui';
-import { useSmartView } from '@/components/view-options';
+import { smartSort, useSmartView } from '@/components/view-options';
 import { useAdhocFilter } from '@/lib/adhoc-filters';
 import { targetInbox, useView } from '@/lib/app-data';
 import { usePerfReady } from '@/lib/perf';
@@ -31,7 +31,13 @@ export default function UpcomingScreen() {
   const { data, today, ctx, workspaceId } = useView();
   usePerfReady('tab:upcoming', data.loaded);
   const [filter, setFilter] = useAdhocFilter(data.userId, 'upcoming');
-  const view = useMemo(() => selectUpcoming(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx), [data.tasks, filter, today, ctx]);
+  const { by, dir } = smartSort(data, 'upcoming');
+  // Wybrane sortowanie działa w obrębie dnia / tygodnia; dni zostają po kolei.
+  const view = useMemo(() => {
+    const upcoming = selectUpcoming(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx);
+    const sort = <T extends { task: ViewTask }>(items: T[]) => sortSection(items, by, dir, (i) => i.task);
+    return { days: upcoming.days.map((d) => ({ ...d, items: sort(d.items) })), later: upcoming.later.map((w) => ({ ...w, items: sort(w.items) })) };
+  }, [data.tasks, filter, today, ctx, by, dir]);
   // Eksport jak na webie: dzień jako sekcja, wystąpienie serii z własnym terminem.
   const exportRows = () => [
     ...view.days.flatMap(({ date, items }) => items.map((item) => ({ task: item.task, section: capitalized(dayLabel(date)), date: item.virtual ? item.date : undefined }))),

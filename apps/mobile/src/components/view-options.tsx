@@ -3,7 +3,21 @@
  * oraz `useSmartView` — ustawienia Inboxu, „Dziś”, „Zaległych” i „Nadchodzących” z `settings.views`
  * profilu (wspólne z webem) z chipem „▦ Tablica” (`/board?view=`).
  */
-import { LIST_COLUMN, orderedColumns, smartViewsPatch, tagsForWorkspace, type ListColumn, type SmartView, type SmartViewPrefs, type ViewSettingsKey, type ViewTask } from '@taskplanner/core';
+import {
+  LIST_COLUMN,
+  orderedColumns,
+  SMART_SORT_BY,
+  smartViewsPatch,
+  sortDirLabel,
+  tagsForWorkspace,
+  type ListColumn,
+  type SmartView,
+  type SmartViewPrefs,
+  type SortBy,
+  type SortDir,
+  type ViewSettingsKey,
+  type ViewTask,
+} from '@taskplanner/core';
 import { router } from 'expo-router';
 import { useMemo, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -13,7 +27,7 @@ import { updateSettings } from '@/lib/profile';
 import { rowMaker } from '@/lib/rows';
 
 import { useTaskActions } from './actions';
-import { pickMany } from './pickers';
+import { pickMany, pickOption } from './pickers';
 import { TaskColumnsHeader } from './task-row';
 import { usePalette } from './ui';
 
@@ -104,14 +118,55 @@ export function useViewColumns(view: ViewSettingsKey, data: AppData, today: stri
   };
 }
 
-/** Widok zbiorczy: `row` z kolumnami, pasek opcji i nagłówek kolumn. */
-/** `extra` — dodatkowy chip w wierszu opcji (np. „Eksport XLSX”). */
+/**
+ * Chipy sortowania: kryterium (`pickOption`) i — poza „Ręcznie” / „Domyślnie” — kierunek (▲ / ▼).
+ * Zmiana kryterium wraca do kierunku domyślnego.
+ */
+export function SortChips({ by, dir, labels, onChange }: { by: SortBy; dir: SortDir; labels: Record<SortBy, string>; onChange: (patch: { sortBy?: SortBy; sortDir?: SortDir }) => void }) {
+  return (
+    <>
+      <OptionChip
+        label={`Sortowanie: ${labels[by]}`}
+        onPress={() =>
+          void pickOption<SortBy>('Sortowanie', (Object.keys(labels) as SortBy[]).map((k) => ({ label: labels[k], value: k, selected: k === by }))).then(
+            (v) => v && onChange({ sortBy: v, sortDir: undefined }),
+          )
+        }
+      />
+      {by === 'manual' ? null : (
+        <OptionChip
+          label={`${dir === 'desc' ? '▼' : '▲'} ${sortDirLabel(by, dir)}`}
+          accessibilityLabel={`Kierunek sortowania: ${sortDirLabel(by, dir)} — odwróć`}
+          onPress={() => onChange({ sortDir: dir === 'desc' ? undefined : 'desc' })}
+        />
+      )}
+    </>
+  );
+}
+
+/** Sortowanie widoku zbiorczego z `settings.views` (wspólne z webem); ekrany sortują nim sekcje (`sortSection`). */
+export function smartSort(data: AppData, view: SmartView): { by: SortBy; dir: SortDir } {
+  const prefs = data.settings.views[view];
+  return { by: prefs?.sortBy ?? 'manual', dir: prefs?.sortDir ?? 'asc' };
+}
+
+/**
+ * Widok zbiorczy: `row` z kolumnami, pasek opcji (z chipami sortowania — `smartSort`; Zaległe bez wyboru,
+ * stała kolejność od najstarszego) i nagłówek kolumn. `extra` — dodatkowy chip w wierszu opcji (np. „Eksport XLSX”).
+ */
 export function useSmartView(view: SmartView, data: AppData, today: string, workspaceId: string | null, extra?: ReactNode) {
   const { row, chips, columnsHeader } = useViewColumns(view, data, today, workspaceId);
+  const { notify } = useTaskActions();
+  const sort = smartSort(data, view);
+  const setSort = (patch: { sortBy?: SortBy; sortDir?: SortDir }) =>
+    void updateSettings((s) => ({ views: smartViewsPatch(s.views, view, { ...patch, ...(patch.sortBy === 'manual' && { sortBy: undefined }) }) })).catch((e: unknown) =>
+      notify(e instanceof Error ? e.message : String(e)),
+    );
   return {
     row,
     options: (
       <OptionRow>
+        {view === 'overdue' ? null : <SortChips by={sort.by} dir={sort.dir} labels={SMART_SORT_BY} onChange={setSort} />}
         {chips}
         <OptionChip label="▦ Tablica" accent onPress={() => router.push({ pathname: '/board', params: { view } })} />
         {extra}

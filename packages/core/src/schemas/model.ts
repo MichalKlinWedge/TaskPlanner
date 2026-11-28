@@ -113,8 +113,11 @@ export const ViewPrefs = z.object({
 });
 export type ViewPrefs = z.infer<typeof ViewPrefs>;
 
-/** Ustawienia widoku zbiorczego (Inbox, Dziś, Zaległe, Nadchodzące): „Lista | Tablica” i kolumny jak w liście. */
-export const SmartViewPrefs = ViewPrefs.pick({ view: true, boardBy: true, columns: true, columnTags: true });
+/**
+ * Ustawienia widoku zbiorczego (Inbox, Dziś, Zaległe, Nadchodzące): „Lista | Tablica”, kolumny i sortowanie
+ * jak w liście; `sortBy` brak / `manual` = domyślna kolejność widoku, inne sortuje w obrębie sekcji / dnia.
+ */
+export const SmartViewPrefs = ViewPrefs.pick({ view: true, boardBy: true, columns: true, columnTags: true, sortBy: true, sortDir: true });
 export type SmartViewPrefs = z.infer<typeof SmartViewPrefs>;
 const smartViewPrefs = SmartViewPrefs.optional().catch(undefined);
 

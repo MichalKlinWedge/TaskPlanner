@@ -6,7 +6,7 @@
  * (jak na webie) zawężają zadania, nie nawyki; filtr pamiętany per widok do zamknięcia aplikacji (R-06), nie jest zapisywany.
  * „Eksport XLSX” — zadania z sekcjami (bez nawyków), jak na webie.
  */
-import { applyFilter, capitalized, dayLabel, habitsForDay, isEmptyFilter, plural, selectToday, VIEW_SECTION } from '@taskplanner/core';
+import { applyFilter, capitalized, dayLabel, habitsForDay, isEmptyFilter, plural, selectToday, sortSection, VIEW_SECTION, type ViewTask } from '@taskplanner/core';
 import { useMemo } from 'react';
 import { View } from 'react-native';
 
@@ -17,7 +17,7 @@ import { HabitTodayItem } from '@/components/habits';
 import { ReviewNudge } from '@/components/review';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
-import { useSmartView } from '@/components/view-options';
+import { smartSort, useSmartView } from '@/components/view-options';
 import { useAdhocFilter } from '@/lib/adhoc-filters';
 import { targetInbox, useView } from '@/lib/app-data';
 import { perfOnce, usePerfReady } from '@/lib/perf';
@@ -27,7 +27,13 @@ const TASKS = ['zadanie', 'zadania', 'zadań'] as const;
 export default function TodayScreen() {
   const { data, today, ctx, workspaceId } = useView();
   const [filter, setFilter] = useAdhocFilter(data.userId, 'today');
-  const view = useMemo(() => selectToday(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx), [data.tasks, filter, today, ctx]);
+  const { by, dir } = smartSort(data, 'today');
+  // Wybrane sortowanie działa w obrębie sekcji; nawyki bez zmian.
+  const view = useMemo(() => {
+    const day = selectToday(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx);
+    const sort = (items: ViewTask[]) => sortSection(items, by, dir, (t) => t);
+    return { overdue: sort(day.overdue), today: sort(day.today), ongoing: sort(day.ongoing), done: sort(day.done) };
+  }, [data.tasks, filter, today, ctx, by, dir]);
   const habits = useMemo(() => habitsForDay(data.tasks, data.habitCompletions, today, today, workspaceId), [data.tasks, data.habitCompletions, today, workspaceId]);
   const exportRows = () => (['overdue', 'today', 'ongoing', 'done'] as const).flatMap((key) => view[key].map((task) => ({ task, section: VIEW_SECTION[key] })));
   const { row, options, columnsHeader } = useSmartView('today', data, today, workspaceId, <ExportChip title="Dziś" rows={exportRows} />);

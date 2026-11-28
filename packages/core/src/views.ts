@@ -138,6 +138,16 @@ export const sortTasks = (tasks: readonly ViewTask[], by: SortBy, dir: SortDir =
   return [...tasks].sort((a, b) => COMPARE[by](a, b, d));
 };
 
+/**
+ * Sortowanie sekcji widoku zbiorczego (Inbox, dzień „Dziś” / „Nadchodzących”): `manual` = kolejność
+ * widoku bez zmian (z `selectToday` / `selectUpcoming`), inne jak `sortTasks`. `task` wyciąga zadanie z elementu.
+ */
+export function sortSection<T>(items: readonly T[], by: SortBy, dir: SortDir, task: (item: T) => ViewTask): readonly T[] {
+  if (by === 'manual') return items;
+  const d = dir === 'desc' ? -1 : 1;
+  return [...items].sort((a, b) => COMPARE[by](task(a), task(b), d));
+}
+
 /** Kolumny nagłówka listy, po których da się sortować kliknięciem (`title` = „Zadanie”). */
 export const HEADER_SORT: Readonly<Record<string, SortBy>> = { title: 'title', start: 'start', due: 'due' };
 
