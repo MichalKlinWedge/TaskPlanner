@@ -19,6 +19,7 @@ import { useAppEnv } from "./app-env";
 import { PeopleBadges } from "./people-badges";
 import { QuickAdd } from "./quick-add";
 import { TAG_CHIP, tagChipStyle } from "./tag-chip";
+import { SortControls, type SortChoice } from "./sort-controls";
 import { DoneCircle, useTaskActions } from "./task-item";
 import { Button, Input, Select } from "./ui";
 
@@ -348,6 +349,7 @@ export function Board({
   showList,
   addLabel,
   smart,
+  sort,
 }: {
   data: AppData;
   ctx: ViewContext;
@@ -360,9 +362,15 @@ export function Board({
   addLabel?: string;
   /** Widok zbiorczy (`smartBoard`): opcje kolumn, opis „Gotowe”, termin nowych kart. */
   smart?: SmartBoard;
+  /** Kolejność kart w kolumnach (wspólna z widokiem listy); brak / „Ręcznie” — przeciąganie układa karty. */
+  sort?: SortChoice;
 }) {
   const { run, notify } = useTaskActions();
   const options = smart?.options;
+  // Kryterium (nie „Ręcznie” / „Domyślnie”): karty w kolumnie układa sortowanie, nie przeciąganie.
+  const sortKey = sort?.by ?? "manual";
+  const sortDir = sort?.dir ?? "asc";
+  const sortBy = useMemo(() => (sortKey !== "manual" ? { by: sortKey, dir: sortDir } : undefined), [sortKey, sortDir]);
   const doneNote = smart ? smart.doneNote : "„Gotowe” z ostatnich 7 dni";
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const lists = useMemo(() => {
@@ -384,8 +392,8 @@ export function Board({
     if (custom && !owner) return [];
     const names = boardListNames(data, ctx.workspaceId ?? null);
     const named = lists.map((l) => ({ id: l.id, name: names.get(l.id) ?? l.name, sortKey: l.sortKey }));
-    return boardColumns(tasks, by, { today: ctx.today, firstDayOfWeek: ctx.firstDayOfWeek, ...options }, { tags, lists: named, columns: defs });
-  }, [tasks, by, custom, owner, data, ctx.workspaceId, ctx.today, ctx.firstDayOfWeek, options, tags, lists, defs]);
+    return boardColumns(tasks, by, { today: ctx.today, firstDayOfWeek: ctx.firstDayOfWeek, ...options, sort: sortBy }, { tags, lists: named, columns: defs });
+  }, [tasks, by, custom, owner, data, ctx.workspaceId, ctx.today, ctx.firstDayOfWeek, options, tags, lists, defs, sortBy]);
   // Kolumna bez wartości (do przypisania / bez terminu / bez tagu) — pierwsza i przypięta.
   const pinned = columns[0]?.key === "none" ? columns[0] : undefined;
   const scrolled = pinned ? columns.filter((c) => c !== pinned) : columns;
@@ -432,9 +440,10 @@ export function Board({
       index = same && fromIndex < target.tasks.findIndex((t) => t.id === overCard.taskId) ? overIndex + 1 : overIndex;
     }
     if (same && index === fromIndex) return;
+    if (same && sortBy && sort) return notify(`Kolejność kart ustala sortowanie „${sort.labels[sort.by] ?? sort.by}” — wybierz „${sort.labels.manual ?? "Ręcznie"}”, żeby układać karty.`);
     if (!same && target.fixed) return notify(`Na kolumnę „${target.label}” nie da się przenieść — wybierz dzień.`);
     if (by === "tag" && toKey !== "none" && from.column !== toKey && task.tagIds.includes(toKey)) return notify("Zadanie ma już ten tag.");
-    const { ops, undo } = boardDropOps(task, data.tasks, by, from.column, toKey, target.tasks, Math.max(0, index), { today: ctx.today, now: new Date(), timeZone: ctx.timeZone });
+    const { ops, undo } = boardDropOps(task, data.tasks, by, from.column, toKey, target.tasks, Math.max(0, index), { today: ctx.today, now: new Date(), timeZone: ctx.timeZone, sorted: !!sortBy });
     void run(ops, from.column === toKey ? undefined : { text: `„${task.title}” → ${target.label}`, undo });
   };
 
@@ -449,6 +458,16 @@ export function Board({
             </option>
           ))}
         </Select>
+        {sort ? (
+          <SortControls
+            by={sort.by}
+            dir={sort.dir}
+            labels={sort.labels}
+            title="Kolejność kart w kolumnach"
+            onBy={(next) => sort.onChange({ sortBy: next, sortDir: undefined })}
+            onDir={() => sort.onChange({ sortDir: sort.dir === "desc" ? undefined : "desc" })}
+          />
+        ) : null}
         {by === "status" && doneNote ? <span className="text-[var(--muted)]">{doneNote}</span> : null}
         {custom && owner ? <span className="text-[var(--muted)]">Kolumny listy „{owner.kind === "inbox" ? "Inbox" : owner.name}” — przeciągnij ⠿, by zmienić kolejność</span> : null}
         {custom && owner && !columnsLocked ? (

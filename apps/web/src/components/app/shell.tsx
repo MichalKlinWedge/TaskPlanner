@@ -4,7 +4,7 @@
  * Powłoka aplikacji (MVP-2): pasek boczny z widokami stałymi i licznikami, przełącznik przestrzeni
  * z trybem „Wszystkie” (M2), listy i projekty przestrzeni, treść według `#` adresu.
  */
-import { applyFilter, assignSelfOps, BOARD_BY, bulkTaskOps, dayLabel, sharedText, habitsForDay, isEmptyFilter, isOpen, keepShownSelection, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, selectUndated, tagsForWorkspace, VIEW_SECTION, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type QuickAddSlot, type ViewContext, type WebClip } from "@taskplanner/core";
+import { applyFilter, assignSelfOps, BOARD_BY, bulkTaskOps, dayLabel, sharedText, habitsForDay, isEmptyFilter, isOpen, keepShownSelection, listShareBadge, plural, pluginRequestOps, selectInbox, selectToday, selectUndated, SORT_BY, tagsForWorkspace, VIEW_SECTION, type BoardBy, type BulkAction, type FilterQuery, type ListShareBadge, type LocalDate, type ProfileSettings, type QuickAddSlot, type SortBy, type SortDir, type ViewContext, type WebClip } from "@taskplanner/core";
 import type { TabStore } from "@taskplanner/sync";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -286,6 +286,27 @@ export function Shell({
     }
   };
 
+  // Sortowanie kart tablicy `#/board` — też per przeglądarka (`{ by, dir }`; brak = „Ręcznie”).
+  const [boardSort, setBoardSortState] = useState<{ by: SortBy; dir: SortDir }>(() => {
+    try {
+      const value = JSON.parse(localStorage.getItem("tp-board-sort") ?? "null") as { by?: unknown; dir?: unknown } | null;
+      const by = typeof value?.by === "string" && value.by in SORT_BY ? (value.by as SortBy) : "manual";
+      return { by, dir: by !== "manual" && value?.dir === "desc" ? "desc" : "asc" };
+    } catch {
+      return { by: "manual", dir: "asc" };
+    }
+  });
+  const setBoardSort = (patch: { sortBy?: SortBy; sortDir?: SortDir }) => {
+    const by = "sortBy" in patch ? (patch.sortBy ?? "manual") : boardSort.by;
+    const next = { by, dir: by === "manual" ? "asc" : (patch.sortDir ?? ("sortBy" in patch ? "asc" : boardSort.dir)) } as const;
+    setBoardSortState(next);
+    try {
+      localStorage.setItem("tp-board-sort", JSON.stringify(next));
+    } catch {
+      // Bez pamięci przeglądarki — do odświeżenia.
+    }
+  };
+
   // Filtr doraźny (chipy) nad Inbox / Dziś / Nadchodzące / Tablicą — pamiętany per widok do zamknięcia karty (R-06); lista pamięta swój w `view_prefs.filter`.
   const [adhoc, setAdhoc] = useAdhocFilter(userId, routeHash(route));
 
@@ -377,6 +398,7 @@ export function Shell({
           tasks={boardTasks}
           by={boardBy}
           onBy={setBoardBy}
+          sort={{ ...boardSort, labels: SORT_BY, onChange: setBoardSort }}
           listId={targetInbox?.id}
           showList
           addLabel={targetInbox ? `Dodaj do Inboxu („${data.workspaces.find((w) => w.id === targetInbox.workspaceId)?.name ?? ""}”)` : undefined}

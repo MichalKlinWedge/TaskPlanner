@@ -1,4 +1,5 @@
 [
+  {"version":"0.48.7.0","kind":"w","date":"2026-11-28","title":"Tablica: wybór sortowania kart w kolumnach"},
   {"version":"0.48.6.1","kind":"z","date":"2026-11-28","title":"Ustawienia: sekcja „Połączone kalendarze” nazywa się teraz „Kalendarze”"},
   {"version":"0.48.6.0","kind":"w","date":"2026-11-28","title":"Tagi i zapisane filtry: wybór sortowania (domyślnie po terminie)"},
   {"version":"0.48.5.0","kind":"w","date":"2026-11-28","title":"Bez terminu: sortowanie tylko po priorytecie, nazwie i dacie dodania"},

@@ -13,7 +13,7 @@ import { BoardColumns, type BoardColumnDef } from './schemas/model.ts';
 import type { LocalDate, Priority, TaskStatus } from './schemas/primitives.ts';
 import { keyBetween } from './sort-key.ts';
 import { completeTaskOps, datesPatch, moveTaskOps, reopenTaskPatch, type TaskOp } from './tasks.ts';
-import type { ViewTask } from './views.ts';
+import { sortTasks, type SortBy, type SortDir, type ViewTask } from './views.ts';
 
 export type BoardBy = 'status' | 'priority' | 'weekday' | 'tag' | 'list' | 'custom';
 
@@ -85,7 +85,21 @@ export interface BoardOptions {
 export function boardColumns(
   tasks: readonly ViewTask[],
   by: BoardBy,
-  { today, firstDayOfWeek = 1, completedSince, subtasks = false, days, outside = false }: { today: LocalDate; firstDayOfWeek?: number; completedSince?: string } & BoardOptions,
+  {
+    today,
+    firstDayOfWeek = 1,
+    completedSince,
+    subtasks = false,
+    days,
+    outside = false,
+    sort,
+  }: {
+    today: LocalDate;
+    firstDayOfWeek?: number;
+    completedSince?: string;
+    /** Kolejność kart w kolumnie; brak / `manual` = ręczna (`boardOrder`), inne jak `sortTasks`. */
+    sort?: { by: SortBy; dir: SortDir };
+  } & BoardOptions,
   lookup: BoardLookup = {},
 ): BoardColumn[] {
   const since = completedSince ?? `${addDays(today, -BOARD_DONE_DAYS)}T00:00:00Z`;
@@ -128,7 +142,8 @@ export function boardColumns(
     for (const l of [...(lookup.lists ?? [])].sort((a, b) => byText(a.sortKey, b.sortKey))) column(l.id, l.name);
     for (const t of cards) columns.get(t.listId)?.tasks.push(t);
   }
-  for (const c of columns.values()) c.tasks.sort(boardOrder);
+  const sorted = sort && sort.by !== 'manual' ? sort : undefined;
+  for (const c of columns.values()) c.tasks = sorted ? sortTasks(c.tasks, sorted.by, sorted.dir) : c.tasks.sort(boardOrder);
   return [...columns.values()];
 }
 
@@ -158,7 +173,9 @@ function boardKeyOps(column: readonly ViewTask[], draggedId: string, index: numb
  * Przeciągnięcie karty do kolumny `toKey` na pozycję `index`: atrybut kolumny (status — ukończenie /
  * ponowne otwarcie jak przy odhaczeniu, priorytet, termin z zachowaniem godziny, tag, lista, własna
  * kolumna) i klucz
- * kolejności. Z `undo` — przywrócenie (bez kluczy kolejności sąsiadów).
+ * kolejności. Z `undo` — przywrócenie (bez kluczy kolejności sąsiadów). Z `sorted` (tablica posortowana
+ * kryterium, nie ręcznie) miejsce w kolumnie nic nie znaczy: bez kluczy kolejności, a upuszczenie w tej
+ * samej kolumnie nic nie zmienia.
  */
 export function boardDropOps(
   task: ViewTask,
@@ -168,10 +185,11 @@ export function boardDropOps(
   toKey: string,
   targetColumn: readonly ViewTask[],
   index: number,
-  { today, now, timeZone }: { today: LocalDate; now: Date | string; timeZone?: string },
+  { today, now, timeZone, sorted = false }: { today: LocalDate; now: Date | string; timeZone?: string; sorted?: boolean },
 ): { ops: TaskOp[]; undo: TaskOp[] } {
   const ops: TaskOp[] = [];
   const undo: TaskOp[] = [];
+  if (sorted && fromKey === toKey) return { ops, undo };
   const patch: Record<string, unknown> = {};
   const before: Record<string, unknown> = {};
   const set = (field: string, value: unknown, previous: unknown) => {
@@ -224,10 +242,15 @@ export function boardDropOps(
     }
   }
 
-  const { draggedKey, ops: neighbours } = boardKeyOps(targetColumn, task.id, index);
-  set('board_sort_key', draggedKey, task.boardSortKey ?? null);
-  ops.push(...neighbours, { table: 'tasks', id: task.id, patch });
-  undo.push({ table: 'tasks', id: task.id, patch: before });
+  if (!sorted) {
+    const { draggedKey, ops: neighbours } = boardKeyOps(targetColumn, task.id, index);
+    set('board_sort_key', draggedKey, task.boardSortKey ?? null);
+    ops.push(...neighbours);
+  }
+  if (Object.keys(patch).length) {
+    ops.push({ table: 'tasks', id: task.id, patch });
+    undo.push({ table: 'tasks', id: task.id, patch: before });
+  }
   return { ops, undo };
 }
 

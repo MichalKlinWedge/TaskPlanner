@@ -128,6 +128,28 @@ describe('przeciągnięcie karty', () => {
       ['a', undefined],
     ]);
   });
+
+  it('tablica posortowana kryterium: bez kluczy kolejności, w tej samej kolumnie nic', () => {
+    const sorted = { ...ctx, sorted: true };
+    const b = tasks[1]!;
+    const { ops, undo } = boardDropOps(b, tasks, 'status', 'in_progress', 'todo', todo, 1, sorted);
+    expect(ops).toEqual([{ table: 'tasks', id: 'b', patch: { status: 'todo' } }]);
+    expect(undo).toEqual([{ table: 'tasks', id: 'b', patch: { status: 'in_progress' } }]);
+    expect(boardDropOps(tasks[0]!, tasks, 'status', 'todo', 'todo', todo, 2, sorted)).toEqual({ ops: [], undo: [] });
+    const tag = boardDropOps(tasks[0]!, tasks, 'tag', 'g1', 'g2', [], 0, sorted);
+    expect(tag.ops.every((o) => o.table === 'task_tags')).toBe(true);
+  });
+});
+
+describe('sortowanie kart', () => {
+  it('kryterium sortuje karty w kolumnie (z kierunkiem); „Ręcznie” = klucze tablicy', () => {
+    const ids = (sort?: Parameters<typeof boardColumns>[2]['sort']) => boardColumns(tasks, 'status', { ...ctx, sort })[0]!.tasks.map((x) => x.id);
+    expect(ids()).toEqual(['k0', 'k1', 'a']);
+    expect(ids({ by: 'manual', dir: 'asc' })).toEqual(['k0', 'k1', 'a']);
+    expect(ids({ by: 'title', dir: 'asc' })).toEqual(['a', 'k0', 'k1']);
+    expect(ids({ by: 'title', dir: 'desc' })).toEqual(['k1', 'k0', 'a']);
+    expect(ids({ by: 'due', dir: 'asc' })[0]).toBe('a');
+  });
 });
 
 describe('własne kolumny listy', () => {

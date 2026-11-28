@@ -43,7 +43,6 @@ import {
   smartSortChoice,
   smartSortDefault,
   smartSortOptions,
-  sortDirLabel,
   sortSection,
   sortTasks,
   headerSortPatch,
@@ -94,6 +93,7 @@ import { ProjectStatusSelect } from "./project-status";
 import { PurgeButton } from "./purge-button";
 import { QuickAdd } from "./quick-add";
 import { TaskColumnsHeader, TaskItem, useTaskActions } from "./task-item";
+import { SortControls, type SortChoice } from "./sort-controls";
 import { SaveTemplateButton } from "./templates";
 import { Button, Select } from "./ui";
 
@@ -235,6 +235,8 @@ export function useViewColumns(id: ViewSettingsKey, ctx: ViewContext, { sortable
     columnsHeader: (
       <TaskColumnsHeader columns={columns} widths={widths} onResize={setWidth} sort={sortable ? sort : undefined} onSort={sortable ? (by) => setPrefs((p) => { const s = smartSortChoice(id, p); return headerSortPatch({ sortBy: s.by, sortDir: s.dir }, by); }) : undefined} sortOptions={sortOptions} />
     ),
+    /** Sortowanie dla tablicy widoku (te same ustawienia co lista). */
+    boardSort: { by: sort.by, dir: sort.dir, labels: sortOptions, onChange: (patch) => setPrefs({ ...patch, ...(patch.sortBy === smartSortDefault(id) && { sortBy: undefined }) }) } satisfies SortChoice,
     sortControls: sortable ? (
       <SortControls
         by={sort.by}
@@ -248,36 +250,9 @@ export function useViewColumns(id: ViewSettingsKey, ctx: ViewContext, { sortable
   };
 }
 
-/** Wybór sortowania i — poza kolejnością ręczną / domyślną — przycisk odwrócenia kierunku. */
-function SortControls({ by, dir, labels, title, onBy, onDir }: { by: SortBy; dir: SortDir; labels: Partial<Record<SortBy, string>>; title?: string; onBy: (by: SortBy) => void; onDir: () => void }) {
-  return (
-    <>
-      <Select aria-label="Sortowanie" title={title} value={by} onChange={(e) => onBy(e.target.value as SortBy)} className="py-1 text-xs">
-        {(Object.keys(labels) as SortBy[]).map((k) => (
-          <option key={k} value={k}>
-            {labels[k]}
-          </option>
-        ))}
-      </Select>
-      {by === "manual" ? null : (
-        <button
-          type="button"
-          onClick={onDir}
-          className="rounded-md border border-[var(--line)] px-2 py-1 text-xs hover:bg-[var(--hover)]"
-          title="Odwróć kierunek sortowania"
-          aria-label={`Kierunek sortowania: ${sortDirLabel(by, dir)}`}
-          data-testid="sort-dir"
-        >
-          {dir === "desc" ? "▼" : "▲"} {sortDirLabel(by, dir)}
-        </button>
-      )}
-    </>
-  );
-}
-
 /** Ustawienia widoku zbiorczego (`settings.views`, synchronizowane) i części układu: przełącznik, „Kolumny”, tablica. */
 function useSmartView(id: SmartView, ctx: ViewContext, targetInbox: List | undefined) {
-  const { prefs, setPrefs, sort, cols, picker, columnsHeader, sortControls } = useViewColumns(id, ctx, { sortable: true });
+  const { prefs, setPrefs, sort, boardSort, cols, picker, columnsHeader, sortControls } = useViewColumns(id, ctx, { sortable: true });
   const kanban = prefs.view === "kanban";
   return {
     kanban,
@@ -292,7 +267,7 @@ function useSmartView(id: SmartView, ctx: ViewContext, targetInbox: List | undef
     ),
     columnsHeader,
     board: (tasks: readonly ViewTask[], opts: { inboxIds?: ReadonlySet<string>; now?: string; addLabel?: string }) => (
-      <SmartBoardView id={id} tasks={tasks} ctx={ctx} targetInbox={targetInbox} by={prefs.boardBy ?? (id === "upcoming" ? "weekday" : "status")} onBy={(boardBy) => setPrefs({ boardBy })} {...opts} />
+      <SmartBoardView id={id} tasks={tasks} ctx={ctx} targetInbox={targetInbox} by={prefs.boardBy ?? (id === "upcoming" ? "weekday" : "status")} onBy={(boardBy) => setPrefs({ boardBy })} sort={boardSort} {...opts} />
     ),
   };
 }
@@ -300,10 +275,10 @@ function useSmartView(id: SmartView, ctx: ViewContext, targetInbox: List | undef
 const NO_IDS: ReadonlySet<string> = new Set();
 
 /** Tablica widoku zbiorczego: `tasks` po filtrze; pozostałe dane (podzadania, listy) pełne. */
-function SmartBoardView({ id, tasks, ctx, targetInbox, by, onBy, inboxIds = NO_IDS, now = "", addLabel }: { id: SmartView; tasks: readonly ViewTask[]; ctx: ViewContext; targetInbox: List | undefined; by: BoardBy; onBy: (by: BoardBy) => void; inboxIds?: ReadonlySet<string>; now?: string; addLabel?: string }) {
+function SmartBoardView({ id, tasks, ctx, targetInbox, by, onBy, sort, inboxIds = NO_IDS, now = "", addLabel }: { id: SmartView; tasks: readonly ViewTask[]; ctx: ViewContext; targetInbox: List | undefined; by: BoardBy; onBy: (by: BoardBy) => void; sort: SortChoice; inboxIds?: ReadonlySet<string>; now?: string; addLabel?: string }) {
   const { data } = useAppEnv();
   const smart = useMemo(() => smartBoard(id, tasks, ctx, { inboxIds, now }), [id, tasks, ctx, inboxIds, now]);
-  return <Board data={data} ctx={ctx} tasks={smart.tasks} by={by} onBy={onBy} listId={targetInbox?.id} showList={id !== "inbox" || !ctx.workspaceId} addLabel={addLabel} smart={smart} />;
+  return <Board data={data} ctx={ctx} tasks={smart.tasks} by={by} onBy={onBy} listId={targetInbox?.id} showList={id !== "inbox" || !ctx.workspaceId} addLabel={addLabel} smart={smart} sort={sort} />;
 }
 
 // ── Inbox ────────────────────────────────────────────────────────────────────────────────────
@@ -926,7 +901,7 @@ export function ListView({ data, ctx, list, store, toolbar }: { data: AppData; c
       {canvas ? (
         <CanvasView key={list.id} data={data} ctx={ctx} list={list} />
       ) : kanban ? (
-        <Board data={data} ctx={ctx} tasks={data.tasks.filter((t) => t.listId === list.id)} by={list.prefs.boardBy ?? "status"} onBy={(boardBy) => setPrefs({ boardBy })} listId={list.id} showList={false} addLabel={`Dodaj do „${list.name}”`} />
+        <Board data={data} ctx={ctx} tasks={data.tasks.filter((t) => t.listId === list.id)} by={list.prefs.boardBy ?? "status"} onBy={(boardBy) => setPrefs({ boardBy })} sort={{ by: sortBy, dir: sortDir, labels: SORT_BY, onChange: (patch) => setPrefs(patch) }} listId={list.id} showList={false} addLabel={`Dodaj do „${list.name}”`} />
       ) : (
         listBody
       )}

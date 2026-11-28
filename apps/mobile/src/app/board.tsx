@@ -11,6 +11,8 @@
  * `?list=` — tablica listy (kryterium w `view_prefs.boardBy`, chipy filtra zapisane w `view_prefs.filter`
  * jak na ekranie listy), `?view=` — widoku zbiorczego (`smartBoard`, kryterium w `settings.views`), bez — bieżącej przestrzeni (chipy filtra bez listy pamiętane per widok do zamknięcia aplikacji, wspólne z zakładką widoku — R-06)
  * (kryterium zapamiętane na urządzeniu).
+ * Sortowanie kart w kolumnach — wspólne z widokiem (lista: `view_prefs`, widok zbiorczy: `settings.views`,
+ * tablica przestrzeni: urządzenie). Przy kryterium innym niż ręczne karty przenosi się tylko do innej kolumny.
  */
 import {
   addBoardColumnOps,
@@ -24,7 +26,10 @@ import {
   renameBoardColumnOps,
   SMART_VIEW,
   smartBoard,
+  smartSortDefault,
+  smartSortOptions,
   smartViewsPatch,
+  SORT_BY,
   tagsForWorkspace,
   type BoardBy,
   type BoardColumn,
@@ -32,6 +37,8 @@ import {
   type FilterQuery,
   type LocalDate,
   type SmartView,
+  type SortBy,
+  type SortDir,
   type TaskOp,
   type ViewTask,
 } from '@taskplanner/core';
@@ -51,6 +58,7 @@ import { WorkspaceSwitcher } from '@/components/header';
 import { pickOption, type Option } from '@/components/pickers';
 import { QuickAddField } from '@/components/quick-add-field';
 import { RowsInteractive, TaskRow } from '@/components/task-row';
+import { smartSort, SortChips } from '@/components/view-options';
 import { Chip, usePalette } from '@/components/ui';
 import { useAdhocFilter } from '@/lib/adhoc-filters';
 import { listEditable, listLabel, targetInbox, useLocalMinute, useView } from '@/lib/app-data';
@@ -58,6 +66,21 @@ import { updateSettings } from '@/lib/profile';
 import { mutate } from '@/lib/sync';
 
 const BY_KEY = 'board.by';
+const SORT_KEY = 'board.sort';
+
+type Sort = { by: SortBy; dir: SortDir };
+const MANUAL: Sort = { by: 'manual', dir: 'asc' };
+
+/** Sortowanie tablicy przestrzeni z pamięci urządzenia (`{ by, dir }`); błędny zapis = „Ręcznie”. */
+function readLocalSort(): Sort {
+  try {
+    const value = JSON.parse(Storage.getItemSync(SORT_KEY) ?? 'null') as { by?: unknown; dir?: unknown } | null;
+    const by = typeof value?.by === 'string' && value.by in SORT_BY ? (value.by as SortBy) : 'manual';
+    return { by, dir: by !== 'manual' && value?.dir === 'desc' ? 'desc' : 'asc' };
+  } catch {
+    return MANUAL;
+  }
+}
 const NO_FILTER: FilterQuery = {};
 
 type Move = { kind: 'column'; key: string } | { kind: 'up' } | { kind: 'down' };
@@ -111,6 +134,27 @@ export default function BoardScreen() {
     }
   };
 
+  const [localSort, setLocalSort] = useState<Sort>(readLocalSort);
+  const sort: Sort = list ? { by: list.prefs.sortBy ?? 'manual', dir: list.prefs.sortBy && list.prefs.sortBy !== 'manual' ? (list.prefs.sortDir ?? 'asc') : 'asc' } : view ? smartSort(data, view) : localSort;
+  const sortLabels = view ? smartSortOptions(view) : SORT_BY;
+  const sorted = sort.by !== 'manual';
+  const setSort = (patch: { sortBy?: SortBy; sortDir?: SortDir }) => {
+    if (list) void mutate('lists', list.id, { view_prefs: { ...list.prefs, ...patch } }).catch((e: unknown) => notify(String(e)));
+    else if (view) {
+      // Domyślne kryterium widoku nie jest zapisywane — jak na liście widoku.
+      const next = { ...patch, ...(patch.sortBy === smartSortDefault(view) && { sortBy: undefined }) };
+      void updateSettings((s) => ({ views: smartViewsPatch(s.views, view, next) })).catch((e: unknown) => notify(e instanceof Error ? e.message : String(e)));
+    } else {
+      const by = 'sortBy' in patch ? (patch.sortBy ?? 'manual') : localSort.by;
+      const next: Sort = { by, dir: by === 'manual' ? 'asc' : (patch.sortDir ?? ('sortBy' in patch ? 'asc' : localSort.dir)) };
+      Storage.setItemSync(SORT_KEY, JSON.stringify(next));
+      setLocalSort(next);
+    }
+  };
+  const sortBy = sort.by;
+  const sortDir = sort.dir;
+  const sortOption = useMemo(() => (sortBy === 'manual' ? undefined : { by: sortBy, dir: sortDir }), [sortBy, sortDir]);
+
   // Tablica widoku dzieli filtr doraźny z jego zakładką (R-06).
   const [localFilter, setLocalFilter] = useAdhocFilter(data.userId, view ?? 'board');
   const filter = list ? (list.prefs.filter ?? NO_FILTER) : localFilter;
@@ -141,7 +185,10 @@ export default function BoardScreen() {
     const space = ctx.workspaceId ?? (lists.length && lists.every((l) => l.workspaceId === lists[0]!.workspaceId) ? lists[0]!.workspaceId : null);
     return tagsForWorkspace(data.tags, space, tasks.flatMap((t) => t.tagIds));
   }, [data.tags, ctx.workspaceId, lists, tasks]);
-  const columns = useMemo(() => boardColumns(tasks, by, { today, firstDayOfWeek: ctx.firstDayOfWeek, ...smart?.options }, { tags, lists, columns: defs }), [tasks, by, today, ctx.firstDayOfWeek, smart, tags, lists, defs]);
+  const columns = useMemo(
+    () => boardColumns(tasks, by, { today, firstDayOfWeek: ctx.firstDayOfWeek, ...smart?.options, sort: sortOption }, { tags, lists, columns: defs }),
+    [tasks, by, today, ctx.firstDayOfWeek, smart, tags, lists, defs, sortOption],
+  );
   const [selected, setSelected] = useState<string | null>(null);
   // Na start pierwsza kolumna z wartością (dzień / tag / własna), nie przypięta kolumna bez wartości.
   // Widok zbiorczy otwiera się na pierwszej kolumnie z kartami.
@@ -222,9 +269,10 @@ export default function BoardScreen() {
   };
   const moveCard = async (task: ViewTask, from: BoardColumn) => {
     const at = from.tasks.findIndex((t) => t.id === task.id);
+    // Przy sortowaniu kolejność w kolumnie ustala kryterium — tylko przeniesienie do innej kolumny.
     const options: Option<Move>[] = [
-      ...(at > 0 ? [{ label: '↑ Wyżej', value: { kind: 'up' } as Move }] : []),
-      ...(at < from.tasks.length - 1 ? [{ label: '↓ Niżej', value: { kind: 'down' } as Move }] : []),
+      ...(at > 0 && !sorted ? [{ label: '↑ Wyżej', value: { kind: 'up' } as Move }] : []),
+      ...(at < from.tasks.length - 1 && !sorted ? [{ label: '↓ Niżej', value: { kind: 'down' } as Move }] : []),
       ...columns.filter((c) => c.key !== from.key && !c.fixed).map((c) => ({ label: `→ ${c.label}`, hint: `${c.tasks.length}`, value: { kind: 'column', key: c.key } as Move })),
     ];
     const move = await pickOption(`„${task.title}”`, options);
@@ -236,7 +284,7 @@ export default function BoardScreen() {
   const dropCard = (task: ViewTask, from: BoardColumn, target: BoardColumn, index: number) => {
     if (by === 'tag' && target.key !== from.key && target.key !== 'none' && task.tagIds.includes(target.key)) return notify('Zadanie ma już ten tag.');
     if (target.fixed && target.key !== from.key) return notify(`Na kolumnę „${target.label}” nie da się przenieść — wybierz dzień.`);
-    const { ops, undo } = boardDropOps(task, data.tasks, by, from.key, target.key, target.tasks, index, { today, now: new Date(), timeZone: ctx.timeZone });
+    const { ops, undo } = boardDropOps(task, data.tasks, by, from.key, target.key, target.tasks, index, { today, now: new Date(), timeZone: ctx.timeZone, sorted });
     void run(ops, target.key === from.key ? undefined : { text: `„${task.title}” → ${target.label}`, undo });
   };
 
@@ -283,7 +331,7 @@ export default function BoardScreen() {
     ghostY.set(s.card.y - s.root.y + s.t.y);
     const chip = s.chips.find((c) => inside(c.rect, fx, fy));
     if (chip) return setDrop(chip.key === s.from.key ? null : { kind: 'column', key: chip.key });
-    if (fy < s.list.y - EDGE) return setDrop(null);
+    if (fy < s.list.y - EDGE || sorted) return setDrop(null);
     // Środek palca w treści listy → liczba kart (bez przeciąganej) nad nim.
     const contentY = s.cellY + s.grab.y + s.t.y + (scroll.current - s.scroll0);
     let index = 0;
@@ -358,6 +406,7 @@ export default function BoardScreen() {
           if (to) dropCard(s.task, s.from, to, 0);
           return;
         }
+        if (sorted) return;
         const at = s.from.tasks.filter((t) => t.id !== s.task.id).length;
         const was = s.from.tasks.findIndex((t) => t.id === s.task.id);
         if (target.index !== was) dropCard(s.task, s.from, s.from, Math.min(target.index, at));
@@ -387,6 +436,7 @@ export default function BoardScreen() {
         >
           <Text style={{ color: p.fg, fontSize: 13 }}>Kolumny: {BOARD_BY[by]}</Text>
         </Pressable>
+        <SortChips by={sort.by} dir={sort.dir} labels={sortLabels} onChange={setSort} />
         {by === 'status' && doneNote ? <Text style={{ color: p.muted, fontSize: 12 }}>{doneNote}</Text> : null}
         <ExportChip title={title} rows={() => columns.flatMap((c) => c.tasks.map((task) => ({ task, section: c.label })))} />
       </View>
