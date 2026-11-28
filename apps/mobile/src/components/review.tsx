@@ -19,6 +19,7 @@ import {
   type LocalDate,
   type ReviewAction,
   type ReviewKind,
+  type TaskOp,
   type ViewTask,
 } from '@taskplanner/core';
 import { router } from 'expo-router';
@@ -35,6 +36,8 @@ import { usePalette } from './ui';
 
 export type ReviewKindKey = keyof typeof REVIEW_ACTION;
 export const REVIEW_KINDS = Object.keys(REVIEW_ACTION) as ReviewKindKey[];
+
+export const SERIES_NOT_SOMEDAY = 'Seria nie może być „kiedyś” — zakończ ją w szczegółach zadania albo wybierz datę.';
 
 export interface LogEntry {
   task: ViewTask;
@@ -61,21 +64,21 @@ export function useReviewSession(kind: ReviewKind, today: LocalDate) {
   );
 }
 
-/** Decyzja przeglądu → operacje z „Cofnij”; `false` = nic do zmiany (np. „Dziś” przy dzisiejszym). */
+/** Decyzja przeglądu → operacje z „Cofnij”; wynik = operacje cofnięcia, `null` = nic do zmiany (np. „Dziś” przy dzisiejszym). */
 export function useDecide() {
   const data = useAppData();
   const timeZone = data.settings.timeZone;
   const today = useToday(timeZone);
   const { run, notify } = useTaskActions();
-  return (task: ViewTask, action: ReviewAction): boolean => {
+  return (task: ViewTask, action: ReviewAction): { undo: TaskOp[] } | null => {
     const { ops, undo } = bulkTaskOps([task], data.tasks, reviewBulkAction(action), { today, now: new Date(), timeZone });
     if (!ops.length) {
-      if (action.kind === 'someday' && task.recurrence) notify('Seria nie może być „kiedyś” — zakończ ją w szczegółach zadania albo wybierz datę.');
-      return false;
+      if (action.kind === 'someday' && task.recurrence) notify(SERIES_NOT_SOMEDAY);
+      return null;
     }
     const when = action.kind === 'date' ? relativeDay(action.date, today) : REVIEW_ACTION[action.kind].label.toLowerCase();
     void run(ops, { text: `„${task.title}” — ${action.kind === 'done' ? 'ukończone' : action.kind === 'delete' ? 'w koszu' : when}`, undo });
-    return true;
+    return { undo };
   };
 }
 

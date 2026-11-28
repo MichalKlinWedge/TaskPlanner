@@ -24,8 +24,8 @@ import {
   type LocalDate,
   type LocalTime,
 } from '@taskplanner/core';
-import { useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppData } from '@/lib/app-data';
@@ -138,14 +138,35 @@ export function PickerHost() {
   );
 }
 
+/**
+ * Wysokość otwartej klawiatury. Przezroczysty `Modal` (edge-to-edge) nie zmniejsza okna pod klawiaturę,
+ * więc arkusz sam podnosi się o jej wysokość — inaczej pole „GG:MM” i „Ustaw” chowają się pod nią.
+ */
+function useKeyboardHeight(): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => setHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return height;
+}
+
 /** `footer` — pod przewijaną treścią, zawsze widoczny (np. „Zastosuj” pod długą listą tagów). */
 export function Sheet({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
   const p = usePalette();
   const insets = useSafeAreaInsets();
+  const keyboard = useKeyboardHeight();
+  const screen = useWindowDimensions().height;
+  // Nad klawiaturą zostaje miejsce na nagłówek arkusza i stopkę; treść przewija się w reszcie.
+  const maxHeight = keyboard ? Math.max(120, Math.min(520, screen - keyboard - insets.top - (footer ? 200 : 120))) : 520;
   return (
-    <View style={styles.backdrop}>
+    <View style={[styles.backdrop, { paddingBottom: keyboard }]}>
       <Pressable accessibilityLabel="Zamknij" style={StyleSheet.absoluteFill} onPress={onClose} />
-      <View style={[styles.sheet, { backgroundColor: p.card, paddingBottom: insets.bottom + 12 }]}>
+      <View style={[styles.sheet, { backgroundColor: p.card, paddingBottom: (keyboard ? 0 : insets.bottom) + 12 }]}>
         <View style={styles.head}>
           <Text style={[styles.title, { color: p.fg }]} numberOfLines={2}>
             {title}
@@ -154,7 +175,7 @@ export function Sheet({ title, onClose, children, footer }: { title: string; onC
             <Text style={{ color: p.muted, fontSize: 18 }}>✕</Text>
           </Pressable>
         </View>
-        <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 520 }}>
+        <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight }}>
           {children}
         </ScrollView>
         {footer}

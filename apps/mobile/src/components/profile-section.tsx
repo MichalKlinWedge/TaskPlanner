@@ -8,6 +8,7 @@ import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { useView } from '@/lib/app-data';
 import { useLocalQuery } from '@/lib/local-query';
+import { setNavBarHidden, useNavBarHidden } from '@/lib/nav-bar';
 import { deviceTimeZone, loadProfile, updateSettings } from '@/lib/profile';
 import { mutate } from '@/lib/sync';
 
@@ -57,6 +58,7 @@ export function ProfileSection() {
 }
 
 function ProfileFields({ id, name, settings }: { id: string; name: string; settings: ProfileSettings }) {
+  const navBarHidden = useNavBarHidden();
   const [error, setError] = useState<string | null>(null);
   const fail = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
   const save = (patch: (s: ProfileSettings) => Partial<ProfileSettings>) => {
@@ -136,6 +138,10 @@ function ProfileFields({ id, name, settings }: { id: string; name: string; setti
           <Chip key={theme} label={THEME[theme]} selected={settings.theme === theme} onPress={() => save(() => ({ theme }))} />
         ))}
       </Row>
+      <Line label="Pasek nawigacji systemu (ten telefon)">
+        <Switch accessibilityLabel="Pasek nawigacji systemu zawsze widoczny" value={!navBarHidden} onValueChange={(visible) => setNavBarHidden(!visible)} />
+      </Line>
+      <P muted>{navBarHidden ? 'Schowany — przesuń palcem od dolnej krawędzi, żeby pokazać Wstecz / Home na chwilę.' : 'Zawsze widoczny (przyciski Wstecz / Home).'}</P>
       {error ? <P tone="bad">{error}</P> : null}
     </Section>
   );

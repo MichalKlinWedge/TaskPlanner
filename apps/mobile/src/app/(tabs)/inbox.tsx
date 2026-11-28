@@ -7,7 +7,7 @@ import { applyFilter, isEmptyFilter, plural, selectInbox, sortSection } from '@t
 import { useMemo } from 'react';
 
 import { ExportChip } from '@/components/export-button';
-import { FilterBar } from '@/components/filter-bar';
+import { FilterBar, filterEmptyText } from '@/components/filter-bar';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections } from '@/components/task-list';
 import { smartSort, useSmartView } from '@/components/view-options';
@@ -40,7 +40,7 @@ export default function InboxScreen() {
           {tasks.length ? columnsHeader : null}
         </ScreenHeader>
       }
-      empty={data.loaded ? 'Inbox jest pusty.' : 'Wczytywanie…'}
+      empty={data.loaded ? filterEmptyText(filter, 'Inbox jest pusty.') : 'Wczytywanie…'}
       quickAdd={{ listId: target?.id }}
     />
   );

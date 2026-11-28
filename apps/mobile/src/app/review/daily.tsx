@@ -1,7 +1,8 @@
 /**
  * Przegląd dnia (Etap 9, M16) — gesty na kolejce: karta zadania przesunięta w prawo = Ukończ,
  * w lewo = Jutro, w górę = Dziś, w dół = Kiedyś; przyciski dla wszystkich sześciu decyzji
- * (z „Wybierz datę” i „Usuń”), „Pomiń” / „Wstecz”, „Cofnij” w dymku. Kolejka ustalona na starcie
+ * (z „Wybierz datę” i „Usuń”), „Pomiń” / „Wstecz” (cofa decyzję podjętą przy poprzednim zadaniu), „Cofnij” w dymku.
+ * Kolejka ustalona na starcie, dopiero po wczytaniu danych
  * (`dailyReviewQueue`), decyzje przez `bulkTaskOps` (jak na webie); na końcu podsumowanie
  * (`dailySummary`) i plan jutra z osią dnia („Ułóż dzień”).
  */
@@ -17,16 +18,18 @@ import {
   relativeDay,
   reviewStats,
   type ReviewAction,
+  type TaskOp,
 } from '@taskplanner/core';
 import * as Haptics from 'expo-haptics';
 import { router, Stack } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DayPlanCard } from '@/components/day-plan';
 import { pickDate } from '@/components/pickers';
-import { DecisionButtons, useDecide, useReviewSession, type LogEntry, type ReviewKindKey } from '@/components/review';
+import { useTaskActions } from '@/components/actions';
+import { DecisionButtons, SERIES_NOT_SOMEDAY, useDecide, useReviewSession, type LogEntry, type ReviewKindKey } from '@/components/review';
 import { TaskRow } from '@/components/task-row';
 import { Button, Section, usePalette } from '@/components/ui';
 import { listLabel, useView } from '@/lib/app-data';
@@ -37,7 +40,25 @@ const SWIPE = 90;
 type Swipe = 'right' | 'left' | 'up' | 'down';
 const SWIPE_ACTION: Record<Swipe, ReviewAction> = { right: { kind: 'done' }, left: { kind: 'tomorrow' }, up: { kind: 'today' }, down: { kind: 'someday' } };
 
+/** Decyzja przy zadaniu kolejki — „Wstecz” wykonuje `undo` i zdejmuje ją ze statystyk. */
+interface Decision extends LogEntry {
+  undo: TaskOp[];
+}
+
+/** Kolejka liczy się raz, więc dopiero na wczytanych danych (zimny start z powiadomienia przeglądu). */
 export default function DailyReviewScreen() {
+  const p = usePalette();
+  const { data } = useView();
+  if (data.loaded) return <DailyReview />;
+  return (
+    <View style={{ flex: 1, backgroundColor: p.bg, padding: 16 }}>
+      <Stack.Screen options={{ title: 'Przegląd dnia' }} />
+      <Text style={{ color: p.muted }}>Wczytywanie…</Text>
+    </View>
+  );
+}
+
+function DailyReview() {
   const p = usePalette();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -47,7 +68,10 @@ export default function DailyReviewScreen() {
   // Kolejka ustalona na starcie — przesunięte na jutro nie wracają, a „Wstecz” trafia w to samo zadanie.
   const [queue] = useState(() => dailyReviewQueue(data.tasks, ctx));
   const [index, setIndex] = useState(0);
-  const [log, setLog] = useState<LogEntry[]>([]);
+  // Jedna decyzja na zadanie: ponowna decyzja po „Wstecz” zastępuje poprzednią, nie dubluje statystyk.
+  const [decisions, setDecisions] = useState<Readonly<Record<string, Decision>>>({});
+  const log = useMemo<LogEntry[]>(() => Object.values(decisions).map(({ task: t, action }) => ({ task: t, action })), [decisions]);
+  const { run, notify } = useTaskActions();
   const [started] = useState(() => Date.now());
   const done = index >= queue.length;
   const item = queue[index];
@@ -56,8 +80,22 @@ export default function DailyReviewScreen() {
   const apply = (action: ReviewAction) => {
     if (!task || !item) return;
     const decided = decide(task, action);
-    if (decided || action.kind === 'today') setLog((l) => [...l, { task: item.task, action }]);
+    if (decided || action.kind === 'today') setDecisions((d) => ({ ...d, [item.task.id]: { task: item.task, action, undo: decided?.undo ?? [] } }));
     setIndex((i) => i + 1);
+  };
+  const previous = queue[index - 1];
+  const previousDecision = previous ? decisions[previous.task.id] : undefined;
+  const back = () => {
+    if (!previous) return;
+    if (previousDecision) {
+      if (previousDecision.undo.length) void run(previousDecision.undo, { text: `Cofnięto decyzję: „${previous.task.title}”` });
+      setDecisions((d) => {
+        const rest = { ...d };
+        delete rest[previous.task.id];
+        return rest;
+      });
+    }
+    setIndex((i) => Math.max(0, i - 1));
   };
   const pick = async (kind: ReviewKindKey) => {
     if (kind !== 'date') return apply({ kind } as ReviewAction);
@@ -71,9 +109,9 @@ export default function DailyReviewScreen() {
 
   // Gest na karcie — PanResponder z najnowszą decyzją (ref), animacja odjazdu karty.
   const [position] = useState(() => new Animated.ValueXY());
-  const latest = useRef({ apply, series: false });
+  const latest = useRef({ apply, notify, series: false });
   useEffect(() => {
-    latest.current = { apply, series: !!task?.recurrence };
+    latest.current = { apply, notify, series: !!task?.recurrence };
   });
   // Ref czytany tylko w obsłudze gestu, nie w renderze.
   // eslint-disable-next-line react-hooks/refs
@@ -85,6 +123,10 @@ export default function DailyReviewScreen() {
         const horizontal = Math.abs(g.dx) >= Math.abs(g.dy);
         const swipe: Swipe | null = horizontal ? (g.dx > SWIPE ? 'right' : g.dx < -SWIPE ? 'left' : null) : g.dy < -SWIPE ? 'up' : g.dy > SWIPE ? 'down' : null;
         if (!swipe || (swipe === 'down' && latest.current.series)) {
+          if (swipe) {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+            latest.current.notify(SERIES_NOT_SOMEDAY);
+          }
           Animated.spring(position, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
           return;
         }
@@ -157,7 +199,7 @@ export default function DailyReviewScreen() {
       <View style={[styles.bottom, { paddingBottom: 16 + insets.bottom }]}>
         <DecisionButtons onPick={(k) => void pick(k)} disabled={task?.recurrence ? ['someday'] : []} />
         <View style={styles.nav}>
-          <Button kind="secondary" title="← Wstecz" disabled={index === 0} onPress={() => setIndex((i) => Math.max(0, i - 1))} />
+          <Button kind="secondary" title={previousDecision?.undo.length ? '← Cofnij poprzednie' : '← Wstecz'} disabled={index === 0} onPress={back} />
           <Button kind="secondary" title="Pomiń →" onPress={() => setIndex((i) => i + 1)} />
         </View>
       </View>

@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
+import { useDiscardChanges } from '@/components/confirm-leave';
 import { EditNameBar, FilterResults } from '@/components/filter-screen';
 import { Button, P } from '@/components/ui';
 import { useAppData } from '@/lib/app-data';
@@ -22,8 +23,23 @@ export default function FilterScreen() {
   const saved = filter ? JSON.stringify(filter.query) : '';
   const [draft, setDraft] = useState<{ key: string; query: FilterQuery } | null>(null);
   const update = (patch: Record<string, unknown>) => void mutate('saved_filters', id, patch).catch((e: unknown) => notify(String(e)));
+  const key = `${id}:${saved}`;
+  const query = filter && draft?.key === key ? draft.query : filter?.query;
+  const changed = !!filter && JSON.stringify(query) !== saved;
+  // Zmienione warunki bez „Zapisz zmiany”: „Wstecz” pyta, czy je zachować.
+  const allowLeave = useDiscardChanges(changed, {
+    title: 'Zapisać zmiany filtra?',
+    message: 'Warunki filtra zostały zmienione, ale nie zapisane.',
+    save:
+      query && !isEmptyFilter(query)
+        ? () => {
+            update({ query });
+            return true;
+          }
+        : undefined,
+  });
 
-  if (!filter) {
+  if (!filter || !query) {
     return (
       <View style={{ padding: 16 }}>
         <Stack.Screen options={{ title: 'Filtr' }} />
@@ -31,9 +47,6 @@ export default function FilterScreen() {
       </View>
     );
   }
-  const key = `${id}:${saved}`;
-  const query = draft?.key === key ? draft.query : filter.query;
-  const changed = JSON.stringify(query) !== saved;
 
   return (
     <>
@@ -52,6 +65,7 @@ export default function FilterScreen() {
               onSave={(name) => update({ name: name.slice(0, 60) })}
               onDelete={() => {
                 update({ deleted_at: new Date().toISOString() });
+                allowLeave();
                 router.back();
               }}
               deleteTitle={`Usunąć filtr „${filter.name}”?`}

@@ -12,7 +12,7 @@ import { View } from 'react-native';
 
 import { DayPlanCard } from '@/components/day-plan';
 import { ExportChip } from '@/components/export-button';
-import { FilterBar } from '@/components/filter-bar';
+import { FilterBar, filterEmptyText } from '@/components/filter-bar';
 import { HabitTodayItem } from '@/components/habits';
 import { ReviewNudge } from '@/components/review';
 import { ScreenHeader } from '@/components/sync-banner';
@@ -42,7 +42,7 @@ export default function TodayScreen() {
   usePerfReady('tab:today', data.loaded);
   if (data.loaded) perfOnce('start: Dziś', `${data.tasks.length} zadań`);
   const sections: TaskSection[] = [
-    { key: 'plan', data: [], footer: data.loaded ? <><DayPlanCard data={data} today={today} workspaceId={workspaceId} />{columnsHeader}</> : undefined },
+    { key: 'plan', data: [], chrome: true, footer: data.loaded ? <><DayPlanCard data={data} today={today} workspaceId={workspaceId} />{columnsHeader}</> : undefined },
     { key: 'overdue', title: VIEW_SECTION.overdue, count: view.overdue.length, tone: 'bad', data: view.overdue.map((t) => row(t, { withList: true })) },
     { key: 'today', title: VIEW_SECTION.today, count: view.today.length, data: view.today.map((t) => row(t, { showDate: false, withList: true })) },
     { key: 'ongoing', title: VIEW_SECTION.ongoing, count: view.ongoing.length, data: view.ongoing.map((t) => row(t, { withList: true })) },
@@ -71,7 +71,7 @@ export default function TodayScreen() {
           <FilterBar query={filter} onChange={setFilter} save />
         </ScreenHeader>
       }
-      empty={data.loaded ? 'Na dziś nic nie ma.' : 'Wczytywanie…'}
+      empty={data.loaded ? filterEmptyText(filter, 'Na dziś nic nie ma.') : 'Wczytywanie…'}
       quickAdd={{ listId: targetInbox(data, workspaceId)?.id, dueDate: today }}
     />
   );

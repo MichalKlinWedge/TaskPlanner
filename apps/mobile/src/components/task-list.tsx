@@ -32,11 +32,14 @@ export interface TaskSection {
   data: RowItem[];
   /** Pod sekcją (np. „+ Dodaj” na dzień). */
   footer?: ReactNode;
+  /** Stopka to wyposażenie widoku (np. „Plan dnia”), nie treść — przy braku zadań pod nią i tak stoi komunikat `empty`. */
+  chrome?: boolean;
 }
 
 export function TaskSections({ sections, header, empty, quickAdd, reorder }: { sections: TaskSection[]; header?: ReactElement; empty?: string; quickAdd?: QuickAddParams | null; reorder?: readonly string[] }) {
   const p = usePalette();
   const visible = useMemo(() => sections.filter((s) => s.data.length || s.footer), [sections]);
+  const blank = !visible.some((s) => s.data.length || (s.footer && !s.chrome));
   // Gesty przesunięcia wierszy dopiero po pierwszym narysowaniu (nikt nie przesuwa wiersza w trakcie otwierania ekranu).
   const [interactive, setInteractive] = useState(false);
   useEffect(() => {
@@ -75,6 +78,13 @@ export function TaskSections({ sections, header, empty, quickAdd, reorder }: { s
   }, [width, x]);
   const wide = useMemo(() => (width ? { x, view, width } : null), [width, view, x]);
 
+  const emptyText =
+    empty && blank ? (
+      <Sticky>
+        <Text style={[styles.empty, { color: p.muted }]}>{empty}</Text>
+      </Sticky>
+    ) : undefined;
+
   const list = (
     <SectionList
       style={width ? { width } : undefined}
@@ -96,14 +106,13 @@ export function TaskSections({ sections, header, empty, quickAdd, reorder }: { s
       }
       renderSectionFooter={({ section }) => (section.footer ? <Sticky>{section.footer}</Sticky> : null)}
       ListHeaderComponent={header ? <Sticky>{header}</Sticky> : undefined}
-      ListEmptyComponent={
-        empty ? (
-          <Sticky>
-            <Text style={[styles.empty, { color: p.muted }]}>{empty}</Text>
-          </Sticky>
-        ) : undefined
+      ListEmptyComponent={emptyText}
+      ListFooterComponent={
+        <>
+          {visible.length && blank ? emptyText : null}
+          <View style={{ height: 120 }} />
+        </>
       }
-      ListFooterComponent={<View style={{ height: 120 }} />}
       stickySectionHeadersEnabled
       // Pierwsza klatka: tyle wierszy, ile widać pod nagłówkiem (wiersz ~60 dp); reszta ekranu dochodzi
       // w następnej porcji. Każdy wiersz więcej to dłuższe otwarcie listy (`docs/WYDAJNOSC.md`).

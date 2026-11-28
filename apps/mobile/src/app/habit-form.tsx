@@ -34,6 +34,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { useTaskActions } from '@/components/actions';
+import { useDiscardChanges } from '@/components/confirm-leave';
 import { pickDate, pickNumber, pickOption, pickTime } from '@/components/pickers';
 import { Button, Chip, Field, usePalette } from '@/components/ui';
 import { lastSortKey, listLabel, targetInbox, useView } from '@/lib/app-data';
@@ -106,6 +107,16 @@ export default function HabitFormScreen() {
   const [reminderList, setReminderList] = useState<HabitReminderDraft[] | null>(null);
   const reminders: HabitReminderDraft[] = reminderList ?? savedReminders ?? [];
   const [error, setError] = useState<string | null>(null);
+  // Niezapisany formularz: „Wstecz” pyta, zamiast po cichu go porzucić.
+  const snapshot = JSON.stringify([title, listId, kind, days, times, period, monthly, quantity, target, unit, start, time, end, reminderList]);
+  const [pristine] = useState(snapshot);
+  const allowLeave = useDiscardChanges(snapshot !== pristine, {
+    message: task ? 'Zmiany w nawyku nie zostały zapisane.' : 'Nowy nawyk nie został zapisany.',
+    save: () => {
+      void submit();
+      return false;
+    },
+  });
 
   if (id && !task) {
     return (
@@ -191,6 +202,7 @@ export default function HabitFormScreen() {
       });
       await run(ops, { text: task ? `Zapisano „${title.trim()}”` : `Dodano nawyk „${title.trim()}”` });
       if (reminders.length && !(await permissionState()).notifications) await requestNotificationPermission();
+      allowLeave();
       if (task) router.back();
       else router.replace({ pathname: '/habit/[id]', params: { id: taskId } });
     } catch (e) {
@@ -320,7 +332,7 @@ export default function HabitFormScreen() {
 
       <View style={styles.switchRow}>
         <Text style={{ color: p.fg, fontSize: 15, flex: 1 }}>Cel ilościowy</Text>
-        <Switch value={quantity} onValueChange={setQuantity} />
+        <Switch accessibilityLabel="Cel ilościowy" value={quantity} onValueChange={setQuantity} />
       </View>
       {quantity ? (
         <View style={styles.line}>

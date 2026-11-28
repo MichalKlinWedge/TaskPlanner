@@ -22,6 +22,7 @@ import { startDevice } from '@/lib/device';
 import { flushErrors, reportError, setErrorRoute } from '@/lib/error-log';
 import { startCapture } from '@/lib/files';
 import { startFocusWork, syncFocusNotifications } from '@/lib/focus';
+import { useNavBarHidden } from '@/lib/nav-bar';
 import { markNotificationReadById, showNotificationPushes } from '@/lib/notifications';
 import { loadProfile, onboardingGateHeld, onOnboardingGateRelease } from '@/lib/profile';
 import { handleResponse, setupNotifications } from '@/lib/reminders';
@@ -260,6 +261,7 @@ function NotificationTap() {
 export default function RootLayout() {
   useAppStart();
   const p = usePalette();
+  const navBarHidden = useNavBarHidden();
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ShareIntentProvider>
@@ -272,8 +274,8 @@ export default function RootLayout() {
           <NotificationToasts />
           <ReminderPopup />
           <InviteLink />
-          {/* Systemowy pasek nawigacji schowany; przesunięcie od dolnej krawędzi pokazuje go na chwilę. */}
-          <NavigationBar hidden />
+          {/* Systemowy pasek nawigacji: domyślnie schowany (przesunięcie od dolnej krawędzi pokazuje go na chwilę), w „Profilu” można go zostawić widocznym. */}
+          <NavigationBar hidden={navBarHidden} />
           <Stack screenOptions={{ headerStyle: { backgroundColor: p.card }, headerTintColor: p.fg, contentStyle: { backgroundColor: p.bg } }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'Task Planner' }} />
             <Stack.Screen name="task/[id]" options={{ title: 'Zadanie' }} />

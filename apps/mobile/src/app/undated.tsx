@@ -7,7 +7,7 @@ import { applyFilter, bulkTaskOps, isEmptyFilter, plural, relativeDay, selectUnd
 import { useMemo } from 'react';
 
 import { useTaskActions } from '@/components/actions';
-import { FilterBar } from '@/components/filter-bar';
+import { FilterBar, filterEmptyText } from '@/components/filter-bar';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
 import { smartSort, useSmartView } from '@/components/view-options';
@@ -45,7 +45,7 @@ export default function UndatedScreen() {
           {count ? columnsHeader : null}
         </ScreenHeader>
       }
-      empty={data.loaded ? 'Wszystko ma termin.' : 'Wczytywanie…'}
+      empty={data.loaded ? filterEmptyText(filter, 'Wszystko ma termin.') : 'Wczytywanie…'}
       quickAdd={{ listId: targetInbox(data, workspaceId)?.id }}
     />
   );

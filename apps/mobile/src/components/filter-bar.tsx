@@ -28,6 +28,11 @@ const FIELD_LABEL: Record<FilterField, string> = {
 
 const orUndefined = <T,>(values: T[]): T[] | undefined => (values.length ? values : undefined);
 
+/** Komunikat pustego widoku: przy aktywnym filtrze nie „nic nie ma”, tylko „nic nie pasuje”. */
+export function filterEmptyText(query: FilterQuery, text: string): string {
+  return isEmptyFilter(query) ? text : 'Żadne zadanie nie pasuje do filtra — „Wyczyść” pokaże wszystkie.';
+}
+
 export function FilterBar({ query, onChange, hide = [], save }: { query: FilterQuery; onChange: (query: FilterQuery) => void; hide?: readonly FilterField[]; save?: boolean }) {
   const p = usePalette();
   const { data, workspaceId } = useView();

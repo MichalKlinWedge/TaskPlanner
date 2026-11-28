@@ -7,7 +7,7 @@ import { applyFilter, isEmptyFilter, minutesLate, OVERDUE_LATER_OPTIONS, overdue
 import { useMemo } from 'react';
 
 import { useTaskActions } from '@/components/actions';
-import { FilterBar } from '@/components/filter-bar';
+import { FilterBar, filterEmptyText } from '@/components/filter-bar';
 import { pickOption } from '@/components/pickers';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
@@ -59,7 +59,7 @@ export default function OverdueScreen() {
           {view.today.length || view.earlier.length ? columnsHeader : null}
         </ScreenHeader>
       }
-      empty={data.loaded ? 'Nic nie zalega.' : 'Wczytywanie…'}
+      empty={data.loaded ? filterEmptyText(filter, 'Nic nie zalega.') : 'Wczytywanie…'}
       quickAdd={{ listId: targetInbox(data, workspaceId)?.id }}
     />
   );

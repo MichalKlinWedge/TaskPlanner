@@ -29,10 +29,11 @@ import {
 import { useNetworkState } from 'expo-network';
 import { router, Stack } from 'expo-router';
 import { useCallback, useMemo, useRef, useState, type ComponentRef, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTaskActions } from '@/components/actions';
+import { useConfirmLeave } from '@/components/confirm-leave';
 import { FilterBar } from '@/components/filter-bar';
 import { STATE_LABEL, useStateColors } from '@/components/habits';
 import { pickDate } from '@/components/pickers';
@@ -74,6 +75,20 @@ export default function WeeklyReviewScreen() {
   const online = useNetworkState().isConnected !== false;
   const [filter, setFilter] = useState<FilterQuery>({});
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  // Wyjście w trakcie (systemowe „Wstecz”): decyzje są już w zadaniach, ale sesja i opis tygodnia zapisują się dopiero przy „Zakończ przegląd”.
+  useConfirmLeave(!finished && (log.length > 0 || summary !== null || step !== 'inbox'), (leave) =>
+    Alert.alert('Zakończyć przegląd tygodnia?', 'Decyzje są już zapisane w zadaniach. „Zakończ przegląd” zapisze też podsumowanie i opis tygodnia; bez tego przegląd zostaje niedokończony.', [
+      { text: 'Zostań', style: 'cancel' },
+      { text: 'Wyjdź', style: 'destructive', onPress: leave },
+      {
+        text: 'Zakończ przegląd',
+        onPress: () => {
+          finish(log, summary?.text ?? null);
+          leave();
+        },
+      },
+    ]),
+  );
 
   const lists = useMemo(() => data.lists.map((l) => ({ id: l.id, workspaceId: l.workspaceId, kind: l.kind, status: l.projectStatus })), [data.lists]);
   const full = useMemo(() => weeklyReview({ tasks: data.tasks, lists, completions: data.habitCompletions }, ctx), [data.tasks, lists, data.habitCompletions, ctx]);

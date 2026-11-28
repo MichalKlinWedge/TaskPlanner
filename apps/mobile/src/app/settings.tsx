@@ -1,4 +1,4 @@
-import { ACCOUNT_DELETE_NOTE, LOGIN_INVITE_NOTE } from '@taskplanner/core';
+import { ACCOUNT_DELETE_NOTE, LOGIN_INVITE_NOTE, plural } from '@taskplanner/core';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Linking, Switch, Text, View } from 'react-native';
@@ -143,6 +143,23 @@ export default function Settings() {
       ]);
     });
   const validEmail = /^\S+@\S+\.\S+$/.test(email.trim());
+  // Tryb bez konta: logowanie czyści dane lokalne (`signedIn` → `resetLocal`), więc najpierw pytanie, jeśli jest co stracić.
+  const confirmFreshStart = async (): Promise<boolean> => {
+    if (user.online) return true;
+    const left = await unsentChanges();
+    if (!left) return true;
+    return new Promise((resolve) =>
+      Alert.alert(
+        'Zalogować się i usunąć dane z telefonu?',
+        `Na telefonie są dane z trybu bez konta (${plural(left, ['zmiana', 'zmiany', 'zmian'])}). Po zalogowaniu telefon zaczyna od danych konta, a te przepadną. Żeby je zachować, najpierw użyj „Eksportuj do pliku” w sekcji „Kopia zapasowa”, a po zalogowaniu „Importuj z pliku…”.`,
+        [
+          { text: 'Anuluj', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Zaloguj i usuń', style: 'destructive', onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      ),
+    );
+  };
 
   // Logowanie: tryb bez konta i ponowne logowanie po utracie sesji (to samo konto — bez czyszczenia danych, `signedIn`).
   const loginForm = (
@@ -154,6 +171,7 @@ export default function Settings() {
         title={sentTo ? 'Wyślij link ponownie' : 'Wyślij link logowania'}
         onPress={() =>
           void run(async () => {
+            if (!(await confirmFreshStart())) return;
             saveServer();
             await sendMagicLink(email);
             setSentTo(email.trim());
@@ -185,6 +203,7 @@ export default function Settings() {
         kind="secondary"
         onPress={() =>
           void run(async () => {
+            if (!(await confirmFreshStart())) return;
             saveServer();
             const signed = await signInWithGoogle();
             if (!signed) return 'Logowanie Google przerwane.';
