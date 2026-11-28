@@ -6,7 +6,7 @@
  * terminu są w `core` (`filterChips`, `DUE_PRESETS`).
  */
 import { ASSIGNEE_CREATOR, ASSIGNEE_CREATOR_LABEL, collaboratorsByStatus, collaboratorsForWorkspace, DUE_PRESETS, duePreset, filterChips, isEmptyFilter, LIST_KIND, PRIORITY, tagsForWorkspace, TASK_STATUS, type DuePreset, type FilterQuery, type Priority, type TaskStatus } from "@taskplanner/core";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { useClickOutside } from "@/lib/use-click-outside";
 import { useAppEnv } from "./app-env";
@@ -35,6 +35,13 @@ export function Popover({ onClose, children }: { onClose: () => void; children: 
   useEffect(() => {
     anchor.current = ref.current?.parentElement ?? null;
   }, []);
+  // Przycisk przy prawej krawędzi (wąski ekran): okienko przesuwa się w lewo zamiast wychodzić poza ekran.
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const over = node.getBoundingClientRect().right - (window.innerWidth - 8);
+    if (over > 0) node.style.transform = `translateX(-${Math.min(over, node.getBoundingClientRect().left - 8)}px)`;
+  }, []);
   useClickOutside(true, onClose, anchor);
   useEffect(() => {
     // Esc zamyka samo okienko (nie paletę, przegląd ani panel pod nim) — stąd faza przechwytywania.
@@ -47,7 +54,7 @@ export function Popover({ onClose, children }: { onClose: () => void; children: 
     return () => document.removeEventListener("keydown", onKey, true);
   }, [onClose]);
   return (
-    <div ref={ref} className="absolute top-full left-0 z-20 mt-1 max-h-72 w-64 overflow-y-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 text-sm shadow-lg">
+    <div ref={ref} className="absolute top-full left-0 z-20 mt-1 max-h-72 w-64 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 text-sm shadow-lg">
       {children}
     </div>
   );

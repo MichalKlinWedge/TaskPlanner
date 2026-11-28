@@ -32,6 +32,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useLocalQuery } from "@/lib/local-store";
+import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { usePlugins } from "@/lib/plugins";
 
 import { useAppEnv } from "./app-env";
@@ -160,6 +161,8 @@ const PLACEHOLDER: Record<PaletteMode, string> = {
 };
 
 export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; onClose: () => void; onPick: (pick: PalettePick) => void }) {
+  const dialog = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialog);
   const { data, selectedIds, today, store, workspaceId, email } = useAppEnv();
   const { sendable } = usePlugins(store);
   const available = useAvailable();
@@ -293,7 +296,7 @@ export function CommandPalette({ mode, onClose, onPick }: { mode: PaletteMode; o
 
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-[12vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label="Paleta poleceń" className="flex max-h-[70vh] w-full max-w-xl flex-col rounded-xl border border-[var(--line)] bg-[var(--surface)] shadow-2xl">
+      <div ref={dialog} role="dialog" aria-modal="true" aria-label="Paleta poleceń" className="flex max-h-[70vh] w-full max-w-xl flex-col rounded-xl border border-[var(--line)] bg-[var(--surface)] shadow-2xl">
           <>
             <input
               ref={input}
@@ -401,6 +404,9 @@ const EXTRA_SHORTCUTS: readonly { keys: readonly string[]; label: string }[] = [
 /** Lista skrótów (`?`): z `core/commands.ts` — tylko działające polecenia. */
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const available = useAvailable();
+  const dialog = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialog);
+  useEffect(() => dialog.current?.querySelector<HTMLButtonElement>("button")?.focus(), []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -413,8 +419,13 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   ];
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-[10vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label="Skróty klawiszowe" className="w-full max-w-md rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-2xl">
-        <h2 className="mb-3 text-base font-semibold">Skróty klawiszowe</h2>
+      <div ref={dialog} role="dialog" aria-modal="true" aria-label="Skróty klawiszowe" className="w-full max-w-md rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 shadow-2xl">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-base font-semibold">Skróty klawiszowe</h2>
+          <button type="button" aria-label="Zamknij" className="rounded px-2 py-1 text-[var(--muted)] hover:bg-[var(--hover)] focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:outline-none" onClick={onClose}>
+            ✕
+          </button>
+        </div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
           {rows.map((r) => (
             <div key={r.label} className="contents">

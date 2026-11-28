@@ -199,7 +199,7 @@ function WorkspaceCard({
     );
 
   return (
-    <Card className={archived ? "opacity-60" : ""}>
+    <Card className={archived ? "border-dashed" : ""}>
       <div className="flex flex-wrap items-center gap-2">
         {editable ? (
           <>
@@ -311,7 +311,7 @@ function ListItem({
   };
   const badge = "shrink-0 rounded bg-[var(--hover)] px-1.5 py-px text-xs";
   return (
-    <li data-list={list.id} className={`${LIST_ROW} ${archived ? "opacity-60" : ""}`}>
+    <li data-list={list.id} className={`${LIST_ROW} ${archived ? "bg-[var(--hover)]" : ""}`}>
       {editable ? (
         <ColorPicker value={list.color} onChange={(color) => void update({ color })} label={`Kolor listy ${list.name}`} />
       ) : (
@@ -325,6 +325,7 @@ function ListItem({
         ) : (
           <EditableName value={list.name} max={200} onSave={(name) => void update({ name })} />
         )}
+        {archived ? <span className={badge}>zarchiwizowana</span> : null}
         {owner && guestAccess !== "edit" ? (
           <span className={badge} title={GUEST_ACCESS_HINT[guestAccess]} data-testid="list-guest-access">
             dla gości: {GUEST_ACCESS[guestAccess].toLowerCase()}

@@ -47,16 +47,15 @@ const apply = (store: TabStore, ops: readonly TaskOp[]) => store.mutateMany(ops)
 
 /** Akcje zadań i dymek „Cofnij” na dole ekranu. `tasks` — do pytania o otwarte podzadania. */
 export function TaskActionsProvider({ store, userId, timeZone, tasks, children }: { store: TabStore; userId: string; timeZone?: string; tasks: readonly ViewTask[]; children: ReactNode }) {
-  const [toast, setToast] = useState<Toast | null>(null);
+  // Do trzech dymków naraz (najnowszy na dole): dwa szybkie ukończenia zostawiają „Cofnij” przy każdym.
+  const [toasts, setToasts] = useState<Toast[]>([]);
   const next = useRef(0);
 
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast((t) => (t?.id === toast.id ? null : t)), 10_000);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
-  const show = useCallback((text: string, undo?: TaskOp[]) => setToast({ id: ++next.current, text, undo }), []);
+  const show = useCallback(
+    (text: string, undo?: TaskOp[]) => setToasts((list) => [...list.filter((t) => t.undo || t.text !== text), { id: ++next.current, text, undo }].slice(-TOAST_LIMIT)),
+    [],
+  );
+  const close = useCallback((id: number) => setToasts((list) => list.filter((t) => t.id !== id)), []);
 
   // Zmiana odrzucona przez serwer jest już cofnięta lokalnie — bez dymku znikałaby bez słowa.
   useEffect(
@@ -123,30 +122,57 @@ export function TaskActionsProvider({ store, userId, timeZone, tasks, children }
     [store, show],
   );
 
-  const undo = async () => {
-    if (!toast?.undo) return;
-    const ops = toast.undo;
-    setToast(null);
-    await apply(store, ops).catch((e: unknown) => show(e instanceof Error ? e.message : String(e)));
+  const undo = async (toast: Toast) => {
+    if (!toast.undo) return;
+    close(toast.id);
+    await apply(store, toast.undo).catch((e: unknown) => show(e instanceof Error ? e.message : String(e)));
   };
 
   return (
     <ActionsContext.Provider value={{ toggle, run, notify: show }}>
       {children}
-      {toast ? (
-        <div role="status" className="fixed bottom-4 left-1/2 z-30 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900">
-          <span className="truncate">{toast.text}</span>
-          {toast.undo ? (
-            <button type="button" className="shrink-0 font-semibold text-indigo-300 hover:underline dark:text-indigo-700" onClick={() => void undo()}>
-              Cofnij
-            </button>
-          ) : null}
-          <button type="button" aria-label="Zamknij" className="shrink-0 opacity-60 hover:opacity-100" onClick={() => setToast(null)}>
-            ✕
-          </button>
+      {toasts.length ? (
+        // Na wąskim ekranie nad przyciskiem „Menu” (prawy dolny róg).
+        <div className="fixed bottom-16 left-1/2 z-30 flex w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-col items-center gap-2 md:bottom-4">
+          {toasts.map((t) => (
+            <ToastItem key={t.id} toast={t} onUndo={() => void undo(t)} onClose={close} />
+          ))}
         </div>
       ) : null}
     </ActionsContext.Provider>
+  );
+}
+
+const TOAST_LIMIT = 3;
+const TOAST_MS = 10_000;
+
+/** Jeden dymek: znika po `TOAST_MS` (nie, dopóki kursor jest nad nim); tekst zawija się do 3 linii, całość w `title`. */
+function ToastItem({ toast, onUndo, onClose }: { toast: Toast; onUndo: () => void; onClose: (id: number) => void }) {
+  const [hover, setHover] = useState(false);
+  useEffect(() => {
+    if (hover) return;
+    const timer = setTimeout(() => onClose(toast.id), TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [hover, onClose, toast.id]);
+  return (
+    <div
+      role="status"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="flex max-w-full items-center gap-3 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900"
+    >
+      <span className="line-clamp-3 min-w-0" title={toast.text}>
+        {toast.text}
+      </span>
+      {toast.undo ? (
+        <button type="button" className="shrink-0 font-semibold text-indigo-300 hover:underline dark:text-indigo-700" onClick={onUndo}>
+          Cofnij
+        </button>
+      ) : null}
+      <button type="button" aria-label="Zamknij" className="shrink-0 opacity-60 hover:opacity-100" onClick={() => onClose(toast.id)}>
+        ✕
+      </button>
+    </div>
   );
 }
 
@@ -328,7 +354,7 @@ export function DoneCircle({ task, closed, readOnly, onToggle, className = "" }:
         e.stopPropagation();
         onToggle();
       }}
-      className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 text-[11px] text-white transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+      className={`relative flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 text-[11px] text-white transition before:absolute before:-inset-[7px] before:content-[''] hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
       style={{ borderColor: color, background: closed ? color : `${color}14` }}
     >
       {closed ? "✓" : ""}
@@ -392,7 +418,7 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           aria-label={`Przeciągnij „${task.title}”`}
           title="Przeciągnij"
           {...dnd.handle}
-          className="absolute top-2 -left-5 cursor-grab touch-none px-1 text-xs leading-none text-[var(--muted)] opacity-0 group-hover:opacity-100 focus:opacity-100"
+          className="absolute top-2 -left-5 cursor-grab touch-none px-1 text-xs leading-none text-[var(--muted)] opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus:opacity-100"
         >
           ⋮⋮
         </button>
@@ -476,7 +502,7 @@ export function TaskItem({ task, today, showDate = true, listName, depth = 0, pr
           aria-label={`Dodaj podzadanie do „${task.title}”`}
           title="Dodaj podzadanie"
           onClick={onAddSubtask}
-          className="mt-px shrink-0 rounded px-1 text-base leading-5 font-semibold text-[var(--accent)] opacity-0 group-hover:opacity-100 hover:bg-[var(--hover)] focus:opacity-100"
+          className="mt-px shrink-0 rounded px-1 text-base leading-5 font-semibold text-[var(--accent)] opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 hover:bg-[var(--hover)] focus:opacity-100"
           data-testid="add-subtask"
         >
           +

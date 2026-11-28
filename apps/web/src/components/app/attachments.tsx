@@ -428,7 +428,7 @@ function FileTile({ item, onOpen, onRemove }: { item: Attachment; onOpen: () => 
         <span className="block text-[var(--muted)]">{item.size !== null ? formatBytes(item.size) : ""}</span>
       </button>
       {onRemove ? (
-        <button type="button" aria-label={`Usuń „${item.name}”`} className="absolute top-1 right-1 rounded bg-[var(--surface)] px-1 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-[var(--danger)]" onClick={onRemove}>
+        <button type="button" aria-label={`Usuń „${item.name}”`} className="absolute top-1 right-1 rounded bg-[var(--surface)] px-1 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus:opacity-100 hover:text-[var(--danger)]" onClick={onRemove}>
           ✕
         </button>
       ) : null}

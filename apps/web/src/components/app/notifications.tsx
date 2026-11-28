@@ -230,7 +230,7 @@ export function NotificationBell({ store, userId }: { store: TabStore; userId: s
         aria-haspopup="dialog"
         aria-label={count ? `Powiadomienia: ${plural(count, ["nieprzeczytane", "nieprzeczytane", "nieprzeczytanych"])}` : "Powiadomienia"}
         title="Powiadomienia"
-        className="relative px-1 text-base opacity-70 outline-none hover:opacity-100 focus-visible:opacity-100"
+        className="relative rounded px-1 text-base opacity-70 outline-none hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         data-testid="notifications-bell"
       >
         <span aria-hidden>🔔</span>
@@ -244,7 +244,7 @@ export function NotificationBell({ store, userId }: { store: TabStore; userId: s
         <div
           role="dialog"
           aria-label="Powiadomienia"
-          className="absolute top-full right-0 z-40 mt-2 flex max-h-[70vh] w-[min(24rem,calc(100vw-1rem))] flex-col rounded-lg border border-[var(--line)] bg-[var(--surface)] shadow-xl"
+          className="fixed inset-x-2 top-14 z-40 flex max-h-[70vh] flex-col sm:absolute sm:inset-x-auto sm:top-full sm:right-0 sm:mt-2 sm:w-[min(24rem,calc(100vw-1rem))] rounded-lg border border-[var(--line)] bg-[var(--surface)] shadow-xl"
           data-testid="notifications-panel"
         >
           <div className="flex items-center gap-2 border-b border-[var(--line)] px-3 py-2">
@@ -399,7 +399,7 @@ function NotificationItem({
                 key={m}
                 type="button"
                 onClick={() => onSnooze(m)}
-                className="rounded border border-[var(--border)] px-1.5 py-0.5 hover:bg-[var(--surface)] hover:text-[var(--accent)]"
+                className="rounded border border-[var(--line)] px-1.5 py-0.5 hover:bg-[var(--surface)] hover:text-[var(--accent)]"
               >
                 {reminderSnoozeLabel(m)}
               </button>
@@ -423,7 +423,7 @@ function NotificationItem({
         onClick={onDismiss}
         aria-label="Usuń z listy"
         title="Usuń z listy"
-        className="shrink-0 rounded px-1 text-xs text-[var(--muted)] opacity-0 group-hover:opacity-100 hover:text-[var(--foreground)] focus-visible:opacity-100"
+        className="shrink-0 rounded px-1 text-xs text-[var(--muted)] opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 hover:text-[var(--foreground)] focus-visible:opacity-100"
       >
         ✕
       </button>

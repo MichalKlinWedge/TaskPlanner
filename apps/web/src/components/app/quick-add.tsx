@@ -10,6 +10,7 @@ import { CLIP_DESCRIPTION_MAX, clipQuote, findUrl, linkName, localDateTimeAt, pa
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from "react";
 
 import { listEditable } from "@/lib/app-data";
+import { useDialogFocus } from "@/lib/use-dialog-focus";
 
 import { lastSortKey, useAppEnv } from "./app-env";
 import { useTaskActions } from "./task-item";
@@ -329,6 +330,8 @@ function DetailsFields({ when, setWhen, description, setDescription, focusTitle,
 
 /** Okno szybkiego dodawania nad bieżącym widokiem. */
 export function QuickAddDialog({ open, onClose, heading, ...props }: QuickAddProps & { open: boolean; onClose: () => void; heading?: string }) {
+  const dialog = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialog, open);
   if (!open) return null;
   // Klik obok okna zamyka je tylko bez wpisu — inaczej przypadkowy klik gubiłby tytuł, opis i wycinek strony (Esc nadal zamyka).
   const backdrop = (e: MouseEvent<HTMLDivElement>) => {
@@ -342,7 +345,7 @@ export function QuickAddDialog({ open, onClose, heading, ...props }: QuickAddPro
   };
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-[15vh]" onMouseDown={backdrop}>
-      <div role="dialog" aria-modal="true" aria-label="Szybkie dodawanie" className="max-h-[80vh] w-full max-w-xl overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3 shadow-2xl">
+      <div ref={dialog} role="dialog" aria-modal="true" aria-label="Szybkie dodawanie" className="max-h-[80vh] w-full max-w-xl overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3 shadow-2xl">
         {heading ? <h2 className="px-1 text-sm font-medium">{heading}</h2> : null}
         <QuickAdd {...props} details autoFocus onAdded={(more) => !more && onClose()} onCancel={onClose} />
         <p className="px-1 text-xs text-[var(--muted)]">

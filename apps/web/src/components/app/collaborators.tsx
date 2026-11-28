@@ -192,7 +192,7 @@ export function CollaboratorsView() {
                     </form>
                   </Card>
                 ) : (
-                  <button type="button" onClick={() => open(person)} className={`flex w-full items-center gap-3 rounded-md px-1 py-1 text-left hover:bg-[var(--hover)] ${active ? "" : "opacity-60"}`}>
+                  <button type="button" onClick={() => open(person)} className={`flex w-full items-center gap-3 rounded-md px-1 py-1 text-left hover:bg-[var(--hover)]`}>
                     <span aria-hidden style={personBadgeStyle(person, true)} className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 px-1.5 text-[11px] font-semibold text-sky-900 dark:bg-sky-900/50 dark:text-sky-100">
                       {collaboratorBadge(person)}
                     </span>
@@ -260,7 +260,7 @@ export function CollaboratorsView() {
           </p>
           <ul className="divide-y divide-[var(--line)] text-sm" data-testid="shared-collaborators">
             {shared.map((person) => (
-              <li key={person.id} className={`flex items-center gap-3 px-1 py-2 ${isActiveCollaborator(person) ? "" : "opacity-60"}`}>
+              <li key={person.id} className="flex items-center gap-3 px-1 py-2">
                 <span aria-hidden style={personBadgeStyle(person, true)} className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 px-1.5 text-[11px] font-semibold text-sky-900 dark:bg-sky-900/50 dark:text-sky-100">
                   {collaboratorBadge(person)}
                 </span>
@@ -331,7 +331,7 @@ function PersonFields({ draft, onChange, workspaces, autoFocus }: { draft: Draft
           </span>
           <TagColorPicker value={draft.color} onChange={(color) => onChange({ ...draft, color })} label="Kolor znaczka współpracownika" />
         </div>
-        <span className="text-xs opacity-60">Odróżnia osoby przy zadaniach; widzą go też pozostali członkowie udostępnionych przestrzeni. Brak = domyślny.</span>
+        <span className="text-xs text-[var(--muted)]">Odróżnia osoby przy zadaniach; widzą go też pozostali członkowie udostępnionych przestrzeni. Brak = domyślny.</span>
       </div>
       <Field label="Status" hint="Nieaktywni zostają przy swoich zadaniach, ale nie podpowiadają się przy nowych.">
         <Select value={draft.active ? "active" : "inactive"} onChange={(e) => onChange({ ...draft, active: e.target.value === "active" })}>
@@ -343,7 +343,7 @@ function PersonFields({ draft, onChange, workspaces, autoFocus }: { draft: Draft
         // Nie `Field` (label): kliknięcie podpisu wcisnęłoby pierwszy przycisk. Podpis „Widoczny w:” dają chipy.
         <div className="flex flex-col gap-1 text-sm sm:col-span-2">
           <WorkspaceChips ids={draft.workspaceIds} workspaces={workspaces} label="Przestrzenie współpracownika" onChange={(workspaceIds) => onChange({ ...draft, workspaceIds })} />
-          <span className="text-xs opacity-60">Przestrzenie, w których osoba podpowiada się przy zadaniach i w filtrze „Odpowiedzialny”. Żadna = wszystkie.</span>
+          <span className="text-xs text-[var(--muted)]">Przestrzenie, w których osoba podpowiada się przy zadaniach i w filtrze „Odpowiedzialny”. Żadna = wszystkie.</span>
         </div>
       ) : null}
     </div>

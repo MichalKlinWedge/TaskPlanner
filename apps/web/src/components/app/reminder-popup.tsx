@@ -10,6 +10,7 @@
 import { notificationText, notificationTime, REMINDER_SNOOZE_OPTIONS, reminderPopups, reminderSnoozeLabel } from "@taskplanner/core";
 import { useEffect, useRef, useState } from "react";
 
+import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { closeReminderPopups, dismissNotifications, markNotificationsRead, reminderFireKey as fireKey, useNotifications, useReminderBell } from "@/lib/notifications";
 
 import { useAppEnv } from "./app-env";
@@ -35,6 +36,8 @@ export function ReminderPopup({ onOpenChange }: { onOpenChange: (open: boolean) 
   const current = queue[0] ?? null;
   const shown = current !== null;
   useEffect(() => onOpenChange(shown), [shown, onOpenChange]);
+  // Tab nie wychodzi do aplikacji pod przyciemnieniem; po zamknięciu fokus wraca tam, gdzie był.
+  useDialogFocus(box, shown);
   // Fokus na oknie, nie na przycisku: Enter pisany w innym polu nie ukończy zadania przez przypadek.
   useEffect(() => {
     if (current) box.current?.focus();

@@ -1,6 +1,6 @@
 "use client";
 
-import { DEFAULT_WORKSPACES, isOnboarded, onboardingOps, type DefaultWorkspace } from "@taskplanner/core";
+import { DEFAULT_WORKSPACES, isOnboarded, onboardingOps, plural, pluralForm, type DefaultWorkspace } from "@taskplanner/core";
 import { STALE_LEADER_MESSAGE, SYNCED_TABLES, type TabStore } from "@taskplanner/sync";
 import { useEffect, useMemo, useState } from "react";
 
@@ -218,7 +218,7 @@ function AppHeader({ store, userId, email, settingsLink }: { store: TabStore; us
       await store.sync().catch(() => undefined);
       left = await store.pendingCount();
     }
-    if (left > 0 && !window.confirm(`${left} zmian nie zostało jeszcze wysłanych na serwer. Wylogować mimo to? Zostaną w tej przeglądarce do następnego logowania.`)) return;
+    if (left > 0 && !window.confirm(`${plural(left, ["zmiana nie została", "zmiany nie zostały", "zmian nie zostało"])} jeszcze ${pluralForm(left, ["wysłana", "wysłane", "wysłanych"])} na serwer. Wylogować mimo to? Zostaną w tej przeglądarce do następnego logowania.`)) return;
     closeStore();
     // Tylko ta przeglądarka: domyślny zakres (`global`) kończyłby też sesję na telefonie.
     await supabaseBrowser().auth.signOut({ scope: "local" });
@@ -226,13 +226,13 @@ function AppHeader({ store, userId, email, settingsLink }: { store: TabStore; us
 
   const label = !online
     ? pending
-      ? `Offline — ${pending} zmian czeka`
+      ? `Offline — ${plural(pending, ["zmiana czeka", "zmiany czekają", "zmian czeka"])}`
       : "Offline"
     : status.pullPage
       ? `Pobieranie… (${status.pullPage})`
       : status.syncing || pending
         ? pending
-          ? `Wysyłanie ${pending} zmian…`
+          ? `Wysyłanie ${plural(pending, ["zmiany", "zmian", "zmian"])}…`
           : "Synchronizacja…"
         : status.error
           ? "Błąd synchronizacji"
@@ -241,7 +241,7 @@ function AppHeader({ store, userId, email, settingsLink }: { store: TabStore; us
 
   return (
     <>
-      <header className="flex items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-sm">
+      <header className="flex min-w-0 items-center gap-2 border-b border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm sm:gap-3 sm:px-4">
         <span className="flex items-baseline gap-1.5">
           {settingsLink ? (
             <a href={routeHash({ view: "home" })} title="Strona startowa" className="-mx-1 rounded px-1 font-semibold outline-none hover:bg-[var(--hover)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]" data-testid="home-link">
@@ -275,10 +275,16 @@ function AppHeader({ store, userId, email, settingsLink }: { store: TabStore; us
           <span className="flex items-center gap-1.5 text-xs opacity-80" role="status" data-testid="sync-status">
             <span className={`h-2 w-2 rounded-full ${dot} ${busy ? "animate-pulse" : ""}`} />
             {label}
+            {/* Powód błędu widoczny (nie tylko w podpowiedzi po najechaniu) — na wąskim ekranie dla czytnika ekranu. */}
+            {online && status.error ? (
+              <span className="sr-only max-w-72 truncate sm:not-sr-only" title={status.error}>
+                — {status.error}
+              </span>
+            ) : null}
           </span>
         </button>
         <span className="flex-1" />
-        {email ? <span className="hidden text-xs opacity-60 sm:inline">{email}</span> : null}
+        {email ? <span className="hidden text-xs text-[var(--muted)] sm:inline">{email}</span> : null}
         {settingsLink ? <NotificationBell store={store} userId={userId} /> : null}
         {settingsLink ? (
           <a
@@ -286,12 +292,12 @@ function AppHeader({ store, userId, email, settingsLink }: { store: TabStore; us
             aria-current={route.view === "settings" ? "page" : undefined}
             aria-label="Ustawienia"
             title="Ustawienia"
-            className={`px-1 text-base outline-none ${route.view === "settings" ? "opacity-100" : "opacity-70 hover:opacity-100"}`}
+            className={`px-1 text-base outline-none rounded focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${route.view === "settings" ? "opacity-100" : "opacity-70 hover:opacity-100"}`}
           >
             <span aria-hidden>⚙️</span>
           </a>
         ) : null}
-        <button type="button" onClick={() => void signOut()} aria-label="Wyloguj" title="Wyloguj" className="px-1 opacity-70 outline-none hover:opacity-100">
+        <button type="button" onClick={() => void signOut()} aria-label="Wyloguj" title="Wyloguj" className="px-1 py-1 opacity-70 outline-none hover:opacity-100 rounded focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
           <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
             <path d="m16 17 5-5-5-5" />

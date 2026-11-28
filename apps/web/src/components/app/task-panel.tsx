@@ -842,7 +842,7 @@ function PeopleField({ task }: { task: ViewTask }) {
             {chosen.map((id) => (
               <span key={id} className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-900 dark:bg-sky-900/50 dark:text-sky-100" title={byId.get(id)?.email ?? undefined}>
                 {byId.get(id)?.name}
-                <button type="button" aria-label={`Usuń z uczestników: ${byId.get(id)?.name ?? ""}`} className="opacity-60 hover:opacity-100" onClick={() => remove(id)}>
+                <button type="button" aria-label={`Usuń z uczestników: ${byId.get(id)?.name ?? ""}`} className="opacity-60 hover:opacity-100 relative before:absolute before:-inset-2 before:content-['']" onClick={() => remove(id)}>
                   ×
                 </button>
               </span>
@@ -1251,8 +1251,16 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
             className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs ${TAG_CHIP} ${sortable ? "cursor-grab" : ""} ${dragged === index ? "opacity-50" : ""}`}
             style={tagChipStyle(byId.get(id)?.color)}
             draggable={sortable}
-            title={sortable ? "Przeciągnij, aby zmienić kolejność — pierwszy kolorowy tag nadaje kolor karteczce" : undefined}
+            title={sortable ? "Przeciągnij (albo Alt+← / Alt+→ na przycisku tagu), aby zmienić kolejność — pierwszy kolorowy tag nadaje kolor karteczce" : undefined}
             data-testid="task-tag-chip"
+            // Kolejność z klawiatury (przeciąganie HTML5 nie działa na dotyku ani bez myszy).
+            onKeyDown={(e) => {
+              if (!sortable || !e.altKey || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+              const to = index + (e.key === "ArrowLeft" ? -1 : 1);
+              if (to < 0 || to >= task.tagIds.length) return;
+              e.preventDefault();
+              void run(reorderTaskTagOps(task.id, task.tagIds, index, to));
+            }}
             onDragStart={(e) => {
               setDragged(index);
               e.dataTransfer.effectAllowed = "move";
@@ -1274,7 +1282,7 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
               aria-label={`Kolor tagu ${byId.get(id)?.name ?? ""}`}
               aria-expanded={coloring === id}
               title="Kolor tagu"
-              className="h-2.5 w-2.5 shrink-0 rounded-full border border-current"
+              className="h-2.5 w-2.5 shrink-0 rounded-full border border-current relative before:absolute before:-inset-2 before:content-['']"
               style={{ background: byId.get(id)?.color ?? "transparent" }}
               onClick={() => setColoring((c) => (c === id ? null : id))}
             />
@@ -1283,7 +1291,7 @@ function TagsField({ task, userId }: { task: ViewTask; userId: string }) {
             <button
               type="button"
               aria-label={`Usuń tag ${byId.get(id)?.name ?? ""}`}
-              className="opacity-60 hover:opacity-100"
+              className="opacity-60 hover:opacity-100 relative before:absolute before:-inset-2 before:content-['']"
               onClick={() =>
                 void run([{ table: "task_tags", id: taskTagId(task.id, id), patch: { deleted_at: new Date().toISOString() } }], {
                   text: `Usunięto @${byId.get(id)?.name ?? "tag"} z zadania`,

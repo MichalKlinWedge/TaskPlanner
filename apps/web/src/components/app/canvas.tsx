@@ -955,7 +955,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
           {note}
         </p>
       ) : null}
-      <div className={`flex gap-2 ${full ? "min-h-0 flex-1" : "h-[calc(100vh-12rem)] min-h-80"}`}>
+      <div className={`flex flex-col gap-2 md:flex-row ${full ? "min-h-0 flex-1" : "h-[calc(100vh-12rem)] min-h-80"}`}>
         <div
           ref={box}
           tabIndex={0}
@@ -1140,7 +1140,7 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
           ) : null}
         </div>
         <aside
-          className={`flex w-56 shrink-0 flex-col rounded-lg border border-[var(--line)] bg-[var(--surface)] ${drag?.kind === "cards" && drag.moved ? "ring-2 ring-[var(--accent)]/40" : ""}`}
+          className={`flex max-h-40 w-full shrink-0 flex-col rounded-lg border md:max-h-none md:w-56 border-[var(--line)] bg-[var(--surface)] ${drag?.kind === "cards" && drag.moved ? "ring-2 ring-[var(--accent)]/40" : ""}`}
           data-canvas-tray
           data-testid="canvas-tray"
           aria-label="Do ułożenia"
@@ -1171,7 +1171,21 @@ export function CanvasView({ data, ctx, list }: { data: AppData; ctx: ViewContex
                 style={{ ...frameStyle(task), background: `color-mix(in srgb, ${canvasColorTag(task, tagsById)?.color ?? CANVAS_DEFAULT_COLOR} 30%, var(--surface))` }}
                 onPointerDown={(e) => startTrayDrag(e, task.id)}
                 onDoubleClick={() => open(task.id)}
-                title={editable ? "Przeciągnij na tablicę · dwuklik otwiera zadanie" : "Dwuklik otwiera zadanie"}
+                // Z klawiatury: Enter otwiera zadanie, Spacja kładzie karteczkę w najbliższym wolnym miejscu widocznej części tablicy.
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    open(task.id);
+                  } else if (e.key === " " && editable) {
+                    e.preventDefault();
+                    const rect = box.current?.getBoundingClientRect();
+                    const { ops, undo } = canvasPlaceOps(layout, task.id, rect ? cellAt(rect.left + 24, rect.top + 24) : { col: 0, row: 0 });
+                    void apply(ops, "Położono karteczkę", undo);
+                  }
+                }}
+                title={editable ? "Przeciągnij na tablicę (albo Spacja) · dwuklik / Enter otwiera zadanie" : "Dwuklik / Enter otwiera zadanie"}
               >
                 <span className="line-clamp-2 break-words">{task.title}</span>
               </li>
@@ -1348,7 +1362,7 @@ const Card = memo(function Card({
           role="button"
           aria-label={`Strzałka od „${task.title}”`}
           title="Przeciągnij na inną karteczkę — strzałka „blokuje” albo „wynika z”"
-          className={`absolute -right-2 top-1/2 z-10 h-4 w-4 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-[var(--accent)] bg-[var(--surface)] shadow transition-opacity ${selected ? "opacity-100" : "opacity-0 group-hover/card:opacity-100"}`}
+          className={`absolute -right-2 top-1/2 z-10 h-4 w-4 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-[var(--accent)] bg-[var(--surface)] shadow transition-opacity ${selected ? "opacity-100" : "opacity-0 group-hover/card:opacity-100 pointer-coarse:opacity-100"}`}
           onPointerDown={(e) => onHandleDown(e, task.id)}
         />
       ) : null}

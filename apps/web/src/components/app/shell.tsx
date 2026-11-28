@@ -648,7 +648,8 @@ export function Shell({
           </main>
           {openTaskId ? <TaskPanel key={openTaskId} taskId={openTaskId} /> : null}
         </div>
-        {selected.length && route.view !== "focus" && route.view !== "review" && palette === null ? <BulkBar selected={selected} setSelected={setSelected} openPalette={setPalette} /> : null}
+        {/* Jedno zaznaczone zadanie otwarte w panelu — akcje są w panelu, a pasek zasłaniałby go na wąskim ekranie. */}
+        {selected.length && !(openTaskId && selected.length === 1 && selected[0] === openTaskId) && route.view !== "focus" && route.view !== "review" && palette === null ? <BulkBar selected={selected} setSelected={setSelected} openPalette={setPalette} /> : null}
         <QuickAddDialog
           key={shared ? "shared" : "quick"}
           open={quickOpen}

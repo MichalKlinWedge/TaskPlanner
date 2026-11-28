@@ -91,12 +91,16 @@ const PANEL_LIMIT = 100;
 const wallDate = (d: Date) => d.toISOString().slice(0, 10) as LocalDate;
 const wallMinutes = (d: Date) => d.getUTCHours() * 60 + d.getUTCMinutes();
 
+/** Wąski ekran (telefon): domyślnie dzień, przełącznik widoków pod kalendarzem — 7 kolumn po ~45 px jest nieczytelne. */
+const narrowScreen = () => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
+
 function readView(): CalendarView {
+  const fallback: CalendarView = narrowScreen() ? "timeGridDay" : "timeGridWeek";
   try {
     const v = localStorage.getItem(VIEW_KEY);
-    return VIEWS.includes(v as CalendarView) ? (v as CalendarView) : "timeGridWeek";
+    return VIEWS.includes(v as CalendarView) ? (v as CalendarView) : fallback;
   } catch {
-    return "timeGridWeek";
+    return fallback;
   }
 }
 
@@ -453,8 +457,17 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
                 select(t.id);
                 openTask(t.id);
               }}
+              // Z klawiatury: Tab na pozycję, Enter otwiera zadanie (godzinę ustawisz w panelu).
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                e.preventDefault();
+                select(t.id);
+                openTask(t.id);
+              }}
               style={{ borderLeftColor: PRIORITY[t.priority]?.color }}
-              className="cursor-grab rounded border border-l-4 border-[var(--line)] bg-[var(--surface)] px-2 py-1"
+              className="cursor-grab rounded border border-l-4 border-[var(--line)] bg-[var(--surface)] px-2 py-1 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:outline-none"
             >
               <div className="break-words">{t.title}</div>
               <div className="text-xs text-[var(--muted)]">
@@ -495,7 +508,9 @@ export function CalendarScreen({ data, ctx, settings, onAdd }: { data: AppData; 
             initialDate: ctx.today,
             timeZone: "UTC",
             now: () => localDateTimeAt(new Date(), timeZone),
-            headerToolbar: { left: "prev,next today", center: "title", right: "timeGridDay,timeGridWeek,dayGridMonth" },
+            ...(narrowScreen()
+              ? { headerToolbar: { left: "prev,next", center: "title", right: "today" }, footerToolbar: { center: "timeGridDay,timeGridWeek,dayGridMonth" } }
+              : { headerToolbar: { left: "prev,next today", center: "title", right: "timeGridDay,timeGridWeek,dayGridMonth" } }),
             locale: plLocale,
             firstDay: ctx.firstDayOfWeek ?? 1,
             height: "calc(100dvh - 11rem)",

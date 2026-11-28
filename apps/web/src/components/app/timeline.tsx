@@ -260,7 +260,7 @@ function ProjectFilter({ projects, hidden, onChange }: { projects: readonly Filt
                   <span className="truncate">{p.name}</span>
                 </Check>
               </div>
-              <button type="button" title={`Pokaż tylko „${p.name}”`} className="px-1.5 text-xs text-[var(--muted)] opacity-0 group-hover:opacity-100 hover:text-[var(--foreground)] focus:opacity-100" onClick={() => onChange(new Set(projects.filter((x) => x.id !== p.id).map((x) => x.id)))}>
+              <button type="button" title={`Pokaż tylko „${p.name}”`} className="px-1.5 text-xs text-[var(--muted)] opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 hover:text-[var(--foreground)] focus:opacity-100" onClick={() => onChange(new Set(projects.filter((x) => x.id !== p.id).map((x) => x.id)))}>
                 tylko
               </button>
             </div>

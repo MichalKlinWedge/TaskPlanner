@@ -60,6 +60,9 @@ interface ColumnEdit {
   onRemove: () => void;
 }
 
+/** Klawiatura na karcie: Spacja podnosi / upuszcza, Enter (poza przeciąganiem) otwiera zadanie. */
+const KEYBOARD_CODES = { start: ["Space"], cancel: ["Escape"], end: ["Space", "Enter"] };
+
 const Card = memo(function Card({ task, column, by, today, tags, listName, parentTitle, progress }: { task: ViewTask; column: string; by: BoardBy; today: LocalDate; tags: readonly { id: string; name: string; color: string | null }[]; listName?: string; parentTitle?: string; progress?: { done: number; total: number } }) {
   const { openTask, select, selectedIds, data } = useAppEnv();
   const { toggle } = useTaskActions();
@@ -72,8 +75,18 @@ const Card = memo(function Card({ task, column, by, today, tags, listName, paren
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, borderLeftColor: color }}
-      {...(readOnly ? undefined : attributes)}
+      {...(readOnly ? { role: "button", tabIndex: 0 } : attributes)}
       {...listeners}
+      // Enter otwiera zadanie; podnoszenie karty z klawiatury tylko Spacją (`KEYBOARD_CODES`).
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && e.target === e.currentTarget) {
+          e.preventDefault();
+          select(task.id);
+          openTask(task.id);
+          return;
+        }
+        listeners?.onKeyDown?.(e);
+      }}
       data-card={task.id}
       onClick={(e) => {
         if (e.ctrlKey || e.metaKey) return select(task.id, "toggle");
@@ -229,10 +242,10 @@ function Column({
         <span className="text-xs font-normal text-[var(--muted)]">{column.tasks.length}</span>
         {edit ? (
           <>
-            <button type="button" className="text-xs text-[var(--muted)] opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-[var(--foreground)]" onClick={() => setRenaming(true)} aria-label={`Zmień nazwę kolumny ${column.label}`} title="Zmień nazwę">
+            <button type="button" className="text-xs text-[var(--muted)] opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus:opacity-100 hover:text-[var(--foreground)]" onClick={() => setRenaming(true)} aria-label={`Zmień nazwę kolumny ${column.label}`} title="Zmień nazwę">
               ✎
             </button>
-            <button type="button" className="text-xs text-[var(--muted)] opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-[var(--danger)]" onClick={edit.onRemove} aria-label={`Usuń kolumnę ${column.label}`} title="Usuń kolumnę (zadania wrócą do „Do przypisania”)">
+            <button type="button" className="text-xs text-[var(--muted)] opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus:opacity-100 hover:text-[var(--danger)]" onClick={edit.onRemove} aria-label={`Usuń kolumnę ${column.label}`} title="Usuń kolumnę (zadania wrócą do „Do przypisania”)">
               ✕
             </button>
           </>
@@ -372,7 +385,7 @@ export function Board({
   const sortDir = sort?.dir ?? "asc";
   const sortBy = useMemo(() => (sortKey !== "manual" ? { by: sortKey, dir: sortDir } : undefined), [sortKey, sortDir]);
   const doneNote = smart ? smart.doneNote : "„Gotowe” z ostatnich 7 dni";
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates, keyboardCodes: KEYBOARD_CODES }));
   const lists = useMemo(() => {
     const used = new Set(tasks.map((t) => t.listId));
     return data.lists.filter((l) => used.has(l.id) || l.id === listId);
