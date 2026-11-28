@@ -151,8 +151,7 @@ export function smartSort(data: AppData, view: SmartView): { by: SortBy; dir: So
 }
 
 /**
- * Widok zbiorczy: `row` z kolumnami, pasek opcji (z chipami sortowania — `smartSort`; Zaległe bez wyboru,
- * stała kolejność od najstarszego) i nagłówek kolumn. `extra` — dodatkowy chip w wierszu opcji (np. „Eksport XLSX”).
+ * Widok zbiorczy: `row` z kolumnami, pasek opcji (z chipami sortowania — `smartSort`) i nagłówek kolumn. `extra` — dodatkowy chip w wierszu opcji (np. „Eksport XLSX”).
  */
 export function useSmartView(view: SmartView, data: AppData, today: string, workspaceId: string | null, extra?: ReactNode) {
   const { row, chips, columnsHeader } = useViewColumns(view, data, today, workspaceId);
@@ -166,7 +165,7 @@ export function useSmartView(view: SmartView, data: AppData, today: string, work
     row,
     options: (
       <OptionRow>
-        {view === 'overdue' ? null : <SortChips by={sort.by} dir={sort.dir} labels={SMART_SORT_BY} onChange={setSort} />}
+        <SortChips by={sort.by} dir={sort.dir} labels={SMART_SORT_BY} onChange={setSort} />
         {chips}
         <OptionChip label="▦ Tablica" accent onPress={() => router.push({ pathname: '/board', params: { view } })} />
         {extra}

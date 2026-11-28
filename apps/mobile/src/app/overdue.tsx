@@ -3,7 +3,7 @@
  * wcześniejszych dni; reguły z `selectOverdue` (core), lista odświeża się co minutę. Chipy filtra
  * zawężają zadania; filtr pamiętany per widok do zamknięcia aplikacji (R-06), nie jest zapisywany.
  */
-import { applyFilter, isEmptyFilter, minutesLate, OVERDUE_LATER_OPTIONS, overdueLaterLabel, overdueLaterOps, overdueToTodayOps, plural, selectOverdue, VIEW_SECTION, type ViewTask } from '@taskplanner/core';
+import { applyFilter, isEmptyFilter, minutesLate, OVERDUE_LATER_OPTIONS, overdueLaterLabel, overdueLaterOps, overdueToTodayOps, plural, selectOverdue, sortSection, VIEW_SECTION, type ViewTask } from '@taskplanner/core';
 import { useMemo } from 'react';
 
 import { useTaskActions } from '@/components/actions';
@@ -11,7 +11,7 @@ import { FilterBar } from '@/components/filter-bar';
 import { pickOption } from '@/components/pickers';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections, type TaskSection } from '@/components/task-list';
-import { useSmartView } from '@/components/view-options';
+import { smartSort, useSmartView } from '@/components/view-options';
 import { useAdhocFilter } from '@/lib/adhoc-filters';
 import { targetInbox, useLocalMinute, useView } from '@/lib/app-data';
 import { usePerfReady } from '@/lib/perf';
@@ -23,7 +23,12 @@ export default function OverdueScreen() {
   const now = useLocalMinute(ctx.timeZone);
   usePerfReady('/overdue', data.loaded);
   const [filter, setFilter] = useAdhocFilter(data.userId, 'overdue');
-  const view = useMemo(() => selectOverdue(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx, now), [data.tasks, filter, today, ctx, now]);
+  const { by, dir } = smartSort(data, 'overdue');
+  // Wybrane sortowanie działa w obrębie sekcji („dziś po godzinie” / „wcześniej”).
+  const view = useMemo(() => {
+    const overdue = selectOverdue(isEmptyFilter(filter) ? data.tasks : applyFilter(data.tasks, filter, today), ctx, now);
+    return { today: sortSection(overdue.today, by, dir, (t) => t), earlier: sortSection(overdue.earlier, by, dir, (t) => t) };
+  }, [data.tasks, filter, today, ctx, now, by, dir]);
   const { run } = useTaskActions();
   const { row, options, columnsHeader } = useSmartView('overdue', data, today, workspaceId);
   // „→ Dziś” przy wierszu; `undefined` = nie ma czego przenieść (dzisiejsza seria).

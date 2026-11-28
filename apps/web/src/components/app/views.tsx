@@ -274,8 +274,7 @@ function SortControls({ by, dir, labels, title, onBy, onDir }: { by: SortBy; dir
 
 /** Ustawienia widoku zbiorczego (`settings.views`, synchronizowane) i części układu: przełącznik, „Kolumny”, tablica. */
 function useSmartView(id: SmartView, ctx: ViewContext, targetInbox: List | undefined) {
-  // Sortowanie: Inbox, Dziś, Nadchodzące (Zaległe mają stałą kolejność od najstarszego).
-  const { prefs, setPrefs, sort, cols, picker, columnsHeader, sortControls } = useViewColumns(id, ctx, { sortable: id !== "overdue" });
+  const { prefs, setPrefs, sort, cols, picker, columnsHeader, sortControls } = useViewColumns(id, ctx, { sortable: true });
   const kanban = prefs.view === "kanban";
   return {
     kanban,
@@ -462,13 +461,18 @@ export function TodayView({ data, ctx, targetInbox, toolbar, aside }: ViewProps 
 /** Wszystko po terminie: dzisiejsze po godzinie (na górze — nie giną pod długą listą) i z wcześniejszych dni. */
 export function OverdueView({ data, ctx, targetInbox, toolbar }: ViewProps) {
   const now = useLocalMinute(ctx.timeZone);
-  const view = useMemo(() => selectOverdue(data.tasks, ctx, now), [data.tasks, ctx, now]);
+  const smart = useSmartView("overdue", ctx, targetInbox);
+  const { by, dir } = smart.sort;
+  // Wybrane sortowanie działa w obrębie sekcji („dziś po godzinie” / „wcześniej”).
+  const view = useMemo(() => {
+    const overdue = selectOverdue(data.tasks, ctx, now);
+    return { today: sortSection(overdue.today, by, dir, (t) => t), earlier: sortSection(overdue.earlier, by, dir, (t) => t) };
+  }, [data.tasks, ctx, now, by, dir]);
   const names = listNames(data);
   const toTomorrow = useToTomorrow(data, ctx);
   const toToday = useToToday(ctx, now);
   const later = useLater(ctx, now);
   const count = view.today.length + view.earlier.length;
-  const smart = useSmartView("overdue", ctx, targetInbox);
   return (
     <>
       <Header title={VIEW_SECTION.overdue} subtitle={plural(count, ["zadanie", "zadania", "zadań"])}>
