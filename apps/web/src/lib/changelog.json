@@ -1,4 +1,7 @@
 [
+  {"version":"0.48.1.0","kind":"w","date":"2026-11-28","title":"Token API: formularz nowego tokenu pokazuje się dopiero po „+ Nowy token”"},
+  {"version":"0.48.0.1","kind":"z","date":"2026-11-28","title":"Lista: przyciski „+15 min … → Jutro” schodzą pod tytuł zamiast ściskać „Zadanie”"},
+  {"version":"0.48.0.0","kind":"y","date":"2026-11-27","title":"Przychodzące API (M22, D22): token osobisty i Edge Function inbound-api dla Expedition Plan"},
   {"version":"0.47.5.0","kind":"w","date":"2026-11-27","title":"Cykliczne: wartość dnia dla celu ilościowego — kliknięcie dnia w pasku „Ostatnie dni” pozwala wpisać np. 2,5 km, ustawić dzień wolny albo wyczyścić"},
   {"version":"0.47.4.0","kind":"w","date":"2026-11-27","title":"Nawyki nazywają się „nawyk” w całej aplikacji, „Cykliczne” to widok nawyków i zadań z powtarzaniem"},
   {"version":"0.47.3.1","kind":"z","date":"2026-11-27","title":"Cykliczne: przycisk „Dodaj nawyk” w nagłówku sekcji „Nawyki”"},

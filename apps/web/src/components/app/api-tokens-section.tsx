@@ -35,6 +35,8 @@ export function ApiTokensSection({ store }: { store: TabStore }) {
   const [message, setMessage] = useState<Message>(null);
   const [created, setCreated] = useState<{ label: string; token: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  /** Formularz nowego tokenu pokazuje się dopiero po „+ Nowy token”. */
+  const [adding, setAdding] = useState(false);
 
   /** Listy z prawem zapisu jako „Przestrzeń / Lista”. */
   const lists = useMemo(
@@ -105,18 +107,31 @@ export function ApiTokensSection({ store }: { store: TabStore }) {
       )}
 
       {tokens.length < MAX_API_TOKENS ? (
-        <NewToken
-          lists={lists}
-          busy={busy}
-          onCreate={(label, listId) =>
-            run(async () => {
-              const r = await createApiToken({ label, listId });
-              setCreated({ label, token: r.token });
-              setCopied(false);
-              return null;
-            })
-          }
-        />
+        adding ? (
+          <NewToken
+            lists={lists}
+            busy={busy}
+            onCancel={() => setAdding(false)}
+            onCreate={(label, listId) =>
+              run(async () => {
+                const r = await createApiToken({ label, listId });
+                setCreated({ label, token: r.token });
+                setCopied(false);
+                setAdding(false);
+                return null;
+              })
+            }
+          />
+        ) : (
+          <Button
+            onClick={() => {
+              setAdding(true);
+              setMessage(null);
+            }}
+          >
+            + Nowy token
+          </Button>
+        )
       ) : (
         <p className="text-xs text-[var(--muted)]">Masz już {MAX_API_TOKENS} tokenów — odwołaj nieużywany, żeby dodać nowy.</p>
       )}
@@ -149,7 +164,17 @@ function TokenItem({ token: t, listName, busy, onRevoke }: { token: ApiToken; li
   );
 }
 
-function NewToken({ lists, busy, onCreate }: { lists: { id: string; name: string }[]; busy: boolean; onCreate: (label: string, listId: string) => void }) {
+function NewToken({
+  lists,
+  busy,
+  onCreate,
+  onCancel,
+}: {
+  lists: { id: string; name: string }[];
+  busy: boolean;
+  onCreate: (label: string, listId: string) => void;
+  onCancel: () => void;
+}) {
   const [label, setLabel] = useState("Expedition Plan");
   const [listId, setListId] = useState("");
   const chosen = listId || lists[0]?.id || "";
@@ -173,9 +198,12 @@ function NewToken({ lists, busy, onCreate }: { lists: { id: string; name: string
           ))}
         </Select>
       </Field>
-      <div>
+      <div className="flex gap-2">
         <Button type="submit" kind="primary" disabled={busy || !label.trim() || !chosen}>
           {busy ? "Tworzenie…" : "Utwórz token"}
+        </Button>
+        <Button kind="ghost" disabled={busy} onClick={onCancel}>
+          Anuluj
         </Button>
       </div>
     </form>
