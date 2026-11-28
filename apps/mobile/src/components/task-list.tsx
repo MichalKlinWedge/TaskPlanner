@@ -177,7 +177,7 @@ export function Fab({ onPress, label = 'Dodaj zadanie', bottom = 16 }: { onPress
       onPress={onPress}
       style={({ pressed }) => [styles.fab, { backgroundColor: p.accent, bottom, opacity: pressed ? 0.8 : 1 }]}
     >
-      <Text style={styles.fabText}>+</Text>
+      <Text style={[styles.fabText, { color: p.onAccent }]}>+</Text>
     </Pressable>
   );
 }

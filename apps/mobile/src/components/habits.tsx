@@ -116,7 +116,7 @@ export function HabitDayStrip({ task, habit, size = 'md' }: { task: ViewTask; ha
         const c = colors[status.state];
         const label = `${dayChip(date)} — ${STATE_LABEL[status.state]}${habit.target !== undefined && status.value !== null ? ` (${status.value} / ${habit.target})` : ''}`;
         return (
-          <Pressable
+          <Pressable hitSlop={{ top: 4, bottom: 4 }}
             key={date}
             accessibilityRole="button"
             accessibilityLabel={label}
@@ -225,7 +225,7 @@ export function HabitTodayItem({ item, today }: { item: HabitForDay; today: Loca
 const styles = StyleSheet.create({
   strip: { flexDirection: 'row', gap: 4 },
   day: { alignItems: 'center', justifyContent: 'center', borderRadius: 7, borderWidth: 1.5 },
-  daySm: { width: 30, height: 34 },
+  daySm: { width: 30, height: 40 },
   dayMd: { flex: 1, height: 44 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   check: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },

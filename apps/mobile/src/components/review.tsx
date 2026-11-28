@@ -180,8 +180,9 @@ const styles = StyleSheet.create({
   buttons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   button: { width: '31.5%', borderWidth: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   compactButtons: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', columnGap: 2, rowGap: 2 },
-  compact: { borderRadius: 8, paddingVertical: 6, paddingHorizontal: 8 },
-  compactDelete: { marginLeft: 6 },
+  compact: { borderRadius: 8, paddingVertical: 10, paddingHorizontal: 10, minHeight: 40, justifyContent: 'center' },
+  // Kosz z wyraźnym odstępem od „Kiedyś” (decyzja znika z listy, pod palec wjeżdża następne zadanie).
+  compactDelete: { marginLeft: 20 },
   nudges: { gap: 6, paddingHorizontal: 12, paddingTop: 8 },
   nudge: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 10, padding: 10 },
   nudgeText: { flex: 1 },

@@ -10,7 +10,7 @@ import { AppState, Switch, Text, View } from 'react-native';
 
 import { alarmAvailable, alarmSnooze, canFullScreen, openFullScreenSettings, reminderMode, setAlarmSnooze, setReminderMode, testAlarm } from '@/lib/alarm';
 import { backgroundRuns, backgroundState, runBackgroundSync, type BackgroundRun, type BackgroundState } from '@/lib/background-sync';
-import { sessionUser } from '@/lib/config';
+import { devToolsEnabled, sessionUser } from '@/lib/config';
 import { phoneRemindersOn, setPhoneReminders } from '@/lib/device';
 import { useLocalQuery } from '@/lib/local-query';
 import { permissionState, requestExactAlarms, requestNotificationPermission, type PermissionState } from '@/lib/reminders';
@@ -144,12 +144,12 @@ export function BackgroundStatus() {
         <P muted>
           {schedule.error
             ? `Planowanie (${when(schedule.at)}): błąd — ${schedule.error}`
-            : `Zaplanowane: ${schedule.scheduled} (okno 7 dni, najwyżej 50)${schedule.next ? `, najbliższe ${when(schedule.next)}` : ''} · przeliczone ${when(schedule.at)}`}
+            : `Zaplanowane przypomnienia: ${schedule.scheduled}${schedule.next ? `, najbliższe ${when(schedule.next)}` : ''}${devToolsEnabled() ? ` (okno 7 dni, najwyżej 50) · przeliczone ${when(schedule.at)}` : ''}`}
         </P>
       ) : null}
       <P muted>
         {background.registered
-          ? `Synchronizacja w tle: co ≥ 15 min, gdy jest sieć (decyduje Android)${last ? ` · ostatnio ${when(last.at)} ${last.ok ? `OK, ${last.ms} ms` : `błąd: ${last.error}`} · przebiegów w 24 h: ${lastDay}` : ' · jeszcze nie uruchomiona'}`
+          ? `Synchronizacja w tle: co kilkanaście minut, gdy jest sieć (decyduje Android)${last ? ` · ostatnio ${when(last.at)}${last.ok ? (devToolsEnabled() ? ` OK, ${last.ms} ms · przebiegów w 24 h: ${lastDay}` : '') : ` — nie udała się (${last.error})`}` : ' · jeszcze nie uruchomiona'}`
           : background.available
             ? 'Synchronizacja w tle: niezarejestrowana (zarejestruje się przy następnym starcie).'
             : 'Synchronizacja w tle: niedostępna na tym urządzeniu.'}

@@ -8,7 +8,6 @@ import { addDays, applyFilter, capitalized, dayLabel, dayMonth, isEmptyFilter, r
 import { useMemo } from 'react';
 import { Pressable, Text } from 'react-native';
 
-import { ExportChip } from '@/components/export-button';
 import { FilterBar } from '@/components/filter-bar';
 import { ScreenHeader } from '@/components/sync-banner';
 import { openQuickAdd, TaskSections, type TaskSection } from '@/components/task-list';
@@ -43,7 +42,7 @@ export default function UpcomingScreen() {
     ...view.days.flatMap(({ date, items }) => items.map((item) => ({ task: item.task, section: capitalized(dayLabel(date)), date: item.virtual ? item.date : undefined }))),
     ...view.later.flatMap(({ weekStart, items }) => items.map((item) => ({ task: item.task, section: `Tydzień od ${dayMonth(weekStart)}` }))),
   ];
-  const { row, options, columnsHeader } = useSmartView('upcoming', data, today, workspaceId, <ExportChip title="Nadchodzące" rows={exportRows} />);
+  const { row, options, columnsHeader } = useSmartView('upcoming', data, today, workspaceId, { title: 'Nadchodzące', rows: exportRows });
   const inbox = targetInbox(data, workspaceId)?.id;
   const sections: TaskSection[] = [
     ...view.days.map(({ date, items }) => ({

@@ -189,7 +189,7 @@ function DailyReview() {
               {task.recurrence ? ' · seria' : ''}
             </Text>
             {needsDecision(task) ? (
-              <Text style={[styles.warn, { color: '#92400e', backgroundColor: '#fef3c7' }]}>Przesuwane {task.postponeCount} razy — zrób, zmniejsz albo usuń.</Text>
+              <Text style={[styles.warn, { color: p.warnFg, backgroundColor: p.warnBg }]}>Przesuwane {task.postponeCount} razy — zrób, zmniejsz albo usuń.</Text>
             ) : null}
             <Text style={{ color: p.muted, fontSize: 12, marginTop: 'auto' }}>→ ukończ · ← jutro · ↑ dziś · ↓ kiedyś</Text>
           </Animated.View>

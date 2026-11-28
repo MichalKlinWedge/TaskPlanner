@@ -1,14 +1,18 @@
 /** Klocki ekranów: kolory (jasny / ciemny), ekran, sekcja, tekst, przyciski, pola, chipy, kropka koloru. */
 import Storage from 'expo-sqlite/kv-store';
 import { createContext, useContext, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, useColorScheme, View, type TextInputProps } from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, useColorScheme, View, type TextInputProps } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+/**
+ * `onAccent` / `onBad` / `onOk` — tekst na wypełnieniu w tym kolorze (w ciemnym motywie wypełnienia są jasne,
+ * więc tekst ciemny — biały miał kontrast ~2,5:1). `inverseAccent` — akcent na odwróconym tle (dymek z „Cofnij”).
+ */
 export function usePalette() {
   const dark = useColorScheme() === 'dark';
   return dark
-    ? { bg: '#09090b', card: '#18181b', fg: '#fafafa', muted: '#a1a1aa', border: '#3f3f46', accent: '#60a5fa', ok: '#4ade80', bad: '#f87171', selected: '#1e293b' }
-    : { bg: '#fafafa', card: '#ffffff', fg: '#18181b', muted: '#71717a', border: '#e4e4e7', accent: '#2563eb', ok: '#16a34a', bad: '#dc2626', selected: '#e0e7ff' };
+    ? { bg: '#09090b', card: '#18181b', fg: '#fafafa', muted: '#a1a1aa', border: '#3f3f46', accent: '#60a5fa', ok: '#4ade80', bad: '#f87171', selected: '#1e293b', onAccent: '#0b1220', onBad: '#1f0a0a', onOk: '#052e16', inverseAccent: '#1d4ed8', warnBg: '#422006', warnFg: '#fde68a' }
+    : { bg: '#fafafa', card: '#ffffff', fg: '#18181b', muted: '#71717a', border: '#e4e4e7', accent: '#2563eb', ok: '#16a34a', bad: '#dc2626', selected: '#e0e7ff', onAccent: '#ffffff', onBad: '#ffffff', onOk: '#ffffff', inverseAccent: '#93c5fd', warnBg: '#fef3c7', warnFg: '#92400e' };
 }
 
 export function Screen({ children, scroll = true }: { children: ReactNode; scroll?: boolean }) {
@@ -16,7 +20,17 @@ export function Screen({ children, scroll = true }: { children: ReactNode; scrol
   const body = <View style={styles.body}>{children}</View>;
   return (
     <SafeAreaView edges={['bottom', 'left', 'right']} style={[styles.screen, { backgroundColor: p.bg }]}>
-      {scroll ? <ScrollView contentContainerStyle={styles.scroll}>{body}</ScrollView> : body}
+      {/* `handled`: przy otwartej klawiaturze stuknięcie w przycisk działa od razu (zamiast tylko chować klawiaturę). */}
+      {scroll ? (
+        // Jak ekran zadania: pole na dole długiego ekranu (np. „Usuń konto”) przewija się nad klawiaturę.
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="height">
+          <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+            {body}
+          </ScrollView>
+        </KeyboardAvoidingView>
+      ) : (
+        body
+      )}
     </SafeAreaView>
   );
 }
@@ -79,7 +93,7 @@ export function P({ children, muted, tone, mono, onPress }: { children: ReactNod
 export function Button({ title, onPress, disabled, kind = 'primary' }: { title: string; onPress: () => void; disabled?: boolean; kind?: 'primary' | 'secondary' | 'danger' }) {
   const p = usePalette();
   const bg = kind === 'primary' ? p.accent : kind === 'danger' ? p.bad : 'transparent';
-  const fg = kind === 'secondary' ? p.fg : '#ffffff';
+  const fg = kind === 'secondary' ? p.fg : kind === 'danger' ? p.onBad : p.onAccent;
   return (
     <Pressable
       accessibilityRole="button"
@@ -112,6 +126,7 @@ export function Chip({ label, selected, onPress, disabled }: { label: string; se
   const p = usePalette();
   return (
     <Pressable
+      hitSlop={4}
       accessibilityRole="button"
       accessibilityState={{ selected: !!selected, disabled: !!disabled }}
       disabled={disabled}
@@ -121,7 +136,7 @@ export function Chip({ label, selected, onPress, disabled }: { label: string; se
         { borderColor: selected ? p.accent : p.border, backgroundColor: selected ? p.accent : 'transparent', opacity: disabled ? 0.4 : pressed ? 0.7 : 1 },
       ]}
     >
-      <Text style={[styles.chipText, { color: selected ? '#ffffff' : p.fg }]}>{label}</Text>
+      <Text style={[styles.chipText, { color: selected ? p.onAccent : p.fg }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -146,6 +161,6 @@ const styles = StyleSheet.create({
   label: { fontSize: 12 },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 15 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderWidth: 1, borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 },
+  chip: { borderWidth: 1, borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12, minHeight: 40, justifyContent: 'center' },
   chipText: { fontSize: 14 },
 });

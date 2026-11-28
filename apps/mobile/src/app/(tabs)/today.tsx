@@ -11,7 +11,6 @@ import { useMemo } from 'react';
 import { View } from 'react-native';
 
 import { DayPlanCard } from '@/components/day-plan';
-import { ExportChip } from '@/components/export-button';
 import { FilterBar, filterEmptyText } from '@/components/filter-bar';
 import { HabitTodayItem } from '@/components/habits';
 import { ReviewNudge } from '@/components/review';
@@ -36,7 +35,7 @@ export default function TodayScreen() {
   }, [data.tasks, filter, today, ctx, by, dir]);
   const habits = useMemo(() => habitsForDay(data.tasks, data.habitCompletions, today, today, workspaceId), [data.tasks, data.habitCompletions, today, workspaceId]);
   const exportRows = () => (['overdue', 'today', 'ongoing', 'done'] as const).flatMap((key) => view[key].map((task) => ({ task, section: VIEW_SECTION[key] })));
-  const { row, options, columnsHeader } = useSmartView('today', data, today, workspaceId, <ExportChip title="Dziś" rows={exportRows} />);
+  const { row, options, columnsHeader } = useSmartView('today', data, today, workspaceId, { title: 'Dziś', rows: exportRows });
   const open = view.overdue.length + view.today.length;
   const habitsLeft = habits.filter((h) => !h.settled).length;
   usePerfReady('tab:today', data.loaded);

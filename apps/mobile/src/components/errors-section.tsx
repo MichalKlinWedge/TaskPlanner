@@ -7,7 +7,7 @@ import { ERROR_KIND } from '@taskplanner/core';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { sessionUser } from '@/lib/config';
+import { devToolsEnabled, sessionUser } from '@/lib/config';
 import { APP_VERSION, flushErrors, onErrorQueue, queuedErrors, reportError } from '@/lib/error-log';
 import { supabaseClient } from '@/lib/sync';
 
@@ -69,7 +69,7 @@ export function ErrorsSection() {
         {online ? '' : ' Wpisy pójdą na serwer po zalogowaniu.'}
       </P>
       <Row>
-        <Button kind="secondary" disabled={busy} title="Zapisz błąd testowy" onPress={() => void send(true)} />
+        {devToolsEnabled() ? <Button kind="secondary" disabled={busy} title="Zapisz błąd testowy" onPress={() => void send(true)} /> : null}
         {online ? <Button kind="secondary" disabled={busy || !queued} title="Wyślij teraz" onPress={() => void send(false)} /> : null}
       </Row>
       {problem ? <P tone="bad">{problem}</P> : null}

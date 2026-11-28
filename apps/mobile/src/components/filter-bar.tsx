@@ -120,7 +120,7 @@ export function FilterBar({ query, onChange, hide = [], save }: { query: FilterQ
     <View style={styles.row} accessibilityLabel="Filtry">
       {chips.map((chip) => (
         <View key={chip.field} style={[styles.chip, { backgroundColor: p.selected }]}>
-          <Pressable accessibilityRole="button" accessibilityLabel={`Zmień filtr: ${chip.label}`} onPress={() => void edit(chip.field as FilterField)} style={styles.chipLabel}>
+          <Pressable hitSlop={{ top: 6, bottom: 6 }} accessibilityRole="button" accessibilityLabel={`Zmień filtr: ${chip.label}`} onPress={() => void edit(chip.field as FilterField)} style={styles.chipLabel}>
             <Text style={{ color: p.fg, fontSize: 13 }} numberOfLines={1}>
               {chip.label}
             </Text>
@@ -131,12 +131,12 @@ export function FilterBar({ query, onChange, hide = [], save }: { query: FilterQ
         </View>
       ))}
       {unused.length ? (
-        <Pressable accessibilityRole="button" onPress={() => void add()} style={[styles.add, { borderColor: p.border }]}>
+        <Pressable hitSlop={6} accessibilityRole="button" onPress={() => void add()} style={[styles.add, { borderColor: p.border }]}>
           <Text style={{ color: p.muted, fontSize: 13 }}>+ Filtr</Text>
         </Pressable>
       ) : null}
       {!isEmptyFilter(query) ? (
-        <Pressable accessibilityRole="button" onPress={() => onChange({})} style={styles.clear}>
+        <Pressable hitSlop={6} accessibilityRole="button" onPress={() => onChange({})} style={styles.clear}>
           <Text style={{ color: p.muted, fontSize: 13 }}>Wyczyść</Text>
         </Pressable>
       ) : null}
@@ -153,7 +153,7 @@ function SaveFilter({ query }: { query: FilterQuery }) {
   const [name, setName] = useState<string | null>(null);
   if (name === null) {
     return (
-      <Pressable accessibilityRole="button" onPress={() => setName('')} style={styles.clear}>
+      <Pressable hitSlop={6} accessibilityRole="button" onPress={() => setName('')} style={styles.clear}>
         <Text style={{ color: p.accent, fontSize: 13 }}>Zapisz jako filtr</Text>
       </Pressable>
     );
@@ -193,10 +193,10 @@ function SaveFilter({ query }: { query: FilterQuery }) {
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingBottom: 8 },
   chip: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, maxWidth: '100%' },
-  chipLabel: { paddingLeft: 10, paddingRight: 4, paddingVertical: 5, flexShrink: 1 },
-  chipX: { paddingLeft: 2, paddingRight: 10, paddingVertical: 4 },
-  add: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
-  clear: { paddingHorizontal: 4, paddingVertical: 5 },
+  chipLabel: { paddingLeft: 10, paddingRight: 4, paddingVertical: 5, minHeight: 36, justifyContent: 'center', flexShrink: 1 },
+  chipX: { paddingLeft: 4, paddingRight: 10, minHeight: 36, justifyContent: 'center' },
+  add: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, minHeight: 36, justifyContent: 'center' },
+  clear: { paddingHorizontal: 8, paddingVertical: 5, minHeight: 36, justifyContent: 'center' },
   save: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: 12 },
   saveInput: { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, fontSize: 14 },
 });

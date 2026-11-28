@@ -239,7 +239,7 @@ function ManyList({ title, options }: { title: string; options: Option<unknown>[
     });
   const apply = (
     <Pressable accessibilityRole="button" onPress={() => close(options.filter((_, i) => picked.has(i)).map((o) => o.value))} style={[styles.done, { backgroundColor: p.accent }]}>
-      <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Zastosuj</Text>
+      <Text style={{ color: p.onAccent, fontSize: 16, fontWeight: '600' }}>Zastosuj</Text>
     </Pressable>
   );
   return (
@@ -252,7 +252,7 @@ function ManyList({ title, options }: { title: string; options: Option<unknown>[
           onPress={() => toggle(i)}
           style={({ pressed }) => [styles.option, styles.check, { borderColor: p.border, backgroundColor: pressed ? p.border : 'transparent' }]}
         >
-          <Text style={[styles.box, { borderColor: picked.has(i) ? p.accent : p.border, backgroundColor: picked.has(i) ? p.accent : 'transparent' }]}>{picked.has(i) ? '✓' : ' '}</Text>
+          <Text style={[styles.box, { color: p.onAccent, borderColor: picked.has(i) ? p.accent : p.border, backgroundColor: picked.has(i) ? p.accent : 'transparent' }]}>{picked.has(i) ? '✓' : ' '}</Text>
           <View style={{ flex: 1, gap: 2 }}>
             <Text style={[styles.optionText, { color: p.fg }]}>{o.label}</Text>
             {o.hint ? <Text style={{ color: p.muted, fontSize: 13 }}>{o.hint}</Text> : null}
@@ -267,12 +267,13 @@ function Pill({ label, onPress, selected, tone }: { label: string; onPress: () =
   const p = usePalette();
   return (
     <Pressable
+      hitSlop={4}
       accessibilityRole="button"
       accessibilityState={{ selected: !!selected }}
       onPress={onPress}
       style={({ pressed }) => [styles.pill, { borderColor: selected ? p.accent : p.border, backgroundColor: selected ? p.accent : pressed ? p.border : 'transparent' }]}
     >
-      <Text style={{ color: selected ? '#fff' : tone === 'bad' ? p.bad : p.fg, fontSize: 14 }}>{label}</Text>
+      <Text style={{ color: selected ? p.onAccent : tone === 'bad' ? p.bad : p.fg, fontSize: 14 }}>{label}</Text>
     </Pressable>
   );
 }
@@ -323,7 +324,7 @@ function DatePicker({ request }: { request: Extract<Request, { kind: 'date' }> }
               onPress={() => close(d)}
               style={[styles.cell, styles.day, selected && { backgroundColor: p.accent }, d === today && !selected && { borderColor: p.accent, borderWidth: 1 }]}
             >
-              <Text style={{ color: selected ? '#fff' : inMonth ? p.fg : p.muted, opacity: inMonth ? 1 : 0.5, fontWeight: d === today ? '700' : '400' }}>{Number(d.slice(8))}</Text>
+              <Text style={{ color: selected ? p.onAccent : inMonth ? p.fg : p.muted, opacity: inMonth ? 1 : 0.5, fontWeight: d === today ? '700' : '400' }}>{Number(d.slice(8))}</Text>
             </Pressable>
           );
         })}
@@ -484,7 +485,7 @@ const styles = StyleSheet.create({
   box: { width: 22, height: 22, borderWidth: 1.5, borderRadius: 5, textAlign: 'center', color: '#fff', fontSize: 14, lineHeight: 19, overflow: 'hidden' },
   done: { marginTop: 4, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  pill: { borderWidth: 1, borderRadius: 18, paddingVertical: 7, paddingHorizontal: 13 },
+  pill: { borderWidth: 1, borderRadius: 18, paddingVertical: 7, paddingHorizontal: 13, minHeight: 40, justifyContent: 'center' },
   monthHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6 },
   monthTitle: { fontSize: 16, fontWeight: '600' },
   arrow: { fontSize: 28, paddingHorizontal: 10 },

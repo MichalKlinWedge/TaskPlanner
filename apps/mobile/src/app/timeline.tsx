@@ -585,7 +585,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
   left: { width: LEFT, borderRightWidth: StyleSheet.hairlineWidth, paddingLeft: 8 },
   titleCell: { height: ROW, flexDirection: 'row', alignItems: 'center', gap: 2, borderBottomWidth: StyleSheet.hairlineWidth, paddingRight: 6 },
-  toggle: { width: 14, alignItems: 'center' },
+  toggle: { width: 20, alignItems: 'center' },
   leftHandle: { position: 'absolute', right: -10, top: 0, bottom: 0, width: 20, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   leftGrip: { width: 3, height: 18, borderRadius: 2, opacity: 0.6 },
   person: { fontSize: 10, fontWeight: '600', minWidth: 18, paddingHorizontal: 3, borderRadius: 9, borderWidth: 1, textAlign: 'center', overflow: 'hidden' },

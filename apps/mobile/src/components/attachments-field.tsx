@@ -249,7 +249,7 @@ function Action({ label, onPress, primary, disabled }: { label: string; onPress:
       onPress={onPress}
       style={({ pressed }) => [styles.action, { borderColor: primary ? p.accent : p.border, backgroundColor: primary ? p.accent : 'transparent', opacity: disabled ? 0.4 : pressed ? 0.6 : 1 }]}
     >
-      <Text style={{ color: primary ? '#fff' : p.fg, fontSize: 13, fontWeight: '600' }}>{label}</Text>
+      <Text style={{ color: primary ? p.onAccent : p.fg, fontSize: 13, fontWeight: '600' }}>{label}</Text>
     </Pressable>
   );
 }

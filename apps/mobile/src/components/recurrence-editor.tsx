@@ -159,7 +159,7 @@ export function RecurrenceEditor({
                     onPress={() => set({ days: on ? draft.days.filter((x) => x !== d) : [...draft.days, d] })}
                     style={[styles.day, { borderColor: on ? p.accent : p.border, backgroundColor: on ? p.accent : 'transparent' }]}
                   >
-                    <Text style={{ color: on ? '#fff' : p.fg, fontSize: 13 }}>{DAY_SHORT[d]}</Text>
+                    <Text style={{ color: on ? p.onAccent : p.fg, fontSize: 13 }}>{DAY_SHORT[d]}</Text>
                   </Pressable>
                 );
               })}

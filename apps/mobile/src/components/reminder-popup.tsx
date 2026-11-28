@@ -98,7 +98,7 @@ export function ReminderPopup() {
               onPress={() => done(n)}
               style={({ pressed }) => [styles.primary, { backgroundColor: p.accent, opacity: busy ? 0.5 : pressed ? 0.7 : 1 }]}
             >
-              <Text style={styles.primaryText}>✓ Ukończ</Text>
+              <Text style={[styles.primaryText, { color: p.onAccent }]}>✓ Ukończ</Text>
             </Pressable>
             <Pressable accessibilityRole="button" disabled={busy} onPress={openTask} style={[styles.chip, { borderColor: p.border }]}>
               <Text style={{ color: p.fg }}>Otwórz zadanie</Text>

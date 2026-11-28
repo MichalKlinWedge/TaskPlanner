@@ -32,7 +32,7 @@ const FORMATS: { action: MarkdownAction; icon: string; label: string }[] = [
 function Pill({ label, onPress, color, hint }: { label: string; onPress: () => void; color?: string; hint?: string }) {
   const p = usePalette();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={hint ?? label} onPress={onPress} style={({ pressed }) => [styles.pill, { borderColor: color ?? p.border, opacity: pressed ? 0.6 : 1 }]}>
+    <Pressable hitSlop={6} accessibilityRole="button" accessibilityLabel={hint ?? label} onPress={onPress} style={({ pressed }) => [styles.pill, { borderColor: color ?? p.border, opacity: pressed ? 0.6 : 1 }]}>
       <Text style={{ color: color ?? p.fg, fontSize: 13 }}>{label}</Text>
     </Pressable>
   );
@@ -174,7 +174,7 @@ export function DescriptionField({ taskId, readOnly = false }: { taskId: string;
 const styles = StyleSheet.create({
   pills: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   formats: { flexDirection: 'row', gap: 6 },
-  pill: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 11, paddingVertical: 5 },
+  pill: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 11, paddingVertical: 5, minHeight: 36, justifyContent: 'center' },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 15, minHeight: 140 },
   preview: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 10 },
 });

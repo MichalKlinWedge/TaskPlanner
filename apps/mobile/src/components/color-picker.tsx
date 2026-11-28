@@ -13,6 +13,7 @@ export function ColorPicker({ value, onChange, onClear }: { value: string | null
     <View style={styles.row}>
       {onClear ? (
         <Pressable
+          hitSlop={4}
           accessibilityRole="button"
           accessibilityLabel="Bez koloru"
           accessibilityState={{ selected: !value }}
@@ -24,6 +25,7 @@ export function ColorPicker({ value, onChange, onClear }: { value: string | null
       ) : null}
       {COLORS.map((c) => (
         <Pressable
+          hitSlop={4}
           key={c.value}
           accessibilityRole="button"
           accessibilityLabel={c.label}
@@ -33,6 +35,7 @@ export function ColorPicker({ value, onChange, onClear }: { value: string | null
         />
       ))}
       <Pressable
+        hitSlop={4}
         accessibilityRole="button"
         accessibilityLabel="Inny kolor"
         accessibilityState={{ selected: !!custom }}
@@ -47,6 +50,6 @@ export function ColorPicker({ value, onChange, onClear }: { value: string | null
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  swatch: { width: 30, height: 30, borderRadius: 15, borderWidth: 3 },
+  swatch: { width: 38, height: 38, borderRadius: 19, borderWidth: 3 },
   center: { alignItems: 'center', justifyContent: 'center' },
 });

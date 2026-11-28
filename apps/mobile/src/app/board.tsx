@@ -634,7 +634,7 @@ const styles = StyleSheet.create({
   naming: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingBottom: 8 },
   nameInput: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 14 },
   columnTools: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 12, paddingBottom: 6 },
-  tool: { fontSize: 17, paddingHorizontal: 2 },
+  tool: { fontSize: 17, minWidth: 36, minHeight: 36, textAlign: 'center', textAlignVertical: 'center' },
   addCard: { paddingHorizontal: 12 },
   card: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth },
   move: { paddingHorizontal: 14, paddingVertical: 12 },

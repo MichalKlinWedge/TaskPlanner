@@ -246,7 +246,7 @@ export default function HabitFormScreen() {
                 onPress={() => setDays(on ? days.filter((x) => x !== d) : [...days, d])}
                 style={[styles.day, { borderColor: on ? p.accent : p.border, backgroundColor: on ? p.accent : 'transparent' }]}
               >
-                <Text style={{ color: on ? '#fff' : p.fg, fontSize: 13 }}>{WEEKDAY[d].short}</Text>
+                <Text style={{ color: on ? p.onAccent : p.fg, fontSize: 13 }}>{WEEKDAY[d].short}</Text>
               </Pressable>
             );
           })}

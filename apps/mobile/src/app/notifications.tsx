@@ -151,10 +151,11 @@ export default function NotificationsScreen() {
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel="Usuń z listy"
-                      hitSlop={10}
+                      hitSlop={6}
                       onPress={() => void dismissBell([n]).catch(() => undefined)}
+                      style={styles.dismiss}
                     >
-                      <Text style={{ color: p.muted, fontSize: 14 }}>✕</Text>
+                      <Text style={{ color: p.muted, fontSize: 16 }}>✕</Text>
                     </Pressable>
                   </View>
                 );
@@ -178,5 +179,6 @@ const styles = StyleSheet.create({
   icon: { width: 22, textAlign: 'center', fontSize: 15, marginTop: 1 },
   dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 6 },
-  action: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  action: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6, minHeight: 34, justifyContent: 'center' },
+  dismiss: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginTop: -8, marginRight: -8 },
 });

@@ -45,7 +45,7 @@ export function SyncIndicator() {
     tone = 'ok';
   } else line = 'Jeszcze bez synchronizacji';
 
-  const details = [pending ? `${plural(pending, CHANGES)} do wysłania` : user.online ? 'wszystko wysłane' : null, rejected ? `odrzucone: ${rejected}` : null]
+  const details = [pending ? `${plural(pending, CHANGES)} do wysłania` : user.online ? 'wszystko wysłane' : null, rejected ? `serwer odrzucił ${plural(rejected, CHANGES)} (na telefonie cofnięte)` : null]
     .filter(Boolean)
     .join(' · ');
 

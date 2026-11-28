@@ -6,7 +6,6 @@
 import { applyFilter, isEmptyFilter, plural, selectInbox, sortSection } from '@taskplanner/core';
 import { useMemo } from 'react';
 
-import { ExportChip } from '@/components/export-button';
 import { FilterBar, filterEmptyText } from '@/components/filter-bar';
 import { ScreenHeader } from '@/components/sync-banner';
 import { TaskSections } from '@/components/task-list';
@@ -27,7 +26,7 @@ export default function InboxScreen() {
     const inbox = selectInbox(data.tasks, inboxIds, ctx);
     return sortSection(isEmptyFilter(filter) ? inbox : applyFilter(inbox, filter, today), by, dir, (t) => t);
   }, [data.tasks, inboxIds, ctx, filter, today, by, dir]);
-  const { row, options, columnsHeader } = useSmartView('inbox', data, today, workspaceId, <ExportChip title="Inbox" rows={() => tasks.map((task) => ({ task }))} />);
+  const { row, options, columnsHeader } = useSmartView('inbox', data, today, workspaceId, { title: 'Inbox', rows: () => tasks.map((task) => ({ task })) });
   const wsName = new Map(data.workspaces.map((w) => [w.id, w.name]));
   const target = targetInbox(data, workspaceId);
   return (

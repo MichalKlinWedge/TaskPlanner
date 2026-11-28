@@ -56,7 +56,7 @@ export function SettingsButton() {
   const color = !online || status.offline ? p.muted : status.error ? p.bad : status.lastAt ? p.ok : p.muted;
   const sync = !online ? 'tryb offline bez konta' : status.offline ? 'offline — zmiany czekają na telefonie' : status.syncing ? 'synchronizacja trwa' : status.error ? `błąd synchronizacji: ${status.error}` : 'zsynchronizowano';
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`Ustawienia; ${sync}`} hitSlop={10} onPress={() => router.push('/settings')} style={styles.gear}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Ustawienia; ${sync}`} hitSlop={4} onPress={() => router.push('/settings')} style={styles.gear}>
       {/* U+FE0E — znak tekstowy, nie kolorowe emoji. */}
       <Text style={{ color: p.fg, fontSize: 21, lineHeight: 24 }}>{'⚙︎'}</Text>
       <View style={[styles.badge, { backgroundColor: p.card }]}>
@@ -116,7 +116,7 @@ export function HeaderRight() {
     <View style={styles.right}>
       <FocusChip />
       <WorkspaceSwitcher />
-      <Pressable accessibilityRole="button" accessibilityLabel="Szukaj" hitSlop={10} onPress={() => router.push('/search')}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Szukaj" hitSlop={4} onPress={() => router.push('/search')} style={styles.icon}>
         <Text style={{ color: p.fg, fontSize: 19 }}>⌕</Text>
       </Pressable>
       <NotificationBell />
@@ -127,9 +127,10 @@ export function HeaderRight() {
 }
 
 const styles = StyleSheet.create({
-  right: { flexDirection: 'row', alignItems: 'center', gap: 14, marginRight: 12 },
+  right: { flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: 8 },
+  icon: { minWidth: 32, height: 40, alignItems: 'center', justifyContent: 'center' },
   switcher: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4 },
-  gear: { width: 26, height: 26, alignItems: 'center', justifyContent: 'center' },
+  gear: { width: 32, height: 40, alignItems: 'center', justifyContent: 'center' },
   badge: { position: 'absolute', right: -3, bottom: -2, width: 13, height: 13, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
   dot: { width: 9, height: 9, borderRadius: 5 },
   update: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' },

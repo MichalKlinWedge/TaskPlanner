@@ -6,7 +6,7 @@
 import { bulkTaskOps, completeTaskOps, descendants, isOpen, localDateAt, openDescendants, plural, relativeDay, reopenTaskPatch, type BulkAction, type TaskOp, type ViewTask } from '@taskplanner/core';
 import * as Haptics from 'expo-haptics';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppData } from '@/lib/app-data';
@@ -99,12 +99,23 @@ export function TaskActionsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast((t) => (t?.id === toast.id ? null : t)), 10_000);
+    // Z czytnikiem ekranu dłużej: ogłoszenie i dojście do „Cofnij” trwa.
+    const timer = setTimeout(() => setToast((t) => (t?.id === toast.id ? null : t)), screenReader.current ? 25_000 : 10_000);
     return () => clearTimeout(timer);
   }, [toast]);
 
 
-  const show = useCallback((text: string, undo?: TaskOp[]) => setToast({ id: ++next.current, text, undo }), []);
+  // TalkBack nie ogłasza widoku z `accessibilityRole="alert"` — ogłoszenie wprost.
+  const screenReader = useRef(false);
+  useEffect(() => {
+    void AccessibilityInfo.isScreenReaderEnabled().then((on) => (screenReader.current = on)).catch(() => undefined);
+    const sub = AccessibilityInfo.addEventListener('screenReaderChanged', (on: boolean) => (screenReader.current = on));
+    return () => sub.remove();
+  }, []);
+  const show = useCallback((text: string, undo?: TaskOp[]) => {
+    setToast({ id: ++next.current, text, undo });
+    AccessibilityInfo.announceForAccessibility(undo ? `${text}. Można cofnąć.` : text);
+  }, []);
   // Zmiana odrzucona przez serwer jest już cofnięta lokalnie — bez dymku znikałaby bez słowa.
   useEffect(() => onRejectedOps((messages) => show(`Serwer odrzucił zmianę — cofnięto ją: ${messages.join('; ')}`)), [show]);
   const fail = useCallback((e: unknown) => show(e instanceof Error ? e.message : String(e)), [show]);
@@ -201,7 +212,7 @@ export function TaskActionsProvider({ children }: { children: ReactNode }) {
             </Text>
             {toast.undo ? (
               <Pressable accessibilityRole="button" hitSlop={8} onPress={() => void undo()}>
-                <Text style={[styles.undo, { color: p.accent }]}>Cofnij</Text>
+                <Text style={[styles.undo, { color: p.inverseAccent }]}>Cofnij</Text>
               </Pressable>
             ) : null}
             <Pressable accessibilityRole="button" accessibilityLabel="Zamknij" hitSlop={8} onPress={() => setToast(null)}>

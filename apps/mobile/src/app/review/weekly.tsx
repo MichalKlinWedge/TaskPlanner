@@ -144,7 +144,7 @@ export default function WeeklyReviewScreen() {
               {listLabel(data, task.listId)}
             </Text>
             {task.dueDate ? <Text style={{ color: task.dueDate < today ? p.bad : p.muted, fontSize: 12 }}>· {relativeDay(task.dueDate, today)}</Text> : null}
-            {needsDecision(task) ? <Text style={[styles.warn, { color: '#92400e', backgroundColor: '#fef3c7' }]}>{task.postponeCount}× przesuwane</Text> : null}
+            {needsDecision(task) ? <Text style={[styles.warn, { color: p.warnFg, backgroundColor: p.warnBg }]}>{task.postponeCount}× przesuwane</Text> : null}
           </View>
         </View>
       </Pressable>

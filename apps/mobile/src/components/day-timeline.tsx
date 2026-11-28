@@ -168,8 +168,10 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
       scheduleOnRN(commitMove, top.value + shift.value);
     },
   });
+  // Uchwyt długości: krótkie przytrzymanie, żeby przewijanie osi zaczęte palcem na uchwycie przewijało, a nie zmieniało czas.
   const resize = usePanGesture({
     enabled: draggable,
+    activateAfterLongPress: 200,
     onActivate: () => {
       'worklet';
       base.value = height.value;
@@ -188,6 +190,8 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
   });
   const tap = useTapGesture({ runOnJS: true, onActivate: () => props.onPress(block) });
   const gesture = useExclusiveGestures(move, tap);
+  const handleTap = useTapGesture({ runOnJS: true, onActivate: () => props.onPress(block) });
+  const handleGesture = useExclusiveGestures(resize, handleTap);
   const animated = useAnimatedStyle(() => ({ top: top.value, height: Math.max(MIN_BLOCK, height.value - 1), transform: [{ translateY: shift.value }], opacity: active.value ? 0.85 : 1, zIndex: active.value ? 10 : 1, elevation: active.value ? 6 : 0 }));
 
   const fill = task?.listId ? (props.listColors?.get(task.listId) ?? null) : null;
@@ -196,6 +200,8 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
   const mark = block.kind === 'habit' ? (block.habitState === 'done' ? '✓ ' : '◎ ') : '';
   const label = `${hot ? '⚠ ' : ''}${mark}${block.title}`;
   const tall = y(endMin) - y(startMin) >= 34;
+  // Na niskim bloku uchwyt zająłby jego środek (dotknięcie nie otwierałoby menu) — długość zmienia się wtedy z menu bloku.
+  const handle = y(endMin) - y(startMin) >= 40;
   const style = [
     styles.block,
     {
@@ -238,11 +244,13 @@ function TimelineBlock({ block, y, ...props }: DayTimelineProps & { block: Block
         <View style={{ flex: 1 }}>{body}</View>
       </GestureDetector>
       {/* Uchwyt nad dolną krawędzią (nie zabiera miejsca tytułowi krótkiego bloku). */}
-      <GestureDetector gesture={resize}>
-        <View style={styles.handle} accessibilityLabel="Zmień długość">
-          <View style={[styles.grip, { backgroundColor: p.muted }]} />
-        </View>
-      </GestureDetector>
+      {handle ? (
+        <GestureDetector gesture={handleGesture}>
+          <View style={styles.handle} accessibilityLabel="Zmień długość">
+            <View style={[styles.grip, { backgroundColor: p.muted }]} />
+          </View>
+        </GestureDetector>
+      ) : null}
     </Animated.View>
   );
 }
@@ -295,10 +303,10 @@ const styles = StyleSheet.create({
   minor: { position: 'absolute', left: GUTTER, right: 0, borderTopWidth: StyleSheet.hairlineWidth, opacity: 0.6 },
   hourText: { width: GUTTER - 6, textAlign: 'right', fontSize: 10, marginTop: -7 },
   lane: { position: 'absolute', top: 0, left: GUTTER, right: 4 },
-  free: { position: 'absolute', left: 0, right: 0, backgroundColor: 'rgba(34,197,94,0.10)' },
-  off: { position: 'absolute', left: 0, right: 0, backgroundColor: 'rgba(113,113,122,0.12)' },
+  free: { position: 'absolute', left: 0, right: 0, backgroundColor: 'rgba(34,197,94,0.14)' },
+  off: { position: 'absolute', left: 0, right: 0, backgroundColor: 'rgba(113,113,122,0.16)' },
   now: { position: 'absolute', left: -4, right: 0, height: 2, zIndex: 20 },
   block: { position: 'absolute', borderRadius: 6, borderLeftWidth: 4, overflow: 'hidden' },
-  handle: { position: 'absolute', left: '30%', right: '30%', bottom: 0, height: 12, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 2 },
+  handle: { position: 'absolute', left: '30%', right: '30%', bottom: 0, height: 16, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 2 },
   grip: { width: 24, height: 3, borderRadius: 2, opacity: 0.6 },
 });

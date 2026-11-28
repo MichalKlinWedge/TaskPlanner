@@ -251,7 +251,7 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
         <View style={[styles.check, { borderColor: color, borderStyle: 'dashed' }]} />
       ) : selecting ? (
         <View style={[styles.check, styles.square, { borderColor: isSelected ? p.accent : p.muted, backgroundColor: isSelected ? p.accent : 'transparent' }]}>
-          {isSelected ? <Text style={styles.tick}>✓</Text> : null}
+          {isSelected ? <Text style={[styles.tick, { color: p.onAccent }]}>✓</Text> : null}
         </View>
       ) : (
         <Pressable
@@ -353,12 +353,12 @@ export const TaskRow = memo(function TaskRow({ task, today, showDate = true, lis
       overshootRight={false}
       renderLeftActions={() => (
         <View style={[styles.action, styles.left, { backgroundColor: closed ? p.muted : p.ok }]}>
-          <Text style={styles.actionText}>{closed ? '↺ Przywróć' : '✓ Ukończ'}</Text>
+          <Text style={[styles.actionText, { color: closed ? p.onAccent : p.onOk }]}>{closed ? '↺ Przywróć' : '✓ Ukończ'}</Text>
         </View>
       )}
       renderRightActions={() => (
         <View style={[styles.action, styles.right, { backgroundColor: p.accent }]}>
-          <Text style={styles.actionText}>📅 Termin</Text>
+          <Text style={[styles.actionText, { color: p.onAccent }]}>📅 Termin</Text>
         </View>
       )}
       onSwipeableWillOpen={(direction) => {

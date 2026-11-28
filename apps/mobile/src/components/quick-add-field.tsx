@@ -166,7 +166,7 @@ export function QuickAddField({ listId, dueDate, slot, parent, placeholder = 'Do
         />
         {submitLabel ? (
           <Pressable accessibilityRole="button" disabled={!canAdd} onPress={() => void submit()} style={[styles.add, { backgroundColor: p.accent, opacity: canAdd ? 1 : 0.4 }]}>
-            <Text style={styles.addText}>{submitLabel}</Text>
+            <Text style={[styles.addText, { color: p.onAccent }]}>{submitLabel}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -189,6 +189,7 @@ export function QuickAddField({ listId, dueDate, slot, parent, placeholder = 'Do
               const label = quickAddChip(token, result, today);
               return (
                 <Pressable
+                  hitSlop={8}
                   key={token.start}
                   accessibilityRole="button"
                   accessibilityLabel={`${label} — cofnij rozpoznanie`}
@@ -217,6 +218,6 @@ const styles = StyleSheet.create({
   addText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   preview: { gap: 6 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 4 },
+  chip: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 4, minHeight: 32, justifyContent: 'center' },
   linkChip: { flexDirection: 'row', maxWidth: '100%' },
 });

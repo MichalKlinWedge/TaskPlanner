@@ -17,7 +17,7 @@ import { SyncIndicator } from '@/components/sync-indicator';
 import { Button, CollapsibleSections, Field, P, Row, Screen, Section, usePalette } from '@/components/ui';
 import { useView } from '@/lib/app-data';
 import { deleteAccount, sendMagicLink, signInWithGoogle, signOut, verifyEmailCode } from '@/lib/auth';
-import { CLOUD_SERVER, PRIVACY_URL, saveServerConfig, serverConfig, sessionUser } from '@/lib/config';
+import { CLOUD_SERVER, devToolsEnabled, PRIVACY_URL, saveServerConfig, serverConfig, sessionUser } from '@/lib/config';
 import { useSyncStatus } from '@/lib/local-query';
 import { mutate, onSessionChange, unsentChanges, type PullPerf } from '@/lib/sync';
 
@@ -232,7 +232,7 @@ export default function Settings() {
         {user.online ? (
           <>
             <SyncIndicator />
-            {pullPerf ? <PullPerfInfo perf={pullPerf} /> : null}
+            {pullPerf && devToolsEnabled() ? <PullPerfInfo perf={pullPerf} /> : null}
             <Row>
               <Button disabled={busy} title="Przestrzenie i listy" kind="secondary" onPress={() => router.push('/workspaces')} />
               <Button
@@ -246,7 +246,7 @@ export default function Settings() {
         ) : (
           <>
             <P muted>
-              Bez konta zapisy zostają w lokalnej bazie i outboxie. Logowanie zaczyna od czystych danych lokalnych (zmiany z trybu offline nie trafią na konto).
+              Bez konta wszystko zostaje tylko na tym telefonie. Po zalogowaniu telefon zaczyna od danych konta — zmiany z trybu bez konta nie trafią na konto (chyba że przeniesiesz je kopią zapasową).
             </P>
             {loginForm}
           </>
@@ -281,38 +281,41 @@ export default function Settings() {
 
       {user.online && !relogin ? <DeleteAccountSection email={user.email} /> : null}
 
-      <Section title="Serwer Supabase">
-        <P muted>
-          Domyślnie serwer w chmurze ({CLOUD_SERVER.url}) — nic nie trzeba wpisywać. Lokalny Supabase przez USB: `adb reverse tcp:54521 tcp:54521` (i 54524 dla Inbucket) — wtedy adres http://127.0.0.1:54521 działa na telefonie, także w linku z maila. W
-          sieci Wi-Fi: http://IP-komputera:54521 (link z maila wskazuje wtedy 127.0.0.1 — użyj kodu). Klucz: PUBLISHABLE_KEY z `npm run supabase -- status`.
-        </P>
-        <Field label="Adres" value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" editable={!user.online} />
-        <Field label="Klucz publiczny (anon / publishable)" value={key} onChangeText={setKey} autoCapitalize="none" autoCorrect={false} editable={!user.online} />
-        {user.online ? (
-          <P muted>Adres zmienisz po wylogowaniu.</P>
-        ) : (
-          <Button
-            kind="secondary"
-            title="Zapisz adres"
-            onPress={() => {
-              saveServerConfig({ url, key });
-              Alert.alert('Zapisano', 'Nowy adres działa od następnego logowania.');
-            }}
-          />
-        )}
-        {!user.online && (url !== CLOUD_SERVER.url || key !== CLOUD_SERVER.key) ? (
-          <Button
-            kind="secondary"
-            title="Serwer w chmurze"
-            onPress={() => {
-              setUrl(CLOUD_SERVER.url);
-              setKey(CLOUD_SERVER.key);
-              saveServerConfig(CLOUD_SERVER);
-              Alert.alert('Zapisano', 'Adres serwera w chmurze działa od następnego logowania.');
-            }}
-          />
-        ) : null}
-      </Section>
+      {/* Własny serwer (lokalny Supabase) to narzędzie deweloperskie: widoczne z „Narzędziami PoC” albo gdy telefon już używa innego serwera niż chmura. */}
+      {devToolsEnabled() || (config && config.url !== CLOUD_SERVER.url) ? (
+        <Section title="Serwer Supabase">
+          <P muted>
+            Domyślnie serwer w chmurze ({CLOUD_SERVER.url}) — nic nie trzeba wpisywać. Lokalny Supabase przez USB: `adb reverse tcp:54521 tcp:54521` (i 54524 dla Inbucket) — wtedy adres http://127.0.0.1:54521 działa na telefonie, także w linku z maila. W
+            sieci Wi-Fi: http://IP-komputera:54521 (link z maila wskazuje wtedy 127.0.0.1 — użyj kodu). Klucz: PUBLISHABLE_KEY z `npm run supabase -- status`.
+          </P>
+          <Field label="Adres" value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" editable={!user.online} />
+          <Field label="Klucz publiczny (anon / publishable)" value={key} onChangeText={setKey} autoCapitalize="none" autoCorrect={false} editable={!user.online} />
+          {user.online ? (
+            <P muted>Adres zmienisz po wylogowaniu.</P>
+          ) : (
+            <Button
+              kind="secondary"
+              title="Zapisz adres"
+              onPress={() => {
+                saveServerConfig({ url, key });
+                Alert.alert('Zapisano', 'Nowy adres działa od następnego logowania.');
+              }}
+            />
+          )}
+          {!user.online && (url !== CLOUD_SERVER.url || key !== CLOUD_SERVER.key) ? (
+            <Button
+              kind="secondary"
+              title="Serwer w chmurze"
+              onPress={() => {
+                setUrl(CLOUD_SERVER.url);
+                setKey(CLOUD_SERVER.key);
+                saveServerConfig(CLOUD_SERVER);
+                Alert.alert('Zapisano', 'Adres serwera w chmurze działa od następnego logowania.');
+              }}
+            />
+          ) : null}
+        </Section>
+      ) : null}
       </CollapsibleSections>
     </Screen>
   );

@@ -78,7 +78,7 @@ export function NotificationBell() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={count ? `Powiadomienia: ${count} nieprzeczytanych` : 'Powiadomienia'}
-      hitSlop={8}
+      hitSlop={4}
       onPress={() => router.push('/notifications')}
       style={styles.bell}
     >
@@ -284,8 +284,8 @@ export function NotificationsSection() {
 }
 
 const styles = StyleSheet.create({
-  bell: { width: 24, height: 26, alignItems: 'center', justifyContent: 'center' },
-  count: { position: 'absolute', top: -4, right: -8, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, alignItems: 'center', justifyContent: 'center' },
+  bell: { width: 32, height: 40, alignItems: 'center', justifyContent: 'center' },
+  count: { position: 'absolute', top: 2, right: -4, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, alignItems: 'center', justifyContent: 'center' },
   countText: { color: '#ffffff', fontSize: 10, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },

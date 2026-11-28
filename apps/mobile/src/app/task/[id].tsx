@@ -159,7 +159,7 @@ function Cell({ label, value, onPress, disabled, tone }: { label: string; value:
 function Pill({ label, onPress, color }: { label: string; onPress: () => void; color?: string }) {
   const p = usePalette();
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.pill, { borderColor: color ?? p.border, opacity: pressed ? 0.6 : 1 }]}>
+    <Pressable hitSlop={6} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.pill, { borderColor: color ?? p.border, opacity: pressed ? 0.6 : 1 }]}>
       <Text style={{ color: color ?? p.fg, fontSize: 13 }}>{label}</Text>
     </Pressable>
   );
@@ -1202,7 +1202,7 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   cell: { width: '48.5%', borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, gap: 2 },
   pills: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
-  pill: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 11, paddingVertical: 5 },
+  pill: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 11, paddingVertical: 5, minHeight: 36, justifyContent: 'center' },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 15 },
   tagInput: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 3, fontSize: 13, minWidth: 90 },
   tagColor: { marginTop: 10, gap: 8 },
